@@ -194,7 +194,7 @@ impl ViewportControls {
             )
             .child(
                 Button::new("axes")
-                    .icon(IconName::Move)
+                    .icon(IconName::ArrowUpRight)
                     .tooltip("Toggle Axes")
                     .selected(self.show_axes)
             )
