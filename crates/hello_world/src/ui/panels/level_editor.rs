@@ -42,16 +42,16 @@ impl LevelEditorPanel {
     fn render_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         Toolbar::new()
             .add_button(
-                ToolbarButton::new(IconName::Mouse, "Select")
+                ToolbarButton::new(IconName::Asterisk, "Select")
                     .tooltip("Select Tool (S)")
                     .active(true)
             )
             .add_button(
-                ToolbarButton::new(IconName::Move, "Move")
+                ToolbarButton::new(IconName::Asterisk, "Move")
                     .tooltip("Move Tool (M)")
             )
             .add_button(
-                ToolbarButton::new(IconName::RotateCcw, "Rotate")
+                ToolbarButton::new(IconName::Asterisk, "Rotate")
                     .tooltip("Rotate Tool (R)")
             )
             .add_button(
@@ -155,7 +155,7 @@ impl LevelEditorPanel {
                                     .flex()
                                     .items_center()
                                     .justify_center()
-                                    .text_4xl()
+                                    .text_size(px(32.0))
                                     .child("🎮")
                             )
                             .child(
@@ -359,7 +359,7 @@ impl LevelEditorPanel {
                 div()
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
-                    .child(axis)
+                    .child(axis.to_string())
             )
             .child(
                 div()

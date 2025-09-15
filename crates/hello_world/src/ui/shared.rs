@@ -3,7 +3,7 @@ use gpui_component::{
     button::Button,
     h_flex, v_flex,
     ActiveTheme as _, StyledExt, Selectable,
-    Icon, IconName,
+    IconName,
 };
 
 pub struct ToolbarButton {
@@ -43,8 +43,9 @@ impl ToolbarButton {
         self
     }
 
-    pub fn render(self, cx: &mut App) -> Button {
-        let mut button = Button::new(self.label.as_str())
+    pub fn render(self) -> Button {
+    let mut button = Button::new("toolbar-btn")
+            .label(self.label.clone())
             .icon(self.icon)
             .tooltip(self.tooltip);
 
@@ -92,7 +93,7 @@ impl Toolbar {
             .children(
                 self.buttons
                     .into_iter()
-                    .map(|button| button.render(cx).into_any_element())
+                    .map(|button| button.render().into_any_element())
             )
     }
 }
@@ -188,13 +189,13 @@ impl ViewportControls {
             .border_color(cx.theme().border)
             .child(
                 Button::new("grid")
-                    .icon(IconName::Grid)
+                    .icon(IconName::LayoutDashboard)
                     .tooltip("Toggle Grid")
                     .selected(self.show_grid)
             )
             .child(
                 Button::new("axes")
-                    .icon(IconName::ArrowUpRight)
+                    .icon(IconName::ArrowRight)
                     .tooltip("Toggle Axes")
                     .selected(self.show_axes)
             )

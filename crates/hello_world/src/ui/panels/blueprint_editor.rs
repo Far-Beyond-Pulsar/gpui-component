@@ -37,19 +37,19 @@ impl BlueprintEditorPanel {
                     .tooltip("Duplicate Node (Ctrl+D)")
             )
             .add_button(
-                ToolbarButton::new(IconName::Trash, "Delete")
+                ToolbarButton::new(IconName::Delete, "Delete")
                     .tooltip("Delete Node (Del)")
             )
             .add_button(
-                ToolbarButton::new(IconName::ZoomIn, "Zoom In")
+                ToolbarButton::new(IconName::Plus, "Zoom In")
                     .tooltip("Zoom In (+)")
             )
             .add_button(
-                ToolbarButton::new(IconName::ZoomOut, "Zoom Out")
+                ToolbarButton::new(IconName::Minus, "Zoom Out")
                     .tooltip("Zoom Out (-)")
             )
             .add_button(
-                ToolbarButton::new(IconName::Home, "Fit")
+                ToolbarButton::new(IconName::CircleCheck, "Fit")
                     .tooltip("Fit to View (F)")
             )
             .render(cx)
@@ -85,7 +85,7 @@ impl BlueprintEditorPanel {
                     .border_1()
                     .border_color(cx.theme().border)
                     .rounded(cx.theme().radius)
-                    .overflow_y_scroll()
+                    //TODO: Make this scrollable
                     .child(self.render_node_categories(cx))
             )
     }
@@ -131,7 +131,7 @@ impl BlueprintEditorPanel {
                     .text_sm()
                     .font_semibold()
                     .text_color(cx.theme().foreground)
-                    .child(title)
+                    .child(title.to_string())
             )
             .child(
                 v_flex()
@@ -149,7 +149,7 @@ impl BlueprintEditorPanel {
                                     div()
                                         .text_sm()
                                         .text_color(cx.theme().foreground)
-                                        .child(*name)
+                                        .child((*name).to_string())
                                 )
                                 .into_any_element()
                         })
@@ -218,7 +218,7 @@ impl BlueprintEditorPanel {
 
     fn render_blueprint_node(&self, title: &str, icon: &str, is_event: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let node_color = if is_event {
-            cx.theme().destructive
+            cx.theme().danger
         } else {
             cx.theme().primary
         };
@@ -238,13 +238,13 @@ impl BlueprintEditorPanel {
                     .bg(node_color.opacity(0.2))
                     .items_center()
                     .gap_2()
-                    .child(icon)
+                    .child(icon.to_string())
                     .child(
                         div()
                             .text_sm()
                             .font_semibold()
                             .text_color(cx.theme().foreground)
-                            .child(title)
+                            .child(title.to_string())
                     )
             )
             .child(
@@ -299,7 +299,7 @@ impl BlueprintEditorPanel {
                     )
                     .child(
                         Button::new("zoom_fit")
-                            .icon(IconName::Home)
+                            .icon(IconName::CircleCheck)
                             .tooltip("Fit to View")
                     )
             )

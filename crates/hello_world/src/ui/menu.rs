@@ -18,7 +18,7 @@ impl MenuBar {
         }
     }
 
-    pub fn render(&self, cx: &mut App) -> impl IntoElement {
+        pub fn render(&self) -> impl IntoElement {
         h_flex()
             .w_full()
             .h_8()
@@ -37,10 +37,10 @@ impl MenuBar {
     }
 
     fn render_menu_item(&self, label: &str, cx: &mut App) -> impl IntoElement {
-        let is_active = self.active_menu.as_ref() == Some(&label.to_string());
-
-        Button::new(label)
-            .child(label)
+        let is_active = self.active_menu.as_ref().map(|s| s.as_str()) == Some(label);
+        let label_string: Box<str> = label.to_string().into_boxed_str();
+        Button::new(&*label_string)
+            .child(label_string.clone())
             .when(is_active, |this| this.selected(true))
             .on_click(move |_, _, _| {
                 // Menu click handling would go here
@@ -70,9 +70,9 @@ impl MenuBar {
                 this.menu_with_icon("Undo", IconName::ArrowLeft, Box::new(Undo))
                     .menu_with_icon("Redo", IconName::ArrowRight, Box::new(Redo))
                     .separator()
-                    .menu_with_icon("Cut", IconName::X, Box::new(Cut))
+                    .menu_with_icon("Cut", IconName::Close, Box::new(Cut))
                     .menu_with_icon("Copy", IconName::Copy, Box::new(Copy))
-                    .menu_with_icon("Paste", IconName::Download, Box::new(Paste))
+                    .menu_with_icon("Paste", IconName::ArrowDown, Box::new(Paste))
                     .separator()
                     .menu("Select All", Box::new(SelectAll))
                     .separator()
@@ -106,10 +106,10 @@ impl MenuBar {
             .child("Tools")
             .popup_menu(move |this, _window, _cx| {
                 this.menu_with_icon("Asset Browser", IconName::Folder, Box::new(ShowAssetBrowser))
-                    .menu_with_icon("Console", IconName::Terminal, Box::new(ShowConsole))
+                    .menu_with_icon("Console", IconName::Inspector, Box::new(ShowConsole))
                     .separator()
                     .menu("Build Project", Box::new(BuildProject))
-                    .menu_with_icon("Run Game", IconName::Play, Box::new(RunGame))
+                    .menu_with_icon("Run Game", IconName::Check, Box::new(RunGame))
                     .separator()
                     .menu("Export Project", Box::new(ExportProject))
             })

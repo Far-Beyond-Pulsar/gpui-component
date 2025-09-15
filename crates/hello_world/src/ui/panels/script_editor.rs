@@ -6,6 +6,7 @@ use gpui_component::{
     ActiveTheme as _, StyledExt, Selectable,
     IconName,
 };
+use gpui::prelude::FluentBuilder;
 
 use crate::ui::shared::{Toolbar, ToolbarButton, StatusBar};
 
@@ -35,7 +36,7 @@ impl ScriptEditorPanel {
     fn render_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         Toolbar::new()
             .add_button(
-                ToolbarButton::new(IconName::File, "New")
+                ToolbarButton::new(IconName::Folder, "New")
                     .tooltip("New File (Ctrl+N)")
             )
             .add_button(
@@ -43,7 +44,7 @@ impl ScriptEditorPanel {
                     .tooltip("Open File (Ctrl+O)")
             )
             .add_button(
-                ToolbarButton::new(IconName::Save, "Save")
+                ToolbarButton::new(IconName::Folder, "Save")
                     .tooltip("Save File (Ctrl+S)")
             )
             .add_button(
@@ -51,11 +52,11 @@ impl ScriptEditorPanel {
                     .tooltip("Find in Files (Ctrl+Shift+F)")
             )
             .add_button(
-                ToolbarButton::new(IconName::Play, "Run")
+                ToolbarButton::new(IconName::Check, "Run")
                     .tooltip("Run Script (F5)")
             )
             .add_button(
-                ToolbarButton::new(IconName::Bug, "Debug")
+                ToolbarButton::new(IconName::CircleX, "Debug")
                     .tooltip("Debug Script (F9)")
             )
             .render(cx)
@@ -83,7 +84,7 @@ impl ScriptEditorPanel {
                             .gap_1()
                             .child(
                                 Button::new("new_file")
-                                    .icon(IconName::File)
+                                    .icon(IconName::Folder)
                                     .tooltip("New File")
                             )
                             .child(
@@ -167,13 +168,13 @@ impl ScriptEditorPanel {
             .rounded(px(4.0))
             .when(is_current, |this| this.bg(cx.theme().primary.opacity(0.2)))
             .when(!is_current, |this| this.hover(|style| style.bg(cx.theme().muted.opacity(0.5))))
-            .child(icon)
+            .child(icon.to_string())
             .child(
                 div()
                     .text_sm()
                     .text_color(if is_current { cx.theme().primary } else { cx.theme().foreground })
                     .when(is_open, |this| this.font_medium())
-                    .child(filename)
+                    .child(filename.to_string())
             )
     }
 
@@ -220,11 +221,12 @@ impl ScriptEditorPanel {
                                 .text_color(if is_current { cx.theme().foreground } else { cx.theme().muted_foreground })
                                 .child(file.clone())
                         )
-                        .child(
-                            Button::new(format!("close_{}", file))
-                                .icon(IconName::X)
+                        .child({
+                            let close_label = format!("close_{}", file);
+                            Button::new(close_label)
+                                .icon(IconName::Close)
                                 .tooltip("Close")
-                        )
+                        })
                         .into_any_element()
                 })
             )
@@ -361,7 +363,7 @@ impl GameLogic {
                             .gap_1()
                             .child(
                                 Button::new("clear")
-                                    .icon(IconName::Trash)
+                                    .icon(IconName::Delete)
                                     .tooltip("Clear Terminal")
                             )
                             .child(
