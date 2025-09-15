@@ -5,7 +5,14 @@ use gpui_component::{
 };
 use std::sync::Arc;
 
-use super::editors::EditorType;
+use super::{
+    editors::EditorType,
+    menu::MenuBar,
+    panels::{
+        LevelEditorPanel, ScriptEditorPanel, BlueprintEditorPanel,
+        MaterialEditorPanel,
+    },
+};
 
 pub struct PulsarApp {
     dock_area: Entity<DockArea>,
@@ -15,14 +22,21 @@ impl PulsarApp {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let dock_area = cx.new(|cx| DockArea::new("main-dock", Some(1), window, cx));
 
-        // Create the initial editor panels
-        let level_editor = cx.new(|cx| EditorPanel::new(EditorType::Level, window, cx));
-        let script_editor = cx.new(|cx| EditorPanel::new(EditorType::Script, window, cx));
+        // Create the initial editor panels using modular components
+        let level_editor = cx.new(|cx| LevelEditorPanel::new(window, cx));
+        let script_editor = cx.new(|cx| ScriptEditorPanel::new(window, cx));
+        let blueprint_editor = cx.new(|cx| BlueprintEditorPanel::new(window, cx));
+        let material_editor = cx.new(|cx| MaterialEditorPanel::new(window, cx));
 
-        // Set up the center area with tabs
+        // Set up the center area with tabs for all editors
         let weak_dock = dock_area.downgrade();
         let center_tabs = DockItem::tabs(
-            vec![Arc::new(level_editor), Arc::new(script_editor)],
+            vec![
+                Arc::new(level_editor),
+                Arc::new(script_editor),
+                Arc::new(blueprint_editor),
+                Arc::new(material_editor),
+            ],
             Some(0),
             &weak_dock,
             window,
@@ -38,10 +52,20 @@ impl PulsarApp {
 }
 
 impl Render for PulsarApp {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
             .size_full()
-            .child(self.dock_area.clone())
+            .bg(cx.theme().background)
+            .child(
+                // Menu bar
+                MenuBar::new().render(cx)
+            )
+            .child(
+                // Main dock area
+                div()
+                    .flex_1()
+                    .child(self.dock_area.clone())
+            )
     }
 }
 
