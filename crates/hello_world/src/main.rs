@@ -1,29 +1,11 @@
 use gpui::*;
 use gpui_component::{
-    button::{Button, ButtonVariants},
     Root, StyledExt,
 };
 
-pub struct HelloWorld;
+mod ui;
 
-impl Render for HelloWorld {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .v_flex()
-            .gap_2()
-            .size_full()
-            .items_center()
-            .justify_center()
-            .text_center()
-            .child("Hello, World!")
-            .child(
-                Button::new("ok")
-                    .primary()
-                    .label("Let's Go!")
-                    .on_click(|_, _, _| println!("Clicked!")),
-            )
-    }
-}
+use ui::app::PulsarApp;
 
 fn main() {
     let app = Application::new();
@@ -33,7 +15,7 @@ fn main() {
 
         cx.activate(true);
 
-        let mut window_size = size(px(640.), px(480.));
+        let mut window_size = size(px(1200.), px(800.));
         if let Some(display) = cx.primary_display() {
             let display_size = display.bounds().size;
             window_size.width = window_size.width.min(display_size.width * 0.85);
@@ -46,8 +28,8 @@ fn main() {
                 window_bounds: Some(WindowBounds::Windowed(window_bounds)),
                 titlebar: None,
                 window_min_size: Some(gpui::Size {
-                    width: px(640.),
-                    height: px(480.),
+                    width: px(1200.),
+                    height: px(800.),
                 }),
                 kind: WindowKind::Normal,
                 #[cfg(target_os = "linux")]
@@ -59,7 +41,7 @@ fn main() {
 
             let window = cx
                 .open_window(options, |window, cx| {
-                    let view = cx.new(|_| HelloWorld);
+                    let view = cx.new(|cx| PulsarApp::new(window, cx));
                     cx.new(|cx| Root::new(view.into(), window, cx))
                 })
                 .expect("failed to open window");
@@ -67,7 +49,7 @@ fn main() {
             window
                 .update(cx, |_, window, _| {
                     window.activate_window();
-                    window.set_window_title("Example");
+                    window.set_window_title("Pulsar Engine");
                 })
                 .expect("failed to update window");
 

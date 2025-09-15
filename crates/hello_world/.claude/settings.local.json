@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/redst/OneDrive/Documents/GitHub/Zenyx/gpui-component/crates/story/src/**)",
+      "Read(//c/Users/redst/OneDrive/Documents/GitHub/Zenyx/gpui-component/crates/story/**)",
+      "Read(//c/Users/redst/OneDrive/Documents/GitHub/Pulsar-Engine/**)",
+      "Read(//c/Users/redst/OneDrive/Documents/GitHub/Zenyx/gpui-component/crates/ui/**)",
+      "Bash(cargo check:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
