@@ -3,7 +3,7 @@ use gpui_component::{
     button::Button,
     dock::{Panel, PanelEvent},
     h_flex, v_flex,
-    ActiveTheme as _, StyledExt,
+    ActiveTheme as _, StyledExt, Selectable,
     IconName,
 };
 

@@ -1,8 +1,10 @@
-use gpui::*;
+use gpui::{prelude::FluentBuilder, *};
 use gpui_component::{
     button::Button,
+    popup_menu::PopupMenuExt as _,
     h_flex,
-    ActiveTheme as _, StyledExt, Selectable,
+    ActiveTheme as _, Selectable,
+    IconName,
 };
 
 pub struct MenuBar {
@@ -26,12 +28,10 @@ impl MenuBar {
             .items_center()
             .px_2()
             .gap_1()
-            .child(self.render_menu_item("File", cx))
-            .child(self.render_menu_item("Edit", cx))
-            .child(self.render_menu_item("View", cx))
-            .child(self.render_menu_item("Build", cx))
-            .child(self.render_menu_item("Debug", cx))
-            .child(self.render_menu_item("Tools", cx))
+            .child(self.render_file_menu(cx))
+            .child(self.render_edit_menu(cx))
+            .child(self.render_view_menu(cx))
+            .child(self.render_tools_menu(cx))
             .child(self.render_menu_item("Window", cx))
             .child(self.render_menu_item("Help", cx))
     }
@@ -47,53 +47,72 @@ impl MenuBar {
             })
     }
 
-    pub fn get_file_menu() -> PopupMenu {
-        PopupMenu::new("file_menu")
-            .menu("New Project", Box::new(NewProject))
-            .menu("Open Project", Box::new(OpenProject))
-            .separator()
-            .menu("New Scene", Box::new(NewScene))
-            .menu("Open Scene", Box::new(OpenScene))
-            .menu("Save Scene", Box::new(SaveScene))
-            .menu("Save Scene As...", Box::new(SaveSceneAs))
-            .separator()
-            .menu("Import Asset", Box::new(ImportAsset))
-            .menu("Export Selection", Box::new(ExportSelection))
-            .separator()
-            .menu("Recent Projects", Box::new(RecentProjects))
-            .separator()
-            .menu("Exit", Box::new(ExitApp))
+    fn render_file_menu(&self, cx: &mut App) -> impl IntoElement {
+        Button::new("file")
+            .child("File")
+            .popup_menu(move |this, _window, _cx| {
+                this.menu("New Project", Box::new(NewProject))
+                    .menu("Open Project", Box::new(OpenProject))
+                    .separator()
+                    .menu("New Scene", Box::new(NewScene))
+                    .menu("Save Scene", Box::new(SaveScene))
+                    .separator()
+                    .menu_with_icon("Import Asset", IconName::ArrowUp, Box::new(ImportAsset))
+                    .separator()
+                    .menu("Exit", Box::new(ExitApp))
+            })
     }
 
-    pub fn get_edit_menu() -> PopupMenu {
-        PopupMenu::new("edit_menu")
-            .menu("Undo", Box::new(Undo))
-            .menu("Redo", Box::new(Redo))
-            .separator()
-            .menu("Cut", Box::new(Cut))
-            .menu("Copy", Box::new(Copy))
-            .menu("Paste", Box::new(Paste))
-            .menu("Delete", Box::new(Delete))
-            .separator()
-            .menu("Select All", Box::new(SelectAll))
-            .menu("Deselect All", Box::new(DeselectAll))
-            .separator()
-            .menu("Preferences", Box::new(ShowPreferences))
+    fn render_edit_menu(&self, cx: &mut App) -> impl IntoElement {
+        Button::new("edit")
+            .child("Edit")
+            .popup_menu(move |this, _window, _cx| {
+                this.menu_with_icon("Undo", IconName::ArrowLeft, Box::new(Undo))
+                    .menu_with_icon("Redo", IconName::ArrowRight, Box::new(Redo))
+                    .separator()
+                    .menu_with_icon("Cut", IconName::X, Box::new(Cut))
+                    .menu_with_icon("Copy", IconName::Copy, Box::new(Copy))
+                    .menu_with_icon("Paste", IconName::Download, Box::new(Paste))
+                    .separator()
+                    .menu("Select All", Box::new(SelectAll))
+                    .separator()
+                    .menu_with_icon("Preferences", IconName::Settings, Box::new(ShowPreferences))
+            })
     }
 
-    pub fn get_view_menu() -> PopupMenu {
-        PopupMenu::new("view_menu")
-            .menu("Level Editor", Box::new(ShowLevelEditor))
-            .menu("Script Editor", Box::new(ShowScriptEditor))
-            .menu("Blueprint Editor", Box::new(ShowBlueprintEditor))
-            .menu("Material Editor", Box::new(ShowMaterialEditor))
-            .separator()
-            .menu("Console", Box::new(ToggleConsole))
-            .menu("Output", Box::new(ToggleOutput))
-            .menu("Properties", Box::new(ToggleProperties))
-            .menu("Scene Hierarchy", Box::new(ToggleHierarchy))
-            .separator()
-            .menu("Full Screen", Box::new(ToggleFullScreen))
+    fn render_view_menu(&self, cx: &mut App) -> impl IntoElement {
+        Button::new("view")
+            .child("View")
+            .popup_menu(move |this, window, cx| {
+                this.submenu("Editors", window, cx, |menu, _, _| {
+                        menu.menu("Level Editor", Box::new(ShowLevelEditor))
+                            .menu("Script Editor", Box::new(ShowScriptEditor))
+                            .menu("Blueprint Editor", Box::new(ShowBlueprintEditor))
+                            .menu("Material Editor", Box::new(ShowMaterialEditor))
+                    })
+                    .separator()
+                    .submenu("Panels", window, cx, |menu, _, _| {
+                        menu.menu_with_check("Console", true, Box::new(ToggleConsole))
+                            .menu_with_check("Properties", true, Box::new(ToggleProperties))
+                            .menu_with_check("Scene Hierarchy", true, Box::new(ToggleHierarchy))
+                    })
+                    .separator()
+                    .menu("Full Screen", Box::new(ToggleFullScreen))
+            })
+    }
+
+    fn render_tools_menu(&self, cx: &mut App) -> impl IntoElement {
+        Button::new("tools")
+            .child("Tools")
+            .popup_menu(move |this, _window, _cx| {
+                this.menu_with_icon("Asset Browser", IconName::Folder, Box::new(ShowAssetBrowser))
+                    .menu_with_icon("Console", IconName::Terminal, Box::new(ShowConsole))
+                    .separator()
+                    .menu("Build Project", Box::new(BuildProject))
+                    .menu_with_icon("Run Game", IconName::Play, Box::new(RunGame))
+                    .separator()
+                    .menu("Export Project", Box::new(ExportProject))
+            })
     }
 }
 
@@ -129,5 +148,10 @@ actions!(
         ToggleProperties,
         ToggleHierarchy,
         ToggleFullScreen,
+        ShowAssetBrowser,
+        ShowConsole,
+        BuildProject,
+        RunGame,
+        ExportProject,
     ]
 );

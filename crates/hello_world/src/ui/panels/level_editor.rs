@@ -3,10 +3,9 @@ use gpui_component::{
     button::Button,
     dock::{Panel, PanelEvent},
     h_flex, v_flex,
-    ActiveTheme as _, StyledExt,
+    ActiveTheme as _, StyledExt, Selectable,
     IconName,
 };
-use std::sync::Arc;
 
 use crate::ui::shared::{Toolbar, ToolbarButton, ViewportControls, StatusBar};
 
