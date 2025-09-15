@@ -18,7 +18,7 @@ impl MenuBar {
         }
     }
 
-        pub fn render(&self) -> impl IntoElement {
+    pub fn render(&self, cx: &mut App) -> impl IntoElement {
         h_flex()
             .w_full()
             .h_8()
@@ -38,9 +38,9 @@ impl MenuBar {
 
     fn render_menu_item(&self, label: &str, cx: &mut App) -> impl IntoElement {
         let is_active = self.active_menu.as_ref().map(|s| s.as_str()) == Some(label);
-        let label_string: Box<str> = label.to_string().into_boxed_str();
-        Button::new(&*label_string)
-            .child(label_string.clone())
+
+        Button::new(label)
+            .child(label)
             .when(is_active, |this| this.selected(true))
             .on_click(move |_, _, _| {
                 // Menu click handling would go here
