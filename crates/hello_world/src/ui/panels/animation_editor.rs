@@ -5,11 +5,11 @@ use gpui_component::{
     ActiveTheme as _, StyledExt,
 };
 
-pub struct MaterialEditorPanel {
+pub struct AnimationEditorPanel {
     focus_handle: FocusHandle,
 }
 
-impl MaterialEditorPanel {
+impl AnimationEditorPanel {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
             focus_handle: cx.focus_handle(),
@@ -17,13 +17,13 @@ impl MaterialEditorPanel {
     }
 }
 
-impl Panel for MaterialEditorPanel {
+impl Panel for AnimationEditorPanel {
     fn panel_name(&self) -> &'static str {
-        "Material Editor"
+        "Animation Editor"
     }
 
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
-        div().child("Material Editor").into_any_element()
+        div().child("Animation Editor").into_any_element()
     }
 
     fn dump(&self, _cx: &App) -> gpui_component::dock::PanelState {
@@ -34,15 +34,15 @@ impl Panel for MaterialEditorPanel {
     }
 }
 
-impl Focusable for MaterialEditorPanel {
+impl Focusable for AnimationEditorPanel {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus_handle.clone()
     }
 }
 
-impl EventEmitter<PanelEvent> for MaterialEditorPanel {}
+impl EventEmitter<PanelEvent> for AnimationEditorPanel {}
 
-impl Render for MaterialEditorPanel {
+impl Render for AnimationEditorPanel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .size_full()
@@ -62,20 +62,20 @@ impl Render for MaterialEditorPanel {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .child("🎨")
+                            .child("🎬")
                     )
                     .child(
                         div()
                             .text_lg()
                             .font_semibold()
                             .text_color(cx.theme().foreground)
-                            .child("Material Editor")
+                            .child("Animation Editor")
                     )
                     .child(
                         div()
                             .text_sm()
                             .text_color(cx.theme().muted_foreground)
-                            .child("Create and edit materials")
+                            .child("Animate objects and characters")
                     )
             )
     }

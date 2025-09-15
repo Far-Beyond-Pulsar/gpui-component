@@ -1,10 +1,8 @@
 use gpui::*;
 use gpui_component::{
     button::Button,
-    popup_menu::PopupMenu,
     h_flex,
-    ActiveTheme as _, StyledExt,
-    IconName,
+    ActiveTheme as _, StyledExt, Selectable,
 };
 
 pub struct MenuBar {
@@ -43,7 +41,7 @@ impl MenuBar {
 
         Button::new(label)
             .child(label)
-            .when(is_active, |this| this.selected())
+            .when(is_active, |this| this.selected(true))
             .on_click(move |_, _, _| {
                 // Menu click handling would go here
             })
