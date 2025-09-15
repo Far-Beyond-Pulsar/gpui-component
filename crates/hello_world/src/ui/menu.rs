@@ -5,6 +5,7 @@ use gpui_component::{
     h_flex,
     Selectable,
     IconName,
+    ActiveTheme as _,
 };
 
 pub struct MenuBar {
@@ -28,27 +29,26 @@ impl MenuBar {
             .items_center()
             .px_2()
             .gap_1()
-            .child(self.render_file_menu(cx))
-            .child(self.render_edit_menu(cx))
-            .child(self.render_view_menu(cx))
-            .child(self.render_tools_menu(cx))
-            .child(self.render_menu_item("Window", cx))
-            .child(self.render_menu_item("Help", cx))
+            .child(self.render_file_menu())
+            .child(self.render_edit_menu())
+            .child(self.render_view_menu())
+            .child(self.render_tools_menu())
+            .child(self.render_menu_item("Window".to_string()))
+            .child(self.render_menu_item("Help".to_string()))
     }
 
-    fn render_menu_item(&self, label: &str, cx: &mut App) -> impl IntoElement {
-        let is_active = self.active_menu.as_ref().map(|s| s.as_str()) == Some(label);
-
-        let label_string = label.to_string();
-        Button::new(label_string.as_str())
-            .label(label_string.as_str())
+    fn render_menu_item(&self, label: String) -> impl IntoElement {
+        let is_active = self.active_menu.as_ref().map(|s| s.as_str()) == Some(label.as_str());
+        let label_shared = SharedString::from(label.clone());
+        Button::new(label_shared.clone())
+            .label(label_shared)
             .when(is_active, |this| this.selected(true))
             .on_click(move |_, _, _| {
                 // Menu click handling would go here
             })
     }
 
-    fn render_file_menu(&self, cx: &mut App) -> impl IntoElement {
+    fn render_file_menu(&self) -> impl IntoElement {
         Button::new("file")
             .label("File")
             .popup_menu(move |this, _window, _cx| {
@@ -64,7 +64,7 @@ impl MenuBar {
             })
     }
 
-    fn render_edit_menu(&self, cx: &mut App) -> impl IntoElement {
+    fn render_edit_menu(&self) -> impl IntoElement {
         Button::new("edit")
             .label("Edit")
             .popup_menu(move |this, _window, _cx| {
@@ -81,7 +81,7 @@ impl MenuBar {
             })
     }
 
-    fn render_view_menu(&self, cx: &mut App) -> impl IntoElement {
+    fn render_view_menu(&self) -> impl IntoElement {
         Button::new("view")
             .label("View")
             .popup_menu(move |this, window, cx| {
@@ -102,7 +102,7 @@ impl MenuBar {
             })
     }
 
-    fn render_tools_menu(&self, cx: &mut App) -> impl IntoElement {
+    fn render_tools_menu(&self) -> impl IntoElement {
         Button::new("tools")
             .label("Tools")
             .popup_menu(move |this, _window, _cx| {

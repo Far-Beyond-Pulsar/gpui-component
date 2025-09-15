@@ -223,7 +223,7 @@ impl ScriptEditorPanel {
                         )
                         .child({
                             let close_label = format!("close_{}", file);
-                            Button::new(close_label)
+                            Button::new(SharedString::from(close_label))
                                 .icon(IconName::Close)
                                 .tooltip("Close")
                         })
