@@ -3,7 +3,7 @@ use gpui_component::{
     button::Button,
     popup_menu::PopupMenuExt as _,
     h_flex,
-    ActiveTheme as _, Selectable,
+    Selectable,
     IconName,
 };
 
@@ -39,8 +39,9 @@ impl MenuBar {
     fn render_menu_item(&self, label: &str, cx: &mut App) -> impl IntoElement {
         let is_active = self.active_menu.as_ref().map(|s| s.as_str()) == Some(label);
 
-        Button::new(label)
-            .child(label)
+        let label_string = label.to_string();
+        Button::new(label_string.as_str())
+            .label(label_string.as_str())
             .when(is_active, |this| this.selected(true))
             .on_click(move |_, _, _| {
                 // Menu click handling would go here
@@ -49,7 +50,7 @@ impl MenuBar {
 
     fn render_file_menu(&self, cx: &mut App) -> impl IntoElement {
         Button::new("file")
-            .child("File")
+            .label("File")
             .popup_menu(move |this, _window, _cx| {
                 this.menu("New Project", Box::new(NewProject))
                     .menu("Open Project", Box::new(OpenProject))
@@ -65,7 +66,7 @@ impl MenuBar {
 
     fn render_edit_menu(&self, cx: &mut App) -> impl IntoElement {
         Button::new("edit")
-            .child("Edit")
+            .label("Edit")
             .popup_menu(move |this, _window, _cx| {
                 this.menu_with_icon("Undo", IconName::ArrowLeft, Box::new(Undo))
                     .menu_with_icon("Redo", IconName::ArrowRight, Box::new(Redo))
@@ -82,7 +83,7 @@ impl MenuBar {
 
     fn render_view_menu(&self, cx: &mut App) -> impl IntoElement {
         Button::new("view")
-            .child("View")
+            .label("View")
             .popup_menu(move |this, window, cx| {
                 this.submenu("Editors", window, cx, |menu, _, _| {
                         menu.menu("Level Editor", Box::new(ShowLevelEditor))
@@ -103,7 +104,7 @@ impl MenuBar {
 
     fn render_tools_menu(&self, cx: &mut App) -> impl IntoElement {
         Button::new("tools")
-            .child("Tools")
+            .label("Tools")
             .popup_menu(move |this, _window, _cx| {
                 this.menu_with_icon("Asset Browser", IconName::Folder, Box::new(ShowAssetBrowser))
                     .menu_with_icon("Console", IconName::Inspector, Box::new(ShowConsole))
