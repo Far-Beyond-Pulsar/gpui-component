@@ -127,20 +127,17 @@ impl<E: RenderEngine> Render for Viewport<E> {
                             viewport.render();
                         })
                     },
-                    move |bounds, canvas, _, _| {
-                        if let Some(viewport) = view.upgrade() {
-                            if let Ok(viewport) = viewport.read() {
-                                if viewport.visible {
-                                    // Draw the framebuffer to the canvas
-                                    let fb = viewport.framebuffer();
-                                    canvas.draw_buffer(
-                                        fb.buffer.as_slice(),
-                                        fb.width,
-                                        fb.height,
-                                        bounds
-                                    );
-                                }
-                            }
+                    move |bounds, mut canvas, _, cx| {
+                        let viewport = view.read(cx);
+                        if viewport.visible {
+                            // Draw the framebuffer to the canvas
+                            let fb = viewport.framebuffer();
+                            canvas.draw_rgb_buffer(
+                                fb.buffer.as_slice(),
+                                fb.width,
+                                fb.height,
+                                bounds
+                            );
                         }
                     },
                 )
