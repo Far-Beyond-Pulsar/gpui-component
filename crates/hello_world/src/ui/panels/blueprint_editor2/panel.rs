@@ -234,6 +234,7 @@ impl BlueprintEditorPanel {
         // Find the pin to get its data type
         if let Some(node) = self.graph.nodes.iter().find(|n| n.id == node_id) {
             if let Some(pin) = node.outputs.iter().find(|p| p.id == pin_id) {
+                println!("Starting connection drag from pin {} at pos ({}, {})", pin_id, mouse_pos.x, mouse_pos.y);
                 self.dragging_connection = Some(ConnectionDrag {
                     from_node_id: node_id,
                     from_pin_id: pin_id,
@@ -254,10 +255,12 @@ impl BlueprintEditorPanel {
 
     pub fn end_connection_drag(&mut self, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
         if let Some(drag) = self.dragging_connection.take() {
+            println!("Ending connection drag at pos ({}, {})", mouse_pos.x, mouse_pos.y);
             // Try to find a compatible pin at the mouse position
             if let Some((target_node_id, target_pin_id)) = self.find_pin_at_position(mouse_pos, true, Some(&drag.from_pin_type)) {
                 // Don't allow connecting to the same node
                 if target_node_id != drag.from_node_id {
+                    println!("Creating connection from {} to {}", drag.from_pin_id, target_pin_id);
                     // Create the connection
                     let connection = super::Connection {
                         id: uuid::Uuid::new_v4().to_string(),
@@ -267,7 +270,11 @@ impl BlueprintEditorPanel {
                         to_pin_id: target_pin_id,
                     };
                     self.graph.connections.push(connection);
+                } else {
+                    println!("Cannot connect to same node");
                 }
+            } else {
+                println!("No compatible pin found at mouse position");
             }
             cx.notify();
         }
@@ -304,7 +311,7 @@ impl BlueprintEditorPanel {
                 };
 
                 // Check if mouse is within pin bounds
-                let pin_bounds = 15.0; // Slightly larger than visual pin for easier targeting
+                let pin_bounds = 20.0; // Slightly larger than visual pin for easier targeting
                 if (pos.x - pin_x).abs() < pin_bounds && (pos.y - pin_y).abs() < pin_bounds {
                     return Some((node.id.clone(), pin.id.clone()));
                 }

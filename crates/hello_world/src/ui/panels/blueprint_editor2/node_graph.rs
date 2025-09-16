@@ -32,19 +32,22 @@ impl NodeGraphRenderer {
                 panel.select_node(None, cx);
             }))
             .on_mouse_move(cx.listener(|panel, event: &MouseMoveEvent, _window, cx| {
-                let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
                 if panel.dragging_node.is_some() {
+                    let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
                     panel.update_drag(graph_pos, cx);
                 } else if panel.dragging_connection.is_some() {
-                    panel.update_connection_drag(graph_pos, cx);
+                    // For connection dragging, use screen coordinates
+                    let screen_pos = Point::new(event.position.x.0, event.position.y.0);
+                    panel.update_connection_drag(screen_pos, cx);
                 }
             }))
             .on_mouse_up(gpui::MouseButton::Left, cx.listener(|panel, event: &MouseUpEvent, _window, cx| {
-                let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
                 if panel.dragging_node.is_some() {
                     panel.end_drag(cx);
                 } else if panel.dragging_connection.is_some() {
-                    panel.end_connection_drag(graph_pos, cx);
+                    // For connection dragging, use screen coordinates
+                    let screen_pos = Point::new(event.position.x.0, event.position.y.0);
+                    panel.end_connection_drag(screen_pos, cx);
                 }
             }))
             .on_key_down(cx.listener(|panel, event: &KeyDownEvent, _window, cx| {
@@ -153,7 +156,7 @@ impl NodeGraphRenderer {
                         v_flex()
                             .p_2()
                             .gap_1()
-                            .child(Self::render_node_pins(node, cx))
+                            .child(Self::render_node_pins(node, panel, cx))
                     )
                     .on_mouse_down(gpui::MouseButton::Left, {
                         let node_id = node_id.clone();
@@ -165,7 +168,7 @@ impl NodeGraphRenderer {
             .into_any_element()
     }
 
-    fn render_node_pins(node: &BlueprintNode, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
+    fn render_node_pins(node: &BlueprintNode, panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
         let max_pins = std::cmp::max(node.inputs.len(), node.outputs.len());
 
         v_flex()
@@ -178,7 +181,7 @@ impl NodeGraphRenderer {
                         .child(
                             // Input pin
                             if let Some(input_pin) = node.inputs.get(i) {
-                                Self::render_pin(input_pin, true, &node.id, cx).into_any_element()
+                                Self::render_pin(input_pin, true, &node.id, panel, cx).into_any_element()
                             } else {
                                 div().w_3().into_any_element()
                             }
@@ -212,7 +215,7 @@ impl NodeGraphRenderer {
                         .child(
                             // Output pin
                             if let Some(output_pin) = node.outputs.get(i) {
-                                Self::render_pin(output_pin, false, &node.id, cx).into_any_element()
+                                Self::render_pin(output_pin, false, &node.id, panel, cx).into_any_element()
                             } else {
                                 div().w_3().into_any_element()
                             }
@@ -221,7 +224,7 @@ impl NodeGraphRenderer {
             )
     }
 
-    fn render_pin(pin: &Pin, is_input: bool, node_id: &str, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
+    fn render_pin(pin: &Pin, is_input: bool, node_id: &str, panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
         let pin_color = match pin.data_type {
             DataType::Execution => cx.theme().muted,
             DataType::Boolean   => cx.theme().danger,
@@ -232,12 +235,24 @@ impl NodeGraphRenderer {
             DataType::Object    => cx.theme().accent,
         };
 
+        // Check if this pin is compatible with the current drag
+        let is_compatible = if let Some(ref drag) = panel.dragging_connection {
+            is_input && node_id != drag.from_node_id && pin.data_type == drag.from_pin_type
+        } else {
+            false
+        };
+
         div()
             .size_3()
             .bg(pin_color)
             .rounded_full()
             .border_1()
-            .border_color(cx.theme().border)
+            .border_color(if is_compatible {
+                cx.theme().accent
+            } else {
+                cx.theme().border
+            })
+            .when(is_compatible, |style| style.border_2().shadow_md())
             .cursor_pointer()
             .hover(|style| style.opacity(0.8))
             .when(!is_input, |div| {
@@ -247,8 +262,8 @@ impl NodeGraphRenderer {
                 div.on_mouse_down(gpui::MouseButton::Left, {
                     cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
                         // Start connection drag from this output pin
-                        let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
-                        panel.start_connection_drag(node_id.clone(), pin_id.clone(), graph_pos, cx);
+                        let screen_pos = Point::new(event.position.x.0, event.position.y.0);
+                        panel.start_connection_drag(node_id.clone(), pin_id.clone(), screen_pos, cx);
                     })
                 })
             })
@@ -308,12 +323,18 @@ impl NodeGraphRenderer {
             if let Some(from_pin_pos) = Self::calculate_pin_position(from_node, &drag.from_pin_id, false, &panel.graph) {
                 let pin_color = Self::get_pin_color(&drag.from_pin_type, cx);
 
+                println!("Rendering drag connection from ({}, {}) to ({}, {})",
+                    from_pin_pos.x, from_pin_pos.y,
+                    drag.current_mouse_pos.x, drag.current_mouse_pos.y);
+
                 // Create bezier curve from pin to mouse position
                 Self::render_bezier_connection(from_pin_pos, drag.current_mouse_pos, pin_color, cx)
             } else {
+                println!("Could not calculate pin position for drag");
                 div().into_any_element()
             }
         } else {
+            println!("Could not find from node for drag");
             div().into_any_element()
         }
     }
@@ -356,27 +377,28 @@ impl NodeGraphRenderer {
         }
     }
 
-    fn render_bezier_connection(from_pos: Point<f32>, to_pos: Point<f32>, color: gpui::Hsla, cx: &mut Context<BlueprintEditorPanel>) -> AnyElement {
+    fn render_bezier_connection(from_pos: Point<f32>, to_pos: Point<f32>, color: gpui::Hsla, _cx: &mut Context<BlueprintEditorPanel>) -> AnyElement {
         let distance = (to_pos.x - from_pos.x).abs();
         let control_offset = (distance * 0.4).max(50.0).min(150.0);
         let control1 = Point::new(from_pos.x + control_offset, from_pos.y);
         let control2 = Point::new(to_pos.x - control_offset, to_pos.y);
 
-        // Render as a smooth curve using small circles
-        let segments = 30;
+        // Render as a thicker curve using overlapping circles for better visibility
+        let segments = 40;
         let mut line_segments = Vec::new();
 
         for i in 0..=segments {
             let t = i as f32 / segments as f32;
             let point = Self::bezier_point(from_pos, control1, control2, to_pos, t);
 
+            // Create a thicker line by using overlapping circles
             line_segments.push(
                 div()
                     .absolute()
-                    .left(px(point.x - 1.5))
-                    .top(px(point.y - 1.5))
-                    .w(px(3.0))
-                    .h(px(3.0))
+                    .left(px(point.x - 2.0))
+                    .top(px(point.y - 2.0))
+                    .w(px(4.0))
+                    .h(px(4.0))
                     .bg(color)
                     .rounded_full()
             );
