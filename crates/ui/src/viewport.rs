@@ -41,8 +41,8 @@ pub trait RenderEngine: Send + Sync + 'static {
     /// Called when the viewport is being destroyed
     fn cleanup(&mut self) {}
 
-    /// Set a refresh callback that the render engine can call to trigger GPUI redraws
-    fn set_refresh_callback(&mut self, _callback: Option<Box<dyn Fn() + Send + Sync>>) {}
+    /// Set a callback that the render engine can use to trigger GPUI redraws
+    fn set_notify_callback(&mut self, _callback: Box<dyn Fn() + Send + Sync>) {}
 }
 
 /// Render engine errors
@@ -265,9 +265,6 @@ pub struct Viewport<E: RenderEngine> {
 
     // GPUI integration
     entity: Option<Entity<Self>>,
-
-    // Refresh flag that can be set from render thread
-    needs_refresh: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl<E: RenderEngine> Drop for Viewport<E> {
@@ -285,15 +282,15 @@ impl<E: RenderEngine> Viewport<E> {
         let metrics = Arc::new(Mutex::new(ViewportMetrics::default()));
         let frame_times = Arc::new(Mutex::new(VecDeque::with_capacity(60)));
 
+        // Create render thread
+        let (render_tx, render_rx) = mpsc::channel();
+
         // Initialize render engine
         if let Ok(mut engine) = render_engine.lock() {
             if let Err(e) = engine.initialize() {
                 eprintln!("[VIEWPORT] Failed to initialize render engine: {}", e);
             }
         }
-
-        // Create render thread
-        let (render_tx, render_rx) = mpsc::channel();
         let engine_clone = render_engine.clone();
         let buffer_clone = double_buffer.clone();
         let metrics_clone = metrics.clone();
@@ -324,31 +321,34 @@ impl<E: RenderEngine> Viewport<E> {
             texture_dirty: true,
             debug_enabled: cfg!(debug_assertions),
             entity: None,
-            needs_refresh: Arc::new(AtomicBool::new(false)),
         }
     }
 
-    /// Set the entity reference for this viewport
+    /// Set the entity reference for this viewport and provide it to the render engine
     pub fn set_entity(&mut self, entity: Entity<Self>) {
-        self.entity = Some(entity);
-    }
+        self.entity = Some(entity.clone());
 
-    /// Set up refresh callback that uses atomic flag for thread-safe communication
-    pub fn setup_refresh_callback(&mut self) {
-        let needs_refresh = self.needs_refresh.clone();
-        let callback = Box::new(move || {
-            needs_refresh.store(true, Ordering::Release);
+        // Create a callback that can trigger GPUI notifications from the render thread
+        let (notify_tx, notify_rx) = std::sync::mpsc::channel();
+        let entity_for_callback = entity.clone();
+
+        // Spawn a thread to handle notifications from render thread
+        std::thread::spawn(move || {
+            while let Ok(()) = notify_rx.recv() {
+                // We still need to find the right way to get a context here
+                // For now, let's just mark this as needing implementation
+                println!("[VIEWPORT] Render notification received - need to implement GPUI update");
+            }
         });
 
-        if let Ok(mut engine) = self.render_engine.lock() {
-            engine.set_refresh_callback(Some(callback));
-        }
-    }
+        let callback = Box::new(move || {
+            // This will be called from the render thread
+            let _ = notify_tx.send(());
+        });
 
-    /// Check if refresh is needed and mark texture dirty if so
-    pub fn check_and_handle_refresh(&mut self) {
-        if self.needs_refresh.swap(false, Ordering::Acquire) {
-            self.texture_dirty = true;
+        // Provide the callback to the render engine
+        if let Ok(mut engine) = self.render_engine.lock() {
+            engine.set_notify_callback(callback);
         }
     }
 
@@ -655,9 +655,6 @@ impl<E: RenderEngine> Render for Viewport<E> {
                                 return;
                             }
 
-                            // Check if render engine requested a refresh
-                            viewport.check_and_handle_refresh();
-
                             // Update texture if needed
                             viewport.update_texture_if_needed(window);
 
@@ -698,7 +695,7 @@ impl<E: RenderEngine> Render for Viewport<E> {
 pub struct TestRenderEngine {
     frame_count: u64,
     color_cycle: f32,
-    refresh_callback: Option<Box<dyn Fn() + Send + Sync>>,
+    notify_callback: Option<Box<dyn Fn() + Send + Sync>>,
 }
 
 impl std::fmt::Debug for TestRenderEngine {
@@ -706,7 +703,7 @@ impl std::fmt::Debug for TestRenderEngine {
         f.debug_struct("TestRenderEngine")
             .field("frame_count", &self.frame_count)
             .field("color_cycle", &self.color_cycle)
-            .field("refresh_callback", &self.refresh_callback.as_ref().map(|_| "<callback>"))
+            .field("notify_callback", &self.notify_callback.as_ref().map(|_| "<callback>"))
             .finish()
     }
 }
@@ -716,7 +713,7 @@ impl TestRenderEngine {
         Self {
             frame_count: 0,
             color_cycle: 0.0,
-            refresh_callback: None,
+            notify_callback: None,
         }
     }
 }
@@ -749,8 +746,9 @@ impl RenderEngine for TestRenderEngine {
 
         framebuffer.mark_dirty(None);
 
-        // Call refresh callback to trigger GPUI redraw
-        if let Some(ref callback) = self.refresh_callback {
+        // Notify GPUI that the viewport needs to be redrawn
+        // This is called from the render thread after each frame is complete
+        if let Some(callback) = &self.notify_callback {
             callback();
         }
 
@@ -766,8 +764,12 @@ impl RenderEngine for TestRenderEngine {
         println!("[TEST_ENGINE] Cleaned up");
     }
 
-    fn set_refresh_callback(&mut self, callback: Option<Box<dyn Fn() + Send + Sync>>) {
-        self.refresh_callback = callback;
+    fn on_resize(&mut self, _width: u32, _height: u32) {
+        // TestRenderEngine doesn't need special resize handling
+    }
+
+    fn set_notify_callback(&mut self, callback: Box<dyn Fn() + Send + Sync>) {
+        self.notify_callback = Some(callback);
     }
 }
 

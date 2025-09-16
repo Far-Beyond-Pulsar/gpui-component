@@ -38,12 +38,10 @@ impl LevelEditorPanel {
             )
         });
 
-        // Set up the entity reference and refresh callback
+        // Set up the entity reference
         let viewport_entity = viewport.clone();
         viewport.update(cx, |viewport, _| {
             viewport.set_entity(viewport_entity);
-            // Set up atomic flag-based refresh callback
-            viewport.setup_refresh_callback();
         });
 
         Self {
