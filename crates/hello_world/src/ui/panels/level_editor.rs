@@ -30,7 +30,7 @@ pub enum CameraMode {
 }
 
 impl LevelEditorPanel {
-    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let resizable_state = ResizableState::new(cx);
 
         Self {
@@ -133,7 +133,8 @@ impl LevelEditorPanel {
             )
     }
 
-    fn render_viewport(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_viewport(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use gpui_component::viewport3d::Viewport3D;
         div()
             .size_full()
             .relative()
@@ -141,43 +142,7 @@ impl LevelEditorPanel {
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
-            .child(
-                // Main viewport area
-                div()
-                    .size_full()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        v_flex()
-                            .items_center()
-                            .gap_4()
-                            .child(
-                                div()
-                                    .size_32()
-                                    .bg(cx.theme().primary.opacity(0.2))
-                                    .rounded_full()
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .text_size(px(32.0))
-                                    .child("🎮")
-                            )
-                            .child(
-                                div()
-                                    .text_xl()
-                                    .font_semibold()
-                                    .text_color(cx.theme().foreground)
-                                    .child("3D Viewport")
-                            )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("WebGL renderer will be integrated here")
-                            )
-                    )
-            )
+            .child(Viewport3D::new(cx).render(window, cx))
             .child(
                 // Viewport controls overlay
                 div()
@@ -419,7 +384,7 @@ impl Focusable for LevelEditorPanel {
 impl EventEmitter<PanelEvent> for LevelEditorPanel {}
 
 impl Render for LevelEditorPanel {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .size_full()
             .bg(cx.theme().background)
@@ -450,7 +415,7 @@ impl Render for LevelEditorPanel {
                                         div()
                                             .size_full()
                                             .p_2()
-                                            .child(self.render_viewport(cx))
+                                            .child(self.render_viewport(window, cx))
                                     )
                             )
                             .child(

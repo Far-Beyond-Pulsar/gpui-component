@@ -59,6 +59,7 @@ pub mod tag;
 pub mod text;
 pub mod theme;
 pub mod tooltip;
+pub mod viewport3d;
 
 #[cfg(feature = "webview")]
 pub mod webview;
