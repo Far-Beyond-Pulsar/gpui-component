@@ -20,6 +20,16 @@ pub struct BlueprintEditorPanel {
     // Drag state
     pub dragging_node: Option<String>,
     pub drag_offset: Point<f32>,
+    // Connection drag state
+    pub dragging_connection: Option<ConnectionDrag>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ConnectionDrag {
+    pub from_node_id: String,
+    pub from_pin_id: String,
+    pub from_pin_type: super::DataType,
+    pub current_mouse_pos: Point<f32>,
 }
 
 impl BlueprintEditorPanel {
@@ -106,6 +116,7 @@ impl BlueprintEditorPanel {
             resizable_state,
             dragging_node: None,
             drag_offset: Point::new(0.0, 0.0),
+            dragging_connection: None,
         }
     }
 
@@ -217,6 +228,89 @@ impl BlueprintEditorPanel {
             !(conn.to_node_id == node_id && conn.to_pin_id == pin_id)
         });
         cx.notify();
+    }
+
+    pub fn start_connection_drag(&mut self, node_id: String, pin_id: String, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
+        // Find the pin to get its data type
+        if let Some(node) = self.graph.nodes.iter().find(|n| n.id == node_id) {
+            if let Some(pin) = node.outputs.iter().find(|p| p.id == pin_id) {
+                self.dragging_connection = Some(ConnectionDrag {
+                    from_node_id: node_id,
+                    from_pin_id: pin_id,
+                    from_pin_type: pin.data_type.clone(),
+                    current_mouse_pos: mouse_pos,
+                });
+                cx.notify();
+            }
+        }
+    }
+
+    pub fn update_connection_drag(&mut self, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
+        if let Some(ref mut drag) = self.dragging_connection {
+            drag.current_mouse_pos = mouse_pos;
+            cx.notify();
+        }
+    }
+
+    pub fn end_connection_drag(&mut self, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
+        if let Some(drag) = self.dragging_connection.take() {
+            // Try to find a compatible pin at the mouse position
+            if let Some((target_node_id, target_pin_id)) = self.find_pin_at_position(mouse_pos, true, Some(&drag.from_pin_type)) {
+                // Don't allow connecting to the same node
+                if target_node_id != drag.from_node_id {
+                    // Create the connection
+                    let connection = super::Connection {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        from_node_id: drag.from_node_id,
+                        from_pin_id: drag.from_pin_id,
+                        to_node_id: target_node_id,
+                        to_pin_id: target_pin_id,
+                    };
+                    self.graph.connections.push(connection);
+                }
+            }
+            cx.notify();
+        }
+    }
+
+    pub fn cancel_connection_drag(&mut self, cx: &mut Context<Self>) {
+        self.dragging_connection = None;
+        cx.notify();
+    }
+
+    fn find_pin_at_position(&self, pos: Point<f32>, is_input: bool, compatible_type: Option<&super::DataType>) -> Option<(String, String)> {
+        for node in &self.graph.nodes {
+            let node_screen_pos = super::node_graph::NodeGraphRenderer::graph_to_screen_pos(node.position, &self.graph);
+            let header_height = 40.0;
+            let pin_margin = 8.0;
+            let pin_spacing = 20.0;
+            let pin_size = 12.0;
+
+            let pins = if is_input { &node.inputs } else { &node.outputs };
+
+            for (index, pin) in pins.iter().enumerate() {
+                // Check if pin type is compatible
+                if let Some(compat_type) = compatible_type {
+                    if &pin.data_type != compat_type {
+                        continue;
+                    }
+                }
+
+                let pin_y = node_screen_pos.y + header_height + pin_margin + (index as f32 * pin_spacing) + (pin_size / 2.0);
+                let pin_x = if is_input {
+                    node_screen_pos.x
+                } else {
+                    node_screen_pos.x + node.size.width
+                };
+
+                // Check if mouse is within pin bounds
+                let pin_bounds = 15.0; // Slightly larger than visual pin for easier targeting
+                if (pos.x - pin_x).abs() < pin_bounds && (pos.y - pin_y).abs() < pin_bounds {
+                    return Some((node.id.clone(), pin.id.clone()));
+                }
+            }
+        }
+        None
     }
 }
 

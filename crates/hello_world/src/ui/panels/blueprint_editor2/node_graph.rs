@@ -32,15 +32,24 @@ impl NodeGraphRenderer {
                 panel.select_node(None, cx);
             }))
             .on_mouse_move(cx.listener(|panel, event: &MouseMoveEvent, _window, cx| {
+                let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
                 if panel.dragging_node.is_some() {
-                    // Convert screen coordinates to graph space
-                    let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
                     panel.update_drag(graph_pos, cx);
+                } else if panel.dragging_connection.is_some() {
+                    panel.update_connection_drag(graph_pos, cx);
                 }
             }))
-            .on_mouse_up(gpui::MouseButton::Left, cx.listener(|panel, _event: &MouseUpEvent, _window, cx| {
+            .on_mouse_up(gpui::MouseButton::Left, cx.listener(|panel, event: &MouseUpEvent, _window, cx| {
+                let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
                 if panel.dragging_node.is_some() {
                     panel.end_drag(cx);
+                } else if panel.dragging_connection.is_some() {
+                    panel.end_connection_drag(graph_pos, cx);
+                }
+            }))
+            .on_key_down(cx.listener(|panel, event: &KeyDownEvent, _window, cx| {
+                if event.keystroke.key == "Escape" && panel.dragging_connection.is_some() {
+                    panel.cancel_connection_drag(cx);
                 }
             }))
     }
@@ -169,7 +178,7 @@ impl NodeGraphRenderer {
                         .child(
                             // Input pin
                             if let Some(input_pin) = node.inputs.get(i) {
-                                Self::render_pin(input_pin, true, cx).into_any_element()
+                                Self::render_pin(input_pin, true, &node.id, cx).into_any_element()
                             } else {
                                 div().w_3().into_any_element()
                             }
@@ -203,7 +212,7 @@ impl NodeGraphRenderer {
                         .child(
                             // Output pin
                             if let Some(output_pin) = node.outputs.get(i) {
-                                Self::render_pin(output_pin, false, cx).into_any_element()
+                                Self::render_pin(output_pin, false, &node.id, cx).into_any_element()
                             } else {
                                 div().w_3().into_any_element()
                             }
@@ -212,7 +221,7 @@ impl NodeGraphRenderer {
             )
     }
 
-    fn render_pin(pin: &Pin, _is_input: bool, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
+    fn render_pin(pin: &Pin, is_input: bool, node_id: &str, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
         let pin_color = match pin.data_type {
             DataType::Execution => cx.theme().muted,
             DataType::Boolean   => cx.theme().danger,
@@ -231,25 +240,38 @@ impl NodeGraphRenderer {
             .border_color(cx.theme().border)
             .cursor_pointer()
             .hover(|style| style.opacity(0.8))
-            .on_mouse_down(gpui::MouseButton::Left, {
+            .when(!is_input, |div| {
+                // Only output pins can start connections
                 let pin_id = pin.id.clone();
-                cx.listener(move |_panel, _event: &MouseDownEvent, _window, _cx| {
-                    // TODO: Start connection drag
-                    println!("Would start connection from pin: {}", pin_id);
+                let node_id = node_id.to_string();
+                div.on_mouse_down(gpui::MouseButton::Left, {
+                    cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
+                        // Start connection drag from this output pin
+                        let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
+                        panel.start_connection_drag(node_id.clone(), pin_id.clone(), graph_pos, cx);
+                    })
                 })
             })
             .into_any_element()
     }
 
     fn render_connections(panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
+        let mut elements = Vec::new();
+
+        // Render existing connections
+        for connection in &panel.graph.connections {
+            elements.push(Self::render_connection(connection, panel, cx));
+        }
+
+        // Render dragging connection if present
+        if let Some(ref drag) = panel.dragging_connection {
+            elements.push(Self::render_dragging_connection(drag, panel, cx));
+        }
+
         div()
             .absolute()
             .inset_0()
-            .children(
-                panel.graph.connections.iter().map(|connection| {
-                    Self::render_connection(connection, panel, cx)
-                })
-            )
+            .children(elements)
     }
 
     fn render_connection(connection: &Connection, panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> AnyElement {
@@ -263,13 +285,48 @@ impl NodeGraphRenderer {
                 Self::calculate_pin_position(from_node, &connection.from_pin_id, false, &panel.graph),
                 Self::calculate_pin_position(to_node, &connection.to_pin_id, true, &panel.graph)
             ) {
+                // Get pin data type for color
+                let pin_color = if let Some(pin) = from_node.outputs.iter().find(|p| p.id == connection.from_pin_id) {
+                    Self::get_pin_color(&pin.data_type, cx)
+                } else {
+                    cx.theme().primary
+                };
+
                 // Create bezier curve connection
-                Self::render_bezier_connection(from_pin_pos, to_pin_pos, cx)
+                Self::render_bezier_connection(from_pin_pos, to_pin_pos, pin_color, cx)
             } else {
                 div().into_any_element()
             }
         } else {
             div().into_any_element()
+        }
+    }
+
+    fn render_dragging_connection(drag: &super::panel::ConnectionDrag, panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> AnyElement {
+        // Find the from node
+        if let Some(from_node) = panel.graph.nodes.iter().find(|n| n.id == drag.from_node_id) {
+            if let Some(from_pin_pos) = Self::calculate_pin_position(from_node, &drag.from_pin_id, false, &panel.graph) {
+                let pin_color = Self::get_pin_color(&drag.from_pin_type, cx);
+
+                // Create bezier curve from pin to mouse position
+                Self::render_bezier_connection(from_pin_pos, drag.current_mouse_pos, pin_color, cx)
+            } else {
+                div().into_any_element()
+            }
+        } else {
+            div().into_any_element()
+        }
+    }
+
+    fn get_pin_color(data_type: &DataType, cx: &mut Context<BlueprintEditorPanel>) -> gpui::Hsla {
+        match data_type {
+            DataType::Execution => cx.theme().muted,
+            DataType::Boolean   => cx.theme().danger,
+            DataType::Integer   => cx.theme().info,
+            DataType::Float     => cx.theme().success,
+            DataType::String    => cx.theme().warning,
+            DataType::Vector    => cx.theme().primary,
+            DataType::Object    => cx.theme().accent,
         }
     }
 
@@ -299,40 +356,29 @@ impl NodeGraphRenderer {
         }
     }
 
-    fn render_bezier_connection(from_pos: Point<f32>, to_pos: Point<f32>, cx: &mut Context<BlueprintEditorPanel>) -> AnyElement {
-        let control_offset = 100.0;
+    fn render_bezier_connection(from_pos: Point<f32>, to_pos: Point<f32>, color: gpui::Hsla, cx: &mut Context<BlueprintEditorPanel>) -> AnyElement {
+        let distance = (to_pos.x - from_pos.x).abs();
+        let control_offset = (distance * 0.4).max(50.0).min(150.0);
         let control1 = Point::new(from_pos.x + control_offset, from_pos.y);
         let control2 = Point::new(to_pos.x - control_offset, to_pos.y);
 
-        // For now, render as a simple curved line using multiple segments
-        // In a real implementation, this would use SVG or canvas drawing
-        let segments = 20;
+        // Render as a smooth curve using small circles
+        let segments = 30;
         let mut line_segments = Vec::new();
 
-        for i in 0..segments {
-            let t1 = i as f32 / segments as f32;
-            let t2 = (i + 1) as f32 / segments as f32;
-
-            let p1 = Self::bezier_point(from_pos, control1, control2, to_pos, t1);
-            let p2 = Self::bezier_point(from_pos, control1, control2, to_pos, t2);
-
-            let segment_width =  (p2.x - p1.x).abs().max(2.0);
-            let segment_height = (p2.y - p1.y).abs().max(2.0);
+        for i in 0..=segments {
+            let t = i as f32 / segments as f32;
+            let point = Self::bezier_point(from_pos, control1, control2, to_pos, t);
 
             line_segments.push(
                 div()
                     .absolute()
-                    .left(px(p1.x.min(p2.x)))
-                    .top(px(p1.y.min(p2.y)))
-                    .w(px(segment_width))
-                    .h(px(segment_height))
-                    .child(
-                        div()
-                            .w_full()
-                            .h_full()
-                            .bg(cx.theme().primary)
-                            .rounded_full()
-                    )
+                    .left(px(point.x - 1.5))
+                    .top(px(point.y - 1.5))
+                    .w(px(3.0))
+                    .h(px(3.0))
+                    .bg(color)
+                    .rounded_full()
             );
         }
 
@@ -390,7 +436,7 @@ impl NodeGraphRenderer {
     }
 
     // Helper functions for coordinate conversion
-    fn graph_to_screen_pos(graph_pos: Point<f32>, graph: &BlueprintGraph) -> Point<f32> {
+    pub fn graph_to_screen_pos(graph_pos: Point<f32>, graph: &BlueprintGraph) -> Point<f32> {
         Point::new(
             (graph_pos.x + graph.pan_offset.x) * graph.zoom_level,
             (graph_pos.y + graph.pan_offset.y) * graph.zoom_level,
