@@ -265,10 +265,19 @@ impl Render for Viewport3D {
                             r.renderer.is_none()
                         };
                         if needs_init {
-                            let fut = async move {
-                                Renderer3D::new(width, height).await
-                            };
-                            let renderer = futures::executor::block_on(fut);
+                            // Avoid initializing renderer for zero-sized bounds
+                            if width == 0 || height == 0 {
+                                return;
+                            }
+                            // Run the async renderer creation on a separate thread to avoid
+                            // blocking or stack issues on the UI thread.
+                            let renderer = std::thread::spawn(move || {
+                                futures::executor::block_on(async move {
+                                    Renderer3D::new(width, height).await
+                                })
+                            })
+                            .join()
+                            .expect("renderer init thread panicked");
                             view1.update(cx, |r, _| r.renderer = Some(renderer));
                         } else {
                             view1.update(cx, |r, _| {
@@ -305,6 +314,8 @@ impl Viewport3DElement {
         _window: &mut Window,
         _cx: &mut App,
     ) -> Self {
+        // Renderer initialization is handled in the canvas closures inside
+        // `Render::render`. Nothing async to do here; just store the parent.
         Self { parent }
     }
 }
