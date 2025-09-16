@@ -260,73 +260,76 @@ impl ScriptEditorPanel {
     }
 
     fn render_file_explorer(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .size_full()
-            .gap_2()
+        use gpui_component::scroll::ScrollbarAxis;
+        use gpui_component::sidebar::{Sidebar, SidebarHeader, SidebarGroup, SidebarFooter};
+        Sidebar::left()
             .child(
-                h_flex()
-                    .w_full()
-                    .p_2()
-                    .justify_between()
-                    .items_center()
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_semibold()
-                            .text_color(cx.theme().foreground)
-                            .child("Explorer")
-                    )
-                    .child(
-                        h_flex()
-                            .gap_1()
-                            .child(
-                                Button::new("new_file")
-                                    .icon(IconName::Plus)
-                                    .tooltip("New File")
-                                    .ghost()
-                                    .xsmall()
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.create_new_file("new_file.rs".to_string(), window, cx);
-                                    }))
-                            )
-                            .child(
-                                Button::new("new_folder")
-                                    .icon(IconName::Folder)
-                                    .tooltip("New Folder")
-                                    .ghost()
-                                    .xsmall()
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.create_new_directory("new_folder".to_string(), window, cx);
-                                    }))
-                            )
-                            .child(
-                                Button::new("open_folder")
-                                    .icon(IconName::FolderOpen)
-                                    .tooltip("Open Folder")
-                                    .ghost()
-                                    .xsmall()
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        // In a real implementation, this would open a file dialog
-                                        // For now, let's open the current working directory
-                                        if let Ok(cwd) = std::env::current_dir() {
-                                            this.open_project_folder(cwd, window, cx);
-                                        }
-                                    }))
-                            )
-                    )
+                SidebarHeader::new().child(
+                    h_flex()
+                        .w_full()
+                        .p_2()
+                        .justify_between()
+                        .items_center()
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_semibold()
+                                .text_color(cx.theme().foreground)
+                                .child("Explorer")
+                        )
+                        .child(
+                            h_flex()
+                                .gap_1()
+                                .child(
+                                    Button::new("new_file")
+                                        .icon(IconName::Plus)
+                                        .tooltip("New File")
+                                        .ghost()
+                                        .xsmall()
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.create_new_file("new_file.rs".to_string(), window, cx);
+                                        }))
+                                )
+                                .child(
+                                    Button::new("new_folder")
+                                        .icon(IconName::Folder)
+                                        .tooltip("New Folder")
+                                        .ghost()
+                                        .xsmall()
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.create_new_directory("new_folder".to_string(), window, cx);
+                                        }))
+                                )
+                                .child(
+                                    Button::new("open_folder")
+                                        .icon(IconName::FolderOpen)
+                                        .tooltip("Open Folder")
+                                        .ghost()
+                                        .xsmall()
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            if let Ok(cwd) = std::env::current_dir() {
+                                                this.open_project_folder(cwd, window, cx);
+                                            }
+                                        }))
+                                )
+                        )
+                )
             )
             .child(
-                // Make the file tree scrollable and take up all available space
-                div()
-                    .flex_1()
-                    .p_2()
-                    .bg(cx.theme().background)
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .rounded(cx.theme().radius)
-                    .overflow_auto()
-                    .h_full()
-                    .child(self.render_file_tree(cx))
+                SidebarGroup::new("").child(
+                    v_flex()
+                        .flex_1()
+                        .min_h_0()
+                        .child(
+                            div()
+                                .flex_1()
+                                .scrollable(ScrollbarAxis::Vertical)
+                                .child(self.render_file_tree(cx))
+                        )
+                )
+            )
+            .child(
+                SidebarFooter::new().child(self.render_status_bar(cx))
             )
     }
 
