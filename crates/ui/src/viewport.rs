@@ -1,8 +1,8 @@
 use gpui::{
-    canvas, div, App, Bounds, ContentMask, DismissEvent, EventEmitter,
+    canvas, div, App, AppContext, Bounds, ContentMask, DismissEvent, EventEmitter,
     FocusHandle, Focusable, InteractiveElement, IntoElement,
     ParentElement as _, Pixels, Render, RenderImage, Size, Styled as _, Window, Corners, px,
-    Context, PaintQuad, Point, BorderStyle, Entity, WeakEntity, AsyncApp,
+    Context, PaintQuad, Point, BorderStyle, Entity, WeakEntity,
 };
 use std::sync::{Arc, Mutex, mpsc, atomic::{AtomicBool, Ordering}};
 use std::collections::VecDeque;
@@ -328,18 +328,20 @@ impl<E: RenderEngine> Viewport<E> {
     pub fn set_entity(&mut self, entity: Entity<Self>, cx: &mut Context<Self>) {
         self.entity = Some(entity.clone());
 
-        // Create a callback that spawns a single update operation each time it's called
-        let entity_for_callback = entity.clone();
+        // Create a callback that can trigger GPUI notifications from the render thread
+        // Store the async context that we can use for updates
+        let mut async_cx = cx.to_async();
+        let entity_for_callback = entity.downgrade();
+
         let callback = Box::new(move || {
-            // This will be called from the render thread to trigger viewport refresh
-            // Schedule a single update operation on the main thread
-            let entity_clone = entity_for_callback.clone();
-            std::thread::spawn(move || {
-                // Use GPUI's background executor to schedule on main thread
-                entity_clone.update(&mut App::global(), |_, cx| {
+            // This callback is called from the render thread after each frame completion
+            // Use the stored async context to update the entity
+            if let Some(entity) = entity_for_callback.upgrade() {
+                // This should work with the AsyncApp context we stored
+                let _ = async_cx.update_entity(&entity, |_, cx| {
                     cx.notify();
-                }).ok();
-            });
+                });
+            }
         });
 
         // Provide the callback to the render engine
