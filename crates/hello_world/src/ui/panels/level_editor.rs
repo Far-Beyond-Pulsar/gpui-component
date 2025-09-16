@@ -1,11 +1,6 @@
 use gpui::*;
 use gpui_component::{
-    button::Button,
-    dock::{Panel, PanelEvent},
-    resizable::{h_resizable, resizable_panel, ResizableState},
-    h_flex, v_flex,
-    ActiveTheme as _, StyledExt, Selectable,
-    IconName,
+    button::Button, dock::{Panel, PanelEvent}, h_flex, resizable::{h_resizable, resizable_panel, ResizableState}, v_flex, viewport::Viewport, ActiveTheme as _, IconName, Selectable, StyledExt
 };
 
 use crate::ui::shared::{Toolbar, ToolbarButton, ViewportControls, StatusBar};
@@ -18,7 +13,6 @@ pub struct LevelEditorPanel {
     show_lighting: bool,
     camera_mode: CameraMode,
     resizable_state: Entity<ResizableState>,
-    viewport: Entity<gpui_component::viewport::Viewport<crate::renderer::ShaderRenderer>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -33,10 +27,6 @@ pub enum CameraMode {
 impl LevelEditorPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let resizable_state = ResizableState::new(cx);
-        let viewport = cx.new_entity(|cx| {
-            let renderer = crate::renderer::ShaderRenderer::new();
-            gpui_component::viewport::Viewport::new(renderer, 800, 600, cx)
-        });
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -46,7 +36,6 @@ impl LevelEditorPanel {
             show_lighting: true,
             camera_mode: CameraMode::Perspective,
             resizable_state,
-            viewport,
         }
     }
 
@@ -147,7 +136,7 @@ impl LevelEditorPanel {
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
-            .child(div().size_full().child(self.viewport.clone()))
+            .child(div().size_full().child(Viewport::new(crate::renderer::ShaderRenderer::new(), 800, 600, cx)))
             .child(
                 // Viewport controls overlay
                 div()
