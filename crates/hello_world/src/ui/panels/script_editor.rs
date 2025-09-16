@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use gpui::{*, InteractiveElement, Styled, Render};
+use gpui_component::sidebar::SidebarMenuItem;
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     dock::{Panel, PanelEvent},
@@ -260,77 +261,117 @@ impl ScriptEditorPanel {
     }
 
     fn render_file_explorer(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        use gpui_component::scroll::ScrollbarAxis;
-        use gpui_component::sidebar::{Sidebar, SidebarHeader, SidebarGroup, SidebarFooter};
+        use gpui_component::sidebar::{Sidebar, SidebarHeader, SidebarFooter, SidebarMenu, SidebarMenuItem};
         Sidebar::left()
+            .header(
+                SidebarHeader::new()
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .p_3()
+                            .pb_2()
+                            .justify_between()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_semibold()
+                                    .text_color(cx.theme().foreground)
+                                    .child("Explorer")
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_1()
+                                    .child(
+                                        Button::new("new_file")
+                                            .icon(IconName::Plus)
+                                            .tooltip("New File")
+                                            .ghost()
+                                            .xsmall()
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.create_new_file("new_file.rs".to_string(), window, cx);
+                                            }))
+                                    )
+                                    .child(
+                                        Button::new("new_folder")
+                                            .icon(IconName::Folder)
+                                            .tooltip("New Folder")
+                                            .ghost()
+                                            .xsmall()
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.create_new_directory("new_folder".to_string(), window, cx);
+                                            }))
+                                    )
+                                    .child(
+                                        Button::new("open_folder")
+                                            .icon(IconName::FolderOpen)
+                                            .tooltip("Open Folder")
+                                            .ghost()
+                                            .xsmall()
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                if let Ok(cwd) = std::env::current_dir() {
+                                                    this.open_project_folder(cwd, window, cx);
+                                                }
+                                            }))
+                                    )
+                            )
+                    )
+            )
             .child(
-                SidebarHeader::new().child(
-                    h_flex()
-                        .w_full()
-                        .p_2()
-                        .justify_between()
-                        .items_center()
-                        .child(
-                            div()
-                                .text_sm()
-                                .font_semibold()
-                                .text_color(cx.theme().foreground)
-                                .child("Explorer")
-                        )
-                        .child(
-                            h_flex()
-                                .gap_1()
-                                .child(
-                                    Button::new("new_file")
-                                        .icon(IconName::Plus)
-                                        .tooltip("New File")
-                                        .ghost()
-                                        .xsmall()
-                                        .on_click(cx.listener(|this, _, window, cx| {
-                                            this.create_new_file("new_file.rs".to_string(), window, cx);
-                                        }))
-                                )
-                                .child(
-                                    Button::new("new_folder")
-                                        .icon(IconName::Folder)
-                                        .tooltip("New Folder")
-                                        .ghost()
-                                        .xsmall()
-                                        .on_click(cx.listener(|this, _, window, cx| {
-                                            this.create_new_directory("new_folder".to_string(), window, cx);
-                                        }))
-                                )
-                                .child(
-                                    Button::new("open_folder")
-                                        .icon(IconName::FolderOpen)
-                                        .tooltip("Open Folder")
-                                        .ghost()
-                                        .xsmall()
-                                        .on_click(cx.listener(|this, _, window, cx| {
-                                            if let Ok(cwd) = std::env::current_dir() {
-                                                this.open_project_folder(cwd, window, cx);
-                                            }
-                                        }))
-                                )
-                        )
+                SidebarMenu::new().children(
+                    self.render_file_tree_menu_items(cx, 0)
                 )
             )
-            .child(
-                SidebarGroup::new("").child(
-                    v_flex()
-                        .flex_1()
-                        .min_h_0()
-                        .child(
-                            div()
-                                .flex_1()
-                                .scrollable(ScrollbarAxis::Vertical)
-                                .child(self.render_file_tree(cx))
-                        )
-                )
+            .footer(
+                SidebarFooter::new()
             )
-            .child(
-                SidebarFooter::new().child(self.render_status_bar(cx))
-            )
+    }
+    // Recursively render SidebarMenuItems for the file tree, with indentation by depth
+    fn render_file_tree_menu_items<'a>(&'a self, cx: &mut Context<Self>, depth: usize) -> Vec<SidebarMenuItem> {
+        let mut items = Vec::new();
+        for entry in &self.file_tree {
+            items.push(self.render_file_tree_menu_item(entry, cx, depth));
+        }
+        items
+    }
+
+    fn render_file_tree_menu_item(&self, entry: &FileEntry, cx: &mut Context<Self>, depth: usize) -> SidebarMenuItem {
+        let is_current = self.current_file_index
+            .and_then(|i| self.open_files.get(i))
+            .map(|(path, _)| path == &entry.path)
+            .unwrap_or(false);
+        let icon = if entry.is_directory {
+            if entry.is_expanded { IconName::FolderOpen } else { IconName::Folder }
+        } else {
+            match entry.path.extension().and_then(|ext| ext.to_str()) {
+                Some("rs") => IconName::SquareTerminal,
+                Some("js") | Some("ts") => IconName::BookOpen,
+                Some("py") => IconName::BookOpen,
+                Some("toml") => IconName::Settings2,
+                Some("json") => IconName::BookOpen,
+                Some("md") => IconName::BookOpen,
+                _ => IconName::BookOpen,
+            }
+        };
+        let path = entry.path.clone();
+        let is_directory = entry.is_directory;
+        let entry_name = entry.name.clone();
+        // Indent label with non-breaking spaces for each depth level
+        let indent = "\u{00A0}".repeat(depth * 2);
+        let label = format!("{}{}", indent, entry.name.trim_start());
+        let item = SidebarMenuItem::new(label)
+            .icon(icon)
+            .active(is_current)
+            .on_click(cx.listener(move |this, _, window, cx| {
+                if is_directory {
+                    this.toggle_folder(&path, window, cx);
+                } else {
+                    this.open_file(path.clone(), window, cx);
+                }
+            }));
+        // If directory and expanded, recursively add children
+        // In a real tree, you'd recurse into children here
+        item
     }
 
     fn render_file_tree(&self, cx: &mut Context<Self>) -> impl IntoElement {
