@@ -3434,6 +3434,7 @@ dependencies = [
  "gpui-component-macros",
  "gpui_macros",
  "html5ever 0.27.0",
+ "image",
  "indoc",
  "itertools 0.13.0",
  "lsp-types",

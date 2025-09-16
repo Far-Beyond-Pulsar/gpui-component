@@ -99,6 +99,9 @@ markup5ever_rcdom = "0.3.0"
 # Calendar
 chrono = "0.4.38"
 
+# Image processing
+image = "0.25"
+
 # Code Editor
 lsp-types.workspace = true
 tree-sitter = "0.25.4"

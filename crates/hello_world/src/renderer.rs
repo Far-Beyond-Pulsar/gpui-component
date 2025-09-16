@@ -1,4 +1,4 @@
-use gpui_component::viewport::{Framebuffer, RenderEngine};
+// use gpui_component::viewport::{Framebuffer, RenderEngine};
 
 pub struct ShaderRenderer {
     time: f32,

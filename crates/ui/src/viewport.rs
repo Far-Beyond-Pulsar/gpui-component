@@ -2,8 +2,9 @@ use gpui::canvas;
 use gpui::{
     div, App, Bounds, ContentMask, DismissEvent, Element, ElementId, Entity, EventEmitter,
     FocusHandle, Focusable, GlobalElementId, Hitbox, InteractiveElement, IntoElement, LayoutId,
-    ParentElement as _, Pixels, Render, Size, Style, Styled as _, Window,
+    ParentElement as _, Pixels, Render, RenderImage, Size, Style, Styled as _, Window, Corners, px,
 };
+use std::sync::Arc;
 
 /// A trait for render engines that can render to a framebuffer
 pub trait RenderEngine: Send + Sync + 'static {
@@ -105,19 +106,20 @@ impl<E: RenderEngine> EventEmitter<DismissEvent> for Viewport<E> {}
 impl<E: RenderEngine> Render for Viewport<E> {
     fn render(
         &mut self,
-        window: &mut gpui::Window,
+        _window: &mut gpui::Window,
         cx: &mut gpui::Context<Self>,
     ) -> impl IntoElement {
-        let view = cx.entity().clone();
+        let _view = cx.entity().clone();
         
         div()
             .track_focus(&self.focus_handle)
             .size_full()
             .child({
-                let view = cx.entity().clone();
+                let view_layout = cx.entity().clone();
+                let view_paint = cx.entity().clone();
                 canvas(
                     move |bounds, _, cx| {
-                        view.update(cx, |viewport, _| {
+                        view_layout.update(cx, |viewport, _| {
                             viewport.bounds = bounds;
                             let width = bounds.size.width.0 as u32;
                             let height = bounds.size.height.0 as u32;
@@ -127,21 +129,37 @@ impl<E: RenderEngine> Render for Viewport<E> {
                             viewport.render();
                         });
                     },
-                    move |frame, bounds, window, cx| {
-                        let viewport = view.read(cx);
+                    move |bounds, _hitbox, window, cx| {
+                        let viewport = view_paint.read(cx);
                         if !viewport.visible {
-                            return bounds;
+                            return;
                         }
                         
                         let framebuffer = &viewport.framebuffer;
                         if framebuffer.width == 0 || framebuffer.height == 0 {
-                            return bounds;
+                            return;
                         }
 
                         window.with_content_mask(Some(ContentMask { bounds }), |window| {
-                            // Drawing code here
+                            // Convert framebuffer to RenderImage and paint it
+                            let image_buffer = image::ImageBuffer::from_vec(
+                                framebuffer.width,
+                                framebuffer.height,
+                                framebuffer.buffer.clone(),
+                            );
+                            
+                            if let Some(image_buffer) = image_buffer {
+                                let render_image = Arc::new(RenderImage::new([image::Frame::new(image_buffer)]));
+                                
+                                let _ = window.paint_image(
+                                    bounds,
+                                    Corners::all(px(0.0)),
+                                    render_image,
+                                    0,
+                                    false,
+                                );
+                            }
                         });
-                        bounds
                     },
                 )
                 .absolute()

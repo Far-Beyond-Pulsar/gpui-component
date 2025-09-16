@@ -1,8 +1,8 @@
 use gpui::*;
 use gpui_component::{
-    button::Button, dock::{Panel, PanelEvent}, h_flex, resizable::{h_resizable, resizable_panel, ResizableState}, v_flex, viewport::Viewport, ActiveTheme as _, IconName, Selectable, StyledExt
+    button::Button, dock::{Panel, PanelEvent}, h_flex, resizable::{h_resizable, resizable_panel, ResizableState}, v_flex, ActiveTheme as _, IconName, Selectable, StyledExt
 };
-use crate::renderer::ShaderRenderer;
+// use crate::renderer::ShaderRenderer;
 
 use crate::ui::shared::{Toolbar, ToolbarButton, ViewportControls, StatusBar};
 
@@ -14,7 +14,7 @@ pub struct LevelEditorPanel {
     show_lighting: bool,
     camera_mode: CameraMode,
     resizable_state: Entity<ResizableState>,
-    viewport: Entity<Viewport<crate::renderer::ShaderRenderer>>,
+    // viewport: Entity<Viewport<crate::renderer::ShaderRenderer>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -29,14 +29,14 @@ pub enum CameraMode {
 impl LevelEditorPanel {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let resizable_state = ResizableState::new(cx);
-        let viewport = cx.new(|cx| {
-            Viewport::new(
-                crate::renderer::ShaderRenderer::new(),
-                800,
-                600,
-                cx,
-            )
-        });
+        // let viewport = cx.new(|cx| {
+        //     Viewport::new(
+        //         crate::renderer::ShaderRenderer::new(),
+        //         800,
+        //         600,
+        //         cx,
+        //     )
+        // });
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -46,7 +46,7 @@ impl LevelEditorPanel {
             show_lighting: true,
             camera_mode: CameraMode::Perspective,
             resizable_state,
-            viewport,
+            // viewport,
         }
     }
 
@@ -147,7 +147,7 @@ impl LevelEditorPanel {
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
-            .child(div().size_full().child(self.viewport.clone()))
+            // .child(div().size_full().child(self.viewport.clone()))
             .child(
                 // Viewport controls overlay
                 div()

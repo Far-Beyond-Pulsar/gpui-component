@@ -10,7 +10,9 @@
       "Bash(do cp material_editor.rs $panel.rs)",
       "Bash(done)",
       "Read(//c/Users/redst/OneDrive/Documents/GitHub/Zenyx/gpui-component/assets/icons/**)",
-      "Bash(cargo run:*)"
+      "Bash(cargo run:*)",
+      "Read(//c/Users/redst/OneDrive/Documents/GitHub/Zenyx/gpui-component/**)",
+      "Bash(mkdir:*)"
     ],
     "deny": [],
     "ask": []

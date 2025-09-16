@@ -9,7 +9,7 @@ mod ui;
 pub use assets::Assets;
 use serde::Deserialize;
 
-pub mod renderer;
+// pub mod renderer;
 pub mod themes;
 
 use gpui::Action;
