@@ -316,6 +316,7 @@ impl ScriptEditorPanel {
                     )
             )
             .child(
+                // Make the file tree scrollable and take up all available space
                 div()
                     .flex_1()
                     .p_2()
@@ -323,6 +324,8 @@ impl ScriptEditorPanel {
                     .border_1()
                     .border_color(cx.theme().border)
                     .rounded(cx.theme().radius)
+                    .overflow_auto()
+                    .h_full()
                     .child(self.render_file_tree(cx))
             )
     }
@@ -372,21 +375,31 @@ impl ScriptEditorPanel {
         let is_directory = entry.is_directory;
         let entry_name = entry.name.clone();
 
-        Button::new(SharedString::from(format!("file-{}", path.to_string_lossy())))
+        let button = Button::new(SharedString::from(format!("file-{}", path.to_string_lossy())))
             .ghost()
             .w_full()
             .justify_start()
             .p_1()
             .rounded(px(4.0))
-            .when(is_current, |this| this.bg(cx.theme().primary.opacity(0.2)))
-            .when(!is_current, |this| this.hover(|style| style.bg(cx.theme().muted.opacity(0.5))))
-            .on_click(cx.listener(move |this, _, window, cx| {
-                if is_directory {
-                    this.toggle_folder(&path, window, cx);
-                } else {
-                    this.open_file(path.clone(), window, cx);
+            .on_click(cx.listener({
+                let path = path.clone();
+                move |this, _, window, cx| {
+                    if is_directory {
+                        this.toggle_folder(&path, window, cx);
+                    } else {
+                        this.open_file(path.clone(), window, cx);
+                    }
                 }
             }))
+            .bg(if is_current { cx.theme().primary.opacity(0.2) } else { cx.theme().background })
+            // TODO: Fix hover to only apply when not current
+            // .hover(|style| {
+            //     if is_current {
+            //         style.bg(cx.theme().primary.opacity(0.3))
+            //     } else {
+            //         style.bg(cx.theme().muted.opacity(0.5))
+            //     }
+            // })
             .child(
                 div()
                     .flex()
@@ -400,7 +413,8 @@ impl ScriptEditorPanel {
                             .when(is_open, |this| this.font_medium())
                             .child(entry_name)
                     )
-            )
+            );
+        button
     }
 
 
