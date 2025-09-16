@@ -1,5 +1,7 @@
-use std::path::PathBuf;
-use gpui::*;
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+use gpui::{*, InteractiveElement, Styled, Render};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     dock::{Panel, PanelEvent},
@@ -14,124 +16,187 @@ use gpui::prelude::FluentBuilder;
 
 use crate::ui::shared::{Toolbar, ToolbarButton, StatusBar};
 
+#[derive(Clone)]
+pub struct FileEntry {
+    pub name: String,
+    pub path: PathBuf,
+    pub is_directory: bool,
+    pub is_expanded: bool,
+}
+
 pub struct ScriptEditorPanel {
     focus_handle: FocusHandle,
-    open_files: Vec<(String, Entity<InputState>)>,
+    open_files: Vec<(PathBuf, Entity<InputState>)>,
     current_file_index: Option<usize>,
     project_root: Option<PathBuf>,
+    file_tree: Vec<FileEntry>,
+    expanded_folders: HashMap<PathBuf, bool>,
     horizontal_resizable_state: Entity<ResizableState>,
     vertical_resizable_state: Entity<ResizableState>,
 }
 
 impl ScriptEditorPanel {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let horizontal_resizable_state = ResizableState::new(cx);
         let vertical_resizable_state = ResizableState::new(cx);
 
-        // Start with empty files - will be populated when opening real files
-        let mut panel = Self {
+        Self {
             focus_handle: cx.focus_handle(),
             open_files: Vec::new(),
             current_file_index: None,
             project_root: None,
+            file_tree: Vec::new(),
+            expanded_folders: HashMap::new(),
             horizontal_resizable_state,
             vertical_resizable_state,
+        }
+    }
+
+    pub fn open_project_folder(&mut self, path: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
+        if path.is_dir() {
+            self.project_root = Some(path.clone());
+            self.refresh_file_tree(cx);
+            cx.notify();
+        }
+    }
+
+    fn refresh_file_tree(&mut self, _cx: &mut Context<Self>) {
+        self.file_tree.clear();
+        if let Some(root) = self.project_root.clone() {
+            self.scan_directory(&root, 0);
+        }
+    }
+
+    fn scan_directory(&mut self, dir: &Path, depth: usize) {
+        if depth > 5 { return; } // Limit recursion depth
+
+        if let Ok(entries) = fs::read_dir(dir) {
+            let mut dirs = Vec::new();
+            let mut files = Vec::new();
+
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let name = entry.file_name().to_string_lossy().to_string();
+
+                // Skip hidden files and common ignore patterns
+                if name.starts_with('.') || name == "target" || name == "node_modules" {
+                    continue;
+                }
+
+                let file_entry = FileEntry {
+                    name: format!("{}{}", "  ".repeat(depth), name),
+                    path: path.clone(),
+                    is_directory: path.is_dir(),
+                    is_expanded: self.expanded_folders.get(&path).copied().unwrap_or(false),
+                };
+
+                if path.is_dir() {
+                    dirs.push(file_entry);
+                } else {
+                    files.push(file_entry);
+                }
+            }
+
+            // Add directories first, then files
+            for dir_entry in dirs {
+                let is_expanded = dir_entry.is_expanded;
+                let path = dir_entry.path.clone();
+                self.file_tree.push(dir_entry);
+
+                if is_expanded {
+                    self.scan_directory(&path, depth + 1);
+                }
+            }
+
+            for file_entry in files {
+                self.file_tree.push(file_entry);
+            }
+        }
+    }
+
+    pub fn open_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        // Check if file is already open
+        if let Some(index) = self.open_files.iter().position(|(p, _)| p == &path) {
+            self.current_file_index = Some(index);
+            cx.notify();
+            return;
+        }
+
+        // Read file content
+        let content = match fs::read_to_string(&path) {
+            Ok(content) => content,
+            Err(_) => String::new(),
         };
 
-        // Open some sample files for demonstration
-        panel.open_sample_files(window, cx);
+        // Determine syntax highlighting based on file extension
+        let language = match path.extension().and_then(|ext| ext.to_str()) {
+            Some("rs") => "rust",
+            Some("js") | Some("ts") => "javascript",
+            Some("py") => "python",
+            Some("toml") => "toml",
+            Some("json") => "json",
+            Some("md") => "markdown",
+            _ => "text",
+        };
 
-        panel
-    }
-
-    fn open_sample_files(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        // Sample Rust content for demo purposes
-        let main_rs_content = r#"use std::collections::HashMap;
-
-fn main() {
-    println!("Hello, Pulsar Engine!");
-
-    let mut game_state = GameState::new();
-    game_state.run();
-}
-
-struct GameState {
-    entities: HashMap<u32, Entity>,
-    next_entity_id: u32,
-}
-
-impl GameState {
-    fn new() -> Self {
-        Self {
-            entities: HashMap::new(),
-            next_entity_id: 0,
-        }
-    }
-
-    fn run(&mut self) {
-        // Game loop implementation
-        loop {
-            self.update();
-            self.render();
-        }
-    }
-
-    fn update(&mut self) {
-        // Update game logic
-    }
-
-    fn render(&self) {
-        // Render frame
-    }
-}"#;
-
-        let game_logic_content = r#"use crate::Entity;
-
-pub struct GameLogic {
-    pub time: f32,
-    pub delta_time: f32,
-}
-
-impl GameLogic {
-    pub fn new() -> Self {
-        Self {
-            time: 0.0,
-            delta_time: 0.0,
-        }
-    }
-
-    pub fn update(&mut self, entities: &mut [Entity]) {
-        for entity in entities.iter_mut() {
-            entity.update(self.delta_time);
-        }
-    }
-}"#;
-
-        // Create input states for the files
-        let main_rs_state = cx.new(|cx| {
+        // Create editor state for the file
+        let input_state = cx.new(|cx| {
             InputState::new(window, cx)
-                .code_editor("rust")
+                .code_editor(language)
                 .line_number(true)
                 .soft_wrap(false)
-                .default_value(main_rs_content)
+                .default_value(&content)
         });
 
-        let game_logic_state = cx.new(|cx| {
-            InputState::new(window, cx)
-                .code_editor("rust")
-                .line_number(true)
-                .soft_wrap(false)
-                .default_value(game_logic_content)
-        });
-
-        self.open_files = vec![
-            ("main.rs".to_string(), main_rs_state),
-            ("game_logic.rs".to_string(), game_logic_state),
-        ];
-        self.current_file_index = Some(0);
+        self.open_files.push((path, input_state));
+        self.current_file_index = Some(self.open_files.len() - 1);
+        cx.notify();
     }
 
-    fn close_file(&mut self, index: usize, _window: &mut Window, cx: &mut Context<Self>) {
+    pub fn create_new_file(&mut self, name: String, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(root) = &self.project_root {
+            let new_path = root.join(&name);
+
+            // Create the file
+            if let Ok(_) = fs::write(&new_path, "") {
+                // Open the new file
+                self.open_file(new_path, window, cx);
+                self.refresh_file_tree(cx);
+            }
+        }
+    }
+
+    pub fn create_new_directory(&mut self, name: String, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(root) = &self.project_root {
+            let new_path = root.join(&name);
+
+            // Create the directory
+            if let Ok(_) = fs::create_dir(&new_path) {
+                self.refresh_file_tree(cx);
+            }
+        }
+    }
+
+    pub fn save_current_file(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if let Some(index) = self.current_file_index {
+            if let Some((_path, _input_state)) = self.open_files.get(index) {
+                // Get content from input state (this would need to be implemented in the InputState API)
+                // For now, we'll simulate saving
+                cx.notify();
+                return true;
+            }
+        }
+        false
+    }
+
+    fn toggle_folder(&mut self, path: &Path, _window: &mut Window, cx: &mut Context<Self>) {
+        let is_expanded = self.expanded_folders.get(path).copied().unwrap_or(false);
+        self.expanded_folders.insert(path.to_path_buf(), !is_expanded);
+        self.refresh_file_tree(cx);
+        cx.notify();
+    }
+
+    pub fn close_file(&mut self, index: usize, _window: &mut Window, cx: &mut Context<Self>) {
         if index < self.open_files.len() {
             self.open_files.remove(index);
 
@@ -220,6 +285,9 @@ impl GameLogic {
                                     .tooltip("New File")
                                     .ghost()
                                     .xsmall()
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.create_new_file("new_file.rs".to_string(), window, cx);
+                                    }))
                             )
                             .child(
                                 Button::new("new_folder")
@@ -227,6 +295,23 @@ impl GameLogic {
                                     .tooltip("New Folder")
                                     .ghost()
                                     .xsmall()
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.create_new_directory("new_folder".to_string(), window, cx);
+                                    }))
+                            )
+                            .child(
+                                Button::new("open_folder")
+                                    .icon(IconName::FolderOpen)
+                                    .tooltip("Open Folder")
+                                    .ghost()
+                                    .xsmall()
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        // In a real implementation, this would open a file dialog
+                                        // For now, let's open the current working directory
+                                        if let Ok(cwd) = std::env::current_dir() {
+                                            this.open_project_folder(cwd, window, cx);
+                                        }
+                                    }))
                             )
                     )
             )
@@ -245,76 +330,79 @@ impl GameLogic {
     fn render_file_tree(&self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .gap_1()
-            .child(
-                h_flex()
-                    .items_center()
-                    .gap_2()
-                    .p_1()
-                    .hover(|style| style.bg(cx.theme().muted.opacity(0.5)))
-                    .rounded(px(4.0))
-                    .child("📁")
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().foreground)
-                            .child("src")
-                    )
+            .children(
+                self.file_tree.iter().map(|entry| {
+                    self.render_file_tree_item(entry, cx).into_any_element()
+                })
             )
-            .child(
-                v_flex()
-                    .ml_4()
-                    .gap_1()
-                    .child(self.render_file_item("main.rs", "🦀", false, cx))
-                    .child(self.render_file_item("game_logic.rs", "🦀", false, cx))
-                    .child(self.render_file_item("player.rs", "🦀", false, cx))
-                    .child(self.render_file_item("enemy.rs", "🦀", false, cx))
-            )
-            .child(
-                h_flex()
-                    .items_center()
-                    .gap_2()
-                    .p_1()
-                    .hover(|style| style.bg(cx.theme().muted.opacity(0.5)))
-                    .rounded(px(4.0))
-                    .child("📁")
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().foreground)
-                            .child("assets")
-                    )
-            )
-            .child(
-                v_flex()
-                    .ml_4()
-                    .gap_1()
-                    .child(self.render_file_item("config.toml", "⚙️", false, cx))
-                    .child(self.render_file_item("README.md", "📝", false, cx))
-            )
+            .when(self.file_tree.is_empty(), |this| {
+                this.child(
+                    div()
+                        .p_4()
+                        .text_center()
+                        .text_color(cx.theme().muted_foreground)
+                        .child("Open a folder to see files")
+                )
+            })
     }
 
-    fn render_file_item(&self, filename: &str, icon: &str, is_open: bool, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_file_tree_item(&self, entry: &FileEntry, cx: &mut Context<Self>) -> impl IntoElement {
         let is_current = self.current_file_index
             .and_then(|i| self.open_files.get(i))
-            .map(|(name, _)| name == filename)
+            .map(|(path, _)| path == &entry.path)
             .unwrap_or(false);
 
-        h_flex()
-            .items_center()
-            .gap_2()
+        let is_open = self.open_files.iter().any(|(path, _)| path == &entry.path);
+
+        let icon = if entry.is_directory {
+            if entry.is_expanded { "📁" } else { "📁" }
+        } else {
+            match entry.path.extension().and_then(|ext| ext.to_str()) {
+                Some("rs") => "🦀",
+                Some("js") | Some("ts") => "📜",
+                Some("py") => "🐍",
+                Some("toml") => "⚙️",
+                Some("json") => "📋",
+                Some("md") => "📝",
+                _ => "📄",
+            }
+        };
+
+        let path = entry.path.clone();
+        let is_directory = entry.is_directory;
+        let entry_name = entry.name.clone();
+
+        Button::new(SharedString::from(format!("file-{}", path.to_string_lossy())))
+            .ghost()
+            .w_full()
+            .justify_start()
             .p_1()
             .rounded(px(4.0))
             .when(is_current, |this| this.bg(cx.theme().primary.opacity(0.2)))
             .when(!is_current, |this| this.hover(|style| style.bg(cx.theme().muted.opacity(0.5))))
-            .child(icon.to_string())
+            .on_click(cx.listener(move |this, _, window, cx| {
+                if is_directory {
+                    this.toggle_folder(&path, window, cx);
+                } else {
+                    this.open_file(path.clone(), window, cx);
+                }
+            }))
             .child(
                 div()
-                    .text_sm()
-                    .text_color(if is_current { cx.theme().primary } else { cx.theme().foreground })
-                    .when(is_open, |this| this.font_medium())
-                    .child(filename.to_string())
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(icon.to_string())
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(if is_current { cx.theme().primary } else { cx.theme().foreground })
+                            .when(is_open, |this| this.font_medium())
+                            .child(entry_name)
+                    )
             )
     }
+
 
     fn render_editor_area(&self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
@@ -328,8 +416,12 @@ impl GameLogic {
                         this.set_active_file(*ix, window, cx);
                     }))
                     .children(
-                        self.open_files.iter().map(|(filename, _)| {
-                            Tab::new(filename.clone())
+                        self.open_files.iter().map(|(path, _)| {
+                            let filename = path.file_name()
+                                .and_then(|name| name.to_str())
+                                .unwrap_or("untitled")
+                                .to_string();
+                            Tab::new(filename)
                         })
                     )
             )
@@ -489,7 +581,11 @@ impl GameLogic {
     fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let current_file = self.current_file_index
             .and_then(|i| self.open_files.get(i))
-            .map(|(name, _)| name.as_str())
+            .map(|(path, _)| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("No file")
+            })
             .unwrap_or("No file");
 
         StatusBar::new()
