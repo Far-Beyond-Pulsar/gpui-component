@@ -1,5 +1,6 @@
+use gpui::canvas;
 use gpui::{
-    canvas, div, App, Bounds, ContentMask, DismissEvent, Element, ElementId, Entity, EventEmitter,
+    div, App, Bounds, ContentMask, DismissEvent, Element, ElementId, Entity, EventEmitter,
     FocusHandle, Focusable, GlobalElementId, Hitbox, InteractiveElement, IntoElement, LayoutId,
     ParentElement as _, Pixels, Render, Size, Style, Styled as _, Window,
 };
@@ -115,23 +116,8 @@ impl<E: RenderEngine> Render for Viewport<E> {
             .child({
                 let view = cx.entity().clone();
                 canvas(
-                    move |bounds, _, cx| {
-                        view.update(cx, |viewport, _| {
-                            viewport.bounds = bounds;
-                            // Resize framebuffer if bounds changed
-                            viewport.framebuffer.resize(
-                                bounds.size.width.0 as u32,
-                                bounds.size.height.0 as u32,
-                            );
-                            // Trigger a render with new size
-                            viewport.render();
-                        })
-                    },
-                    |_, canvas, _, _| {
-                        if let Some(canvas) = canvas {
-                            // Draw will happen in ViewportElement
-                        }
-                    },
+                    move |bounds, _, cx| view.update(cx, |r, _| r.bounds = bounds),
+                    |_, _, _, _| {},
                 )
                 .absolute()
                 .size_full()

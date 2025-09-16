@@ -18,7 +18,7 @@ pub struct LevelEditorPanel {
     show_lighting: bool,
     camera_mode: CameraMode,
     resizable_state: Entity<ResizableState>,
-    viewport: Entity<gpui_component::viewport3d::Viewport3D>,
+    viewport: Entity<gpui_component::viewport::Viewport<gpui::canvas::Canvas>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
