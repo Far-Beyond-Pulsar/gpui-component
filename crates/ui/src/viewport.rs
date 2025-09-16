@@ -130,17 +130,18 @@ impl<E: RenderEngine> Render for Viewport<E> {
                     move |frame, bounds, window, cx| {
                         let viewport = view.read(cx);
                         if !viewport.visible {
-                            return;
+                            return bounds;
                         }
                         
                         let framebuffer = &viewport.framebuffer;
                         if framebuffer.width == 0 || framebuffer.height == 0 {
-                            return;
+                            return bounds;
                         }
 
                         window.with_content_mask(Some(ContentMask { bounds }), |window| {
                             // Drawing code here
                         });
+                        bounds
                     },
                 )
                 .absolute()
