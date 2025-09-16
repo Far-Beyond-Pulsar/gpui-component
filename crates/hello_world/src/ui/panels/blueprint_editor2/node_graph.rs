@@ -30,7 +30,8 @@ impl NodeGraphRenderer {
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(|panel, event: &MouseDownEvent, _window, cx| {
                 let mouse_pos = Point::new(event.position.x.0, event.position.y.0);
 
-                if panel.dragging_connection.is_none() {
+                // Only start panning if not connecting and not already dragging a node
+                if panel.dragging_connection.is_none() && panel.dragging_node.is_none() {
                     // Start panning if not connecting
                     panel.start_panning(mouse_pos, cx);
                 }
@@ -46,7 +47,8 @@ impl NodeGraphRenderer {
                 } else if panel.dragging_connection.is_some() {
                     // Update mouse position for drag line rendering
                     panel.update_connection_drag(mouse_pos, cx);
-                } else if panel.is_panning() {
+                } else if panel.is_panning() && panel.dragging_node.is_none() {
+                    // Only update panning if we're not dragging a node
                     panel.update_pan(mouse_pos, cx);
                 }
             }))
@@ -121,11 +123,16 @@ impl NodeGraphRenderer {
         let node_id = node.id.clone();
         let is_dragging = panel.dragging_node.as_ref() == Some(&node.id);
 
+        // Scale node size with zoom level
+        let scaled_width = node.size.width * panel.graph.zoom_level;
+        let scaled_height = node.size.height * panel.graph.zoom_level;
+
         div()
             .absolute()
             .left(px(graph_pos.x))
             .top(px(graph_pos.y))
-            .w(px(node.size.width))
+            .w(px(scaled_width))
+            .h(px(scaled_height))
             .child(
                 v_flex()
                     .bg(cx.theme().background)
@@ -135,7 +142,7 @@ impl NodeGraphRenderer {
                     } else {
                         node_color
                     })
-                    .rounded(px(8.0))
+                    .rounded(px(8.0 * panel.graph.zoom_level))
                     .shadow_lg()
                     .when(is_dragging, |style| {
                         style.opacity(0.8).shadow_2xl()
@@ -145,14 +152,18 @@ impl NodeGraphRenderer {
                         // Header - this is the draggable area
                         h_flex()
                             .w_full()
-                            .p_2()
+                            .p(px(8.0 * panel.graph.zoom_level))
                             .bg(node_color.opacity(0.2))
                             .items_center()
-                            .gap_2()
-                            .child(node.icon.clone())
+                            .gap(px(8.0 * panel.graph.zoom_level))
                             .child(
                                 div()
-                                    .text_sm()
+                                    .text_size(px(16.0 * panel.graph.zoom_level))
+                                    .child(node.icon.clone())
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(14.0 * panel.graph.zoom_level))
                                     .font_semibold()
                                     .text_color(cx.theme().foreground)
                                     .child(node.title.clone())
@@ -172,8 +183,8 @@ impl NodeGraphRenderer {
                     .child(
                         // Pins
                         v_flex()
-                            .p_2()
-                            .gap_1()
+                            .p(px(8.0 * panel.graph.zoom_level))
+                            .gap(px(4.0 * panel.graph.zoom_level))
                             .child(Self::render_node_pins(node, panel, cx))
                     )
                     .on_mouse_down(gpui::MouseButton::Left, {
@@ -190,7 +201,7 @@ impl NodeGraphRenderer {
         let max_pins = std::cmp::max(node.inputs.len(), node.outputs.len());
 
         v_flex()
-            .gap_1()
+            .gap(px(4.0 * panel.graph.zoom_level))
             .children(
                 (0..max_pins).map(|i| {
                     h_flex()
@@ -201,7 +212,7 @@ impl NodeGraphRenderer {
                             if let Some(input_pin) = node.inputs.get(i) {
                                 Self::render_pin(input_pin, true, &node.id, panel, cx).into_any_element()
                             } else {
-                                div().w_3().into_any_element()
+                                div().w(px(12.0 * panel.graph.zoom_level)).into_any_element()
                             }
                         )
                         .child(
@@ -209,7 +220,7 @@ impl NodeGraphRenderer {
                             if let Some(input_pin) = node.inputs.get(i) {
                                 if !input_pin.name.is_empty() {
                                     div()
-                                        .text_xs()
+                                        .text_size(px(12.0 * panel.graph.zoom_level))
                                         .text_color(cx.theme().muted_foreground)
                                         .child(input_pin.name.clone())
                                         .into_any_element()
@@ -219,7 +230,7 @@ impl NodeGraphRenderer {
                             } else if let Some(output_pin) = node.outputs.get(i) {
                                 if !output_pin.name.is_empty() {
                                     div()
-                                        .text_xs()
+                                        .text_size(px(12.0 * panel.graph.zoom_level))
                                         .text_color(cx.theme().muted_foreground)
                                         .child(output_pin.name.clone())
                                         .into_any_element()
@@ -235,7 +246,7 @@ impl NodeGraphRenderer {
                             if let Some(output_pin) = node.outputs.get(i) {
                                 Self::render_pin(output_pin, false, &node.id, panel, cx).into_any_element()
                             } else {
-                                div().w_3().into_any_element()
+                                div().w(px(12.0 * panel.graph.zoom_level)).into_any_element()
                             }
                         )
                 })
@@ -260,8 +271,10 @@ impl NodeGraphRenderer {
             false
         };
 
+        let pin_size = 12.0 * panel.graph.zoom_level;
+
         div()
-            .size_3()
+            .size(px(pin_size))
             .bg(pin_color)
             .rounded_full()
             .border_1()
@@ -390,10 +403,10 @@ impl NodeGraphRenderer {
     fn calculate_pin_position(node: &BlueprintNode, pin_id: &str, is_input: bool, graph: &BlueprintGraph) -> Option<Point<f32>> {
         // Calculate pin position in container coordinates (same as mouse events)
         let node_screen_pos = Self::graph_to_screen_pos(node.position, graph);
-        let header_height = 40.0; // Height of node header
-        let pin_size = 12.0; // Size of pin
-        let pin_spacing = 20.0; // Vertical spacing between pins
-        let pin_margin = 8.0; // Margin from node edge
+        let header_height = 40.0 * graph.zoom_level; // Scaled height of node header
+        let pin_size = 12.0 * graph.zoom_level; // Scaled size of pin
+        let pin_spacing = 20.0 * graph.zoom_level; // Scaled vertical spacing between pins
+        let pin_margin = 8.0 * graph.zoom_level; // Scaled margin from node edge
 
         if is_input {
             // Find input pin index
@@ -407,7 +420,7 @@ impl NodeGraphRenderer {
             // Find output pin index
             if let Some((index, _)) = node.outputs.iter().enumerate().find(|(_, pin)| pin.id == pin_id) {
                 let pin_y = node_screen_pos.y + header_height + pin_margin + (index as f32 * pin_spacing) + (pin_size / 2.0);
-                Some(Point::new(node_screen_pos.x + node.size.width, pin_y))
+                Some(Point::new(node_screen_pos.x + node.size.width * graph.zoom_level, pin_y))
             } else {
                 None
             }
