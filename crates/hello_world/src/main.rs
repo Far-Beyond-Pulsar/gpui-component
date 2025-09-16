@@ -5,27 +5,9 @@ use gpui_component::{
 
 mod assets;
 mod ui;
-pub mod themes;
 
 pub use assets::Assets;
 use serde::Deserialize;
-use gpui_component::scroll::ScrollbarShow;
-
-#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
-#[action(namespace = story, no_json)]
-pub struct SelectScrollbarShow(ScrollbarShow);
-
-#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
-#[action(namespace = story, no_json)]
-pub struct SelectLocale(SharedString);
-
-#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
-#[action(namespace = story, no_json)]
-pub struct SelectFont(usize);
-
-#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
-#[action(namespace = story, no_json)]
-pub struct SelectRadius(usize);
 
 use ui::app::PulsarApp;
 
