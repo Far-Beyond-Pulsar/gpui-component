@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use gpui::{*, prelude::FluentBuilder};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
-    sidebar::{Sidebar, SidebarHeader, SidebarFooter, SidebarMenu, SidebarMenuItem},
+    sidebar::{Sidebar, SidebarHeader, SidebarFooter, SidebarGroup, SidebarMenu, SidebarMenuItem},
     h_flex,
     ActiveTheme as _, StyledExt, Sizable as _,
     IconName,
@@ -25,6 +25,7 @@ pub struct FileExplorer {
     file_tree: Vec<FileEntry>,
     expanded_folders: HashMap<PathBuf, bool>,
     selected_file: Option<PathBuf>,
+    last_opened_file: Option<PathBuf>,
 }
 
 impl FileExplorer {
@@ -35,6 +36,7 @@ impl FileExplorer {
             file_tree: Vec::new(),
             expanded_folders: HashMap::new(),
             selected_file: None,
+            last_opened_file: None,
         }
     }
 
@@ -107,14 +109,52 @@ impl FileExplorer {
 
     fn toggle_folder(&mut self, path: &Path, _window: &mut Window, cx: &mut Context<Self>) {
         let is_expanded = self.expanded_folders.get(path).copied().unwrap_or(false);
+        println!("Toggling folder {:?} from {} to {}", path, is_expanded, !is_expanded);
         self.expanded_folders.insert(path.to_path_buf(), !is_expanded);
         self.refresh_file_tree(cx);
+        println!("File tree now has {} entries", self.file_tree.len());
         cx.notify();
     }
 
     fn select_file(&mut self, path: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
         self.selected_file = Some(path);
         cx.notify();
+    }
+
+    fn open_file_in_editor(&mut self, path: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
+        println!("Opening file in editor: {:?}", path);
+        self.selected_file = Some(path.clone());
+        self.last_opened_file = Some(path);
+        cx.notify();
+    }
+
+    pub fn get_last_opened_file(&mut self) -> Option<PathBuf> {
+        self.last_opened_file.take()
+    }
+
+    fn create_new_file(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(root) = &self.project_root {
+            let new_path = root.join("new_file.rs");
+
+            // Create the file
+            if let Ok(_) = fs::write(&new_path, "") {
+                self.refresh_file_tree(cx);
+                self.selected_file = Some(new_path);
+                cx.notify();
+            }
+        }
+    }
+
+    fn create_new_folder(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(root) = &self.project_root {
+            let new_path = root.join("new_folder");
+
+            // Create the directory
+            if let Ok(_) = fs::create_dir(&new_path) {
+                self.refresh_file_tree(cx);
+                cx.notify();
+            }
+        }
     }
 
     fn get_file_icon(&self, entry: &FileEntry) -> IconName {
@@ -139,7 +179,8 @@ impl FileExplorer {
         }
     }
 
-    fn render_file_tree(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_file_tree(&self, cx: &mut Context<Self>) -> SidebarMenu {
+        // Simple flat list approach - this ensures folder contents actually show up
         SidebarMenu::new().children(
             self.file_tree.iter().map(|entry| {
                 let is_selected = self.selected_file.as_ref() == Some(&entry.path);
@@ -147,8 +188,8 @@ impl FileExplorer {
                 let is_directory = entry.is_directory;
                 let icon = self.get_file_icon(entry);
 
-                // Create indentation for nested files/folders
-                let indent = "\u{00A0}".repeat(entry.depth * 2);
+                // Create simple visual indentation using spaces
+                let indent = "  ".repeat(entry.depth); // 2 spaces per level
                 let display_name = format!("{}{}", indent, entry.name);
 
                 SidebarMenuItem::new(display_name)
@@ -159,7 +200,7 @@ impl FileExplorer {
                             this.toggle_folder(&path, window, cx);
                         } else {
                             this.select_file(path.clone(), window, cx);
-                            // TODO: Emit event to open file in editor
+                            this.open_file_in_editor(path.clone(), window, cx);
                         }
                     }))
             })
@@ -175,119 +216,100 @@ impl Focusable for FileExplorer {
 
 impl Render for FileExplorer {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .size_full()
-            .bg(cx.theme().sidebar)
-            .border_r_1()
-            .border_color(cx.theme().border)
-            .child(
-                h_flex()
-                    .w_full()
-                    .p_3()
-                    .pb_2()
-                    .justify_between()
-                    .items_center()
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_semibold()
-                            .text_color(cx.theme().foreground)
-                            .child("Explorer")
-                    )
+        Sidebar::new(gpui_component::Side::Left)
+            .header(
+                SidebarHeader::new()
                     .child(
                         h_flex()
-                            .gap_1()
+                            .w_full()
+                            .justify_between()
+                            .items_center()
                             .child(
-                                Button::new("new_file")
-                                    .icon(IconName::Plus)
-                                    .tooltip("New File")
-                                    .ghost()
-                                    .xsmall()
-                                    .on_click(cx.listener(|_this, _, _window, _cx| {
-                                        // TODO: Implement new file creation
-                                    }))
+                                div()
+                                    .text_sm()
+                                    .font_semibold()
+                                    .text_color(cx.theme().foreground)
+                                    .child("Explorer")
                             )
                             .child(
-                                Button::new("new_folder")
-                                    .icon(IconName::Folder)
-                                    .tooltip("New Folder")
-                                    .ghost()
-                                    .xsmall()
-                                    .on_click(cx.listener(|_this, _, _window, _cx| {
-                                        // TODO: Implement new folder creation
-                                    }))
-                            )
-                            .child(
-                                Button::new("refresh")
-                                    .icon(IconName::Asterisk)
-                                    .tooltip("Refresh")
-                                    .ghost()
-                                    .xsmall()
-                                    .on_click(cx.listener(|this, _, _window, cx| {
-                                        this.refresh_file_tree(cx);
-                                    }))
-                            )
-                            .child(
-                                Button::new("open_folder")
-                                    .icon(IconName::FolderOpen)
-                                    .tooltip("Open Folder")
-                                    .ghost()
-                                    .xsmall()
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        // Open current working directory as fallback
-                                        if let Ok(cwd) = std::env::current_dir() {
-                                            this.open_project(cwd, window, cx);
-                                        }
-                                    }))
+                                h_flex()
+                                    .gap_1()
+                                    .child(
+                                        Button::new("new_file")
+                                            .icon(IconName::Plus)
+                                            .tooltip("New File")
+                                            .ghost()
+                                            .xsmall()
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.create_new_file(window, cx);
+                                            }))
+                                    )
+                                    .child(
+                                        Button::new("new_folder")
+                                            .icon(IconName::Folder)
+                                            .tooltip("New Folder")
+                                            .ghost()
+                                            .xsmall()
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.create_new_folder(window, cx);
+                                            }))
+                                    )
+                                    .child(
+                                        Button::new("refresh")
+                                            .icon(IconName::Asterisk)
+                                            .tooltip("Refresh")
+                                            .ghost()
+                                            .xsmall()
+                                            .on_click(cx.listener(|this, _, _window, cx| {
+                                                this.refresh_file_tree(cx);
+                                            }))
+                                    )
+                                    .child(
+                                        Button::new("open_folder")
+                                            .icon(IconName::FolderOpen)
+                                            .tooltip("Open Folder")
+                                            .ghost()
+                                            .xsmall()
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                // Open current working directory as fallback
+                                                if let Ok(cwd) = std::env::current_dir() {
+                                                    this.open_project(cwd, window, cx);
+                                                }
+                                            }))
+                                    )
                             )
                     )
             )
-            .child(
-                div()
-                    .flex_1()
-                    .p_2()
-                    .when(self.file_tree.is_empty(), |this| {
-                        this.child(
-                            div()
-                                .p_4()
-                                .text_center()
-                                .text_color(cx.theme().muted_foreground)
-                                .text_sm()
-                                .child("No folder opened")
-                                .child(
-                                    div()
-                                        .mt_2()
-                                        .child(
-                                            Button::new("open_folder_empty")
-                                                .label("Open Folder")
-                                                .small()
-                                                .on_click(cx.listener(|this, _, window, cx| {
-                                                    if let Ok(cwd) = std::env::current_dir() {
-                                                        this.open_project(cwd, window, cx);
-                                                    }
-                                                }))
-                                        )
-                                )
+            .when(self.file_tree.is_empty(), |sidebar| {
+                sidebar.child(
+                    SidebarMenu::new()
+                        .child(
+                            SidebarMenuItem::new("No folder opened")
+                                .icon(IconName::FolderOpen)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    if let Ok(cwd) = std::env::current_dir() {
+                                        this.open_project(cwd, window, cx);
+                                    }
+                                }))
                         )
-                    })
-                    .when(!self.file_tree.is_empty(), |this| {
-                        this.child(self.render_file_tree(cx))
-                    })
-            )
-            .child(
-                div()
-                    .w_full()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .p_2()
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .when_some(self.project_root.clone(), |this, root| {
-                        this.child(
-                            root.file_name()
-                                .unwrap_or_default()
-                                .to_string_lossy()
-                                .to_string()
+                )
+            })
+            .when(!self.file_tree.is_empty(), |sidebar| {
+                sidebar.child(self.render_file_tree(cx))
+            })
+            .footer(
+                SidebarFooter::new()
+                    .when_some(self.project_root.clone(), |footer, root| {
+                        footer.child(
+                            div()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(
+                                    root.file_name()
+                                        .unwrap_or_default()
+                                        .to_string_lossy()
+                                        .to_string()
+                                )
                         )
                     })
             )

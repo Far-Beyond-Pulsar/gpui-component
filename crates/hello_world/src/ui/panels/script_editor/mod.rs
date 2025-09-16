@@ -51,6 +51,14 @@ impl ScriptEditor {
         });
     }
 
+    pub fn get_file_explorer(&self) -> &Entity<FileExplorer> {
+        &self.file_explorer
+    }
+
+    pub fn get_text_editor(&self) -> &Entity<TextEditor> {
+        &self.text_editor
+    }
+
     pub fn toggle_terminal(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.terminal_visible = !self.terminal_visible;
         cx.notify();
@@ -83,7 +91,11 @@ impl Focusable for ScriptEditor {
 impl EventEmitter<PanelEvent> for ScriptEditor {}
 
 impl Render for ScriptEditor {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Check for file opening requests from the file explorer
+        if let Some(path) = self.file_explorer.update(cx, |explorer, _| explorer.get_last_opened_file()) {
+            self.open_file(path, window, cx);
+        }
         h_flex()
             .size_full()
             .bg(cx.theme().background)

@@ -42,9 +42,12 @@ impl TextEditor {
 
         // Read file content
         let content = match fs::read_to_string(&path) {
-            Ok(content) => content,
-            Err(_) => {
-                eprintln!("Failed to read file: {:?}", path);
+            Ok(content) => {
+                println!("Successfully read file {:?} with {} characters", path, content.len());
+                content
+            }
+            Err(err) => {
+                eprintln!("Failed to read file: {:?}, error: {}", path, err);
                 return;
             }
         };
@@ -54,15 +57,18 @@ impl TextEditor {
 
         // Create editor state for the file
         let input_state = cx.new(|cx| {
-            InputState::new(window, cx)
+            let mut state = InputState::new(window, cx)
                 .code_editor(language)
                 .line_number(true)
                 .tab_size(TabSize {
                     tab_size: 4,
                     hard_tabs: false,
                 })
-                .soft_wrap(false)
-                .default_value(&content)
+                .soft_wrap(false);
+
+            // Set the content after creating the state
+            state.set_value(&content, window, cx);
+            state
         });
 
         let open_file = OpenFile {
@@ -290,6 +296,7 @@ impl TextEditor {
             if let Some(open_file) = self.open_files.get(index) {
                 div()
                     .size_full()
+                    .overflow_hidden()
                     .child(
                         TextInput::new(&open_file.input_state)
                             .h_full()
