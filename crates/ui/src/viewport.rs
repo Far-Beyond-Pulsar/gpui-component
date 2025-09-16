@@ -109,20 +109,44 @@ impl<E: RenderEngine> Render for Viewport<E> {
         cx: &mut gpui::Context<Self>,
     ) -> impl IntoElement {
         let view = cx.entity().clone();
-
+        
         div()
             .track_focus(&self.focus_handle)
             .size_full()
             .child({
                 let view = cx.entity().clone();
                 canvas(
-                    move |bounds, _, cx| view.update(cx, |r, _| r.bounds = bounds),
-                    |_, _, _, _| {},
+                    move |bounds, _, cx| {
+                        view.update(cx, |viewport, _| {
+                            viewport.bounds = bounds;
+                            let width = bounds.size.width.0 as u32;
+                            let height = bounds.size.height.0 as u32;
+                            if viewport.framebuffer.width != width || viewport.framebuffer.height != height {
+                                viewport.framebuffer.resize(width, height);
+                            }
+                            viewport.render();
+                        });
+                    },
+                    move |frame, bounds, window, cx| {
+                        let viewport = view.read(cx);
+                        if !viewport.visible {
+                            return;
+                        }
+                        
+                        let framebuffer = &viewport.framebuffer;
+                        if framebuffer.width == 0 || framebuffer.height == 0 {
+                            return;
+                        }
+
+                        window.with_content_mask(Some(ContentMask { bounds }), |window| {
+                            // Drawing code here
+                            bounds
+                        });
+                    },
                 )
                 .absolute()
                 .size_full()
             })
-            .child(ViewportElement::new(view, window, cx))
     }
 }
 
