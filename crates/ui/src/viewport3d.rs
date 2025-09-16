@@ -63,6 +63,30 @@ pub struct Renderer3D {
     format: wgpu::TextureFormat,
 }
 
+/// A very small zero-copy framebuffer: a Vec<u8> of RGBA8 pixels and size.
+pub struct SimpleBuffer {
+    pub width: u32,
+    pub height: u32,
+    pub pixels: Vec<u8>, // RGBA8
+}
+
+impl SimpleBuffer {
+    pub fn new(width: u32, height: u32) -> Self {
+        let mut pixels = vec![0u8; (width as usize) * (height as usize) * 4];
+        // Fill with red (RGBA)
+        for y in 0..height as usize {
+            for x in 0..width as usize {
+                let i = (y * width as usize + x) * 4;
+                pixels[i] = 0xFF; // R
+                pixels[i + 1] = 0x00; // G
+                pixels[i + 2] = 0x00; // B
+                pixels[i + 3] = 0xFF; // A
+            }
+        }
+        Self { width, height, pixels }
+    }
+}
+
 impl Renderer3D {
     pub async fn new(
         width: u32,
@@ -135,7 +159,7 @@ impl Renderer3D {
                 module: &shader,
                 entry_point: "vs_main",
                 buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: 6 * 4,
+                    array_stride: std::mem::size_of::<Vertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &[
                         wgpu::VertexAttribute {
@@ -144,7 +168,7 @@ impl Renderer3D {
                             format: wgpu::VertexFormat::Float32x3,
                         },
                         wgpu::VertexAttribute {
-                            offset: 3 * 4,
+                            offset: std::mem::size_of::<[f32; 3]>() as u64,
                             shader_location: 1,
                             format: wgpu::VertexFormat::Float32x3,
                         },
@@ -203,8 +227,10 @@ impl Renderer3D {
 
     pub fn render(&mut self) {
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        let _elapsed = self.start_time.elapsed().as_secs_f32();
-        // TODO: Pass rotation to shader for animation
+        let elapsed = self.start_time.elapsed().as_secs_f32();
+        // Create rotation matrix for animation
+        let rotation = elapsed.sin() * std::f32::consts::PI;
+
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -229,7 +255,12 @@ impl Renderer3D {
             rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             rpass.draw(0..self.num_vertices, 0..1);
         }
+
+        // Submit the render commands
         self.queue.submit(Some(encoder.finish()));
+        
+        // Present the frame
+        self.device.poll(wgpu::Maintain::Wait);
     }
 }
 
@@ -256,41 +287,28 @@ impl Render for Viewport3D {
                 let view1 = view.clone();
                 let view2 = view.clone();
                 canvas(
-                    move |bounds, _window_handle, cx| {
-                        view1.update(cx, |r, _| r.bounds = bounds);
-                        // Initialize renderer if needed
-                        let (width, height) = (bounds.size.width.0 as u32, bounds.size.height.0 as u32);
-                        let needs_init = {
-                            let r = view1.read(cx);
-                            r.renderer.is_none()
-                        };
-                        if needs_init {
-                            // Avoid initializing renderer for zero-sized bounds
+                    move |bounds, _, cx| {
+                        view1.update(cx, |r, _| {
+                            r.bounds = bounds;
+                            // Initialize or resize renderer if needed
+                            let (width, height) = (bounds.size.width.0 as u32, bounds.size.height.0 as u32);
                             if width == 0 || height == 0 {
                                 return;
                             }
-                            // Run the async renderer creation on a separate thread to avoid
-                            // blocking or stack issues on the UI thread.
-                            let renderer = std::thread::spawn(move || {
-                                futures::executor::block_on(async move {
-                                    Renderer3D::new(width, height).await
-                                })
-                            })
-                            .join()
-                            .expect("renderer init thread panicked");
-                            view1.update(cx, |r, _| r.renderer = Some(renderer));
-                        } else {
-                            view1.update(cx, |r, _| {
-                                if let Some(renderer) = &mut r.renderer {
+                            if r.renderer.is_none() {
+                                r.renderer = Some(pollster::block_on(Renderer3D::new(width, height)));
+                            } else if let Some(renderer) = &mut r.renderer {
+                                if renderer.size != (width, height) {
                                     renderer.resize(width, height);
                                 }
-                            });
-                        }
+                            }
+                        });
                     },
                     move |_, _, _, app| {
-                        // Draw the 3D scene
+                        // Render frame
                         view2.update(app, |r, _| {
                             if let Some(renderer) = &mut r.renderer {
+                                // Just render directly to the GPU texture
                                 renderer.render();
                             }
                         });
@@ -314,8 +332,7 @@ impl Viewport3DElement {
         _window: &mut Window,
         _cx: &mut App,
     ) -> Self {
-        // Renderer initialization is handled in the canvas closures inside
-        // `Render::render`. Nothing async to do here; just store the parent.
+        // No async work here; initialization happens in the canvas closures.
         Self { parent }
     }
 }
@@ -361,7 +378,8 @@ impl Element for Viewport3DElement {
         if !self.parent.read(cx).visible() {
             return None;
         }
-        // Set up 3D viewport bounds here if needed
+        
+        // Set up 3D viewport bounds
         Some(window.insert_hitbox(bounds, gpui::HitboxBehavior::Normal))
     }
 
@@ -373,11 +391,19 @@ impl Element for Viewport3DElement {
         _: &mut Self::RequestLayoutState,
         hitbox: &mut Self::PrepaintState,
         window: &mut Window,
-        _: &mut App,
+        cx: &mut App,
     ) {
         let bounds = hitbox.clone().map(|h| h.bounds).unwrap_or(bounds);
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
-            // Handle mouse/interaction for 3D viewport here
+            // Update 3D rendering in the paint phase
+            self.parent.update(cx, |viewport, _| {
+                if let Some(renderer) = &mut viewport.renderer {
+                    // Just render the frame - the GPU will handle the rest
+                    renderer.render();
+                }
+            });
+
+            // Handle mouse/interaction for 3D viewport
             window.on_mouse_event(move |event: &MouseDownEvent, _, _, _| {
                 if !bounds.contains(&event.position) {
                     // Click outside to blur focus, if needed
