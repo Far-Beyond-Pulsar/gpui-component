@@ -3,7 +3,7 @@ mod focusable;
 mod global_state;
 mod icon;
 mod index_path;
-// pub mod viewport;
+pub mod viewport;
 #[cfg(any(feature = "inspector", debug_assertions))]
 mod inspector;
 mod kbd;

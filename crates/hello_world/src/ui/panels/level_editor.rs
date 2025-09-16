@@ -2,7 +2,7 @@ use gpui::*;
 use gpui_component::{
     button::Button, dock::{Panel, PanelEvent}, h_flex, resizable::{h_resizable, resizable_panel, ResizableState}, v_flex, ActiveTheme as _, IconName, Selectable, StyledExt
 };
-// use crate::renderer::ShaderRenderer;
+use gpui_component::viewport::{Viewport, TestRenderEngine};
 
 use crate::ui::shared::{Toolbar, ToolbarButton, ViewportControls, StatusBar};
 
@@ -14,7 +14,7 @@ pub struct LevelEditorPanel {
     show_lighting: bool,
     camera_mode: CameraMode,
     resizable_state: Entity<ResizableState>,
-    // viewport: Entity<Viewport<crate::renderer::ShaderRenderer>>,
+    viewport: Entity<Viewport<TestRenderEngine>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -29,14 +29,22 @@ pub enum CameraMode {
 impl LevelEditorPanel {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let resizable_state = ResizableState::new(cx);
-        // let viewport = cx.new(|cx| {
-        //     Viewport::new(
-        //         crate::renderer::ShaderRenderer::new(),
-        //         800,
-        //         600,
-        //         cx,
-        //     )
-        // });
+        let viewport = cx.new(|cx| {
+            Viewport::new(
+                TestRenderEngine::new(),
+                800,
+                600,
+                cx,
+            )
+        });
+
+        // Set up the entity reference and refresh callback
+        let viewport_entity = viewport.clone();
+        viewport.update(cx, |viewport, _| {
+            viewport.set_entity(viewport_entity);
+            // Set up atomic flag-based refresh callback
+            viewport.setup_refresh_callback();
+        });
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -46,7 +54,7 @@ impl LevelEditorPanel {
             show_lighting: true,
             camera_mode: CameraMode::Perspective,
             resizable_state,
-            // viewport,
+            viewport,
         }
     }
 
@@ -147,7 +155,7 @@ impl LevelEditorPanel {
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
-            // .child(div().size_full().child(self.viewport.clone()))
+            .child(div().size_full().child(self.viewport.clone()))
             .child(
                 // Viewport controls overlay
                 div()
@@ -181,6 +189,45 @@ impl LevelEditorPanel {
                                     .selected(matches!(self.camera_mode, CameraMode::Orthographic))
                             )
                     )
+            )
+            .child(
+                // Performance overlay (debug)
+                div()
+                    .absolute()
+                    .top_4()
+                    .left_4()
+                    .child(self.render_performance_overlay(cx))
+            )
+    }
+
+    fn render_performance_overlay(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let viewport = self.viewport.read(cx);
+        let metrics = viewport.metrics();
+
+        h_flex()
+            .gap_2()
+            .p_2()
+            .bg(cx.theme().background.opacity(0.9))
+            .rounded(cx.theme().radius)
+            .border_1()
+            .border_color(cx.theme().border)
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().foreground)
+                    .child(format!("FPS: {:.1}", metrics.fps))
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(format!("Frame: {:.1}ms", metrics.avg_frame_time_ms))
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(format!("Frames: {}", metrics.frame_count))
             )
     }
 
