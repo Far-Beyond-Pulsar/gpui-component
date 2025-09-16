@@ -259,6 +259,9 @@ pub struct Viewport<E: RenderEngine> {
     // Texture management
     current_texture: Option<Arc<RenderImage>>,
     texture_dirty: bool,
+    rgba_conversion_buffer: Vec<u8>,
+    last_width: u32,
+    last_height: u32,
 
     // Debug flags
     debug_enabled: bool,
@@ -271,6 +274,11 @@ impl<E: RenderEngine> Drop for Viewport<E> {
     fn drop(&mut self) {
         let _ = self.render_tx.send(RenderCommand::Shutdown);
         self.hide();
+
+        // Clean up memory allocations
+        self.current_texture = None;
+        self.rgba_conversion_buffer.clear();
+        self.rgba_conversion_buffer.shrink_to_fit();
     }
 }
 
@@ -319,6 +327,9 @@ impl<E: RenderEngine> Viewport<E> {
             last_texture_generation: 0,
             current_texture: None,
             texture_dirty: true,
+            rgba_conversion_buffer: Vec::new(),
+            last_width: initial_width,
+            last_height: initial_height,
             debug_enabled: cfg!(debug_assertions),
             entity: None,
         }
@@ -329,19 +340,14 @@ impl<E: RenderEngine> Viewport<E> {
         self.entity = Some(entity.clone());
 
         // Create a callback that can trigger GPUI notifications from the render thread
-        // Store the async context that we can use for updates
-        let mut async_cx = cx.to_async();
-        let entity_for_callback = entity.downgrade();
+        // Use a simple atomic flag to trigger continuous redraws
+        let needs_redraw = Arc::new(AtomicBool::new(false));
+        let redraw_flag = needs_redraw.clone();
 
         let callback = Box::new(move || {
             // This callback is called from the render thread after each frame completion
-            // Use the stored async context to update the entity
-            if let Some(entity) = entity_for_callback.upgrade() {
-                // This should work with the AsyncApp context we stored
-                let _ = async_cx.update_entity(&entity, |_, cx| {
-                    cx.notify();
-                });
-            }
+            // Set the atomic flag to trigger a GPUI redraw
+            needs_redraw.store(true, Ordering::Relaxed);
         });
 
         // Provide the callback to the render engine
@@ -514,19 +520,23 @@ impl<E: RenderEngine> Viewport<E> {
         self.render_engine.lock().ok().map(|mut engine| f(&mut *engine))
     }
 
-    /// Get the current framebuffer for reading (front buffer)
-    pub fn current_framebuffer(&self) -> Option<Framebuffer> {
+    /// Get a reference to the current framebuffer for reading (front buffer)
+    /// Returns width, height, format, and generation without cloning the buffer
+    pub fn current_framebuffer_info(&self) -> Option<(u32, u32, FramebufferFormat, u64)> {
         self.double_buffer.lock().ok().map(|buffer| {
             let front = buffer.get_front_buffer();
-            Framebuffer {
-                width: front.width,
-                height: front.height,
-                format: front.format,
-                buffer: front.buffer.clone(),
-                pitch: front.pitch,
-                dirty_rect: front.dirty_rect,
-                generation: front.generation,
-            }
+            (front.width, front.height, front.format, front.generation)
+        })
+    }
+
+    /// Access the current framebuffer with a closure to avoid cloning
+    pub fn with_current_framebuffer<F, R>(&self, f: F) -> Option<R>
+    where
+        F: FnOnce(&Framebuffer) -> R,
+    {
+        self.double_buffer.lock().ok().map(|buffer| {
+            let front = buffer.get_front_buffer();
+            f(front)
         })
     }
 
@@ -547,44 +557,74 @@ impl<E: RenderEngine> Viewport<E> {
             return;
         }
 
-        if front_buffer.width == 0 || front_buffer.height == 0 {
-            return;
+        // Throttle updates during rapid resizing to prevent memory pressure
+        if front_buffer.width != self.last_width || front_buffer.height != self.last_height {
+            self.last_width = front_buffer.width;
+            self.last_height = front_buffer.height;
+
+            // Skip update if dimensions are invalid
+            if front_buffer.width == 0 || front_buffer.height == 0 {
+                return;
+            }
         }
 
-        // Convert to RGBA8 format for GPUI
+
+        // Reuse conversion buffer to avoid allocations
+        let required_size = match front_buffer.format {
+            FramebufferFormat::Rgba8 | FramebufferFormat::Bgra8 => front_buffer.buffer.len(),
+            FramebufferFormat::Rgb8 | FramebufferFormat::Bgr8 => front_buffer.buffer.len() * 4 / 3,
+        };
+
+        if self.rgba_conversion_buffer.len() != required_size {
+            self.rgba_conversion_buffer.resize(required_size, 0);
+        }
+
+        // Convert to RGBA8 format for GPUI using pre-allocated buffer
         let rgba_buffer = match front_buffer.format {
-            FramebufferFormat::Rgba8 => front_buffer.buffer.clone(),
+            FramebufferFormat::Rgba8 => {
+                self.rgba_conversion_buffer.copy_from_slice(&front_buffer.buffer);
+                &self.rgba_conversion_buffer
+            }
             FramebufferFormat::Bgra8 => {
-                // Convert BGRA to RGBA
-                let mut rgba = Vec::with_capacity(front_buffer.buffer.len());
-                for chunk in front_buffer.buffer.chunks_exact(4) {
-                    rgba.extend_from_slice(&[chunk[2], chunk[1], chunk[0], chunk[3]]);
+                // Convert BGRA to RGBA in-place
+                for (i, chunk) in front_buffer.buffer.chunks_exact(4).enumerate() {
+                    let offset = i * 4;
+                    self.rgba_conversion_buffer[offset] = chunk[2];     // R
+                    self.rgba_conversion_buffer[offset + 1] = chunk[1]; // G
+                    self.rgba_conversion_buffer[offset + 2] = chunk[0]; // B
+                    self.rgba_conversion_buffer[offset + 3] = chunk[3]; // A
                 }
-                rgba
+                &self.rgba_conversion_buffer
             }
             FramebufferFormat::Rgb8 => {
                 // Convert RGB to RGBA
-                let mut rgba = Vec::with_capacity(front_buffer.buffer.len() * 4 / 3);
-                for chunk in front_buffer.buffer.chunks_exact(3) {
-                    rgba.extend_from_slice(&[chunk[0], chunk[1], chunk[2], 255]);
+                for (i, chunk) in front_buffer.buffer.chunks_exact(3).enumerate() {
+                    let offset = i * 4;
+                    self.rgba_conversion_buffer[offset] = chunk[0];     // R
+                    self.rgba_conversion_buffer[offset + 1] = chunk[1]; // G
+                    self.rgba_conversion_buffer[offset + 2] = chunk[2]; // B
+                    self.rgba_conversion_buffer[offset + 3] = 255;     // A
                 }
-                rgba
+                &self.rgba_conversion_buffer
             }
             FramebufferFormat::Bgr8 => {
                 // Convert BGR to RGBA
-                let mut rgba = Vec::with_capacity(front_buffer.buffer.len() * 4 / 3);
-                for chunk in front_buffer.buffer.chunks_exact(3) {
-                    rgba.extend_from_slice(&[chunk[2], chunk[1], chunk[0], 255]);
+                for (i, chunk) in front_buffer.buffer.chunks_exact(3).enumerate() {
+                    let offset = i * 4;
+                    self.rgba_conversion_buffer[offset] = chunk[2];     // R
+                    self.rgba_conversion_buffer[offset + 1] = chunk[1]; // G
+                    self.rgba_conversion_buffer[offset + 2] = chunk[0]; // B
+                    self.rgba_conversion_buffer[offset + 3] = 255;     // A
                 }
-                rgba
+                &self.rgba_conversion_buffer
             }
         };
 
-        // Create image buffer
+        // Create image buffer from converted data
         if let Some(image_buffer) = image::ImageBuffer::from_vec(
             front_buffer.width,
             front_buffer.height,
-            rgba_buffer,
+            rgba_buffer.to_vec(), // Only clone when creating the texture
         ) {
             let render_image = Arc::new(RenderImage::new([image::Frame::new(image_buffer)]));
             self.current_texture = Some(render_image);
@@ -638,8 +678,15 @@ impl<E: RenderEngine> Render for Viewport<E> {
                             if let Ok(buffer) = viewport.double_buffer.lock() {
                                 let front = buffer.get_front_buffer();
                                 if front.width != width || front.height != height {
+                                    // Clean up current texture before resize to free memory
+                                    viewport.current_texture = None;
+                                    viewport.rgba_conversion_buffer.clear();
+                                    viewport.rgba_conversion_buffer.shrink_to_fit();
+
                                     let _ = viewport.render_tx.send(RenderCommand::Resize(width, height));
                                     viewport.texture_dirty = true;
+                                    viewport.last_width = width;
+                                    viewport.last_height = height;
                                 }
                             }
 
