@@ -27,18 +27,27 @@ impl NodeGraphRenderer {
             .child(Self::render_nodes(panel, cx))
             .child(Self::render_connections(panel, cx))
             .child(Self::render_graph_controls(panel, cx))
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|panel, _event: &MouseDownEvent, _window, cx| {
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|panel, event: &MouseDownEvent, _window, cx| {
+                let mouse_pos = Point::new(event.position.x.0, event.position.y.0);
+
+                if panel.dragging_connection.is_none() {
+                    // Start panning if not connecting
+                    panel.start_panning(mouse_pos, cx);
+                }
                 // Click on background deselects all nodes
                 panel.select_node(None, cx);
             }))
             .on_mouse_move(cx.listener(|panel, event: &MouseMoveEvent, _window, cx| {
+                let mouse_pos = Point::new(event.position.x.0, event.position.y.0);
+
                 if panel.dragging_node.is_some() {
                     let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
                     panel.update_drag(graph_pos, cx);
                 } else if panel.dragging_connection.is_some() {
-                    // Update mouse position for drag line rendering only
-                    let graph_local_pos = Point::new(event.position.x.0, event.position.y.0);
-                    panel.update_connection_drag(graph_local_pos, cx);
+                    // Update mouse position for drag line rendering
+                    panel.update_connection_drag(mouse_pos, cx);
+                } else if panel.is_panning() {
+                    panel.update_pan(mouse_pos, cx);
                 }
             }))
             .on_mouse_up(gpui::MouseButton::Left, cx.listener(|panel, _event: &MouseUpEvent, _window, cx| {
@@ -47,7 +56,17 @@ impl NodeGraphRenderer {
                 } else if panel.dragging_connection.is_some() {
                     // Cancel connection if not dropped on a pin
                     panel.cancel_connection_drag(cx);
+                } else if panel.is_panning() {
+                    panel.end_panning(cx);
                 }
+            }))
+            .on_scroll_wheel(cx.listener(|panel, event: &ScrollWheelEvent, _window, cx| {
+                // Zoom with scroll wheel
+                let delta_y = match event.delta {
+                    ScrollDelta::Pixels(p) => p.y.0,
+                    ScrollDelta::Lines(l) => l.y * 20.0, // Convert lines to pixels
+                };
+                panel.handle_zoom(delta_y, cx);
             }))
             .on_key_down(cx.listener(|panel, event: &KeyDownEvent, _window, cx| {
                 if event.keystroke.key == "Escape" && panel.dragging_connection.is_some() {

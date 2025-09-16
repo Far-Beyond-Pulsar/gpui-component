@@ -22,6 +22,10 @@ pub struct BlueprintEditorPanel {
     pub drag_offset: Point<f32>,
     // Connection drag state
     pub dragging_connection: Option<ConnectionDrag>,
+    // Panning state
+    pub is_panning: bool,
+    pub pan_start: Point<f32>,
+    pub pan_start_offset: Point<f32>,
 }
 
 #[derive(Clone, Debug)]
@@ -118,6 +122,9 @@ impl BlueprintEditorPanel {
             dragging_node: None,
             drag_offset: Point::new(0.0, 0.0),
             dragging_connection: None,
+            is_panning: false,
+            pan_start: Point::new(0.0, 0.0),
+            pan_start_offset: Point::new(0.0, 0.0),
         }
     }
 
@@ -275,16 +282,30 @@ impl BlueprintEditorPanel {
                 if let Some(pin) = node.inputs.iter().find(|p| p.id == pin_id) {
                     // Check if compatible and not same node
                     if drag.from_pin_type == pin.data_type && drag.from_node_id != node_id {
-                        println!("Creating connection from {} to {}", drag.from_pin_id, pin_id);
-                        let connection = super::Connection {
-                            id: uuid::Uuid::new_v4().to_string(),
-                            from_node_id: drag.from_node_id,
-                            from_pin_id: drag.from_pin_id,
-                            to_node_id: node_id,
-                            to_pin_id: pin_id,
+                        // Additional validation: only one connection per input pin (except execution pins)
+                        let can_connect = if pin.data_type == super::DataType::Execution {
+                            true // Execution pins can have multiple connections
+                        } else {
+                            // Non-execution pins can only have one input connection
+                            !self.graph.connections.iter().any(|conn|
+                                conn.to_node_id == node_id && conn.to_pin_id == pin_id
+                            )
                         };
-                        self.graph.connections.push(connection);
-                        println!("Connection created successfully!");
+
+                        if can_connect {
+                            println!("Creating connection from {} to {}", drag.from_pin_id, pin_id);
+                            let connection = super::Connection {
+                                id: uuid::Uuid::new_v4().to_string(),
+                                from_node_id: drag.from_node_id,
+                                from_pin_id: drag.from_pin_id,
+                                to_node_id: node_id,
+                                to_pin_id: pin_id,
+                            };
+                            self.graph.connections.push(connection);
+                            println!("Connection created successfully!");
+                        } else {
+                            println!("Input pin already has a connection");
+                        }
                     } else {
                         println!("Incompatible pin types or same node");
                     }
@@ -292,6 +313,45 @@ impl BlueprintEditorPanel {
             }
             cx.notify();
         }
+    }
+
+    // Panning methods
+    pub fn start_panning(&mut self, start_pos: Point<f32>, cx: &mut Context<Self>) {
+        self.is_panning = true;
+        self.pan_start = start_pos;
+        self.pan_start_offset = self.graph.pan_offset;
+        cx.notify();
+    }
+
+    pub fn is_panning(&self) -> bool {
+        self.is_panning
+    }
+
+    pub fn update_pan(&mut self, current_pos: Point<f32>, cx: &mut Context<Self>) {
+        if self.is_panning {
+            let delta = Point::new(
+                current_pos.x - self.pan_start.x,
+                current_pos.y - self.pan_start.y,
+            );
+            self.graph.pan_offset = Point::new(
+                self.pan_start_offset.x + delta.x / self.graph.zoom_level,
+                self.pan_start_offset.y + delta.y / self.graph.zoom_level,
+            );
+            cx.notify();
+        }
+    }
+
+    pub fn end_panning(&mut self, cx: &mut Context<Self>) {
+        self.is_panning = false;
+        cx.notify();
+    }
+
+    // Zooming methods
+    pub fn handle_zoom(&mut self, delta_y: f32, cx: &mut Context<Self>) {
+        let zoom_factor = if delta_y > 0.0 { 0.9 } else { 1.1 };
+        let new_zoom = (self.graph.zoom_level * zoom_factor).clamp(0.1, 3.0);
+        self.graph.zoom_level = new_zoom;
+        cx.notify();
     }
 
 }
