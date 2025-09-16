@@ -40,8 +40,8 @@ impl LevelEditorPanel {
 
         // Set up the entity reference
         let viewport_entity = viewport.clone();
-        viewport.update(cx, |viewport, _| {
-            viewport.set_entity(viewport_entity);
+        viewport.update(cx, |viewport, cx| {
+            viewport.set_entity(viewport_entity, cx);
         });
 
         Self {

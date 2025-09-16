@@ -2,7 +2,7 @@ use gpui::{
     canvas, div, App, Bounds, ContentMask, DismissEvent, EventEmitter,
     FocusHandle, Focusable, InteractiveElement, IntoElement,
     ParentElement as _, Pixels, Render, RenderImage, Size, Styled as _, Window, Corners, px,
-    Context, PaintQuad, Point, BorderStyle, Entity,
+    Context, PaintQuad, Point, BorderStyle, Entity, WeakEntity, AsyncApp,
 };
 use std::sync::{Arc, Mutex, mpsc, atomic::{AtomicBool, Ordering}};
 use std::collections::VecDeque;
@@ -325,25 +325,21 @@ impl<E: RenderEngine> Viewport<E> {
     }
 
     /// Set the entity reference for this viewport and provide it to the render engine
-    pub fn set_entity(&mut self, entity: Entity<Self>) {
+    pub fn set_entity(&mut self, entity: Entity<Self>, cx: &mut Context<Self>) {
         self.entity = Some(entity.clone());
 
-        // Create a callback that can trigger GPUI notifications from the render thread
-        let (notify_tx, notify_rx) = std::sync::mpsc::channel();
+        // Create a callback that spawns a single update operation each time it's called
         let entity_for_callback = entity.clone();
-
-        // Spawn a thread to handle notifications from render thread
-        std::thread::spawn(move || {
-            while let Ok(()) = notify_rx.recv() {
-                // We still need to find the right way to get a context here
-                // For now, let's just mark this as needing implementation
-                println!("[VIEWPORT] Render notification received - need to implement GPUI update");
-            }
-        });
-
         let callback = Box::new(move || {
-            // This will be called from the render thread
-            let _ = notify_tx.send(());
+            // This will be called from the render thread to trigger viewport refresh
+            // Schedule a single update operation on the main thread
+            let entity_clone = entity_for_callback.clone();
+            std::thread::spawn(move || {
+                // Use GPUI's background executor to schedule on main thread
+                entity_clone.update(&mut App::global(), |_, cx| {
+                    cx.notify();
+                }).ok();
+            });
         });
 
         // Provide the callback to the render engine
