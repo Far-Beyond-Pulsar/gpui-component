@@ -3,6 +3,7 @@ mod focusable;
 mod global_state;
 mod icon;
 mod index_path;
+mod viewport;
 #[cfg(any(feature = "inspector", debug_assertions))]
 mod inspector;
 mod kbd;
@@ -59,8 +60,6 @@ pub mod tag;
 pub mod text;
 pub mod theme;
 pub mod tooltip;
-pub mod viewport3d;
-
 #[cfg(feature = "webview")]
 pub mod webview;
 
