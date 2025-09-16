@@ -18,6 +18,7 @@ pub struct LevelEditorPanel {
     show_lighting: bool,
     camera_mode: CameraMode,
     resizable_state: Entity<ResizableState>,
+    viewport: Entity<gpui_component::viewport3d::Viewport3D>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -32,6 +33,7 @@ pub enum CameraMode {
 impl LevelEditorPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let resizable_state = ResizableState::new(cx);
+        let viewport = cx.new(|cx| gpui_component::viewport3d::Viewport3D::new(cx));
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -41,6 +43,7 @@ impl LevelEditorPanel {
             show_lighting: true,
             camera_mode: CameraMode::Perspective,
             resizable_state,
+            viewport,
         }
     }
 
@@ -142,7 +145,7 @@ impl LevelEditorPanel {
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
-            .child(Viewport3D::new(cx).render(window, cx))
+            .child(self.viewport.update(cx, |view, cx| view.render(window, cx).into_any_element()))
             .child(
                 // Viewport controls overlay
                 div()
