@@ -2,6 +2,7 @@ use gpui::*;
 use gpui_component::{
     button::Button,
     dock::{Panel, PanelEvent},
+    resizable::{h_resizable, resizable_panel, ResizableState},
     h_flex, v_flex,
     ActiveTheme as _, StyledExt, Selectable,
     IconName,
@@ -16,6 +17,7 @@ pub struct LevelEditorPanel {
     show_wireframe: bool,
     show_lighting: bool,
     camera_mode: CameraMode,
+    resizable_state: Entity<ResizableState>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -29,6 +31,8 @@ pub enum CameraMode {
 
 impl LevelEditorPanel {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let resizable_state = ResizableState::new(cx);
+
         Self {
             focus_handle: cx.focus_handle(),
             selected_object: None,
@@ -36,6 +40,7 @@ impl LevelEditorPanel {
             show_wireframe: false,
             show_lighting: true,
             camera_mode: CameraMode::Perspective,
+            resizable_state,
         }
     }
 
@@ -420,40 +425,49 @@ impl Render for LevelEditorPanel {
             .bg(cx.theme().background)
             .child(self.render_toolbar(cx))
             .child(
-                h_flex()
+                div()
                     .flex_1()
-                    .gap_1()
                     .child(
-                        // Left panel - Scene Hierarchy
-                        div()
-                            .w_64()
-                            .h_full()
-                            .bg(cx.theme().sidebar)
-                            .border_1()
-                            .border_color(cx.theme().border)
-                            .rounded(cx.theme().radius)
-                            .p_2()
-                            .child(self.render_scene_hierarchy(cx))
-                    )
-                    .child(
-                        // Center - 3D Viewport
-                        div()
-                            .flex_1()
-                            .h_full()
-                            .p_2()
-                            .child(self.render_viewport(cx))
-                    )
-                    .child(
-                        // Right panel - Properties
-                        div()
-                            .w_80()
-                            .h_full()
-                            .bg(cx.theme().sidebar)
-                            .border_1()
-                            .border_color(cx.theme().border)
-                            .rounded(cx.theme().radius)
-                            .p_2()
-                            .child(self.render_properties(cx))
+                        h_resizable("level-editor-panels", self.resizable_state.clone())
+                            .child(
+                                resizable_panel()
+                                    .size(px(280.))
+                                    .size_range(px(200.)..px(400.))
+                                    .child(
+                                        div()
+                                            .size_full()
+                                            .bg(cx.theme().sidebar)
+                                            .border_1()
+                                            .border_color(cx.theme().border)
+                                            .rounded(cx.theme().radius)
+                                            .p_2()
+                                            .child(self.render_scene_hierarchy(cx))
+                                    )
+                            )
+                            .child(
+                                resizable_panel()
+                                    .child(
+                                        div()
+                                            .size_full()
+                                            .p_2()
+                                            .child(self.render_viewport(cx))
+                                    )
+                            )
+                            .child(
+                                resizable_panel()
+                                    .size(px(320.))
+                                    .size_range(px(250.)..px(500.))
+                                    .child(
+                                        div()
+                                            .size_full()
+                                            .bg(cx.theme().sidebar)
+                                            .border_1()
+                                            .border_color(cx.theme().border)
+                                            .rounded(cx.theme().radius)
+                                            .p_2()
+                                            .child(self.render_properties(cx))
+                                    )
+                            )
                     )
             )
             .child(self.render_status_bar(cx))

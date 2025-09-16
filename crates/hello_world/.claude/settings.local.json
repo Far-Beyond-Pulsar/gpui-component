@@ -8,7 +8,9 @@
       "Bash(cargo check:*)",
       "Bash(for panel in animation_editor particle_editor sound_editor terrain_editor navmesh_editor physics_editor diagram_editor prefab_editor skeleton_editor behavior_editor foliage_editor ui_editor)",
       "Bash(do cp material_editor.rs $panel.rs)",
-      "Bash(done)"
+      "Bash(done)",
+      "Read(//c/Users/redst/OneDrive/Documents/GitHub/Zenyx/gpui-component/assets/icons/**)",
+      "Bash(cargo run:*)"
     ],
     "deny": [],
     "ask": []

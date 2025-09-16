@@ -2,6 +2,7 @@ use gpui::*;
 use gpui_component::{
     button::Button,
     dock::{Panel, PanelEvent},
+    resizable::{h_resizable, resizable_panel, ResizableState},
     h_flex, v_flex,
     ActiveTheme as _, StyledExt, Selectable,
     IconName,
@@ -14,15 +15,19 @@ pub struct BlueprintEditorPanel {
     selected_node: Option<String>,
     zoom_level: f32,
     pan_offset: (f32, f32),
+    resizable_state: Entity<ResizableState>,
 }
 
 impl BlueprintEditorPanel {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let resizable_state = ResizableState::new(cx);
+
         Self {
             focus_handle: cx.focus_handle(),
             selected_node: None,
             zoom_level: 1.0,
             pan_offset: (0.0, 0.0),
+            resizable_state,
         }
     }
 
@@ -468,40 +473,49 @@ impl Render for BlueprintEditorPanel {
             .bg(cx.theme().background)
             .child(self.render_toolbar(cx))
             .child(
-                h_flex()
+                div()
                     .flex_1()
-                    .gap_1()
                     .child(
-                        // Left panel - Node Library
-                        div()
-                            .w_64()
-                            .h_full()
-                            .bg(cx.theme().sidebar)
-                            .border_1()
-                            .border_color(cx.theme().border)
-                            .rounded(cx.theme().radius)
-                            .p_2()
-                            .child(self.render_node_library(cx))
-                    )
-                    .child(
-                        // Center - Node Graph
-                        div()
-                            .flex_1()
-                            .h_full()
-                            .p_2()
-                            .child(self.render_node_graph(cx))
-                    )
-                    .child(
-                        // Right panel - Properties
-                        div()
-                            .w_80()
-                            .h_full()
-                            .bg(cx.theme().sidebar)
-                            .border_1()
-                            .border_color(cx.theme().border)
-                            .rounded(cx.theme().radius)
-                            .p_2()
-                            .child(self.render_properties(cx))
+                        h_resizable("blueprint-editor-panels", self.resizable_state.clone())
+                            .child(
+                                resizable_panel()
+                                    .size(px(260.))
+                                    .size_range(px(200.)..px(400.))
+                                    .child(
+                                        div()
+                                            .size_full()
+                                            .bg(cx.theme().sidebar)
+                                            .border_1()
+                                            .border_color(cx.theme().border)
+                                            .rounded(cx.theme().radius)
+                                            .p_2()
+                                            .child(self.render_node_library(cx))
+                                    )
+                            )
+                            .child(
+                                resizable_panel()
+                                    .child(
+                                        div()
+                                            .size_full()
+                                            .p_2()
+                                            .child(self.render_node_graph(cx))
+                                    )
+                            )
+                            .child(
+                                resizable_panel()
+                                    .size(px(320.))
+                                    .size_range(px(250.)..px(500.))
+                                    .child(
+                                        div()
+                                            .size_full()
+                                            .bg(cx.theme().sidebar)
+                                            .border_1()
+                                            .border_color(cx.theme().border)
+                                            .rounded(cx.theme().radius)
+                                            .p_2()
+                                            .child(self.render_properties(cx))
+                                    )
+                            )
                     )
             )
             .child(self.render_status_bar(cx))

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use super::{
     editors::EditorType,
-    menu::MenuBar,
+    menu::AppTitleBar,
     panels::{
         LevelEditorPanel, ScriptEditorPanel, BlueprintEditorPanel,
         MaterialEditorPanel,
@@ -52,13 +52,16 @@ impl PulsarApp {
 }
 
 impl Render for PulsarApp {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .size_full()
             .bg(cx.theme().background)
             .child(
                 // Menu bar
-                MenuBar::new().render(cx)
+                {
+                    let title_bar = cx.new(|cx| AppTitleBar::new("Pulsar Engine", window, cx));
+                    title_bar.clone()
+                }
             )
             .child(
                 // Main dock area

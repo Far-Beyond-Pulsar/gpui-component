@@ -1,18 +1,23 @@
 use gpui::*;
 use gpui_component::{
     dock::{Panel, PanelEvent},
+    resizable::{h_resizable, resizable_panel, ResizableState},
     h_flex, v_flex,
     ActiveTheme as _, StyledExt,
 };
 
 pub struct MaterialEditorPanel {
     focus_handle: FocusHandle,
+    resizable_state: Entity<ResizableState>,
 }
 
 impl MaterialEditorPanel {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let resizable_state = ResizableState::new(cx);
+
         Self {
             focus_handle: cx.focus_handle(),
+            resizable_state,
         }
     }
 }
