@@ -140,8 +140,8 @@ impl<E: RenderEngine> Render for Viewport<E> {
 
                         window.with_content_mask(Some(ContentMask { bounds }), |window| {
                             // Drawing code here
-                            bounds
                         });
+                        bounds
                     },
                 )
                 .absolute()
