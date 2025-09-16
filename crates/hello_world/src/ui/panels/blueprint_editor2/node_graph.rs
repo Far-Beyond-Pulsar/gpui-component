@@ -36,18 +36,17 @@ impl NodeGraphRenderer {
                     let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
                     panel.update_drag(graph_pos, cx);
                 } else if panel.dragging_connection.is_some() {
-                    // For connection dragging, use screen coordinates
-                    let screen_pos = Point::new(event.position.x.0, event.position.y.0);
-                    panel.update_connection_drag(screen_pos, cx);
+                    // Update mouse position for drag line rendering only
+                    let graph_local_pos = Point::new(event.position.x.0, event.position.y.0);
+                    panel.update_connection_drag(graph_local_pos, cx);
                 }
             }))
-            .on_mouse_up(gpui::MouseButton::Left, cx.listener(|panel, event: &MouseUpEvent, _window, cx| {
+            .on_mouse_up(gpui::MouseButton::Left, cx.listener(|panel, _event: &MouseUpEvent, _window, cx| {
                 if panel.dragging_node.is_some() {
                     panel.end_drag(cx);
                 } else if panel.dragging_connection.is_some() {
-                    // For connection dragging, use screen coordinates
-                    let screen_pos = Point::new(event.position.x.0, event.position.y.0);
-                    panel.end_connection_drag(screen_pos, cx);
+                    // Cancel connection if not dropped on a pin
+                    panel.cancel_connection_drag(cx);
                 }
             }))
             .on_key_down(cx.listener(|panel, event: &KeyDownEvent, _window, cx| {
@@ -260,10 +259,20 @@ impl NodeGraphRenderer {
                 let pin_id = pin.id.clone();
                 let node_id = node_id.to_string();
                 div.on_mouse_down(gpui::MouseButton::Left, {
-                    cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
-                        // Start connection drag from this output pin
-                        let screen_pos = Point::new(event.position.x.0, event.position.y.0);
-                        panel.start_connection_drag(node_id.clone(), pin_id.clone(), screen_pos, cx);
+                    cx.listener(move |panel, _event: &MouseDownEvent, _window, cx| {
+                        // Start connection drag from this output pin - no coordinate calculation needed
+                        panel.start_connection_drag_from_pin(node_id.clone(), pin_id.clone(), cx);
+                    })
+                })
+            })
+            .when(is_input && panel.dragging_connection.is_some(), |div| {
+                // Input pins become drop targets when dragging
+                let pin_id = pin.id.clone();
+                let node_id = node_id.to_string();
+                let _pin_type = pin.data_type.clone();
+                div.on_mouse_up(gpui::MouseButton::Left, {
+                    cx.listener(move |panel, _event: &MouseUpEvent, _window, cx| {
+                        panel.complete_connection_on_pin(node_id.clone(), pin_id.clone(), cx);
                     })
                 })
             })
@@ -318,23 +327,31 @@ impl NodeGraphRenderer {
     }
 
     fn render_dragging_connection(drag: &super::panel::ConnectionDrag, panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> AnyElement {
-        // Find the from node
+        // Find the from node and pin position
         if let Some(from_node) = panel.graph.nodes.iter().find(|n| n.id == drag.from_node_id) {
             if let Some(from_pin_pos) = Self::calculate_pin_position(from_node, &drag.from_pin_id, false, &panel.graph) {
                 let pin_color = Self::get_pin_color(&drag.from_pin_type, cx);
 
-                println!("Rendering drag connection from ({}, {}) to ({}, {})",
-                    from_pin_pos.x, from_pin_pos.y,
-                    drag.current_mouse_pos.x, drag.current_mouse_pos.y);
+                // Determine the end position - either target pin or mouse position
+                let end_pos = if let Some((target_node_id, target_pin_id)) = &drag.target_pin {
+                    // If hovering over a compatible pin, connect to that pin
+                    if let Some(target_node) = panel.graph.nodes.iter().find(|n| n.id == *target_node_id) {
+                        Self::calculate_pin_position(target_node, target_pin_id, true, &panel.graph)
+                            .unwrap_or(drag.current_mouse_pos)
+                    } else {
+                        drag.current_mouse_pos
+                    }
+                } else {
+                    // Default to mouse position
+                    drag.current_mouse_pos
+                };
 
-                // Create bezier curve from pin to mouse position
-                Self::render_bezier_connection(from_pin_pos, drag.current_mouse_pos, pin_color, cx)
+                // Create bezier curve from pin to end position
+                Self::render_bezier_connection(from_pin_pos, end_pos, pin_color, cx)
             } else {
-                println!("Could not calculate pin position for drag");
                 div().into_any_element()
             }
         } else {
-            println!("Could not find from node for drag");
             div().into_any_element()
         }
     }
@@ -352,6 +369,7 @@ impl NodeGraphRenderer {
     }
 
     fn calculate_pin_position(node: &BlueprintNode, pin_id: &str, is_input: bool, graph: &BlueprintGraph) -> Option<Point<f32>> {
+        // Calculate pin position in container coordinates (same as mouse events)
         let node_screen_pos = Self::graph_to_screen_pos(node.position, graph);
         let header_height = 40.0; // Height of node header
         let pin_size = 12.0; // Size of pin

@@ -30,6 +30,7 @@ pub struct ConnectionDrag {
     pub from_pin_id: String,
     pub from_pin_type: super::DataType,
     pub current_mouse_pos: Point<f32>,
+    pub target_pin: Option<(String, String)>, // (node_id, pin_id)
 }
 
 impl BlueprintEditorPanel {
@@ -230,16 +231,17 @@ impl BlueprintEditorPanel {
         cx.notify();
     }
 
-    pub fn start_connection_drag(&mut self, node_id: String, pin_id: String, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
+    pub fn start_connection_drag_from_pin(&mut self, node_id: String, pin_id: String, cx: &mut Context<Self>) {
         // Find the pin to get its data type
         if let Some(node) = self.graph.nodes.iter().find(|n| n.id == node_id) {
             if let Some(pin) = node.outputs.iter().find(|p| p.id == pin_id) {
-                println!("Starting connection drag from pin {} at pos ({}, {})", pin_id, mouse_pos.x, mouse_pos.y);
+                println!("Starting connection drag from pin {} on node {}", pin_id, node_id);
                 self.dragging_connection = Some(ConnectionDrag {
                     from_node_id: node_id,
                     from_pin_id: pin_id,
                     from_pin_type: pin.data_type.clone(),
-                    current_mouse_pos: mouse_pos,
+                    current_mouse_pos: Point::new(0.0, 0.0), // Will be updated by mouse move
+                    target_pin: None,
                 });
                 cx.notify();
             }
@@ -253,72 +255,45 @@ impl BlueprintEditorPanel {
         }
     }
 
-    pub fn end_connection_drag(&mut self, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
-        if let Some(drag) = self.dragging_connection.take() {
-            println!("Ending connection drag at pos ({}, {})", mouse_pos.x, mouse_pos.y);
-            // Try to find a compatible pin at the mouse position
-            if let Some((target_node_id, target_pin_id)) = self.find_pin_at_position(mouse_pos, true, Some(&drag.from_pin_type)) {
-                // Don't allow connecting to the same node
-                if target_node_id != drag.from_node_id {
-                    println!("Creating connection from {} to {}", drag.from_pin_id, target_pin_id);
-                    // Create the connection
-                    let connection = super::Connection {
-                        id: uuid::Uuid::new_v4().to_string(),
-                        from_node_id: drag.from_node_id,
-                        from_pin_id: drag.from_pin_id,
-                        to_node_id: target_node_id,
-                        to_pin_id: target_pin_id,
-                    };
-                    self.graph.connections.push(connection);
-                } else {
-                    println!("Cannot connect to same node");
-                }
-            } else {
-                println!("No compatible pin found at mouse position");
-            }
-            cx.notify();
-        }
-    }
 
     pub fn cancel_connection_drag(&mut self, cx: &mut Context<Self>) {
         self.dragging_connection = None;
         cx.notify();
     }
 
-    fn find_pin_at_position(&self, pos: Point<f32>, is_input: bool, compatible_type: Option<&super::DataType>) -> Option<(String, String)> {
-        for node in &self.graph.nodes {
-            let node_screen_pos = super::node_graph::NodeGraphRenderer::graph_to_screen_pos(node.position, &self.graph);
-            let header_height = 40.0;
-            let pin_margin = 8.0;
-            let pin_spacing = 20.0;
-            let pin_size = 12.0;
+    pub fn set_connection_target(&mut self, target: Option<(String, String)>, cx: &mut Context<Self>) {
+        if let Some(ref mut drag) = self.dragging_connection {
+            drag.target_pin = target;
+            cx.notify();
+        }
+    }
 
-            let pins = if is_input { &node.inputs } else { &node.outputs };
-
-            for (index, pin) in pins.iter().enumerate() {
-                // Check if pin type is compatible
-                if let Some(compat_type) = compatible_type {
-                    if &pin.data_type != compat_type {
-                        continue;
+    pub fn complete_connection_on_pin(&mut self, node_id: String, pin_id: String, cx: &mut Context<Self>) {
+        if let Some(drag) = self.dragging_connection.take() {
+            // Find the target pin to check compatibility
+            if let Some(node) = self.graph.nodes.iter().find(|n| n.id == node_id) {
+                if let Some(pin) = node.inputs.iter().find(|p| p.id == pin_id) {
+                    // Check if compatible and not same node
+                    if drag.from_pin_type == pin.data_type && drag.from_node_id != node_id {
+                        println!("Creating connection from {} to {}", drag.from_pin_id, pin_id);
+                        let connection = super::Connection {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            from_node_id: drag.from_node_id,
+                            from_pin_id: drag.from_pin_id,
+                            to_node_id: node_id,
+                            to_pin_id: pin_id,
+                        };
+                        self.graph.connections.push(connection);
+                        println!("Connection created successfully!");
+                    } else {
+                        println!("Incompatible pin types or same node");
                     }
                 }
-
-                let pin_y = node_screen_pos.y + header_height + pin_margin + (index as f32 * pin_spacing) + (pin_size / 2.0);
-                let pin_x = if is_input {
-                    node_screen_pos.x
-                } else {
-                    node_screen_pos.x + node.size.width
-                };
-
-                // Check if mouse is within pin bounds
-                let pin_bounds = 20.0; // Slightly larger than visual pin for easier targeting
-                if (pos.x - pin_x).abs() < pin_bounds && (pos.y - pin_y).abs() < pin_bounds {
-                    return Some((node.id.clone(), pin.id.clone()));
-                }
             }
+            cx.notify();
         }
-        None
     }
+
 }
 
 impl Panel for BlueprintEditorPanel {
