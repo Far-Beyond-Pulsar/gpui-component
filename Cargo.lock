@@ -6473,9 +6473,11 @@ dependencies = [
  "gpui",
  "gpui-component",
  "rust-embed",
+ "schemars",
  "serde",
  "serde_json",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

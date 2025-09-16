@@ -1,6 +1,6 @@
 use gpui::*;
 use gpui_component::{
-    Root, StyledExt,
+    Root,
 };
 
 mod assets;
