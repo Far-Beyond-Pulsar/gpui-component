@@ -5,6 +5,10 @@ description = "A modern high-performance game engine written in Rust"
 publish = false
 version = "0.1.0"
 
+[[bin]]
+name = "pulsar_engine"
+path = "src/main.rs"
+
 [dependencies]
 anyhow.workspace = true
 gpui.workspace = true
