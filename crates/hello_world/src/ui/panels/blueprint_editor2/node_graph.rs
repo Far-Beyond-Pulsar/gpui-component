@@ -68,7 +68,10 @@ impl NodeGraphRenderer {
                     ScrollDelta::Pixels(p) => p.y.0,
                     ScrollDelta::Lines(l) => l.y * 20.0, // Convert lines to pixels
                 };
-                panel.handle_zoom(delta_y, cx);
+
+                // Perform zoom centered on the mouse - pass the raw event position and let
+                // the panel compute the focus graph position using its current zoom/pan.
+                panel.handle_zoom(delta_y, event.position, cx);
             }))
             .on_key_down(cx.listener(|panel, event: &KeyDownEvent, _window, cx| {
                 if event.keystroke.key == "Escape" && panel.dragging_connection.is_some() {
