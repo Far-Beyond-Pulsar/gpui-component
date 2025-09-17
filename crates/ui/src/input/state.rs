@@ -5,7 +5,7 @@
 use anyhow::Result;
 use gpui::{
     actions, div, point, prelude::FluentBuilder as _, px, Action, App, AppContext, Bounds,
-    ClipboardItem, Context, Entity, EntityInputHandler, EventEmitter, FocusHandle, Focusable,
+    ClipboardItem, Context, Entity, EntityInputHandler, EventEmitter, FocusHandle, Focusable, Half,
     InteractiveElement as _, IntoElement, KeyBinding, KeyDownEvent, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, Render, ScrollHandle,
     ScrollWheelEvent, SharedString, Styled as _, Subscription, Task, UTF16Selection, Window,
@@ -31,6 +31,7 @@ use super::{
 };
 use crate::input::{
     popovers::{ContextMenu, DiagnosticPopover},
+    search::{self, SearchPanel},
     Position,
 };
 use crate::input::{RopeExt as _, Selection};
@@ -90,6 +91,7 @@ actions!(
         MoveToNextWord,
         Escape,
         ToggleCodeActions,
+        Search,
     ]
 );
 
@@ -216,8 +218,13 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("cmd-.", ToggleCodeActions, Some(CONTEXT)),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-.", ToggleCodeActions, Some(CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-f", Search, Some(CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-f", Search, Some(CONTEXT)),
     ]);
 
+    search::init(cx);
     number_input::init(cx);
 }
 
@@ -227,8 +234,8 @@ pub(super) struct LastLayout {
     pub(super) visible_range: Range<usize>,
     /// The first visible line top position in scroll viewport.
     pub(super) visible_top: Pixels,
-    /// The start byte offset of the first visible line.
-    pub(super) visible_start_offset: usize,
+    /// The range of byte offset of the visible lines.
+    pub(super) visible_range_offset: Range<usize>,
     /// The last layout lines (Only have visible lines).
     pub(super) lines: Rc<SmallVec<[WrappedLine; 1]>>,
     /// The line_height of text layout, this will change will InputElement painted.
@@ -255,11 +262,13 @@ pub struct InputState {
     /// - "Hello 世界💝" = 16
     /// - "💝" = 4
     pub(super) selected_range: Selection,
+    pub(super) search_panel: Option<Entity<SearchPanel>>,
+    pub(super) searchable: bool,
     /// Range for save the selected word, use to keep word range when drag move.
     pub(super) selected_word_range: Option<Selection>,
     pub(super) selection_reversed: bool,
     /// The marked range is the temporary insert text on IME typing.
-    pub(super) marked_range: Option<Selection>,
+    pub(super) ime_marked_range: Option<Selection>,
     pub(super) last_layout: Option<LastLayout>,
     pub(super) last_cursor: Option<usize>,
     /// The input container bounds
@@ -342,9 +351,11 @@ impl InputState {
             blink_cursor,
             history,
             selected_range: Selection::default(),
+            search_panel: None,
+            searchable: false,
             selected_word_range: None,
             selection_reversed: false,
-            marked_range: None,
+            ime_marked_range: None,
             input_bounds: Bounds::default(),
             selecting: false,
             disabled: false,
@@ -425,6 +436,13 @@ impl InputState {
             code_action_providers: vec![],
             completion_provider: None,
         };
+        self.searchable = true;
+        self
+    }
+
+    /// Set this input is searchable, default is false (Default true for Code Editor).
+    pub fn searchable(mut self, searchable: bool) -> Self {
+        self.searchable = searchable;
         self
     }
 
@@ -634,7 +652,7 @@ impl InputState {
         };
         let line_height = last_layout.line_height;
 
-        let mut prev_lines_offset = last_layout.visible_start_offset;
+        let mut prev_lines_offset = last_layout.visible_range_offset.start;
         let mut y_offset = last_layout.visible_top;
         for (line_index, line) in last_layout.lines.iter().enumerate() {
             let local_offset = offset.saturating_sub(prev_lines_offset);
@@ -1049,7 +1067,7 @@ impl InputState {
         cx: &mut Context<Self>,
     ) {
         self.move_to(0, window, cx);
-        self.select_to(self.text.len(), window, cx)
+        self.select_to(self.text.len(), window, cx);
     }
 
     pub(super) fn home(&mut self, _: &MoveHome, window: &mut Window, cx: &mut Context<Self>) {
@@ -1549,7 +1567,7 @@ impl InputState {
             return;
         }
 
-        if self.marked_range.is_some() {
+        if self.ime_marked_range.is_some() {
             self.unmark_text(window, cx);
         }
 
@@ -1577,9 +1595,9 @@ impl InputState {
     ) {
         // If there have IME marked range and is empty (Means pressed Esc to abort IME typing)
         // Clear the marked range.
-        if let Some(marked_range) = &self.marked_range {
-            if marked_range.len() == 0 {
-                self.marked_range = None;
+        if let Some(ime_marked_range) = &self.ime_marked_range {
+            if ime_marked_range.len() == 0 {
+                self.ime_marked_range = None;
             }
         }
 
@@ -1674,6 +1692,41 @@ impl InputState {
         cx.notify();
     }
 
+    pub(crate) fn scroll_to(&mut self, offset: usize, cx: &mut Context<Self>) {
+        let Some(last_layout) = self.last_layout.as_ref() else {
+            return;
+        };
+        let Some(bounds) = self.last_bounds.as_ref() else {
+            return;
+        };
+
+        let mut scroll_offset = self.scroll_handle.offset();
+        let line_height = last_layout.line_height;
+
+        let point = self.text.offset_to_point(offset);
+        let row = point.row as usize;
+
+        let mut row_offset_y = px(0.);
+        for (ix, wrap_line) in self.text_wrapper.lines.iter().enumerate() {
+            if ix == row {
+                break;
+            }
+
+            row_offset_y += wrap_line.height(line_height);
+        }
+
+        // Check if row_offset_y is out of the viewport
+        // If row offset is not in the viewport, scroll to make it visible
+        if row_offset_y < -scroll_offset.y {
+            // Scroll up
+            scroll_offset.y = -row_offset_y - line_height + bounds.size.height.half();
+        } else if row_offset_y + line_height > -scroll_offset.y + bounds.size.height {
+            // Scroll down
+            scroll_offset.y = -(row_offset_y - bounds.size.height.half());
+        }
+        self.update_scroll_offset(Some(scroll_offset), cx);
+    }
+
     pub(super) fn show_character_palette(
         &mut self,
         _: &ShowCharacterPalette,
@@ -1756,6 +1809,7 @@ impl InputState {
     fn move_to(&mut self, offset: usize, _: &mut Window, cx: &mut Context<Self>) {
         let offset = offset.clamp(0, self.text.len());
         self.selected_range = (offset..offset).into();
+        self.scroll_to(offset, cx);
         self.pause_blink_cursor(cx);
         self.update_preferred_column();
         self.hide_context_menu(cx);
@@ -1766,8 +1820,8 @@ impl InputState {
     ///
     /// The offset is the UTF-8 offset.
     pub fn cursor(&self) -> usize {
-        if let Some(marked_range) = &self.marked_range {
-            return marked_range.end;
+        if let Some(ime_marked_range) = &self.ime_marked_range {
+            return ime_marked_range.end;
         }
 
         if self.selection_reversed {
@@ -1809,7 +1863,7 @@ impl InputState {
         // - included the scroll offset.
         let inner_position = position - bounds.origin - point(line_number_width, px(0.));
 
-        let mut index = last_layout.visible_start_offset;
+        let mut index = last_layout.visible_range_offset.start;
         let mut y_offset = last_layout.visible_top;
         for (ix, line) in self
             .text_wrapper
@@ -2183,6 +2237,10 @@ impl InputState {
             }
         }
     }
+
+    pub(super) fn selected_text(&self) -> Rope {
+        self.text.slice(self.selected_range.into())
+    }
 }
 
 impl EntityInputHandler for InputState {
@@ -2215,12 +2273,12 @@ impl EntityInputHandler for InputState {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<Range<usize>> {
-        self.marked_range
+        self.ime_marked_range
             .map(|range| self.range_to_utf16(&range.into()))
     }
 
     fn unmark_text(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
-        self.marked_range = None;
+        self.ime_marked_range = None;
     }
 
     /// Replace text in range.
@@ -2243,7 +2301,7 @@ impl EntityInputHandler for InputState {
         let range = range_utf16
             .as_ref()
             .map(|range_utf16| self.range_from_utf16(range_utf16))
-            .or(self.marked_range.map(|range| range.into()))
+            .or(self.ime_marked_range.map(|range| range.into()))
             .unwrap_or(self.selected_range.into());
 
         let old_text = self.text.clone();
@@ -2273,9 +2331,10 @@ impl EntityInputHandler for InputState {
         self.mode
             .update_highlighter(&range, &self.text, &new_text, true, cx);
         self.selected_range = (new_offset..new_offset).into();
-        self.marked_range.take();
+        self.ime_marked_range.take();
         self.update_preferred_column();
         self.update_scroll_offset(None, cx);
+        self.update_search(cx);
         self.mode.update_auto_grow(&self.text_wrapper);
         self.handle_completion_trigger(&range, &new_text, window, cx);
         cx.emit(InputEvent::Change);
@@ -2298,7 +2357,7 @@ impl EntityInputHandler for InputState {
         let range = range_utf16
             .as_ref()
             .map(|range_utf16| self.range_from_utf16(range_utf16))
-            .or(self.marked_range.map(|range| range.into()))
+            .or(self.ime_marked_range.map(|range| range.into()))
             .unwrap_or(self.selected_range.into());
 
         let old_text = self.text.clone();
@@ -2320,9 +2379,9 @@ impl EntityInputHandler for InputState {
         if new_text.is_empty() {
             // Cancel selection, when cancel IME input.
             self.selected_range = (range.start..range.start).into();
-            self.marked_range = None;
+            self.ime_marked_range = None;
         } else {
-            self.marked_range = Some((range.start..range.start + new_text.len()).into());
+            self.ime_marked_range = Some((range.start..range.start + new_text.len()).into());
             self.selected_range = new_selected_range_utf16
                 .as_ref()
                 .map(|range_utf16| self.range_from_utf16(range_utf16))
@@ -2352,7 +2411,7 @@ impl EntityInputHandler for InputState {
         let mut end_origin = None;
         let line_number_origin = point(line_number_width, px(0.));
         let mut y_offset = last_layout.visible_top;
-        let mut index_offset = last_layout.visible_start_offset;
+        let mut index_offset = last_layout.visible_range_offset.start;
 
         for line in last_layout.lines.iter() {
             if start_origin.is_some() && end_origin.is_some() {
@@ -2400,7 +2459,7 @@ impl EntityInputHandler for InputState {
         let last_layout = self.last_layout.as_ref()?;
         let line_height = last_layout.line_height;
         let line_point = self.last_bounds?.localize(&point)?;
-        let offset = last_layout.visible_start_offset;
+        let offset = last_layout.visible_range_offset.start;
 
         for line in last_layout.lines.iter() {
             if let Ok(utf8_index) = line.index_for_position(line_point, line_height) {

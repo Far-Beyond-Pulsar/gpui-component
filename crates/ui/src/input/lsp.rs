@@ -5,6 +5,7 @@ use gpui::{App, Context, Entity, EntityInputHandler, SharedString, Task, Window}
 use lsp_types::{
     request::Completion, CodeAction, CompletionContext, CompletionItem, CompletionResponse,
 };
+use rope::Rope;
 
 use crate::input::{
     popovers::{CodeActionItem, CodeActionMenu, CompletionMenu, ContextMenu},
@@ -16,7 +17,7 @@ pub trait CompletionProvider {
     /// Fetches completions based on the given byte offset.
     fn completions(
         &self,
-        state: Entity<InputState>,
+        text: &Rope,
         offset: usize,
         trigger: CompletionContext,
         window: &mut Window,
@@ -174,8 +175,7 @@ impl InputState {
         };
 
         let provider_responses =
-            provider.completions(cx.entity(), start_offset, completion_context, window, cx);
-
+            provider.completions(&self.text, start_offset, completion_context, window, cx);
         self._context_menu_task = cx.spawn_in(window, async move |editor, cx| {
             let mut completions: Vec<CompletionItem> = vec![];
             if let Some(provider_responses) = provider_responses.await.ok() {
