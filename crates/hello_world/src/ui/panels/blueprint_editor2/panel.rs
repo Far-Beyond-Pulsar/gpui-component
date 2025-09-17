@@ -361,7 +361,9 @@ impl BlueprintEditorPanel {
             &self.graph,
         );
 
-        let zoom_factor = if delta_y > 0.0 { 0.9 } else { 1.1 };
+    // Swap scroll direction: invert the zoom factor mapping so wheel delta
+    // signs produce the opposite zoom direction than before.
+    let zoom_factor = if delta_y > 0.0 { 1.1 } else { 0.9 };
         let new_zoom = (self.graph.zoom_level * zoom_factor).clamp(0.1, 3.0);
 
         // Use an equivalent delta-based formula that is numerically stable and avoids
