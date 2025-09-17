@@ -1,0 +1,3 @@
+//! A simple node that checks if two values are not equal.
+
+@[in_a_any]@ != @[in_b_any]@

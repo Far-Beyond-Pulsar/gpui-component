@@ -1,0 +1,9 @@
+//! A node that moves/renames a file from source to destination.
+
+/// Move/rename a file from source to destination.
+fn @[pulsar_node_fn_id]@() -> Result<(), String> {
+    match std::fs::rename(@[in_source_string]@, @[in_destination_string]@) {
+        Ok(()) => Ok(()),
+        Err(e) => Err(format!("Failed to move file: {}", e)),
+    }
+}

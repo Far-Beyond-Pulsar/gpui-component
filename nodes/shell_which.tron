@@ -1,0 +1,32 @@
+//! A node that finds the path to an executable command.
+
+/// Find the path to an executable command.
+fn @[pulsar_node_fn_id]@() -> Result<String, String> {
+    use std::process::Command;
+    
+    let output = if cfg!(target_os = "windows") {
+        Command::new("where")
+            .arg(@[in_command_string]@)
+            .output()
+    } else {
+        Command::new("which")
+            .arg(@[in_command_string]@)
+            .output()
+    };
+    
+    match output {
+        Ok(output) => {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if path.is_empty() {
+                    Err(format!("Command '{}' not found", @[in_command_string]@))
+                } else {
+                    Ok(path)
+                }
+            } else {
+                Err(format!("Command '{}' not found", @[in_command_string]@))
+            }
+        },
+        Err(e) => Err(format!("Failed to search for command: {}", e)),
+    }
+}

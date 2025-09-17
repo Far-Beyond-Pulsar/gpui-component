@@ -1,0 +1,6 @@
+//! A node that returns the operating system name.
+
+/// Get the operating system name.
+fn @[pulsar_node_fn_id]@() -> String {
+    std::env::consts::OS.to_string()
+}

@@ -1,0 +1,6 @@
+//! A node that sets an environment variable.
+
+/// Set an environment variable.
+fn @[pulsar_node_fn_id]@() {
+    std::env::set_var(@[in_name_string]@, @[in_value_string]@);
+}

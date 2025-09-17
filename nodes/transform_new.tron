@@ -1,0 +1,6 @@
+//! A node that creates a new transform with position, rotation, and scale.
+
+/// Create a new transform.
+fn @[pulsar_node_fn_id]@() -> ((f32, f32, f32), (f32, f32, f32), (f32, f32, f32)) {
+    (@[in_position_vector3]@, @[in_rotation_vector3]@, @[in_scale_vector3]@)
+}

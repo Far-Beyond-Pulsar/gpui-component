@@ -1,0 +1,6 @@
+//! A node that stores a value in an atomic boolean.
+
+/// Store a value in an atomic boolean.
+fn @[pulsar_node_fn_id]@() {
+    @[in_atomic_atomic_bool]@.store(@[in_value_bool]@, std::sync::atomic::Ordering::Relaxed);
+}

@@ -1,0 +1,6 @@
+//! A node that creates a new empty HashMap.
+
+/// Create a new empty HashMap.
+fn @[pulsar_node_fn_id]@() -> std::collections::HashMap<String, String> {
+    std::collections::HashMap::new()
+}

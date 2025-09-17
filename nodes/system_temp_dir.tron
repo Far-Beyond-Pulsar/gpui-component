@@ -1,0 +1,6 @@
+//! A node that returns the system temporary directory.
+
+/// Get the system temporary directory.
+fn @[pulsar_node_fn_id]@() -> String {
+    std::env::temp_dir().to_string_lossy().to_string()
+}

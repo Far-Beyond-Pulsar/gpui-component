@@ -1,0 +1,6 @@
+//! A node that atomically adds to an i32 value.
+
+/// Atomically add to an i32 value and return the previous value.
+fn @[pulsar_node_fn_id]@() -> i32 {
+    @[in_atomic_atomic_i32]@.fetch_add(@[in_value_number]@ as i32, std::sync::atomic::Ordering::Relaxed)
+}

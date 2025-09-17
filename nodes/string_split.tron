@@ -1,0 +1,6 @@
+//! A node that splits a string by a delimiter.
+
+/// Split a string by a delimiter.
+fn @[pulsar_node_fn_id]@() -> Vec<String> {
+    @[in_text_string]@.split(@[in_delimiter_string]@).map(|s| s.to_string()).collect()
+}

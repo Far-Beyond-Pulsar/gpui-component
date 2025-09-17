@@ -1,0 +1,22 @@
+//! A node that downloads a file from a URL.
+
+// TODO: Implement actual HTTP Download request logic using an HTTP client library.
+/// Download a file from a URL to a local path.
+fn @[pulsar_node_fn_id]@() -> Result<(), String> {
+    use std::process::Command;
+    
+    let output = Command::new("curl")
+        .args(["-s", "-o", @[in_output_path_string]@, @[in_url_string]@])
+        .output();
+    
+    match output {
+        Ok(output) => {
+            if output.status.success() {
+                Ok(())
+            } else {
+                Err(String::from_utf8_lossy(&output.stderr).to_string())
+            }
+        },
+        Err(e) => Err(format!("Failed to execute curl: {}", e)),
+    }
+}

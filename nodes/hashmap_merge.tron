@@ -1,0 +1,10 @@
+//! A node that merges two HashMaps.
+
+/// Merge two HashMaps (second map overwrites first on key conflicts).
+fn @[pulsar_node_fn_id]@() -> std::collections::HashMap<String, String> {
+    let mut result = @[in_map1_hashmap]@;
+    for (key, value) in @[in_map2_hashmap]@ {
+        result.insert(key, value);
+    }
+    result
+}

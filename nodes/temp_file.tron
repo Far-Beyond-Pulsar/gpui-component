@@ -1,0 +1,9 @@
+//! A node that creates a temporary file path.
+
+/// Create a temporary file path.
+fn @[pulsar_node_fn_id]@() -> String {
+    use std::env;
+    let temp_dir = env::temp_dir();
+    let filename = format!("temp_{}.tmp", std::process::id());
+    temp_dir.join(filename).to_string_lossy().to_string()
+}

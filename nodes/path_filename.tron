@@ -1,0 +1,9 @@
+//! A node that extracts the filename from a path.
+
+/// Extract the filename from a path.
+fn @[pulsar_node_fn_id]@() -> Option<String> {
+    std::path::Path::new(@[in_path_string]@)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|s| s.to_string())
+}

@@ -1,0 +1,6 @@
+//! A node that checks if a HashMap contains a specific key.
+
+/// Check if a HashMap contains a specific key.
+fn @[pulsar_node_fn_id]@() -> bool {
+    @[in_map_hashmap]@.contains_key(@[in_key_string]@)
+}

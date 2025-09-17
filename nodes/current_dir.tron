@@ -1,0 +1,9 @@
+//! A node that returns the current working directory.
+
+/// Get the current working directory.
+fn @[pulsar_node_fn_id]@() -> Result<String, String> {
+    match std::env::current_dir() {
+        Ok(path) => Ok(path.to_string_lossy().to_string()),
+        Err(e) => Err(format!("Failed to get current directory: {}", e)),
+    }
+}

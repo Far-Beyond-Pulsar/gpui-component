@@ -1,0 +1,6 @@
+//! A node that exits the current process with a code.
+
+/// Exit the current process with the specified exit code.
+fn @[pulsar_node_fn_id]@() -> ! {
+    std::process::exit(@[in_code_number]@ as i32)
+}

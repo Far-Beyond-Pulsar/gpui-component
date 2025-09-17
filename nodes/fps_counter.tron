@@ -1,0 +1,11 @@
+//! A node that calculates frames per second from delta time.
+
+/// Calculate frames per second from delta time.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let delta_time = @[in_delta_time_number]@;
+    if delta_time > 0.0 {
+        1.0 / delta_time
+    } else {
+        0.0
+    }
+}

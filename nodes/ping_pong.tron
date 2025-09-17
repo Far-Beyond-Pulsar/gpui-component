@@ -1,0 +1,14 @@
+//! A node that creates a ping-pong value that bounces between 0 and length.
+
+/// Create a ping-pong value that bounces between 0 and length.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let t = @[in_t_number]@;
+    let length = @[in_length_number]@;
+    let cycle = (t / length).floor();
+    let position = t % length;
+    if cycle as i32 % 2 == 0 {
+        position
+    } else {
+        length - position
+    }
+}

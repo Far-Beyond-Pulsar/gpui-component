@@ -1,0 +1,8 @@
+//! A node that returns the number of CPU cores.
+
+/// Get the number of CPU cores.
+fn @[pulsar_node_fn_id]@() -> usize {
+    std::thread::available_parallelism()
+        .map(|p| p.get())
+        .unwrap_or(1)
+}

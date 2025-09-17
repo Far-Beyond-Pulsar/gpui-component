@@ -1,0 +1,9 @@
+//! A node that copies a file from source to destination.
+
+/// Copy a file from source to destination.
+fn @[pulsar_node_fn_id]@() -> Result<(), String> {
+    match std::fs::copy(@[in_source_string]@, @[in_destination_string]@) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("Failed to copy file: {}", e)),
+    }
+}

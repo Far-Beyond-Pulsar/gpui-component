@@ -1,0 +1,6 @@
+//! A node that returns command line arguments.
+
+/// Get command line arguments.
+fn @[pulsar_node_fn_id]@() -> Vec<String> {
+    std::env::args().collect()
+}

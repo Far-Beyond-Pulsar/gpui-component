@@ -1,0 +1,11 @@
+//! A node that writes lines to a file.
+
+/// Write lines to a file.
+fn @[pulsar_node_fn_id]@() -> Result<(), String> {
+    let lines: Vec<String> = @[in_lines_vector]@;
+    let content = lines.join("\n");
+    match std::fs::write(@[in_path_string]@, content) {
+        Ok(()) => Ok(()),
+        Err(e) => Err(format!("Failed to write file: {}", e)),
+    }
+}

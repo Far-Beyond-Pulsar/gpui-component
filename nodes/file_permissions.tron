@@ -1,0 +1,16 @@
+//! A node that checks file permissions (read/write/execute).
+
+/// Check file permissions.
+fn @[pulsar_node_fn_id]@() -> Result<(bool, bool, bool), String> {
+    match std::fs::metadata(@[in_path_string]@) {
+        Ok(metadata) => {
+            let permissions = metadata.permissions();
+            Ok((
+                !permissions.readonly(),  // writable
+                true,                     // readable (if we can get metadata, it's readable)
+                false,                    // executable (platform dependent)
+            ))
+        },
+        Err(e) => Err(format!("Failed to get file permissions: {}", e)),
+    }
+}

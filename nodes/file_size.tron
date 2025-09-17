@@ -1,0 +1,9 @@
+//! A node that returns the size of a file in bytes.
+
+/// Get the size of a file in bytes.
+fn @[pulsar_node_fn_id]@() -> Result<u64, String> {
+    match std::fs::metadata(@[in_path_string]@) {
+        Ok(metadata) => Ok(metadata.len()),
+        Err(e) => Err(format!("Failed to get file size: {}", e)),
+    }
+}

@@ -1,0 +1,6 @@
+//! A node that creates a new channel for communication between threads.
+
+/// Create a new channel for communication between threads.
+fn @[pulsar_node_fn_id]@() -> (std::sync::mpsc::Sender<String>, std::sync::mpsc::Receiver<String>) {
+    std::sync::mpsc::channel()
+}

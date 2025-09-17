@@ -1,0 +1,6 @@
+//! A node that returns the elapsed time since a timer was started.
+
+/// Get elapsed time since timer start in milliseconds.
+fn @[pulsar_node_fn_id]@() -> u64 {
+    @[in_start_time_instant]@.elapsed().as_millis() as u64
+}

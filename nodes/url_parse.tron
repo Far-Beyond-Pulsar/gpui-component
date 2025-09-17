@@ -1,0 +1,29 @@
+//! A node that parses a URL into components.
+
+/// Parse a URL into its components (basic implementation).
+fn @[pulsar_node_fn_id]@() -> Result<(String, String, String, String), String> {
+    let url = @[in_url_string]@;
+    
+    // Split scheme
+    let (scheme, rest) = if let Some(pos) = url.find("://") {
+        (url[..pos].to_string(), &url[pos + 3..])
+    } else {
+        return Err("Invalid URL: missing scheme".to_string());
+    };
+    
+    // Split host and path
+    let (host, path) = if let Some(pos) = rest.find('/') {
+        (rest[..pos].to_string(), rest[pos..].to_string())
+    } else {
+        (rest.to_string(), "/".to_string())
+    };
+    
+    // Extract query (simple implementation)
+    let (path, query) = if let Some(pos) = path.find('?') {
+        (path[..pos].to_string(), path[pos + 1..].to_string())
+    } else {
+        (path, String::new())
+    };
+    
+    Ok((scheme, host, path, query))
+}

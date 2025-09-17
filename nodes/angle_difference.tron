@@ -1,0 +1,10 @@
+//! A node that calculates the shortest angular difference between two angles.
+
+/// Calculate the shortest angular difference between two angles.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let angle1 = @[in_angle1_number]@;
+    let angle2 = @[in_angle2_number]@;
+    let diff = angle2 - angle1;
+    let pi = std::f32::consts::PI;
+    ((diff + pi) % (2.0 * pi)) - pi
+}

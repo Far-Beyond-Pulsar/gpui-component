@@ -1,0 +1,27 @@
+//! A node that recursively walks through a directory tree.
+
+/// Recursively walk through a directory tree and return all file paths.
+fn @[pulsar_node_fn_id]@() -> Result<Vec<String>, String> {
+    use std::fs;
+    
+    fn walk_dir(dir: &str, files: &mut Vec<String>) -> Result<(), std::io::Error> {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                if let Some(path_str) = path.to_str() {
+                    walk_dir(path_str, files)?;
+                }
+            } else if let Some(path_str) = path.to_str() {
+                files.push(path_str.to_string());
+            }
+        }
+        Ok(())
+    }
+    
+    let mut files = Vec::new();
+    match walk_dir(@[in_path_string]@, &mut files) {
+        Ok(()) => Ok(files),
+        Err(e) => Err(format!("Failed to walk directory: {}", e)),
+    }
+}

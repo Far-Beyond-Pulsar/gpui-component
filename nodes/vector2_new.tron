@@ -1,0 +1,6 @@
+//! A node that creates a new 2D vector from x and y components.
+
+/// Create a new 2D vector.
+fn @[pulsar_node_fn_id]@() -> (f32, f32) {
+    (@[in_x_number]@, @[in_y_number]@)
+}

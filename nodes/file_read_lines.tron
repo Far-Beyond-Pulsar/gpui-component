@@ -1,0 +1,9 @@
+//! A node that reads a file and returns its lines as a vector.
+
+/// Read a file and return its lines as a vector.
+fn @[pulsar_node_fn_id]@() -> Result<Vec<String>, String> {
+    match std::fs::read_to_string(@[in_path_string]@) {
+        Ok(content) => Ok(content.lines().map(|s| s.to_string()).collect()),
+        Err(e) => Err(format!("Failed to read file: {}", e)),
+    }
+}

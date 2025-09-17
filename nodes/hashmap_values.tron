@@ -1,0 +1,6 @@
+//! A node that returns all values from a HashMap.
+
+/// Get all values from a HashMap.
+fn @[pulsar_node_fn_id]@() -> Vec<String> {
+    @[in_map_hashmap]@.values().cloned().collect()
+}

@@ -1,0 +1,26 @@
+//! A node that returns the system uptime.
+
+/// Get the system uptime (simplified version).
+fn @[pulsar_node_fn_id]@() -> Result<String, String> {
+    use std::process::Command;
+    
+    let output = if cfg!(target_os = "windows") {
+        Command::new("cmd")
+            .args(["/C", "systeminfo | findstr \"Boot Time\""])
+            .output()
+    } else {
+        Command::new("uptime")
+            .output()
+    };
+    
+    match output {
+        Ok(output) => {
+            if output.status.success() {
+                Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+            } else {
+                Err("Failed to get uptime".to_string())
+            }
+        },
+        Err(e) => Err(format!("Failed to execute uptime command: {}", e)),
+    }
+}

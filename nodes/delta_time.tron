@@ -1,0 +1,8 @@
+//! A node that calculates delta time between two time points.
+
+/// Calculate delta time between two time points in seconds.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let current = @[in_current_time_number]@;
+    let previous = @[in_previous_time_number]@;
+    (current - previous) / 1000.0
+}

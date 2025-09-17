@@ -1,0 +1,6 @@
+//! A node that returns all keys from a HashMap.
+
+/// Get all keys from a HashMap.
+fn @[pulsar_node_fn_id]@() -> Vec<String> {
+    @[in_map_hashmap]@.keys().cloned().collect()
+}

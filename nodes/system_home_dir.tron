@@ -1,0 +1,8 @@
+//! A node that returns the user's home directory.
+
+/// Get the user's home directory.
+fn @[pulsar_node_fn_id]@() -> Option<String> {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .ok()
+}

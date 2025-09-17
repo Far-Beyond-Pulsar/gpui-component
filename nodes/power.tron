@@ -1,0 +1,3 @@
+//! A simple node that raises a number to a power.
+
+@[in_base_number]@.powf(@[in_exponent_number]@)

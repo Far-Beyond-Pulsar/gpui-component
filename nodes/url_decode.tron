@@ -1,0 +1,35 @@
+//! A node that URL-decodes a string.
+
+/// URL-decode a string (basic implementation).
+fn @[pulsar_node_fn_id]@() -> Result<String, String> {
+    let input = @[in_text_string]@;
+    let mut result = Vec::new();
+    let mut chars = input.chars();
+    
+    while let Some(ch) = chars.next() {
+        match ch {
+            '%' => {
+                let hex: String = chars.by_ref().take(2).collect();
+                if hex.len() == 2 {
+                    match u8::from_str_radix(&hex, 16) {
+                        Ok(byte) => result.push(byte),
+                        Err(_) => return Err("Invalid percent encoding".to_string()),
+                    }
+                } else {
+                    return Err("Incomplete percent encoding".to_string());
+                }
+            },
+            '+' => result.push(b' '),
+            _ => {
+                let mut buf = [0; 4];
+                let bytes = ch.encode_utf8(&mut buf).as_bytes();
+                result.extend_from_slice(bytes);
+            }
+        }
+    }
+    
+    match String::from_utf8(result) {
+        Ok(s) => Ok(s),
+        Err(_) => Err("Invalid UTF-8 in decoded string".to_string()),
+    }
+}

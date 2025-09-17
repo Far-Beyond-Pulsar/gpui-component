@@ -1,0 +1,21 @@
+//! A node that makes an HTTP GET request.
+
+/// Make an HTTP GET request and return the response body.
+fn @[pulsar_node_fn_id]@() -> Result<String, String> {
+    use std::process::Command;
+    
+    let output = Command::new("curl")
+        .args(["-s", @[in_url_string]@])
+        .output();
+    
+    match output {
+        Ok(output) => {
+            if output.status.success() {
+                Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            } else {
+                Err(String::from_utf8_lossy(&output.stderr).to_string())
+            }
+        },
+        Err(e) => Err(format!("Failed to execute curl: {}", e)),
+    }
+}

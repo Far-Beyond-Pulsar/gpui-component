@@ -1,0 +1,19 @@
+//! A node that lists the contents of a directory.
+
+/// List the contents of a directory.
+fn @[pulsar_node_fn_id]@() -> Result<Vec<String>, String> {
+    match std::fs::read_dir(@[in_path_string]@) {
+        Ok(entries) => {
+            let mut files = Vec::new();
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    if let Some(name) = entry.file_name().to_str() {
+                        files.push(name.to_string());
+                    }
+                }
+            }
+            Ok(files)
+        },
+        Err(e) => Err(format!("Failed to read directory: {}", e)),
+    }
+}

@@ -1,0 +1,6 @@
+//! A node that lists all environment variables.
+
+/// List all environment variables.
+fn @[pulsar_node_fn_id]@() -> std::collections::HashMap<String, String> {
+    std::env::vars().collect()
+}

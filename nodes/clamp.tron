@@ -1,0 +1,3 @@
+//! A simple node that clamps a value between min and max.
+
+@[in_value_number]@.clamp(@[in_min_number]@, @[in_max_number]@)

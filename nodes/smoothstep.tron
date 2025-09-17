@@ -1,0 +1,10 @@
+//! A node that performs smooth interpolation between edge0 and edge1.
+
+/// Perform smooth interpolation between edge0 and edge1.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let edge0 = @[in_edge0_number]@;
+    let edge1 = @[in_edge1_number]@;
+    let x = @[in_x_number]@;
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}

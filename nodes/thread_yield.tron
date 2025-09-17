@@ -1,0 +1,6 @@
+//! A node that yields the current thread.
+
+/// Yield the current thread to allow other threads to run.
+fn @[pulsar_node_fn_id]@() {
+    std::thread::yield_now();
+}

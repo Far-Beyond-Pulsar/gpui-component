@@ -1,0 +1,8 @@
+//! A node that creates a bouncing value that oscillates between 0 and 1.
+
+/// Create a bouncing value that oscillates between 0 and 1.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let time = @[in_time_number]@;
+    let frequency = @[in_frequency_number]@;
+    (time * frequency).sin().abs()
+}

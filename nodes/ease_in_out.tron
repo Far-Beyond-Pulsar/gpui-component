@@ -1,0 +1,11 @@
+//! A node that applies ease-in-out interpolation.
+
+/// Apply ease-in-out interpolation.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let t = @[in_t_number]@.clamp(0.0, 1.0);
+    if t < 0.5 {
+        2.0 * t * t
+    } else {
+        -1.0 + (4.0 - 2.0 * t) * t
+    }
+}

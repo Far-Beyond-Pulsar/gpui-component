@@ -1,0 +1,6 @@
+//! A node that creates a new color from RGBA components.
+
+/// Create a new color from RGBA components.
+fn @[pulsar_node_fn_id]@() -> (f32, f32, f32, f32) {
+    (@[in_r_number]@, @[in_g_number]@, @[in_b_number]@, @[in_a_number]@)
+}

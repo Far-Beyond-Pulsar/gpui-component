@@ -1,0 +1,6 @@
+//! A node that creates a new atomic i32.
+
+/// Create a new atomic i32.
+fn @[pulsar_node_fn_id]@() -> std::sync::atomic::AtomicI32 {
+    std::sync::atomic::AtomicI32::new(@[in_value_number]@ as i32)
+}

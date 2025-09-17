@@ -1,0 +1,6 @@
+//! A node that starts a timer and returns the start time.
+
+/// Start a timer and return the start time.
+fn @[pulsar_node_fn_id]@() -> std::time::Instant {
+    std::time::Instant::now()
+}

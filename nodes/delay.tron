@@ -1,0 +1,6 @@
+//! A node that introduces a delay/sleep for a specified duration.
+
+/// Sleep for a specified duration in milliseconds.
+fn @[pulsar_node_fn_id]@() {
+    std::thread::sleep(std::time::Duration::from_millis(@[in_milliseconds_number]@ as u64));
+}

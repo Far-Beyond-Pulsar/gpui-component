@@ -1,0 +1,8 @@
+//! A node that clears all entries from a HashMap.
+
+/// Clear all entries from a HashMap.
+fn @[pulsar_node_fn_id]@() -> std::collections::HashMap<String, String> {
+    let mut map = @[in_map_hashmap]@;
+    map.clear();
+    map
+}

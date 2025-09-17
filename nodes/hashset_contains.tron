@@ -1,0 +1,6 @@
+//! A node that checks if a HashSet contains a value.
+
+/// Check if a HashSet contains a value.
+fn @[pulsar_node_fn_id]@() -> bool {
+    @[in_set_hashset]@.contains(@[in_value_string]@)
+}

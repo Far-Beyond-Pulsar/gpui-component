@@ -1,0 +1,3 @@
+//! A simple node that returns the length of a string.
+
+@[in_text_string]@.len()

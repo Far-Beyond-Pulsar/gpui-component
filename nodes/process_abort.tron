@@ -1,0 +1,6 @@
+//! A node that aborts the current process immediately.
+
+/// Abort the current process immediately.
+fn @[pulsar_node_fn_id]@() -> ! {
+    std::process::abort()
+}

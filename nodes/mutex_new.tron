@@ -1,0 +1,6 @@
+//! A node that creates a new mutex.
+
+/// Create a new mutex wrapping a value.
+fn @[pulsar_node_fn_id]@() -> std::sync::Mutex<String> {
+    std::sync::Mutex::new(@[in_value_string]@.to_string())
+}

@@ -1,0 +1,6 @@
+//! A node that creates a new empty HashSet.
+
+/// Create a new empty HashSet.
+fn @[pulsar_node_fn_id]@() -> std::collections::HashSet<String> {
+    std::collections::HashSet::new()
+}

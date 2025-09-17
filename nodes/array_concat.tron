@@ -1,0 +1,8 @@
+//! A node that concatenates two vectors.
+
+/// Concatenate two vectors.
+fn @[pulsar_node_fn_id]@() -> Vec<@[in_item_type]@> {
+    let mut result = @[in_a_vector]@;
+    result.extend(@[in_b_vector]@);
+    result
+}

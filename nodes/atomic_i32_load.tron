@@ -1,0 +1,6 @@
+//! A node that loads the value of an atomic i32.
+
+/// Load the value of an atomic i32.
+fn @[pulsar_node_fn_id]@() -> i32 {
+    @[in_atomic_atomic_i32]@.load(std::sync::atomic::Ordering::Relaxed)
+}

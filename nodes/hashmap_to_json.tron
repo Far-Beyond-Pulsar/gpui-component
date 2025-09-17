@@ -1,0 +1,13 @@
+//! A node that converts a HashMap to JSON string representation.
+
+/// Convert a HashMap to JSON string representation.
+fn @[pulsar_node_fn_id]@() -> String {
+    let map = @[in_map_hashmap]@;
+    let mut json = String::from("{");
+    let entries: Vec<String> = map.iter()
+        .map(|(k, v)| format!("\"{}\":\"{}\"", k.replace("\"", "\\\""), v.replace("\"", "\\\"")))
+        .collect();
+    json.push_str(&entries.join(","));
+    json.push('}');
+    json
+}

@@ -1,0 +1,21 @@
+//! A node that executes a shell command asynchronously.
+
+/// Execute a shell command asynchronously and return the process ID.
+fn @[pulsar_node_fn_id]@() -> Result<u32, String> {
+    use std::process::Command;
+    
+    let mut child = if cfg!(target_os = "windows") {
+        Command::new("cmd")
+            .args(["/C", @[in_command_string]@])
+            .spawn()
+    } else {
+        Command::new("sh")
+            .args(["-c", @[in_command_string]@])
+            .spawn()
+    };
+    
+    match child {
+        Ok(child) => Ok(child.id()),
+        Err(e) => Err(format!("Failed to spawn process: {}", e)),
+    }
+}

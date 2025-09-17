@@ -1,0 +1,35 @@
+//! A node that encodes a string to base64.
+
+/// Encode a string to base64 (basic implementation).
+fn @[pulsar_node_fn_id]@() -> String {
+    let input = @[in_text_string]@;
+    let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut result = String::new();
+    let bytes = input.as_bytes();
+    
+    for chunk in bytes.chunks(3) {
+        let mut buf = [0u8; 3];
+        for (i, &byte) in chunk.iter().enumerate() {
+            buf[i] = byte;
+        }
+        
+        let b = ((buf[0] as u32) << 16) | ((buf[1] as u32) << 8) | (buf[2] as u32);
+        
+        result.push(alphabet.chars().nth(((b >> 18) & 63) as usize).unwrap());
+        result.push(alphabet.chars().nth(((b >> 12) & 63) as usize).unwrap());
+        
+        if chunk.len() > 1 {
+            result.push(alphabet.chars().nth(((b >> 6) & 63) as usize).unwrap());
+        } else {
+            result.push('=');
+        }
+        
+        if chunk.len() > 2 {
+            result.push(alphabet.chars().nth((b & 63) as usize).unwrap());
+        } else {
+            result.push('=');
+        }
+    }
+    
+    result
+}

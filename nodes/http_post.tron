@@ -1,0 +1,22 @@
+//! A node that makes an HTTP POST request.
+
+// TODO: Implement actual HTTP POST request logic using an HTTP client library.
+/// Make an HTTP POST request with data and return the response body.
+fn @[pulsar_node_fn_id]@() -> Result<String, String> {
+    use std::process::Command;
+    
+    let output = Command::new("curl")
+        .args(["-s", "-X", "POST", "-d", @[in_data_string]@, @[in_url_string]@])
+        .output();
+    
+    match output {
+        Ok(output) => {
+            if output.status.success() {
+                Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            } else {
+                Err(String::from_utf8_lossy(&output.stderr).to_string())
+            }
+        },
+        Err(e) => Err(format!("Failed to execute curl: {}", e)),
+    }
+}

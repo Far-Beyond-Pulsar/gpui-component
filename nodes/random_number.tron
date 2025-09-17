@@ -1,0 +1,8 @@
+//! A node that generates a random number between min and max.
+
+/// Generate a random number between min and max.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    rng.gen_range(@[in_min_number]@..=@[in_max_number]@)
+}

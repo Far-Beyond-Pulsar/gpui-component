@@ -1,0 +1,3 @@
+//! A simple node that checks if a string is empty.
+
+@[in_text_string]@.is_empty()

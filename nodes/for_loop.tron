@@ -1,0 +1,8 @@
+//! A node that executes a loop for a specified number of iterations.
+
+/// Execute a loop for a specified number of iterations.
+fn @[pulsar_node_fn_id]@() {
+    for i in 0..@[in_count_number]@ {
+        @[pulsar_exec_body]@
+    }
+}

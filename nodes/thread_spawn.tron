@@ -1,0 +1,8 @@
+//! A node that spawns a new thread to execute code.
+
+/// Spawn a new thread to execute code.
+fn @[pulsar_node_fn_id]@() -> std::thread::JoinHandle<()> {
+    std::thread::spawn(|| {
+        @[pulsar_exec_body]@
+    })
+}

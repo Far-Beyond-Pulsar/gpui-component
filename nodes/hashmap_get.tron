@@ -1,0 +1,6 @@
+//! A node that gets a value from a HashMap by key.
+
+/// Get a value from a HashMap by key.
+fn @[pulsar_node_fn_id]@() -> Option<String> {
+    @[in_map_hashmap]@.get(@[in_key_string]@).cloned()
+}

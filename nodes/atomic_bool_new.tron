@@ -1,0 +1,6 @@
+//! A node that creates a new atomic boolean.
+
+/// Create a new atomic boolean.
+fn @[pulsar_node_fn_id]@() -> std::sync::atomic::AtomicBool {
+    std::sync::atomic::AtomicBool::new(@[in_value_bool]@)
+}

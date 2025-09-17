@@ -1,0 +1,3 @@
+//! A simple node that converts a string to lowercase.
+
+@[in_text_string]@.to_lowercase()

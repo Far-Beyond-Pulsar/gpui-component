@@ -1,0 +1,8 @@
+//! A node that executes a while loop based on a condition.
+
+/// Execute a while loop based on a condition.
+fn @[pulsar_node_fn_id]@() {
+    while @[in_condition_bool]@ {
+        @[pulsar_exec_body]@
+    }
+}

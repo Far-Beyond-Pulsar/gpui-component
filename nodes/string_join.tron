@@ -1,0 +1,6 @@
+//! A node that joins a vector of strings with a separator.
+
+/// Join a vector of strings with a separator.
+fn @[pulsar_node_fn_id]@() -> String {
+    @[in_strings_vector]@.join(@[in_separator_string]@)
+}

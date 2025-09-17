@@ -1,0 +1,9 @@
+//! A node that creates a directory.
+
+/// Create a directory (including parent directories).
+fn @[pulsar_node_fn_id]@() -> Result<(), String> {
+    match std::fs::create_dir_all(@[in_path_string]@) {
+        Ok(()) => Ok(()),
+        Err(e) => Err(format!("Failed to create directory: {}", e)),
+    }
+}

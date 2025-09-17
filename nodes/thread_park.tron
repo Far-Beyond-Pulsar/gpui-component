@@ -1,0 +1,6 @@
+//! A node that parks the current thread.
+
+/// Park the current thread until unparked.
+fn @[pulsar_node_fn_id]@() {
+    std::thread::park();
+}

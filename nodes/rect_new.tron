@@ -1,0 +1,6 @@
+//! A node that creates a new rectangle from position and size.
+
+/// Create a new rectangle.
+fn @[pulsar_node_fn_id]@() -> ((f32, f32), (f32, f32)) {
+    (@[in_position_vector2]@, @[in_size_vector2]@)
+}

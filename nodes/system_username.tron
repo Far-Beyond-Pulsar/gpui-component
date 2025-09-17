@@ -1,0 +1,8 @@
+//! A node that returns the current username.
+
+/// Get the current username.
+fn @[pulsar_node_fn_id]@() -> Option<String> {
+    std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .ok()
+}

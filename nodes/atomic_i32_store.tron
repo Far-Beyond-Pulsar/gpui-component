@@ -1,0 +1,6 @@
+//! A node that stores a value in an atomic i32.
+
+/// Store a value in an atomic i32.
+fn @[pulsar_node_fn_id]@() {
+    @[in_atomic_atomic_i32]@.store(@[in_value_number]@ as i32, std::sync::atomic::Ordering::Relaxed);
+}

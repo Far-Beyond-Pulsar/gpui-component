@@ -1,0 +1,8 @@
+//! A node that returns the parent directory of a path.
+
+/// Get the parent directory of a path.
+fn @[pulsar_node_fn_id]@() -> Option<String> {
+    std::path::Path::new(@[in_path_string]@)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+}

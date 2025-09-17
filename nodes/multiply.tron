@@ -1,0 +1,3 @@
+//! A simple node that multiplies two numbers.
+
+@[in_a_number]@ * @[in_b_number]@

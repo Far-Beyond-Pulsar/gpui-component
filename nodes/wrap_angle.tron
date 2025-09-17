@@ -1,0 +1,9 @@
+//! A node that wraps an angle to be within 0 to 2π range.
+
+// TODO: Remove allocation in the future.
+/// Wrap an angle to be within 0 to 2π range.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let angle = @[in_angle_number]@;
+    let two_pi = 2.0 * std::f32::consts::PI;
+    ((angle % two_pi) + two_pi) % two_pi
+}

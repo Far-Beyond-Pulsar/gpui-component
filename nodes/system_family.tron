@@ -1,0 +1,6 @@
+//! A node that returns the operating system family.
+
+/// Get the operating system family.
+fn @[pulsar_node_fn_id]@() -> String {
+    std::env::consts::FAMILY.to_string()
+}

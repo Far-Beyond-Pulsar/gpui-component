@@ -1,0 +1,9 @@
+//! A node that checks if a rectangle contains a point.
+
+/// Check if a rectangle contains a point.
+fn @[pulsar_node_fn_id]@() -> bool {
+    let ((rect_x, rect_y), (width, height)) = @[in_rect_rectangle]@;
+    let (point_x, point_y) = @[in_point_vector2]@;
+    point_x >= rect_x && point_x <= rect_x + width &&
+    point_y >= rect_y && point_y <= rect_y + height
+}

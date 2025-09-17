@@ -1,0 +1,8 @@
+//! A node that calculates the cross product of two 3D vectors.
+
+/// Calculate the cross product of two 3D vectors.
+fn @[pulsar_node_fn_id]@() -> (f32, f32, f32) {
+    let (x1, y1, z1) = @[in_a_vector3]@;
+    let (x2, y2, z2) = @[in_b_vector3]@;
+    (y1 * z2 - z1 * y2, z1 * x2 - x1 * z2, x1 * y2 - y1 * x2)
+}

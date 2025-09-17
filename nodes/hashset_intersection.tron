@@ -1,0 +1,8 @@
+//! A node that computes the intersection of two HashSets.
+
+/// Compute the intersection of two HashSets.
+fn @[pulsar_node_fn_id]@() -> std::collections::HashSet<String> {
+    let set1 = @[in_set1_hashset]@;
+    let set2 = @[in_set2_hashset]@;
+    set1.intersection(&set2).cloned().collect()
+}

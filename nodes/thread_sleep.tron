@@ -1,0 +1,6 @@
+//! A node that puts the current thread to sleep.
+
+/// Put the current thread to sleep for specified milliseconds.
+fn @[pulsar_node_fn_id]@() {
+    std::thread::sleep(std::time::Duration::from_millis(@[in_milliseconds_number]@ as u64));
+}

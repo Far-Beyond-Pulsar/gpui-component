@@ -1,0 +1,8 @@
+//! A node that pops the last element from a vector.
+
+/// Pop the last element from a vector.
+fn @[pulsar_node_fn_id]@() -> (Vec<@[in_item_type]@>, Option<@[in_item_type]@>) {
+    let mut array = @[in_array_vector]@;
+    let popped = array.pop();
+    (array, popped)
+}

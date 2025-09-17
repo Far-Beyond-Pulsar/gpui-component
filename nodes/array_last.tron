@@ -1,0 +1,6 @@
+//! A node that returns the last element of a vector.
+
+/// Get the last element of a vector.
+fn @[pulsar_node_fn_id]@() -> Option<@[in_item_type]@> {
+    @[in_array_vector]@.last().cloned()
+}

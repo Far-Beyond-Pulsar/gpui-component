@@ -1,0 +1,6 @@
+//! A node that formats a string with placeholders.
+
+/// Format a string with placeholders.
+fn @[pulsar_node_fn_id]@() -> String {
+    format!(@[in_template_string]@, @[in_value_string]@)
+}

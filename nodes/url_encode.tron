@@ -1,0 +1,18 @@
+//! A node that URL-encodes a string.
+
+/// URL-encode a string (basic implementation).
+fn @[pulsar_node_fn_id]@() -> String {
+    let input = @[in_text_string]@;
+    let mut result = String::new();
+    for byte in input.as_bytes() {
+        match *byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                result.push(*byte as char);
+            },
+            _ => {
+                result.push_str(&format!("%{:02X}", byte));
+            }
+        }
+    }
+    result
+}

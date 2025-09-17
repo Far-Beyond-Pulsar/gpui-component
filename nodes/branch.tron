@@ -1,0 +1,10 @@
+//! A simple node that generates a branch based on a condition.
+
+/// Generate a branch based on a condition.
+fn @[pulsar_node_fn_id]@() {
+    if @[in_condition_bool]@ {
+        @[pulsar_exec_a]@
+    } else {
+        @[pulsar_exec_b]@
+    }
+}

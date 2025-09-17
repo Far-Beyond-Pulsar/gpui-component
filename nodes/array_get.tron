@@ -1,0 +1,8 @@
+//! A node that gets an element at a specific index.
+
+/// Get an element at a specific index.
+fn @[pulsar_node_fn_id]@() -> Option<@[in_item_type]@> {
+    let array = @[in_array_vector]@;
+    let index = @[in_index_number]@ as usize;
+    array.get(index).cloned()
+}

@@ -1,0 +1,6 @@
+//! A node that gets an environment variable value.
+
+/// Get an environment variable value.
+fn @[pulsar_node_fn_id]@() -> Option<String> {
+    std::env::var(@[in_name_string]@).ok()
+}

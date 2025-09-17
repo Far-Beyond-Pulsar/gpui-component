@@ -1,0 +1,3 @@
+//! A simple node that checks if a string ends with a suffix.
+
+@[in_text_string]@.ends_with(@[in_suffix_string]@)

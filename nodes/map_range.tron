@@ -1,0 +1,16 @@
+//! A node that maps a value from one range to another.
+
+/// Map a value from one range to another.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let value = @[in_value_number]@;
+    let from_min = @[in_from_min_number]@;
+    let from_max = @[in_from_max_number]@;
+    let to_min = @[in_to_min_number]@;
+    let to_max = @[in_to_max_number]@;
+    
+    if from_max == from_min {
+        to_min
+    } else {
+        to_min + (value - from_min) * (to_max - to_min) / (from_max - from_min)
+    }
+}

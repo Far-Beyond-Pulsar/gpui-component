@@ -1,0 +1,7 @@
+//! A node that calculates the magnitude (length) of a 3D vector.
+
+/// Calculate the magnitude of a 3D vector.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let (x, y, z) = @[in_vector_vector3]@;
+    (x * x + y * y + z * z).sqrt()
+}

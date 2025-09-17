@@ -1,0 +1,3 @@
+//! A simple node that calculates the tangent of an angle in radians.
+
+@[in_angle_number]@.tan()

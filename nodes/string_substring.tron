@@ -1,0 +1,13 @@
+//! A node that extracts a substring from a string.
+
+/// Extract a substring from a string.
+fn @[pulsar_node_fn_id]@() -> String {
+    let text = @[in_text_string]@;
+    let start = @[in_start_number]@ as usize;
+    let end = @[in_end_number]@ as usize;
+    if start < text.len() && end <= text.len() && start <= end {
+        text[start..end].to_string()
+    } else {
+        String::new()
+    }
+}

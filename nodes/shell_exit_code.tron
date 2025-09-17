@@ -1,0 +1,21 @@
+//! A node that executes a command and returns just the exit code.
+
+/// Execute a command and return just the exit code.
+fn @[pulsar_node_fn_id]@() -> Result<i32, String> {
+    use std::process::Command;
+    
+    let status = if cfg!(target_os = "windows") {
+        Command::new("cmd")
+            .args(["/C", @[in_command_string]@])
+            .status()
+    } else {
+        Command::new("sh")
+            .args(["-c", @[in_command_string]@])
+            .status()
+    };
+    
+    match status {
+        Ok(status) => Ok(status.code().unwrap_or(-1)),
+        Err(e) => Err(format!("Failed to execute command: {}", e)),
+    }
+}

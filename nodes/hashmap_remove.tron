@@ -1,0 +1,8 @@
+//! A node that removes a key-value pair from a HashMap.
+
+/// Remove a key-value pair from a HashMap.
+fn @[pulsar_node_fn_id]@() -> (std::collections::HashMap<String, String>, Option<String>) {
+    let mut map = @[in_map_hashmap]@;
+    let removed = map.remove(@[in_key_string]@);
+    (map, removed)
+}

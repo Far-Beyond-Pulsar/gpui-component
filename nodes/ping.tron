@@ -1,0 +1,27 @@
+//! A node that pings a host to check connectivity.
+
+/// Ping a host to check connectivity.
+fn @[pulsar_node_fn_id]@() -> Result<String, String> {
+    use std::process::Command;
+    
+    let output = if cfg!(target_os = "windows") {
+        Command::new("ping")
+            .args(["-n", "1", @[in_host_string]@])
+            .output()
+    } else {
+        Command::new("ping")
+            .args(["-c", "1", @[in_host_string]@])
+            .output()
+    };
+    
+    match output {
+        Ok(output) => {
+            if output.status.success() {
+                Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            } else {
+                Err(String::from_utf8_lossy(&output.stderr).to_string())
+            }
+        },
+        Err(e) => Err(format!("Failed to execute ping: {}", e)),
+    }
+}

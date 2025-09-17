@@ -1,0 +1,9 @@
+//! A node that deletes a file.
+
+/// Delete a file.
+fn @[pulsar_node_fn_id]@() -> Result<(), String> {
+    match std::fs::remove_file(@[in_path_string]@) {
+        Ok(()) => Ok(()),
+        Err(e) => Err(format!("Failed to delete file: {}", e)),
+    }
+}

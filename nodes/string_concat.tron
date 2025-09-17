@@ -1,0 +1,3 @@
+//! A simple node that concatenates two strings.
+
+format!("{}{}", @[in_a_string]@, @[in_b_string]@)

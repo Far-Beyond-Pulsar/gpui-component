@@ -1,0 +1,8 @@
+//! A node that adds two 2D vectors component-wise.
+
+/// Add two 2D vectors.
+fn @[pulsar_node_fn_id]@() -> (f32, f32) {
+    let (x1, y1) = @[in_a_vector2]@;
+    let (x2, y2) = @[in_b_vector2]@;
+    (x1 + x2, y1 + y2)
+}

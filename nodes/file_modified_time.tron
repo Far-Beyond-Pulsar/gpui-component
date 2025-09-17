@@ -1,0 +1,19 @@
+//! A node that returns the last modified time of a file.
+
+/// Get the last modified time of a file as Unix timestamp.
+fn @[pulsar_node_fn_id]@() -> Result<u64, String> {
+    match std::fs::metadata(@[in_path_string]@) {
+        Ok(metadata) => {
+            match metadata.modified() {
+                Ok(time) => {
+                    match time.duration_since(std::time::UNIX_EPOCH) {
+                        Ok(duration) => Ok(duration.as_secs()),
+                        Err(e) => Err(format!("Time error: {}", e)),
+                    }
+                },
+                Err(e) => Err(format!("Failed to get modified time: {}", e)),
+            }
+        },
+        Err(e) => Err(format!("Failed to get file metadata: {}", e)),
+    }
+}

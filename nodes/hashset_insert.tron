@@ -1,0 +1,8 @@
+//! A node that inserts a value into a HashSet.
+
+/// Insert a value into a HashSet.
+fn @[pulsar_node_fn_id]@() -> std::collections::HashSet<String> {
+    let mut set = @[in_set_hashset]@;
+    set.insert(@[in_value_string]@.to_string());
+    set
+}

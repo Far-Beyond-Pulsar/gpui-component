@@ -1,0 +1,6 @@
+//! A node that creates a new 3D vector from x, y, and z components.
+
+/// Create a new 3D vector.
+fn @[pulsar_node_fn_id]@() -> (f32, f32, f32) {
+    (@[in_x_number]@, @[in_y_number]@, @[in_z_number]@)
+}

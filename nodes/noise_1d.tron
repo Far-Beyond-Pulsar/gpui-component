@@ -1,0 +1,8 @@
+//! A node that generates simple 1D noise.
+
+/// Generate simple 1D noise using sine waves.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let x = @[in_x_number]@;
+    let scale = @[in_scale_number]@;
+    (x * scale).sin() * 0.5 + 0.5
+}

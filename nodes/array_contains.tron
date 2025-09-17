@@ -1,0 +1,6 @@
+//! A node that checks if a vector contains a specific element.
+
+/// Check if a vector contains a specific element.
+fn @[pulsar_node_fn_id]@() -> bool {
+    @[in_array_vector]@.contains(&@[in_item_any]@)
+}

@@ -1,0 +1,10 @@
+//! A node that filters HashMap entries by value pattern.
+
+/// Filter HashMap entries by checking if values contain a pattern.
+fn @[pulsar_node_fn_id]@() -> std::collections::HashMap<String, String> {
+    let pattern = @[in_pattern_string]@;
+    @[in_map_hashmap]@
+        .into_iter()
+        .filter(|(_, value)| value.contains(pattern))
+        .collect()
+}

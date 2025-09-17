@@ -1,0 +1,38 @@
+//! A node that parses a JSON string (very basic implementation).
+
+/// Parse a simple JSON string to extract a value by key (basic implementation).
+fn @[pulsar_node_fn_id]@() -> Option<String> {
+    let json = @[in_json_string]@;
+    let key = @[in_key_string]@;
+    
+    // Very basic JSON parsing - looks for "key":"value" pattern
+    let pattern = format!("\"{}\":", key);
+    if let Some(start) = json.find(&pattern) {
+        let after_key = &json[start + pattern.len()..];
+        
+        // Skip whitespace
+        let after_key = after_key.trim_start();
+        
+        if after_key.starts_with('"') {
+            // String value
+            let rest = &after_key[1..];
+            if let Some(end) = rest.find('"') {
+                return Some(rest[..end].to_string());
+            }
+        } else {
+            // Number or boolean value
+            let mut end = 0;
+            for (i, ch) in after_key.char_indices() {
+                if ch == ',' || ch == '}' || ch == ']' || ch.is_whitespace() {
+                    break;
+                }
+                end = i + ch.len_utf8();
+            }
+            if end > 0 {
+                return Some(after_key[..end].to_string());
+            }
+        }
+    }
+    
+    None
+}

@@ -1,0 +1,48 @@
+//! A node that pipes the output of one command to another.
+
+/// Pipe the output of one command to another.
+fn @[pulsar_node_fn_id]@() -> Result<String, String> {
+    use std::process::{Command, Stdio};
+    
+    // First command
+    let mut cmd1 = if cfg!(target_os = "windows") {
+        Command::new("cmd")
+            .args(["/C", @[in_command1_string]@])
+            .stdout(Stdio::piped())
+            .spawn()
+    } else {
+        Command::new("sh")
+            .args(["-c", @[in_command1_string]@])
+            .stdout(Stdio::piped())
+            .spawn()
+    };
+    
+    let child1 = match cmd1 {
+        Ok(child) => child,
+        Err(e) => return Err(format!("Failed to execute first command: {}", e)),
+    };
+    
+    // Second command
+    let cmd2 = if cfg!(target_os = "windows") {
+        Command::new("cmd")
+            .args(["/C", @[in_command2_string]@])
+            .stdin(child1.stdout.unwrap())
+            .output()
+    } else {
+        Command::new("sh")
+            .args(["-c", @[in_command2_string]@])
+            .stdin(child1.stdout.unwrap())
+            .output()
+    };
+    
+    match cmd2 {
+        Ok(output) => {
+            if output.status.success() {
+                Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            } else {
+                Err(String::from_utf8_lossy(&output.stderr).to_string())
+            }
+        },
+        Err(e) => Err(format!("Failed to execute second command: {}", e)),
+    }
+}

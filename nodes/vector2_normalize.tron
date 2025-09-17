@@ -1,0 +1,12 @@
+//! A node that normalizes a 2D vector to unit length.
+
+/// Normalize a 2D vector to unit length.
+fn @[pulsar_node_fn_id]@() -> (f32, f32) {
+    let (x, y) = @[in_vector_vector2]@;
+    let magnitude = (x * x + y * y).sqrt();
+    if magnitude > 0.0 {
+        (x / magnitude, y / magnitude)
+    } else {
+        (0.0, 0.0)
+    }
+}

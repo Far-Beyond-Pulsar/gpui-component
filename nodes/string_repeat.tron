@@ -1,0 +1,3 @@
+//! A simple node that repeats a string n times.
+
+@[in_text_string]@.repeat(@[in_count_number]@ as usize)

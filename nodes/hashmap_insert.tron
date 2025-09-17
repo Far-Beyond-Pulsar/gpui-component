@@ -1,0 +1,8 @@
+//! A node that inserts a key-value pair into a HashMap.
+
+/// Insert a key-value pair into a HashMap.
+fn @[pulsar_node_fn_id]@() -> std::collections::HashMap<String, String> {
+    let mut map = @[in_map_hashmap]@;
+    map.insert(@[in_key_string]@.to_string(), @[in_value_string]@.to_string());
+    map
+}

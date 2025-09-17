@@ -1,0 +1,10 @@
+//! A node that calculates the distance between two 2D points.
+
+/// Calculate the distance between two 2D points.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let (x1, y1) = @[in_a_vector2]@;
+    let (x2, y2) = @[in_b_vector2]@;
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    (dx * dx + dy * dy).sqrt()
+}

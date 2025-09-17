@@ -1,0 +1,12 @@
+//! A node that creates a simple JSON object from key-value pairs.
+
+/// Create a simple JSON object from key-value pairs.
+fn @[pulsar_node_fn_id]@() -> String {
+    let key = @[in_key_string]@;
+    let value = @[in_value_string]@;
+    
+    // Escape quotes in the value
+    let escaped_value = value.replace("\"", "\\\"");
+    
+    format!("{{\"{}\":\"{}\"}}", key, escaped_value)
+}

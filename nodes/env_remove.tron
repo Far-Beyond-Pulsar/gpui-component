@@ -1,0 +1,6 @@
+//! A node that removes an environment variable.
+
+/// Remove an environment variable.
+fn @[pulsar_node_fn_id]@() {
+    std::env::remove_var(@[in_name_string]@);
+}

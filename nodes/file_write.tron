@@ -1,0 +1,9 @@
+//! A node that writes content to a file.
+
+/// Write content to a file.
+fn @[pulsar_node_fn_id]@() -> Result<(), String> {
+    match std::fs::write(@[in_path_string]@, @[in_content_string]@) {
+        Ok(()) => Ok(()),
+        Err(e) => Err(format!("Failed to write file: {}", e)),
+    }
+}

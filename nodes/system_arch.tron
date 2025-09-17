@@ -1,0 +1,6 @@
+//! A node that returns the system architecture.
+
+/// Get the system architecture.
+fn @[pulsar_node_fn_id]@() -> String {
+    std::env::consts::ARCH.to_string()
+}

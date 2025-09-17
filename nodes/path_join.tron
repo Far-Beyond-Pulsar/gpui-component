@@ -1,0 +1,9 @@
+//! A node that joins two path components.
+
+/// Join two path components.
+fn @[pulsar_node_fn_id]@() -> String {
+    std::path::Path::new(@[in_base_string]@)
+        .join(@[in_component_string]@)
+        .to_string_lossy()
+        .to_string()
+}
