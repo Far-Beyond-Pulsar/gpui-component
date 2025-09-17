@@ -354,9 +354,12 @@ impl BlueprintEditorPanel {
         // Convert screen pixels to f32 point
         let screen = Point::new(screen_pos.x.0, screen_pos.y.0);
 
-    // Compute graph/world position under cursor before zoom using the shared helper
-    // to ensure we use the exact same conversion as rendering code.
-    let focus_graph_pos = super::node_graph::NodeGraphRenderer::screen_to_graph_pos(Point::new(gpui::Pixels(screen.x), gpui::Pixels(screen.y)), &self.graph);
+        // Compute graph/world position under cursor before zoom using the shared helper
+        // (keeps conversion identical to other codepaths that use this helper)
+        let focus_graph_pos = super::node_graph::NodeGraphRenderer::screen_to_graph_pos(
+            Point::new(gpui::Pixels(screen.x), gpui::Pixels(screen.y)),
+            &self.graph,
+        );
 
         let zoom_factor = if delta_y > 0.0 { 0.9 } else { 1.1 };
         let new_zoom = (self.graph.zoom_level * zoom_factor).clamp(0.1, 3.0);
@@ -377,26 +380,51 @@ impl BlueprintEditorPanel {
             delta_y
         );
 
-        let inv_new = 1.0 / new_zoom;
-        let inv_old = 1.0 / old_zoom;
-
-        let new_pan_offset = Point::new(
-            old_pan.x + screen.x * (inv_new - inv_old),
-            old_pan.y + screen.y * (inv_new - inv_old),
+        // Compute new pan so the focused graph point stays under the cursor:
+        // screen = (focus + pan_new) * new_zoom => pan_new = (screen / new_zoom) - focus
+        // Initial pan calculation that should keep focus under cursor
+        let mut new_pan_offset = Point::new(
+            (screen.x / new_zoom) - focus_graph_pos.x,
+            (screen.y / new_zoom) - focus_graph_pos.y,
         );
+
+        // Apply temporarily to measure any residual offset that may come from
+        // coordinate-space differences (padding, layout origin, DPI, etc.). We'll
+        // then correct the pan by subtracting the measured screen diff divided by
+        // the new zoom (since pan is in graph-space units).
+        let old_zoom = self.graph.zoom_level;
+        let old_pan = self.graph.pan_offset;
 
         self.graph.zoom_level = new_zoom;
         self.graph.pan_offset = new_pan_offset;
 
-        // Compute where the focus_graph_pos maps to on screen after our change
         let screen_after = super::node_graph::NodeGraphRenderer::graph_to_screen_pos(focus_graph_pos, &self.graph);
-        // Log difference between desired screen and actual screen_after
-        println!("[ZOOM DEBUG] screen_before=({:.2},{:.2}), screen_after=({:.2},{:.2}), diff=({:.2},{:.2}), new_zoom={:.3}, new_pan=({:.3},{:.3})",
-            screen.x, screen.y,
-            screen_after.x, screen_after.y,
-            screen_after.x - screen.x, screen_after.y - screen.y,
+        let diff_x = screen_after.x - screen.x;
+        let diff_y = screen_after.y - screen.y;
+
+        // Correct pan by removing the measured diffusion in graph-space
+        new_pan_offset.x -= diff_x / new_zoom;
+        new_pan_offset.y -= diff_y / new_zoom;
+
+        // Commit corrected values
+        self.graph.zoom_level = new_zoom;
+        self.graph.pan_offset = new_pan_offset;
+
+        // Debug log to help verify correctness
+        println!(
+            "[ZOOM DEBUG] screen_before=({:.2},{:.2}), screen_after=({:.2},{:.2}), diff=({:.2},{:.2}), new_zoom={:.3}, new_pan=({:.3},{:.3}), old_zoom={:.3}, old_pan=({:.3},{:.3})",
+            screen.x,
+            screen.y,
+            screen_after.x - diff_x,
+            screen_after.y - diff_y,
+            diff_x,
+            diff_y,
             new_zoom,
-            new_pan_offset.x, new_pan_offset.y
+            new_pan_offset.x,
+            new_pan_offset.y,
+            old_zoom,
+            old_pan.x,
+            old_pan.y
         );
 
         cx.notify();
