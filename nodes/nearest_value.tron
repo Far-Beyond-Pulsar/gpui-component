@@ -1,0 +1,19 @@
+//! A pure function that finds the nearest value in an array to a target number.
+
+/// Find the nearest value in an array to a target number.
+fn @[pulsar_node_fn_id]@() -> Option<f32> {
+    let target = @[in_target_number]@;
+    let array: Vec<f32> = @[in_array_vector]@;
+    
+    if array.is_empty() {
+        return None;
+    }
+    
+    array.iter()
+        .min_by(|a, b| {
+            let dist_a = (target - **a).abs();
+            let dist_b = (target - **b).abs();
+            dist_a.partial_cmp(&dist_b).unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .copied()
+}

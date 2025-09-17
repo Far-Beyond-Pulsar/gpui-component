@@ -1,0 +1,20 @@
+//! A pure function that finds both the nearest value and its index in an array.
+
+/// Find both the nearest value and its index in an array to a target number.
+fn @[pulsar_node_fn_id]@() -> Option<(f32, usize)> {
+    let target = @[in_target_number]@;
+    let array: Vec<f32> = @[in_array_vector]@;
+    
+    if array.is_empty() {
+        return None;
+    }
+    
+    array.iter()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| {
+            let dist_a = (target - **a).abs();
+            let dist_b = (target - **b).abs();
+            dist_a.partial_cmp(&dist_b).unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|(index, value)| (*value, index))
+}
