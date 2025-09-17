@@ -1,0 +1,6 @@
+//! A pure function that converts a number to a string.
+
+/// Convert a number to a string.
+fn @[pulsar_node_fn_id]@() -> String {
+    @[in_number_number]@.to_string()
+}

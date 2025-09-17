@@ -1,0 +1,6 @@
+//! A pure function that creates a 2D vector from X and Y components.
+
+/// Create a 2D vector from X and Y components.
+fn @[pulsar_node_fn_id]@() -> (f32, f32) {
+    (@[in_x_number]@, @[in_y_number]@)
+}

@@ -1,0 +1,7 @@
+//! A pure function that gets the X component from a vector.
+
+/// Get the X component from a 2D or 3D vector.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let (x, _) = @[in_vector_vector2]@;
+    x
+}

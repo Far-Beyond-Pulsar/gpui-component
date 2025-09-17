@@ -1,0 +1,7 @@
+//! A pure function that breaks a 3D vector into X, Y, and Z components.
+
+/// Break a 3D vector into X, Y, and Z components.
+fn @[pulsar_node_fn_id]@() -> (f32, f32, f32) {
+    let (x, y, z) = @[in_vector_vector3]@;
+    (x, y, z)
+}

@@ -1,0 +1,6 @@
+//! A pure function that creates a rectangle from position and size.
+
+/// Create a rectangle from position and size components.
+fn @[pulsar_node_fn_id]@() -> ((f32, f32), (f32, f32)) {
+    (@[in_position_vector2]@, @[in_size_vector2]@)
+}

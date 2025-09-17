@@ -1,0 +1,6 @@
+//! A pure function that converts a boolean to a string.
+
+/// Convert a boolean to a string.
+fn @[pulsar_node_fn_id]@() -> String {
+    @[in_value_bool]@.to_string()
+}

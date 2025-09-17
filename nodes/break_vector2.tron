@@ -1,0 +1,7 @@
+//! A pure function that breaks a 2D vector into X and Y components.
+
+/// Break a 2D vector into X and Y components.
+fn @[pulsar_node_fn_id]@() -> (f32, f32) {
+    let (x, y) = @[in_vector_vector2]@;
+    (x, y)
+}

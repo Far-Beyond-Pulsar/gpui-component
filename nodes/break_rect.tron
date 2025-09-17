@@ -1,0 +1,7 @@
+//! A pure function that breaks a rectangle into position and size.
+
+/// Break a rectangle into position and size components.
+fn @[pulsar_node_fn_id]@() -> ((f32, f32), (f32, f32)) {
+    let (position, size) = @[in_rect_rectangle]@;
+    (position, size)
+}

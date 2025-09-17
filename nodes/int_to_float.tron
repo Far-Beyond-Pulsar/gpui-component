@@ -1,0 +1,6 @@
+//! A pure function that converts an integer to a float.
+
+/// Convert an integer to a float.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    @[in_value_number]@ as f32
+}

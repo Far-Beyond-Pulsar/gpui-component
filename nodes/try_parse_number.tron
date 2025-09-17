@@ -1,0 +1,6 @@
+//! A function that attempts to parse a string as a number with a fallback value.
+
+/// Try to parse a string as a number, return fallback if it fails.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    @[in_text_string]@.trim().parse::<f32>().unwrap_or(@[in_fallback_number]@)
+}

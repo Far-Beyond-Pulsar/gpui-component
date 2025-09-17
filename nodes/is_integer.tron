@@ -1,0 +1,6 @@
+//! A pure function that checks if a string represents a valid integer.
+
+/// Check if a string represents a valid integer.
+fn @[pulsar_node_fn_id]@() -> bool {
+    @[in_text_string]@.trim().parse::<i32>().is_ok()
+}

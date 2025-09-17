@@ -1,0 +1,7 @@
+//! A pure function that sets the Y component of a vector.
+
+/// Set the Y component of a 2D vector.
+fn @[pulsar_node_fn_id]@() -> (f32, f32) {
+    let (x, _) = @[in_vector_vector2]@;
+    (x, @[in_new_y_number]@)
+}

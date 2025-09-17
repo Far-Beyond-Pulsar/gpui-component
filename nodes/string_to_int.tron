@@ -1,0 +1,9 @@
+//! A function that safely converts a string to an integer.
+
+/// Safely convert a string to an integer with error handling.
+fn @[pulsar_node_fn_id]@() -> Result<i32, String> {
+    match @[in_text_string]@.trim().parse::<i32>() {
+        Ok(num) => Ok(num),
+        Err(_) => Err(format!("Cannot convert '{}' to integer", @[in_text_string]@)),
+    }
+}

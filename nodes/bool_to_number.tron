@@ -1,0 +1,6 @@
+//! A pure function that converts a boolean to a number (0 or 1).
+
+/// Convert a boolean to a number (false = 0, true = 1).
+fn @[pulsar_node_fn_id]@() -> f32 {
+    if @[in_value_bool]@ { 1.0 } else { 0.0 }
+}

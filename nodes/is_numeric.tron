@@ -1,0 +1,6 @@
+//! A pure function that checks if a string represents a valid number.
+
+/// Check if a string represents a valid number.
+fn @[pulsar_node_fn_id]@() -> bool {
+    @[in_text_string]@.trim().parse::<f32>().is_ok()
+}

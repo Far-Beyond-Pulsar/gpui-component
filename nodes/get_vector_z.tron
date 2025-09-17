@@ -1,0 +1,7 @@
+//! A pure function that gets the Z component from a 3D vector.
+
+/// Get the Z component from a 3D vector.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let (_, _, z) = @[in_vector_vector3]@;
+    z
+}

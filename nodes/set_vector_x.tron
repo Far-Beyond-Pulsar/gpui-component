@@ -1,0 +1,7 @@
+//! A pure function that sets the X component of a vector.
+
+/// Set the X component of a 2D vector.
+fn @[pulsar_node_fn_id]@() -> (f32, f32) {
+    let (_, y) = @[in_vector_vector2]@;
+    (@[in_new_x_number]@, y)
+}

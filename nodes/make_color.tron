@@ -1,0 +1,6 @@
+//! A pure function that creates a color from R, G, B, A components.
+
+/// Create a color from R, G, B, A components.
+fn @[pulsar_node_fn_id]@() -> (f32, f32, f32, f32) {
+    (@[in_r_number]@, @[in_g_number]@, @[in_b_number]@, @[in_a_number]@)
+}

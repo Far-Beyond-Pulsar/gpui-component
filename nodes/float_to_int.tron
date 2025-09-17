@@ -1,0 +1,6 @@
+//! A pure function that converts a float to an integer (truncating decimals).
+
+/// Convert a float to an integer by truncating decimals.
+fn @[pulsar_node_fn_id]@() -> i32 {
+    @[in_value_number]@ as i32
+}

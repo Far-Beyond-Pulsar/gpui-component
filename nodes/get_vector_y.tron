@@ -1,0 +1,7 @@
+//! A pure function that gets the Y component from a vector.
+
+/// Get the Y component from a 2D or 3D vector.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let (_, y) = @[in_vector_vector2]@;
+    y
+}

@@ -1,0 +1,9 @@
+//! A pure function that clamps and converts a value to a specific numeric range.
+
+/// Clamp a value to a range and optionally convert type.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let value = @[in_value_number]@;
+    let min_val = @[in_min_number]@;
+    let max_val = @[in_max_number]@;
+    value.clamp(min_val, max_val)
+}

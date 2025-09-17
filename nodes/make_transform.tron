@@ -1,0 +1,6 @@
+//! A pure function that creates a transform from position, rotation, and scale.
+
+/// Create a transform from position, rotation, and scale components.
+fn @[pulsar_node_fn_id]@() -> ((f32, f32, f32), (f32, f32, f32), (f32, f32, f32)) {
+    (@[in_position_vector3]@, @[in_rotation_vector3]@, @[in_scale_vector3]@)
+}

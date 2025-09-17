@@ -1,0 +1,11 @@
+//! A function that safely converts a string to a boolean.
+
+/// Safely convert a string to a boolean with error handling.
+fn @[pulsar_node_fn_id]@() -> Result<bool, String> {
+    let text = @[in_text_string]@.trim().to_lowercase();
+    match text.as_str() {
+        "true" | "1" | "yes" | "on" => Ok(true),
+        "false" | "0" | "no" | "off" => Ok(false),
+        _ => Err(format!("Cannot convert '{}' to boolean", @[in_text_string]@)),
+    }
+}

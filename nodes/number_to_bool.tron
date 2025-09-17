@@ -1,0 +1,6 @@
+//! A pure function that converts a number to a boolean (0 = false, non-zero = true).
+
+/// Convert a number to a boolean (0 = false, non-zero = true).
+fn @[pulsar_node_fn_id]@() -> bool {
+    @[in_value_number]@ != 0.0
+}

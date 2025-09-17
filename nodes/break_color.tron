@@ -1,0 +1,7 @@
+//! A pure function that breaks a color into R, G, B, A components.
+
+/// Break a color into R, G, B, A components.
+fn @[pulsar_node_fn_id]@() -> (f32, f32, f32, f32) {
+    let (r, g, b, a) = @[in_color_color]@;
+    (r, g, b, a)
+}
