@@ -1,0 +1,15 @@
+//! A node that executes branches based on string contains patterns.
+
+/// Execute different branches based on what the string contains.
+fn @[pulsar_node_fn_id]@() {
+    let text = @[in_text_string]@;
+    if text.contains(@[in_pattern1_string]@) {
+        @[pulsar_exec_contains1]@
+    } else if text.contains(@[in_pattern2_string]@) {
+        @[pulsar_exec_contains2]@
+    } else if text.contains(@[in_pattern3_string]@) {
+        @[pulsar_exec_contains3]@
+    } else {
+        @[pulsar_exec_none]@
+    }
+}

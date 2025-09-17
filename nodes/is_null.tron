@@ -1,0 +1,6 @@
+//! A pure function that checks if an Option value is None (null/invalid).
+
+/// Check if an Option value is None (null/invalid).
+fn @[pulsar_node_fn_id]@() -> bool {
+    @[in_value_option]@.is_none()
+}

@@ -1,0 +1,11 @@
+//! A node that executes different branches based on string value.
+
+/// Execute different branches based on string value.
+fn @[pulsar_node_fn_id]@() {
+    match @[in_value_string]@ {
+        "option1" => @[pulsar_exec_option1]@,
+        "option2" => @[pulsar_exec_option2]@,
+        "option3" => @[pulsar_exec_option3]@,
+        _ => @[pulsar_exec_default]@,
+    }
+}

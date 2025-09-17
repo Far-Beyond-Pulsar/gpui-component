@@ -1,0 +1,3 @@
+//! A pure function that performs left bit shift operation.
+
+(@[in_value_number]@ as i32) << (@[in_shift_number]@ as i32)

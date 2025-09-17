@@ -1,0 +1,9 @@
+//! A pure function that checks if a value is between two values (exclusive).
+
+/// Check if a value is between two values (exclusive).
+fn @[pulsar_node_fn_id]@() -> bool {
+    let value = @[in_value_number]@;
+    let a = @[in_a_number]@;
+    let b = @[in_b_number]@;
+    value > a && value < b
+}

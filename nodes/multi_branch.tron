@@ -1,0 +1,14 @@
+//! A node that provides multiple conditional branches (if/else if/else chain).
+
+/// Execute multiple conditional branches in sequence.
+fn @[pulsar_node_fn_id]@() {
+    if @[in_condition1_bool]@ {
+        @[pulsar_exec_branch1]@
+    } else if @[in_condition2_bool]@ {
+        @[pulsar_exec_branch2]@
+    } else if @[in_condition3_bool]@ {
+        @[pulsar_exec_branch3]@
+    } else {
+        @[pulsar_exec_else]@
+    }
+}

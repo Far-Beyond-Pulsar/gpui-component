@@ -1,0 +1,12 @@
+//! A node that executes different branches based on integer value.
+
+/// Execute different branches based on integer value.
+fn @[pulsar_node_fn_id]@() {
+    match @[in_value_number]@ as i32 {
+        0 => @[pulsar_exec_case0]@,
+        1 => @[pulsar_exec_case1]@,
+        2 => @[pulsar_exec_case2]@,
+        3 => @[pulsar_exec_case3]@,
+        _ => @[pulsar_exec_default]@,
+    }
+}

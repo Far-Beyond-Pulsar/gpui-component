@@ -1,0 +1,10 @@
+//! A pure function that selects between two numbers based on a condition (ternary operator).
+
+/// Select between two numbers based on a boolean condition.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    if @[in_condition_bool]@ {
+        @[in_a_number]@
+    } else {
+        @[in_b_number]@
+    }
+}

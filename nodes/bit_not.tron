@@ -1,0 +1,3 @@
+//! A pure function that performs bitwise NOT operation.
+
+!(@[in_value_number]@ as i32)

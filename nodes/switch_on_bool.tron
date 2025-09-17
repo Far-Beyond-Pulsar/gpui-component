@@ -1,0 +1,9 @@
+//! A node that executes different branches based on boolean value.
+
+/// Execute different branches based on boolean value.
+fn @[pulsar_node_fn_id]@() {
+    match @[in_value_bool]@ {
+        true => @[pulsar_exec_true]@,
+        false => @[pulsar_exec_false]@,
+    }
+}

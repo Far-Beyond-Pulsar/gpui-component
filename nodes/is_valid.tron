@@ -1,0 +1,6 @@
+//! A pure function that checks if an Option value is Some (valid/not null).
+
+/// Check if an Option value is Some (valid/not null).
+fn @[pulsar_node_fn_id]@() -> bool {
+    @[in_value_option]@.is_some()
+}
