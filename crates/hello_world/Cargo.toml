@@ -19,6 +19,7 @@ schemars = "1.0"
 uuid = { version = "1.0", features = ["v4"] }
 tracing = "0.1.41"
 rust-embed = "8.5.0"
+flume = "0.11"
 
 [lints]
 workspace = true

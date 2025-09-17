@@ -234,64 +234,58 @@ impl Terminal {
                 active_tab.history_index = None;
             }
 
-            // Process the command
-            match command.trim() {
-                "help" => {
-                    active_tab.add_line("Available commands:".to_string(), TerminalLineType::Output);
-                    active_tab.add_line("  help         - Show this help message".to_string(), TerminalLineType::Output);
-                    active_tab.add_line("  clear        - Clear the terminal".to_string(), TerminalLineType::Output);
-                    active_tab.add_line("  echo <text>  - Echo text".to_string(), TerminalLineType::Output);
-                    active_tab.add_line("  pwd          - Show current directory".to_string(), TerminalLineType::Output);
-                    active_tab.add_line("  ls           - List files in current directory".to_string(), TerminalLineType::Output);
-                    active_tab.add_line("  cargo <args> - Run cargo commands".to_string(), TerminalLineType::Output);
-                    active_tab.add_line("  npm <args>   - Run npm commands".to_string(), TerminalLineType::Output);
-                },
-                "clear" => {
-                    active_tab.history.clear();
-                    active_tab.add_line("Terminal cleared".to_string(), TerminalLineType::Success);
-                },
-                cmd if cmd.starts_with("echo ") => {
-                    let text = &cmd[5..];
-                    active_tab.add_line(text.to_string(), TerminalLineType::Output);
-                },
-                "pwd" => {
-                    match std::env::current_dir() {
-                        Ok(path) => active_tab.add_line(path.display().to_string(), TerminalLineType::Output),
-                        Err(e) => active_tab.add_line(format!("Error: {}", e), TerminalLineType::Error),
-                    }
-                },
-                "ls" => {
-                    match std::fs::read_dir(".") {
-                        Ok(entries) => {
-                            for entry in entries.flatten() {
-                                let name = entry.file_name().to_string_lossy().to_string();
-                                if entry.path().is_dir() {
-                                    active_tab.add_line(format!("{}/", name), TerminalLineType::Output);
-                                } else {
-                                    active_tab.add_line(name, TerminalLineType::Output);
-                                }
+            // Run everything entered in the shell asynchronously.
+            let cmd_trim = command.trim();
+            if cmd_trim.is_empty() {
+                // do nothing for empty input
+            } else if cmd_trim == "clear" {
+                active_tab.history.clear();
+                active_tab.add_line("Terminal cleared".to_string(), TerminalLineType::Success);
+            } else {
+                active_tab.add_line(format!("$ {}", cmd_trim), TerminalLineType::Command);
+
+                let (tx, rx) = flume::unbounded::<(TerminalLineType, String)>();
+                let to_run = cmd_trim.to_string();
+
+                // Spawn blocking execution on a thread
+                std::thread::spawn(move || {
+                    use std::process::Command;
+
+                    let output = if cfg!(target_os = "windows") {
+                        Command::new("cmd").arg("/C").arg(&to_run).output()
+                    } else {
+                        Command::new("sh").arg("-c").arg(&to_run).output()
+                    };
+
+                    match output {
+                        Ok(out) => {
+                            let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+                            let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+                            for line in stdout.lines() {
+                                let _ = tx.send((TerminalLineType::Output, line.to_string()));
                             }
-                        },
-                        Err(e) => active_tab.add_line(format!("Error: {}", e), TerminalLineType::Error),
+                            for line in stderr.lines() {
+                                let _ = tx.send((TerminalLineType::Error, line.to_string()));
+                            }
+                        }
+                        Err(e) => {
+                            let _ = tx.send((TerminalLineType::Error, format!("failed to execute command: {}", e)));
+                        }
                     }
-                },
-                cmd if cmd.starts_with("cargo ") => {
-                    active_tab.add_line("Executing cargo command...".to_string(), TerminalLineType::Output);
-                    // In a real implementation, you would execute the actual cargo command
-                    active_tab.add_line("Note: Cargo execution not implemented in this demo".to_string(), TerminalLineType::Output);
-                },
-                cmd if cmd.starts_with("npm ") => {
-                    active_tab.add_line("Executing npm command...".to_string(), TerminalLineType::Output);
-                    // In a real implementation, you would execute the actual npm command
-                    active_tab.add_line("Note: NPM execution not implemented in this demo".to_string(), TerminalLineType::Output);
-                },
-                "" => {
-                    // Empty command, do nothing
-                },
-                _ => {
-                    active_tab.add_line(format!("Command not found: {}", command.trim()), TerminalLineType::Error);
-                    active_tab.add_line("Type 'help' for available commands".to_string(), TerminalLineType::Output);
-                }
+                });
+
+                // UI task to collect output and append to terminal
+                cx.spawn(async move |this, cx| {
+                    while let Ok((line_type, text)) = rx.recv_async().await {
+                        this.update(cx, |this, cx| {
+                            if let Some(tab) = this.tabs.get_mut(this.active_tab_index) {
+                                tab.add_line(text.clone(), line_type.clone());
+                            }
+                        })
+                        .ok();
+                    }
+                })
+                .detach();
             }
         }
 

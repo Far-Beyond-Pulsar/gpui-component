@@ -6470,6 +6470,7 @@ name = "pulsar_engine"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "flume",
  "gpui",
  "gpui-component",
  "rust-embed",
