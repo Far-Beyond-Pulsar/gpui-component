@@ -390,23 +390,30 @@ impl Terminal {
             .unwrap_or(&default_history);
 
         div()
-            .size_full()
-            .p_3()
-            .bg(cx.theme().background)
-            .font_family("monospace")
-            .text_sm()
-            .scrollable(Axis::Vertical)
+            .w_full()
+            .h_full()
+            .overflow_hidden()
             .child(
-                v_flex()
-                    .gap_1()
+                div()
                     .w_full()
-                    .children(
-                        history.iter().map(|line| {
-                            div()
-                                .w_full()
-                                .text_color(self.get_line_color(&line.line_type, cx))
-                                .child(line.content.clone())
-                        })
+                    .h_full()
+                    .p_3()
+                    .bg(cx.theme().background)
+                    .font_family("monospace")
+                    .text_sm()
+                    .scrollable(Axis::Vertical)
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .w_full()
+                            .children(
+                                history.iter().map(|line| {
+                                    div()
+                                        .w_full()
+                                        .text_color(self.get_line_color(&line.line_type, cx))
+                                        .child(line.content.clone())
+                                })
+                            )
                     )
             )
     }
