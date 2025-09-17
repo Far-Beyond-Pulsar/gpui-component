@@ -3,7 +3,8 @@
     "allow": [
       "WebSearch",
       "Bash(cargo check:*)",
-      "Read(//c/Users/redst/.cargo/git/checkouts/zed-a70e2ad075855582/53b2f37/crates/gpui/**)"
+      "Read(//c/Users/redst/.cargo/git/checkouts/zed-a70e2ad075855582/53b2f37/crates/gpui/**)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [],
     "ask": []
