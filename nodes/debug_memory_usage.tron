@@ -1,0 +1,19 @@
+//! A debug node that prints current memory usage information.
+
+/// Print current memory usage information (simplified).
+fn @[pulsar_node_fn_id]@() {
+    // This is a simplified version - real memory tracking would require more complex implementation
+    println!("[MEMORY] Current process ID: {}", std::process::id());
+    
+    // Try to get memory info via system commands
+    use std::process::Command;
+    if cfg!(target_os = "windows") {
+        let _ = Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {}", std::process::id())])
+            .output();
+    } else {
+        let _ = Command::new("ps")
+            .args(["-p", &std::process::id().to_string(), "-o", "rss"])
+            .output();
+    }
+}

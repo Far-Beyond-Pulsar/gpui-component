@@ -1,0 +1,6 @@
+//! A debug node that prints a boolean to the console.
+
+/// Print a boolean to the console for debugging.
+fn @[pulsar_node_fn_id]@() {
+    println!("[DEBUG] Boolean: {}", @[in_value_bool]@);
+}

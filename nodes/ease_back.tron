@@ -1,0 +1,10 @@
+//! A pure function that applies back ease-out interpolation.
+
+/// Apply back ease-out interpolation (overshoots then settles).
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let t = @[in_t_number]@.clamp(0.0, 1.0);
+    let c1 = 1.70158;
+    let c3 = c1 + 1.0;
+    
+    1.0 + c3 * (t - 1.0).powi(3) + c1 * (t - 1.0).powi(2)
+}

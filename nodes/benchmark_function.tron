@@ -1,0 +1,11 @@
+//! A debug node that measures execution time of a code block.
+
+/// Measure execution time of a code block in milliseconds.
+fn @[pulsar_node_fn_id]@() -> u64 {
+    let start = std::time::Instant::now();
+    @[pulsar_exec_code]@
+    let duration = start.elapsed();
+    let ms = duration.as_millis() as u64;
+    println!("[BENCHMARK] '{}' took {} ms", @[in_name_string]@, ms);
+    ms
+}

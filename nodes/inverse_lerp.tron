@@ -1,0 +1,14 @@
+//! A pure function that calculates the inverse of linear interpolation.
+
+/// Calculate the inverse of linear interpolation (find t given a, b, and result).
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let a = @[in_a_number]@;
+    let b = @[in_b_number]@;
+    let value = @[in_value_number]@;
+    
+    if (b - a).abs() < f32::EPSILON {
+        0.0
+    } else {
+        ((value - a) / (b - a)).clamp(0.0, 1.0)
+    }
+}

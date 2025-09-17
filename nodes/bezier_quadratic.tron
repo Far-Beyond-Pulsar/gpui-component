@@ -1,0 +1,12 @@
+//! A pure function that calculates quadratic Bezier curve interpolation.
+
+/// Calculate quadratic Bezier curve interpolation with control point.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let p0 = @[in_start_number]@;
+    let p1 = @[in_control_number]@;
+    let p2 = @[in_end_number]@;
+    let t = @[in_t_number]@.clamp(0.0, 1.0);
+    
+    let one_minus_t = 1.0 - t;
+    one_minus_t * one_minus_t * p0 + 2.0 * one_minus_t * t * p1 + t * t * p2
+}

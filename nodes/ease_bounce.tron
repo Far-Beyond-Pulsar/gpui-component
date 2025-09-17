@@ -1,0 +1,19 @@
+//! A pure function that applies bounce ease-out interpolation.
+
+/// Apply bounce ease-out interpolation (bouncy landing).
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let mut t = @[in_t_number]@.clamp(0.0, 1.0);
+    
+    if t < 1.0 / 2.75 {
+        7.5625 * t * t
+    } else if t < 2.0 / 2.75 {
+        t -= 1.5 / 2.75;
+        7.5625 * t * t + 0.75
+    } else if t < 2.5 / 2.75 {
+        t -= 2.25 / 2.75;
+        7.5625 * t * t + 0.9375
+    } else {
+        t -= 2.625 / 2.75;
+        7.5625 * t * t + 0.984375
+    }
+}

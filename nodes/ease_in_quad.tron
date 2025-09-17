@@ -1,0 +1,7 @@
+//! A pure function that applies quadratic ease-in interpolation.
+
+/// Apply quadratic ease-in interpolation (slow start, fast end).
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let t = @[in_t_number]@.clamp(0.0, 1.0);
+    t * t
+}

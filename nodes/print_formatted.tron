@@ -1,0 +1,10 @@
+//! A debug node that prints a formatted message with multiple values.
+
+/// Print a formatted message with placeholder replacements.
+fn @[pulsar_node_fn_id]@() {
+    let message = @[in_format_string]@
+        .replace("{0}", &@[in_value0_string]@)
+        .replace("{1}", &@[in_value1_string]@)
+        .replace("{2}", &@[in_value2_string]@);
+    println!("[DEBUG] {}", message);
+}

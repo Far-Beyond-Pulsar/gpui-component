@@ -1,0 +1,8 @@
+//! A debug node that asserts a condition is true, panics if false.
+
+/// Assert that a condition is true, panic with message if false.
+fn @[pulsar_node_fn_id]@() {
+    if !@[in_condition_bool]@ {
+        panic!("Assertion failed: {}", @[in_message_string]@);
+    }
+}

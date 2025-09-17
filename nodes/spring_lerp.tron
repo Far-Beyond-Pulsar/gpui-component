@@ -1,0 +1,17 @@
+//! A function that applies spring-based interpolation.
+
+/// Apply spring-based interpolation with damping.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let current = @[in_current_number]@;
+    let target = @[in_target_number]@;
+    let velocity = @[in_velocity_number]@;
+    let spring_strength = @[in_spring_strength_number]@;
+    let damping = @[in_damping_number]@;
+    let delta_time = @[in_delta_time_number]@;
+    
+    let force = (target - current) * spring_strength;
+    let new_velocity = velocity + force * delta_time;
+    let damped_velocity = new_velocity * (1.0 - damping * delta_time);
+    
+    current + damped_velocity * delta_time
+}

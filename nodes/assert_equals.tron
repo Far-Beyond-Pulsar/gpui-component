@@ -1,0 +1,10 @@
+//! A debug node that asserts two values are equal.
+
+/// Assert that two values are equal, panic with message if not.
+fn @[pulsar_node_fn_id]@() {
+    let a = @[in_a_string]@;
+    let b = @[in_b_string]@;
+    if a != b {
+        panic!("Assertion failed: '{}' != '{}'. {}", a, b, @[in_message_string]@);
+    }
+}

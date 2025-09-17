@@ -1,0 +1,7 @@
+//! A debug node that inspects and prints a value with its type info.
+
+/// Inspect and print a value with detailed information.
+fn @[pulsar_node_fn_id]@() {
+    let value = @[in_value_string]@;
+    println!("[INSPECT] Value: '{}', Length: {}, Type: String", value, value.len());
+}

@@ -1,0 +1,19 @@
+//! A pure function that calculates cubic Bezier curve interpolation.
+
+/// Calculate cubic Bezier curve interpolation with two control points.
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let p0 = @[in_start_number]@;
+    let p1 = @[in_control1_number]@;
+    let p2 = @[in_control2_number]@;
+    let p3 = @[in_end_number]@;
+    let t = @[in_t_number]@.clamp(0.0, 1.0);
+    
+    let one_minus_t = 1.0 - t;
+    let one_minus_t_cubed = one_minus_t * one_minus_t * one_minus_t;
+    let t_cubed = t * t * t;
+    
+    one_minus_t_cubed * p0 + 
+    3.0 * one_minus_t * one_minus_t * t * p1 + 
+    3.0 * one_minus_t * t * t * p2 + 
+    t_cubed * p3
+}

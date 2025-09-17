@@ -1,0 +1,7 @@
+//! A pure function that applies cubic ease-in interpolation.
+
+/// Apply cubic ease-in interpolation (very slow start).
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let t = @[in_t_number]@.clamp(0.0, 1.0);
+    t * t * t
+}

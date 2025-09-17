@@ -1,0 +1,9 @@
+//! A pure function that performs linear interpolation with alpha parameter.
+
+/// Linear interpolation between two values with alpha (0.0 to 1.0).
+fn @[pulsar_node_fn_id]@() -> f32 {
+    let a = @[in_a_number]@;
+    let b = @[in_b_number]@;
+    let alpha = @[in_alpha_number]@.clamp(0.0, 1.0);
+    a + (b - a) * alpha
+}

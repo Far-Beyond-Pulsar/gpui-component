@@ -1,0 +1,8 @@
+//! A debug node that prints a simple stack trace.
+
+/// Print a simple stack trace for debugging.
+fn @[pulsar_node_fn_id]@() {
+    println!("[STACK_TRACE] Current function: {}", @[in_function_name_string]@);
+    println!("[STACK_TRACE] Thread: {:?}", std::thread::current().id());
+    println!("[STACK_TRACE] Time: {:?}", std::time::SystemTime::now());
+}
