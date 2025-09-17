@@ -291,7 +291,10 @@ pub struct InputState {
     pub(super) completion_inserting: bool,
 
     /// To remember the horizontal column (x-coordinate) of the cursor position for keep column for move up/down.
-    preferred_column: Option<usize>,
+    ///
+    /// The first element is the x-coordinate (Pixels), preferred to use this.
+    /// The second element is the column (usize), fallback to use this.
+    preferred_column: Option<(Pixels, usize)>,
     _subscriptions: Vec<Subscription>,
 
     pub(super) _context_menu_task: Task<Result<()>>,
@@ -593,8 +596,25 @@ impl InputState {
 
     /// Called after moving the cursor. Updates preferred_column if we know where the cursor now is.
     fn update_preferred_column(&mut self) {
-        let column_ix = self.text.offset_to_point(self.cursor()).column;
-        self.preferred_column = Some(column_ix as usize);
+        let Some(last_layout) = &self.last_layout else {
+            self.preferred_column = None;
+            return;
+        };
+
+        let point = self.text.offset_to_point(self.cursor());
+        let row = (point.row as usize).saturating_sub(last_layout.visible_range.start);
+        let Some(line) = last_layout.lines.get(row) else {
+            self.preferred_column = None;
+            return;
+        };
+
+        let Some(pos) = line.position_for_index(point.column as usize, last_layout.line_height)
+        else {
+            self.preferred_column = None;
+            return;
+        };
+
+        self.preferred_column = Some((pos.x, point.column as usize));
     }
 
     /// Find which line and sub-line the given offset belongs to, along with the position within that sub-line.
@@ -637,21 +657,43 @@ impl InputState {
         if self.mode.is_single_line() {
             return;
         }
+        let Some(last_layout) = &self.last_layout else {
+            return;
+        };
 
         let offset = self.cursor();
         let was_preferred_column = self.preferred_column;
 
         let row = self.text.offset_to_point(offset).row;
         let new_row = row.saturating_add_signed(move_lines as i32);
-        let line = self.text.line(new_row as usize);
         let line_start_offset = self.text.point_to_offset(rope::Point::new(new_row, 0));
 
-        let new_column = self.preferred_column.unwrap_or_default().min(line.len());
-        let new_offset = line_start_offset + new_column;
+        let mut new_offset = line_start_offset;
 
+        if let Some((preferred_x, column)) = was_preferred_column {
+            let new_column = column.min(self.text.line(new_row as usize).len());
+            new_offset = line_start_offset + new_column;
+
+            // If in visible range, prefer to use position to get column.
+            let new_row = new_row as usize;
+            if new_row >= last_layout.visible_range.start {
+                let visible_row = new_row.saturating_sub(last_layout.visible_range.start);
+                if let Some(line) = last_layout.lines.get(visible_row) {
+                    if let Ok(x) = line.closest_index_for_position(
+                        Point {
+                            x: preferred_x,
+                            y: px(0.),
+                        },
+                        last_layout.line_height,
+                    ) {
+                        new_offset = line_start_offset + x;
+                    }
+                }
+            }
+        }
         self.pause_blink_cursor(cx);
         self.move_to(new_offset, window, cx);
-        // Set back the preferred_x_offset
+        // Set back the preferred_column
         self.preferred_column = was_preferred_column;
         cx.notify();
     }
