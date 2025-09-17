@@ -1,0 +1,24 @@
+//! A node that cycles through multiple outputs (like Unreal's MultiGate).
+
+/// Cycle through multiple outputs in sequence.
+fn @[pulsar_node_fn_id]@() {
+    use std::sync::atomic::{AtomicI32, Ordering};
+    static CURRENT_INDEX: AtomicI32 = AtomicI32::new(0);
+    
+    if @[in_reset_bool]@ {
+        CURRENT_INDEX.store(0, Ordering::Relaxed);
+        return;
+    }
+    
+    let index = CURRENT_INDEX.fetch_add(1, Ordering::Relaxed);
+    let num_outputs = 4; // Fixed to 4 outputs for simplicity
+    let current = index % num_outputs;
+    
+    match current {
+        0 => @[pulsar_exec_output0]@,
+        1 => @[pulsar_exec_output1]@,
+        2 => @[pulsar_exec_output2]@,
+        3 => @[pulsar_exec_output3]@,
+        _ => {}
+    }
+}

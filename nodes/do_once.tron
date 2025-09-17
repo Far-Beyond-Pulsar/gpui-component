@@ -1,0 +1,17 @@
+//! A node that executes only once until reset (like Unreal's DoOnce).
+
+/// Execute only once until reset. Uses static state.
+fn @[pulsar_node_fn_id]@() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static EXECUTED: AtomicBool = AtomicBool::new(false);
+    
+    if @[in_reset_bool]@ {
+        EXECUTED.store(false, Ordering::Relaxed);
+        return;
+    }
+    
+    if !EXECUTED.load(Ordering::Relaxed) {
+        EXECUTED.store(true, Ordering::Relaxed);
+        @[pulsar_exec_then]@
+    }
+}

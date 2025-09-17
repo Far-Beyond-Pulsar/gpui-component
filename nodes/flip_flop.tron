@@ -1,0 +1,16 @@
+//! A node that alternates between two outputs (like Unreal's FlipFlop).
+
+/// Alternate between two outputs each time it's called.
+fn @[pulsar_node_fn_id]@() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static FLIP_STATE: AtomicBool = AtomicBool::new(false);
+    
+    let current_state = FLIP_STATE.load(Ordering::Relaxed);
+    FLIP_STATE.store(!current_state, Ordering::Relaxed);
+    
+    if current_state {
+        @[pulsar_exec_a]@
+    } else {
+        @[pulsar_exec_b]@
+    }
+}

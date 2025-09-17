@@ -1,0 +1,19 @@
+//! A node that can be opened/closed to control execution flow (like Unreal's Gate).
+
+/// Control execution flow with an open/close gate.
+fn @[pulsar_node_fn_id]@() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static GATE_OPEN: AtomicBool = AtomicBool::new(false);
+    
+    if @[in_open_bool]@ {
+        GATE_OPEN.store(true, Ordering::Relaxed);
+    }
+    
+    if @[in_close_bool]@ {
+        GATE_OPEN.store(false, Ordering::Relaxed);
+    }
+    
+    if GATE_OPEN.load(Ordering::Relaxed) {
+        @[pulsar_exec_then]@
+    }
+}

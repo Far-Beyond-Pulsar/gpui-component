@@ -1,0 +1,20 @@
+//! A node that executes N times then stops (like Unreal's DoN).
+
+/// Execute N times then stop. Uses static state.
+fn @[pulsar_node_fn_id]@() {
+    use std::sync::atomic::{AtomicI32, Ordering};
+    static COUNTER: AtomicI32 = AtomicI32::new(0);
+    
+    let max_count = @[in_n_number]@ as i32;
+    
+    if @[in_reset_bool]@ {
+        COUNTER.store(0, Ordering::Relaxed);
+        return;
+    }
+    
+    let current = COUNTER.load(Ordering::Relaxed);
+    if current < max_count {
+        COUNTER.fetch_add(1, Ordering::Relaxed);
+        @[pulsar_exec_then]@
+    }
+}
