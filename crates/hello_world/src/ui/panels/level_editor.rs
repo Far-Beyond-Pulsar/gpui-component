@@ -2,10 +2,10 @@ use gpui::*;
 use gpui_component::{
     button::Button, dock::{Panel, PanelEvent}, h_flex, resizable::{h_resizable, resizable_panel, ResizableState}, v_flex, ActiveTheme as _, IconName, Selectable, StyledExt
 };
-use gpui_component::viewport_new::{Viewport, DoubleBuffer, RefreshHook, create_viewport_with_background_rendering};
+use gpui_component::viewport_final::{Viewport, DoubleBuffer, RefreshHook, create_viewport_with_background_rendering};
 
 use crate::ui::shared::{Toolbar, ToolbarButton, ViewportControls, StatusBar};
-use crate::ui::rainbow_engine::{RainbowRenderEngine, RainbowPattern};
+use crate::ui::rainbow_engine_final::{RainbowRenderEngine, RainbowPattern};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -54,7 +54,6 @@ impl LevelEditorPanel {
         
         // Create rainbow render engine
         let render_engine = Arc::new(Mutex::new(RainbowRenderEngine::new()));
-        let buffers = Arc::new(buffers);
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
         
         // Spawn render thread that uses the refresh hook to trigger GPUI reactive updates
@@ -98,6 +97,8 @@ impl LevelEditorPanel {
             Self::render_thread_controlled(engine_clone, buffers_clone, hook_clone, enabled_clone);
         });
 
+        println!("[LEVEL-EDITOR] Created viewport and render engine, starting render thread...");
+
         Self {
             focus_handle: cx.focus_handle(),
             selected_object: None,
@@ -136,20 +137,35 @@ impl LevelEditorPanel {
         
         while render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
             let frame_start = std::time::Instant::now();
-            let mut timing_debug = frame_count % 60 == 0; // Debug every 60 frames (~1 sec)
+            let timing_debug = frame_count % 60 == 0; // Debug every 60 frames (~1 sec)
+            
+            if frame_count == 0 {
+                println!("[RENDER-THREAD] Starting render loop...");
+            }
             
             // Step 1: Render to back buffer with exclusive access (DIRECT RGBA8)
             let render_start = std::time::Instant::now();
             let render_successful = if let Ok(mut engine_guard) = engine.try_lock() {
                 let back_buffer = buffers.get_back_buffer();
-                if let Ok(mut buffer_guard) = back_buffer.try_lock() {
+                let buffer_lock_result = back_buffer.try_lock();
+                if let Ok(mut buffer_guard) = buffer_lock_result {
                     // Render DIRECTLY in RGBA8 format - NO CONVERSION NEEDED
                     engine_guard.render_rgba8(&mut *buffer_guard);
+                    if frame_count == 0 {
+                        println!("[RENDER-THREAD] First frame rendered successfully to {}x{} buffer", 
+                                buffer_guard.width, buffer_guard.height);
+                    }
                     true
                 } else {
+                    if frame_count == 0 {
+                        println!("[RENDER-THREAD] Failed to lock buffer");
+                    }
                     false
                 }
             } else {
+                if frame_count == 0 {
+                    println!("[RENDER-THREAD] Failed to lock render engine");
+                }
                 false
             };
             let render_time = render_start.elapsed();
@@ -162,11 +178,7 @@ impl LevelEditorPanel {
                 
                 // Step 3: Smart UI refresh with throttling
                 let refresh_start = std::time::Instant::now();
-                let now = std::time::Instant::now();
-                if now.duration_since(last_ui_refresh) >= ui_refresh_interval {
-                    refresh_hook();
-                    last_ui_refresh = now;
-                }
+                refresh_hook(); // Call refresh hook every successful frame
                 let refresh_time = refresh_start.elapsed();
                 
                 if timing_debug {
@@ -461,7 +473,7 @@ impl LevelEditorPanel {
     }
 
     fn render_performance_overlay(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let viewport_metrics = self.viewport.read(cx).metrics();
+        // Since the new viewport doesn't expose metrics directly, we'll use our own metrics from the engine
         
         // Get rainbow engine metrics
         let (engine_fps, frame_count, pattern_name) = if let Ok(engine) = self.render_engine.lock() {
@@ -533,13 +545,13 @@ impl LevelEditorPanel {
                         div()
                             .text_xs()
                             .text_color(cx.theme().muted_foreground)
-                            .child(format!("GPUI: {:.1} FPS", viewport_metrics.fps))
+                            .child(format!("GPUI: Zero-copy"))
                     )
                     .child(
                         div()
                             .text_xs()
                             .text_color(cx.theme().muted_foreground)
-                            .child(format!("Textures: {}", viewport_metrics.texture_updates))
+                            .child(format!("Mode: Final"))
                     )
             )
     }

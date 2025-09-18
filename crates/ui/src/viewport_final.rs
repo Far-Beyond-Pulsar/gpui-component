@@ -266,6 +266,15 @@ impl Viewport {
             if self.debug_enabled && grab_time.as_micros() > 50 {
                 println!("[VIEWPORT-UI] Texture grab: {}μs", grab_time.as_micros());
             }
+            
+            if self.debug_enabled {
+                if texture.is_some() {
+                    println!("[VIEWPORT-UI] Got texture from background task");
+                } else {
+                    println!("[VIEWPORT-UI] No texture available from background task");
+                }
+            }
+            
             texture
         };
         
@@ -337,92 +346,104 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
         if processing_flag_clone.load(Ordering::Relaxed) {
             return;
         }
-        let _ = refresh_sender.try_send(()); // Non-blocking send
+        let send_result = refresh_sender.try_send(()); // Non-blocking send
+        if send_result.is_ok() {
+            println!("[VIEWPORT-BG] Refresh signal sent successfully");
+        } else {
+            println!("[VIEWPORT-BG] Failed to send refresh signal: {:?}", send_result);
+        }
     });
 
-    // Background task for texture pre-processing
+    // Background task for texture pre-processing - use a separate thread
     let entity = cx.entity();
     let buffer_ref = Arc::clone(&double_buffer);
     let shared_texture_ref = Arc::clone(&viewport.shared_texture);
     let processing_flag_ref = Arc::clone(&processing_flag);
     let debug_enabled = cfg!(debug_assertions);
     
-    cx.spawn(async move |_this, cx| {
+    // Use a separate thread with blocking operations instead of async
+    std::thread::spawn(move || {
+        println!("[VIEWPORT-BG] Background task started, waiting for refresh signals...");
+        
         loop {
-            if refresh_receiver.recv().await.is_ok() {
-                processing_flag_ref.store(true, Ordering::Relaxed);
-                
-                let process_start = std::time::Instant::now();
-                
-                // Drain queue to prevent backlog
-                while refresh_receiver.try_recv().is_ok() {}
-                
-                // Get front buffer data (ALREADY in RGBA8 format)
-                let texture_result = {
-                    let front_buffer = buffer_ref.get_front_buffer();
-                    let buffer_guard = match front_buffer.lock() {
-                        Ok(guard) => guard,
-                        Err(_) => {
+            // Use blocking recv instead of async
+            match refresh_receiver.recv_blocking() {
+                Ok(()) => {
+                    println!("[VIEWPORT-BG] Received refresh signal, processing buffer...");
+                    processing_flag_ref.store(true, Ordering::Relaxed);
+                    
+                    let process_start = std::time::Instant::now();
+                    
+                    // Drain queue to prevent backlog
+                    while refresh_receiver.try_recv().is_ok() {}
+                    
+                    // Get front buffer data (ALREADY in RGBA8 format)
+                    let texture_result = {
+                        let front_buffer = buffer_ref.get_front_buffer();
+                        let buffer_guard = match front_buffer.lock() {
+                            Ok(guard) => guard,
+                            Err(_) => {
+                                processing_flag_ref.store(false, Ordering::Relaxed);
+                                continue;
+                            }
+                        };
+                        
+                        // Skip invalid dimensions
+                        if buffer_guard.width == 0 || buffer_guard.height == 0 {
                             processing_flag_ref.store(false, Ordering::Relaxed);
                             continue;
                         }
+                        
+                        // ZERO CONVERSION - create image::Frame from RGBA8 data
+                        let texture_create_start = std::time::Instant::now();
+                        
+                        // Create an image::Frame from our RGBA8 buffer
+                        let rgba_image = match ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(
+                            buffer_guard.width,
+                            buffer_guard.height,
+                            buffer_guard.buffer.clone(),
+                        ) {
+                            Some(img) => img,
+                            None => {
+                                processing_flag_ref.store(false, Ordering::Relaxed);
+                                continue;
+                            }
+                        };
+                        
+                        let frame = image::Frame::new(rgba_image);
+                        let texture = Arc::new(RenderImage::new(vec![frame]));
+                        
+                        let texture_create_time = texture_create_start.elapsed();
+                        let dimensions = (buffer_guard.width, buffer_guard.height);
+                        
+                        if debug_enabled {
+                            println!("[VIEWPORT-BG] Zero-copy texture: create={}μs ({}x{})",
+                                texture_create_time.as_micros(),
+                                dimensions.0,
+                                dimensions.1);
+                        }
+                        
+                        texture
                     };
                     
-                    // Skip invalid dimensions
-                    if buffer_guard.width == 0 || buffer_guard.height == 0 {
-                        processing_flag_ref.store(false, Ordering::Relaxed);
-                        continue;
+                    // Store completed texture
+                    {
+                        let mut shared = shared_texture_ref.lock().unwrap();
+                        *shared = Some(texture_result);
                     }
                     
-                    // ZERO CONVERSION - create image::Frame from RGBA8 data
-                    let texture_create_start = std::time::Instant::now();
-                    
-                    // Create an image::Frame from our RGBA8 buffer
-                    let rgba_image = match ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(
-                        buffer_guard.width,
-                        buffer_guard.height,
-                        buffer_guard.buffer.clone(),
-                    ) {
-                        Some(img) => img,
-                        None => {
-                            processing_flag_ref.store(false, Ordering::Relaxed);
-                            continue;
-                        }
-                    };
-                    
-                    let frame = image::Frame::new(rgba_image);
-                    let texture = Arc::new(RenderImage::new(vec![frame]));
-                    
-                    let texture_create_time = texture_create_start.elapsed();
-                    let dimensions = (buffer_guard.width, buffer_guard.height);
-                    
+                    let total_time = process_start.elapsed();
                     if debug_enabled {
-                        println!("[VIEWPORT-BG] Zero-copy texture: create={}μs ({}x{})",
-                            texture_create_time.as_micros(),
-                            dimensions.0,
-                            dimensions.1);
+                        println!("[VIEWPORT-BG] Total process time: {}μs", total_time.as_micros());
                     }
                     
-                    texture
-                };
-                
-                // Store completed texture
-                {
-                    let mut shared = shared_texture_ref.lock().unwrap();
-                    *shared = Some(texture_result);
+                    processing_flag_ref.store(false, Ordering::Relaxed);
+                },
+                Err(_) => {
+                    // Channel closed, exit the task
+                    println!("[VIEWPORT-BG] Channel closed, exiting background task");
+                    break;
                 }
-                
-                // Notify UI for refresh
-                let _ = entity.update(cx, |_viewport, cx| {
-                    cx.notify(); // UI refresh
-                });
-                
-                let total_time = process_start.elapsed();
-                if debug_enabled {
-                    println!("[VIEWPORT-BG] Total process time: {}μs", total_time.as_micros());
-                }
-                
-                processing_flag_ref.store(false, Ordering::Relaxed);
             }
         }
     });
