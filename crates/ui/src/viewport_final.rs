@@ -1,5 +1,5 @@
 use gpui::{
-    div, px, App, AppContext, Bounds, Context, Corners, DismissEvent, Element, ElementId, Entity, EventEmitter, FocusHandle, Focusable, GlobalElementId, InspectorElementId, InteractiveElement, IntoElement, LayoutId, ParentElement as _, Pixels, Point, Render, RenderImage, Size, StatefulInteractiveElement, Style, Styled as _, Window
+    div, px, App, AppContext, Bounds, Context, Corners, DismissEvent, Element, ElementId, Entity, EventEmitter, FocusHandle, Focusable, GlobalElementId, InspectorElementId, InteractiveElement, IntoElement, LayoutId, ParentElement as _, Pixels, Point, Render, RenderImage, Size, StatefulInteractiveElement, Style, Styled as _, Window, Task
 };
 use std::sync::{Arc, Mutex, atomic::{AtomicBool, AtomicUsize, Ordering}};
 use image::ImageBuffer;
@@ -135,9 +135,9 @@ impl DoubleBuffer {
     pub fn get_back_buffer(&self) -> Arc<Mutex<Framebuffer>> {
         let front_idx = self.current_front.load(Ordering::Acquire);
         if front_idx == 0 {
-            Arc::clone(&self.buffer_1) // Buffer 1 is back
+            self.buffer_1.clone() // Buffer 1 is back
         } else {
-            Arc::clone(&self.buffer_0) // Buffer 0 is back
+            self.buffer_0.clone() // Buffer 0 is back
         }
     }
 
@@ -145,9 +145,9 @@ impl DoubleBuffer {
     pub fn get_front_buffer(&self) -> Arc<Mutex<Framebuffer>> {
         let front_idx = self.current_front.load(Ordering::Acquire);
         if front_idx == 0 {
-            Arc::clone(&self.buffer_0) // Buffer 0 is front
+            self.buffer_0.clone() // Buffer 0 is front
         } else {
-            Arc::clone(&self.buffer_1) // Buffer 1 is front
+            self.buffer_1.clone() // Buffer 1 is front
         }
     }
 
@@ -251,6 +251,8 @@ pub struct Viewport {
     debug_enabled: bool,
     // Cleanup mechanism to prevent memory leaks
     shutdown_sender: Option<smol::channel::Sender<()>>,
+    // Task handle for proper cleanup
+    task_handle: Option<Task<()>>,
 }
 
 impl Viewport {
@@ -286,6 +288,31 @@ impl Viewport {
         }
         
         texture
+    }
+}
+
+impl Drop for Viewport {
+    fn drop(&mut self) {
+        println!("[VIEWPORT] Dropping viewport, cleaning up resources...");
+        
+        // Signal shutdown to background task
+        if let Some(sender) = self.shutdown_sender.take() {
+            let _ = sender.try_send(());
+            println!("[VIEWPORT] Shutdown signal sent");
+        }
+        
+        // Cancel background task if it exists
+        if let Some(task) = self.task_handle.take() {
+            // GPUI tasks are cancelled by dropping them
+            drop(task);
+            println!("[VIEWPORT] Background task dropped");
+        }
+        
+        // Clear shared texture to break Arc cycles
+        if let Ok(mut shared) = self.shared_texture.lock() {
+            *shared = None;
+            println!("[VIEWPORT] Shared texture cleared");
+        }
     }
 }
 
@@ -343,21 +370,39 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
         last_height: initial_height,
         debug_enabled: cfg!(debug_assertions),
         shutdown_sender: Some(shutdown_sender),
+        task_handle: None, // Will be set after spawning the task
     });
 
     let processing_flag = Arc::new(AtomicBool::new(false));
     let processing_flag_clone = Arc::clone(&processing_flag);
     
+    // Memory tracking for debugging
+    let refresh_count = Arc::new(AtomicUsize::new(0));
+    let refresh_count_clone = Arc::clone(&refresh_count);
+    
     let refresh_hook: RefreshHook = Arc::new(move || {
         // Skip if already processing to prevent queue buildup
         if processing_flag_clone.load(Ordering::Relaxed) {
+            if cfg!(debug_assertions) {
+                println!("[VIEWPORT-BG] Skipping refresh - already processing");
+            }
             return;
         }
+        
+        let count = refresh_count_clone.fetch_add(1, Ordering::Relaxed);
+        if cfg!(debug_assertions) && count % 100 == 0 {
+            println!("[VIEWPORT-BG] Refresh count: {}", count);
+        }
+        
         let send_result = refresh_sender.try_send(()); // Non-blocking send
         if send_result.is_ok() {
-            println!("[VIEWPORT-BG] Refresh signal sent successfully");
+            if cfg!(debug_assertions) {
+                println!("[VIEWPORT-BG] Refresh signal sent successfully ({})", count);
+            }
         } else {
-            println!("[VIEWPORT-BG] Failed to send refresh signal: {:?}", send_result);
+            if cfg!(debug_assertions) {
+                println!("[VIEWPORT-BG] Failed to send refresh signal: {:?} ({})", send_result, count);
+            }
         }
     });
 
@@ -367,8 +412,8 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
     let debug_enabled = cfg!(debug_assertions);
 
     // Use GPUI async task that can properly notify the viewport entity
-    viewport.update(cx, |_viewport, cx| {
-        cx.spawn(async move |viewport_entity, mut cx| {
+    viewport.update(cx, |viewport, cx| {
+        let task = cx.spawn(async move |viewport_entity, cx| {
         println!("[VIEWPORT-BG] Background task started, waiting for refresh signals...");
         
         loop {
@@ -382,8 +427,14 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
                             
                             let process_start = std::time::Instant::now();
                     
-                    // Drain queue to prevent backlog
-                    while refresh_receiver.try_recv().is_ok() {}
+                    // Drain ALL pending refresh signals to prevent accumulation
+                    let mut drained_count = 0;
+                    while refresh_receiver.try_recv().is_ok() {
+                        drained_count += 1;
+                    }
+                    if debug_enabled && drained_count > 0 {
+                        println!("[VIEWPORT-BG] Drained {} pending refresh signals", drained_count);
+                    }
                     
                     // Get front buffer data (ALREADY in RGBA8 format)
                     let texture_result = {
@@ -437,8 +488,12 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
                     // Update the viewport entity and store texture + trigger re-render (like GPML canvas)
                     let update_result = viewport_entity.update(cx, |viewport, cx| {
                         // Store completed texture in the viewport's shared_texture
+                        // Clear old texture before storing new one to prevent accumulation
                         {
                             let mut shared = viewport.shared_texture.lock().unwrap();
+                            if shared.is_some() && debug_enabled {
+                                println!("[VIEWPORT-BG] Replacing existing texture");
+                            }
                             *shared = Some(texture_result);
                         }
                         
@@ -448,6 +503,8 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
                     
                     if let Err(e) = update_result {
                         println!("[VIEWPORT-BG] Failed to update viewport entity: {:?}", e);
+                        // Break out if viewport entity is gone
+                        break;
                     }
                     
                     let total_time = process_start.elapsed();
@@ -465,13 +522,22 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
                     }
                 },
                 shutdown_result = shutdown_receiver.recv().fuse() => {
-                    // Shutdown signal received
-                    println!("[VIEWPORT-BG] Shutdown signal received, exiting background task");
-                    break;
+                    match shutdown_result {
+                        Ok(()) | Err(_) => {
+                            // Shutdown signal received or channel closed
+                            println!("[VIEWPORT-BG] Shutdown signal received, exiting background task");
+                            break;
+                        }
+                    }
                 }
             }
         }
-        }).detach();
+        
+        println!("[VIEWPORT-BG] Background task exiting, cleaning up...");
+        });
+        
+        // Store the task handle for proper cleanup
+        viewport.task_handle = Some(task);
     });
 
     (viewport, double_buffer, refresh_hook)
