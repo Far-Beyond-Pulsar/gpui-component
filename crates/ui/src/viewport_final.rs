@@ -394,6 +394,11 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
                             continue;
                         }
                         
+                        // DEBUG: Check if buffer has any non-zero data
+                        let non_zero_pixels = buffer_guard.buffer.iter().take(1000).filter(|&&b| b != 0).count();
+                        println!("[VIEWPORT-BG] Buffer debug: {}x{} size, {} non-zero bytes in first 1000, total buffer size: {}", 
+                            buffer_guard.width, buffer_guard.height, non_zero_pixels, buffer_guard.buffer.len());
+                        
                         // ZERO CONVERSION - create image::Frame from RGBA8 data
                         let texture_create_start = std::time::Instant::now();
                         
