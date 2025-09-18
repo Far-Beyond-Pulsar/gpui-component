@@ -22,7 +22,6 @@ impl PulsarEngine {
 
         // Game Thread
         tokio::spawn({
-            let mut app = self.app.clone();
             async move {
 
             }
@@ -30,7 +29,6 @@ impl PulsarEngine {
 
         // Render Thread
         tokio::spawn({
-            let mut app = self.app.clone();
             async move {
 
             }
@@ -38,7 +36,6 @@ impl PulsarEngine {
 
         // Input Thread
         tokio::spawn({
-            let mut app = self.app.clone();
             async move {
 
             }
@@ -46,7 +43,6 @@ impl PulsarEngine {
 
         // Audio Thread
         tokio::spawn({
-            let mut app = self.app.clone();
             async move {
 
             }
@@ -54,7 +50,6 @@ impl PulsarEngine {
 
         // Network Thread
         tokio::spawn({
-            let mut app = self.app.clone();
             async move {
 
             }
@@ -62,7 +57,6 @@ impl PulsarEngine {
 
         // Physics Thread
         tokio::spawn({
-            let mut app = self.app.clone();
             async move {
 
             }

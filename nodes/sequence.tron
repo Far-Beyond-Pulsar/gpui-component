@@ -1,6 +1,13 @@
 //! A node that executes multiple outputs in sequence (like Unreal's Sequence).
 
+/// # Sequence Node
+/// 
 /// Execute multiple outputs in sequence.
+///
+/// ## Example
+///  - Thing
+///  - Thing2
+///  - Thing3
 fn @[pulsar_node_fn_id]@() {
     @[pulsar_exec_then0]@
     @[pulsar_exec_then1]@

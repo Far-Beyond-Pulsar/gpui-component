@@ -1,12 +1,10 @@
 use gpui::{
-    canvas, div, App, AppContext, Bounds, ContentMask, DismissEvent, EventEmitter,
+    canvas, div, App, Bounds, ContentMask, DismissEvent, EventEmitter,
     FocusHandle, Focusable, InteractiveElement, IntoElement,
     ParentElement as _, Pixels, Render, RenderImage, Size, Styled as _, Window, Corners, px,
-    Context, PaintQuad, Point, BorderStyle, Entity, WeakEntity,
+    Context, PaintQuad, Point, BorderStyle,
 };
-use std::sync::{Arc, Mutex, mpsc, atomic::{AtomicBool, Ordering}};
-use std::collections::VecDeque;
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 
 /// Performance metrics for the viewport
 #[derive(Debug, Clone, Default)]
@@ -21,51 +19,7 @@ pub struct ViewportMetrics {
     pub dropped_frames: u64,
 }
 
-/// A trait for render engines that can render to a GPU texture
-pub trait RenderEngine: Send + Sync + 'static {
-    /// Render to the given framebuffer
-    /// This should be as fast as possible and not block the UI thread
-    fn render(&mut self, framebuffer: &mut Framebuffer) -> Result<(), RenderError>;
 
-    /// Get the preferred format for the framebuffer
-    fn preferred_format(&self) -> FramebufferFormat {
-        FramebufferFormat::Rgba8
-    }
-
-    /// Called when the viewport is resized
-    fn on_resize(&mut self, _width: u32, _height: u32) {}
-
-    /// Called when the viewport needs to be initialized
-    fn initialize(&mut self) -> Result<(), RenderError> { Ok(()) }
-
-    /// Called when the viewport is being destroyed
-    fn cleanup(&mut self) {}
-
-    /// Set a callback that the render engine can use to trigger GPUI redraws
-    fn set_notify_callback(&mut self, _callback: Box<dyn Fn() + Send + Sync>) {}
-}
-
-/// Render engine errors
-#[derive(Debug, Clone)]
-pub enum RenderError {
-    InitializationFailed(String),
-    RenderFailed(String),
-    TextureError(String),
-    OutOfMemory,
-}
-
-impl std::fmt::Display for RenderError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RenderError::InitializationFailed(msg) => write!(f, "Initialization failed: {}", msg),
-            RenderError::RenderFailed(msg) => write!(f, "Render failed: {}", msg),
-            RenderError::TextureError(msg) => write!(f, "Texture error: {}", msg),
-            RenderError::OutOfMemory => write!(f, "Out of memory"),
-        }
-    }
-}
-
-impl std::error::Error for RenderError {}
 
 /// Supported framebuffer formats
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -187,8 +141,8 @@ impl Framebuffer {
     }
 }
 
-/// Double-buffered framebuffer system for smooth updates
-struct DoubleBuffer {
+/// Double-buffered framebuffer system for smooth updates with zero-copy access
+pub struct DoubleBuffer {
     front: Framebuffer,
     back: Framebuffer,
     swapped: AtomicBool,
@@ -208,7 +162,8 @@ impl DoubleBuffer {
         self.back.resize(width, height);
     }
 
-    fn get_back_buffer(&mut self) -> &mut Framebuffer {
+    /// Get mutable access to the back buffer for rendering (zero-copy)
+    pub fn get_back_buffer(&mut self) -> &mut Framebuffer {
         if self.swapped.load(Ordering::Acquire) {
             &mut self.front
         } else {
@@ -216,7 +171,8 @@ impl DoubleBuffer {
         }
     }
 
-    fn get_front_buffer(&self) -> &Framebuffer {
+    /// Get read-only access to the front buffer for display (zero-copy)
+    pub fn get_front_buffer(&self) -> &Framebuffer {
         if self.swapped.load(Ordering::Acquire) {
             &self.back
         } else {
@@ -224,36 +180,92 @@ impl DoubleBuffer {
         }
     }
 
-    fn swap(&mut self) {
+    /// Swap front and back buffers atomically
+    pub fn swap(&mut self) {
         let current = self.swapped.load(Ordering::Acquire);
         self.swapped.store(!current, Ordering::Release);
     }
 }
 
-/// Commands sent to the render thread
-#[derive(Debug)]
-enum RenderCommand {
-    Render,
-    Resize(u32, u32),
-    Shutdown,
+/// A handle that provides zero-copy access to viewport buffers
+pub struct ViewportBuffers {
+    double_buffer: Arc<Mutex<DoubleBuffer>>,
+}
+
+impl ViewportBuffers {
+    /// Get mutable access to the back buffer for rendering
+    /// Returns None if the mutex is poisoned
+    pub fn with_back_buffer<F, R>(&self, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut Framebuffer) -> R,
+    {
+        self.double_buffer.lock().ok().map(|mut buffer| {
+            let back = buffer.get_back_buffer();
+            f(back)
+        })
+    }
+
+    /// Get read-only access to the front buffer for reading
+    /// Returns None if the mutex is poisoned
+    pub fn with_front_buffer<F, R>(&self, f: F) -> Option<R>
+    where
+        F: FnOnce(&Framebuffer) -> R,
+    {
+        self.double_buffer.lock().ok().map(|buffer| {
+            let front = buffer.get_front_buffer();
+            f(front)
+        })
+    }
+
+    /// Swap the front and back buffers
+    /// Call this after rendering to the back buffer is complete
+    pub fn swap_buffers(&self) {
+        if let Ok(mut buffer) = self.double_buffer.lock() {
+            buffer.swap();
+        }
+    }
+
+    /// Resize both buffers
+    pub fn resize(&self, width: u32, height: u32) {
+        if let Ok(mut buffer) = self.double_buffer.lock() {
+            buffer.resize(width, height);
+        }
+    }
+}
+
+/// A hook function that external render engines can call to trigger GPUI refresh
+pub type RefreshHook = Arc<dyn Fn() + Send + Sync>;
+
+/// Create viewport buffers and refresh hook
+pub fn create_viewport_system(width: u32, height: u32, format: FramebufferFormat) -> (ViewportBuffers, RefreshHook) {
+    let double_buffer = Arc::new(Mutex::new(DoubleBuffer::new(width, height, format)));
+    let buffers = ViewportBuffers {
+        double_buffer: double_buffer.clone(),
+    };
+
+    // This will be set up by the viewport when it's created
+    let refresh_trigger = Arc::new(AtomicBool::new(false));
+    let refresh_flag = refresh_trigger.clone();
+    
+    let refresh_hook: RefreshHook = Arc::new(move || {
+        refresh_flag.store(true, Ordering::Relaxed);
+    });
+
+    (buffers, refresh_hook)
 }
 
 
-/// High-performance viewport component with async rendering
-pub struct Viewport<E: RenderEngine> {
+
+
+/// High-performance viewport component with zero-copy buffer access
+pub struct Viewport {
     focus_handle: FocusHandle,
-    render_engine: Arc<Mutex<E>>,
     double_buffer: Arc<Mutex<DoubleBuffer>>,
     visible: bool,
     bounds: Bounds<Pixels>,
 
-    // Async rendering
-    render_tx: mpsc::Sender<RenderCommand>,
-    _render_thread: std::thread::JoinHandle<()>,
-
     // Performance tracking
     metrics: Arc<Mutex<ViewportMetrics>>,
-    frame_times: Arc<Mutex<VecDeque<Instant>>>,
     last_texture_generation: u64,
 
     // Texture management
@@ -266,13 +278,12 @@ pub struct Viewport<E: RenderEngine> {
     // Debug flags
     debug_enabled: bool,
 
-    // GPUI integration
-    entity: Option<Entity<Self>>,
+    // GPUI refresh mechanism
+    refresh_trigger: Arc<AtomicBool>,
 }
 
-impl<E: RenderEngine> Drop for Viewport<E> {
+impl Drop for Viewport {
     fn drop(&mut self) {
-        let _ = self.render_tx.send(RenderCommand::Shutdown);
         self.hide();
 
         // Clean up memory allocations
@@ -282,48 +293,30 @@ impl<E: RenderEngine> Drop for Viewport<E> {
     }
 }
 
-impl<E: RenderEngine> Viewport<E> {
-    pub fn new(render_engine: E, initial_width: u32, initial_height: u32, cx: &mut App) -> Self {
-        let format = render_engine.preferred_format();
+impl Viewport {
+    /// Create a new viewport and return it along with buffer access and refresh hook
+    pub fn new(initial_width: u32, initial_height: u32, format: FramebufferFormat, cx: &mut App) -> (Self, ViewportBuffers, RefreshHook) {
         let double_buffer = Arc::new(Mutex::new(DoubleBuffer::new(initial_width, initial_height, format)));
-        let render_engine = Arc::new(Mutex::new(render_engine));
         let metrics = Arc::new(Mutex::new(ViewportMetrics::default()));
-        let frame_times = Arc::new(Mutex::new(VecDeque::with_capacity(60)));
+        let refresh_trigger = Arc::new(AtomicBool::new(false));
 
-        // Create render thread
-        let (render_tx, render_rx) = mpsc::channel();
+        // Create buffer handle for external access
+        let buffers = ViewportBuffers {
+            double_buffer: double_buffer.clone(),
+        };
 
-        // Initialize render engine
-        if let Ok(mut engine) = render_engine.lock() {
-            if let Err(e) = engine.initialize() {
-                eprintln!("[VIEWPORT] Failed to initialize render engine: {}", e);
-            }
-        }
-        let engine_clone = render_engine.clone();
-        let buffer_clone = double_buffer.clone();
-        let metrics_clone = metrics.clone();
-        let frame_times_clone = frame_times.clone();
-
-        let render_thread = std::thread::spawn(move || {
-            Self::render_thread_main(
-                engine_clone,
-                buffer_clone,
-                metrics_clone,
-                frame_times_clone,
-                render_rx
-            );
+        // Create refresh hook
+        let refresh_flag = refresh_trigger.clone();
+        let refresh_hook: RefreshHook = Arc::new(move || {
+            refresh_flag.store(true, Ordering::Relaxed);
         });
 
-        Self {
+        let viewport = Self {
             focus_handle: cx.focus_handle(),
-            render_engine,
             double_buffer,
             visible: true,
             bounds: Bounds::default(),
-            render_tx,
-            _render_thread: render_thread,
             metrics,
-            frame_times,
             last_texture_generation: 0,
             current_texture: None,
             texture_dirty: true,
@@ -331,154 +324,10 @@ impl<E: RenderEngine> Viewport<E> {
             last_width: initial_width,
             last_height: initial_height,
             debug_enabled: cfg!(debug_assertions),
-            entity: None,
-        }
-    }
-
-    /// Set the entity reference for this viewport and provide it to the render engine
-    pub fn set_entity(&mut self, entity: Entity<Self>, cx: &mut Context<Self>) {
-        self.entity = Some(entity.clone());
-
-        // Create a callback that can trigger GPUI notifications from the render thread
-        // Use a simple atomic flag to trigger continuous redraws
-        let needs_redraw = Arc::new(AtomicBool::new(false));
-        let redraw_flag = needs_redraw.clone();
-
-        let callback = Box::new(move || {
-            // This callback is called from the render thread after each frame completion
-            // Set the atomic flag to trigger a GPUI redraw
-            needs_redraw.store(true, Ordering::Relaxed);
-        });
-
-        // Provide the callback to the render engine
-        if let Ok(mut engine) = self.render_engine.lock() {
-            engine.set_notify_callback(callback);
-        }
-    }
-
-    /// Main render thread loop
-    fn render_thread_main(
-        render_engine: Arc<Mutex<E>>,
-        double_buffer: Arc<Mutex<DoubleBuffer>>,
-        metrics: Arc<Mutex<ViewportMetrics>>,
-        frame_times: Arc<Mutex<VecDeque<Instant>>>,
-        render_rx: mpsc::Receiver<RenderCommand>,
-    ) {
-        let mut should_continue = true;
-
-        while should_continue {
-            match render_rx.recv_timeout(Duration::from_millis(16)) { // ~60 FPS max
-                Ok(command) => match command {
-                    RenderCommand::Render => {
-                        Self::perform_render(&render_engine, &double_buffer, &metrics, &frame_times);
-                    }
-                    RenderCommand::Resize(width, height) => {
-                        if let Ok(mut buffer) = double_buffer.lock() {
-                            buffer.resize(width, height);
-                        }
-                        if let Ok(mut engine) = render_engine.lock() {
-                            engine.on_resize(width, height);
-                        }
-                    }
-                    RenderCommand::Shutdown => {
-                        should_continue = false;
-                        if let Ok(mut engine) = render_engine.lock() {
-                            engine.cleanup();
-                        }
-                    }
-                },
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    // Continue rendering at target framerate
-                    Self::perform_render(&render_engine, &double_buffer, &metrics, &frame_times);
-                }
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    should_continue = false;
-                }
-            }
-        }
-    }
-
-    fn perform_render(
-        render_engine: &Arc<Mutex<E>>,
-        double_buffer: &Arc<Mutex<DoubleBuffer>>,
-        metrics: &Arc<Mutex<ViewportMetrics>>,
-        frame_times: &Arc<Mutex<VecDeque<Instant>>>,
-    ) {
-        let start_time = Instant::now();
-
-        // Render to back buffer
-        let render_result = {
-            let mut buffer_guard = match double_buffer.lock() {
-                Ok(guard) => guard,
-                Err(_) => return,
-            };
-
-            let mut engine_guard = match render_engine.lock() {
-                Ok(guard) => guard,
-                Err(_) => return,
-            };
-
-            let back_buffer = buffer_guard.get_back_buffer();
-            engine_guard.render(back_buffer)
+            refresh_trigger,
         };
 
-        if let Err(e) = render_result {
-            eprintln!("[VIEWPORT] Render error: {}", e);
-            return;
-        }
-
-        // Swap buffers
-        if let Ok(mut buffer_guard) = double_buffer.lock() {
-            buffer_guard.swap();
-        }
-
-        // Update metrics
-        let frame_time = start_time.elapsed();
-        Self::update_metrics(metrics, frame_times, frame_time);
-    }
-
-    fn update_metrics(
-        metrics: &Arc<Mutex<ViewportMetrics>>,
-        frame_times: &Arc<Mutex<VecDeque<Instant>>>,
-        frame_time: Duration,
-    ) {
-        let frame_time_ms = frame_time.as_secs_f64() * 1000.0;
-
-        if let (Ok(mut metrics_guard), Ok(mut times_guard)) = (metrics.lock(), frame_times.lock()) {
-            metrics_guard.frame_count += 1;
-            metrics_guard.buffer_swaps += 1;
-
-            // Update frame time stats
-            if metrics_guard.frame_count == 1 {
-                metrics_guard.min_frame_time_ms = frame_time_ms;
-                metrics_guard.max_frame_time_ms = frame_time_ms;
-                metrics_guard.avg_frame_time_ms = frame_time_ms;
-            } else {
-                metrics_guard.min_frame_time_ms = metrics_guard.min_frame_time_ms.min(frame_time_ms);
-                metrics_guard.max_frame_time_ms = metrics_guard.max_frame_time_ms.max(frame_time_ms);
-
-                // Rolling average
-                let alpha = 0.1;
-                metrics_guard.avg_frame_time_ms =
-                    alpha * frame_time_ms + (1.0 - alpha) * metrics_guard.avg_frame_time_ms;
-            }
-
-            // Calculate FPS from recent frames
-            let now = Instant::now();
-            times_guard.push_back(now);
-
-            // Keep only last 60 frames
-            while times_guard.len() > 60 {
-                times_guard.pop_front();
-            }
-
-            if times_guard.len() >= 2 {
-                let time_span = now.duration_since(times_guard[0]).as_secs_f64();
-                if time_span > 0.0 {
-                    metrics_guard.fps = (times_guard.len() - 1) as f64 / time_span;
-                }
-            }
-        }
+        (viewport, buffers, refresh_hook)
     }
 
     pub fn show(&mut self) {
@@ -497,11 +346,6 @@ impl<E: RenderEngine> Viewport<E> {
         self.bounds
     }
 
-    /// Trigger a render (non-blocking)
-    pub fn request_render(&self) {
-        let _ = self.render_tx.send(RenderCommand::Render);
-    }
-
     /// Get current performance metrics
     pub fn metrics(&self) -> ViewportMetrics {
         self.metrics.lock().map(|m| m.clone()).unwrap_or_default()
@@ -510,14 +354,6 @@ impl<E: RenderEngine> Viewport<E> {
     /// Enable or disable debug output
     pub fn set_debug_enabled(&mut self, enabled: bool) {
         self.debug_enabled = enabled;
-    }
-
-    /// Access the render engine (use with caution - prefer async rendering)
-    pub fn with_render_engine<F, R>(&self, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut E) -> R,
-    {
-        self.render_engine.lock().ok().map(|mut engine| f(&mut *engine))
     }
 
     /// Get a reference to the current framebuffer for reading (front buffer)
@@ -540,6 +376,16 @@ impl<E: RenderEngine> Viewport<E> {
         })
     }
 
+    /// Check if the GPUI should refresh (called from render loop)
+    pub fn should_refresh(&self) -> bool {
+        self.refresh_trigger.load(Ordering::Relaxed)
+    }
+
+    /// Clear the refresh flag after handling the refresh
+    pub fn clear_refresh_flag(&self) {
+        self.refresh_trigger.store(false, Ordering::Relaxed);
+    }
+
     fn update_texture_if_needed(&mut self, _window: &mut Window) {
         let buffer_guard = match self.double_buffer.lock() {
             Ok(guard) => guard,
@@ -551,11 +397,15 @@ impl<E: RenderEngine> Viewport<E> {
         // Check if texture needs updating
         let needs_update = self.current_texture.is_none()
             || self.texture_dirty
-            || front_buffer.generation() != self.last_texture_generation;
+            || front_buffer.generation() != self.last_texture_generation
+            || self.should_refresh();
 
         if !needs_update {
             return;
         }
+
+        // Clear refresh flag since we're handling the update
+        self.clear_refresh_flag();
 
         // Throttle updates during rapid resizing to prevent memory pressure
         if front_buffer.width != self.last_width || front_buffer.height != self.last_height {
@@ -567,7 +417,6 @@ impl<E: RenderEngine> Viewport<E> {
                 return;
             }
         }
-
 
         // Reuse conversion buffer to avoid allocations
         let required_size = match front_buffer.format {
@@ -644,22 +493,20 @@ impl<E: RenderEngine> Viewport<E> {
     }
 }
 
-impl<E: RenderEngine> Focusable for Viewport<E> {
+impl Focusable for Viewport {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus_handle.clone()
     }
 }
 
-impl<E: RenderEngine> EventEmitter<DismissEvent> for Viewport<E> {}
+impl EventEmitter<DismissEvent> for Viewport {}
 
-impl<E: RenderEngine> Render for Viewport<E> {
+impl Render for Viewport {
     fn render(
         &mut self,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let view = cx.entity().clone();
-
         div()
             .track_focus(&self.focus_handle)
             .size_full()
@@ -683,15 +530,16 @@ impl<E: RenderEngine> Render for Viewport<E> {
                                     viewport.rgba_conversion_buffer.clear();
                                     viewport.rgba_conversion_buffer.shrink_to_fit();
 
-                                    let _ = viewport.render_tx.send(RenderCommand::Resize(width, height));
+                                    // Resize the buffers
+                                    drop(buffer);
+                                    if let Ok(mut buffer) = viewport.double_buffer.lock() {
+                                        buffer.resize(width, height);
+                                    }
                                     viewport.texture_dirty = true;
                                     viewport.last_width = width;
                                     viewport.last_height = height;
                                 }
                             }
-
-                            // Request render
-                            viewport.request_render();
                         });
                     },
                     move |bounds, _hitbox, window, cx| {
@@ -740,7 +588,6 @@ impl<E: RenderEngine> Render for Viewport<E> {
 pub struct TestRenderEngine {
     frame_count: u64,
     color_cycle: f32,
-    notify_callback: Option<Box<dyn Fn() + Send + Sync>>,
 }
 
 impl std::fmt::Debug for TestRenderEngine {
@@ -748,7 +595,6 @@ impl std::fmt::Debug for TestRenderEngine {
         f.debug_struct("TestRenderEngine")
             .field("frame_count", &self.frame_count)
             .field("color_cycle", &self.color_cycle)
-            .field("notify_callback", &self.notify_callback.as_ref().map(|_| "<callback>"))
             .finish()
     }
 }
@@ -758,13 +604,10 @@ impl TestRenderEngine {
         Self {
             frame_count: 0,
             color_cycle: 0.0,
-            notify_callback: None,
         }
     }
-}
-
-impl RenderEngine for TestRenderEngine {
-    fn render(&mut self, framebuffer: &mut Framebuffer) -> Result<(), RenderError> {
+    
+    pub fn render(&mut self, framebuffer: &mut Framebuffer) {
         self.frame_count += 1;
         self.color_cycle += 0.02;
 
@@ -790,31 +633,6 @@ impl RenderEngine for TestRenderEngine {
         }
 
         framebuffer.mark_dirty(None);
-
-        // Notify GPUI that the viewport needs to be redrawn
-        // This is called from the render thread after each frame is complete
-        if let Some(callback) = &self.notify_callback {
-            callback();
-        }
-
-        Ok(())
-    }
-
-    fn initialize(&mut self) -> Result<(), RenderError> {
-        println!("[TEST_ENGINE] Initialized");
-        Ok(())
-    }
-
-    fn cleanup(&mut self) {
-        println!("[TEST_ENGINE] Cleaned up");
-    }
-
-    fn on_resize(&mut self, _width: u32, _height: u32) {
-        // TestRenderEngine doesn't need special resize handling
-    }
-
-    fn set_notify_callback(&mut self, callback: Box<dyn Fn() + Send + Sync>) {
-        self.notify_callback = Some(callback);
     }
 }
 

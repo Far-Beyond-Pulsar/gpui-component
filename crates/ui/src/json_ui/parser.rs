@@ -149,6 +149,11 @@ impl UiParser {
         self.cache.clear();
     }
 
+    pub fn parse_from_string(&mut self, content: &str) -> Result<UiComponent, Box<dyn std::error::Error>> {
+        let document: UiDocument = serde_json::from_str(content)?;
+        self.resolve_component(&document.root)
+    }
+
     pub fn remove_from_cache(&mut self, path: &Path) {
         self.cache.remove(path);
     }

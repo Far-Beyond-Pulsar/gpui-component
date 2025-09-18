@@ -14,7 +14,7 @@ pub struct LevelEditorPanel {
     show_lighting: bool,
     camera_mode: CameraMode,
     resizable_state: Entity<ResizableState>,
-    viewport: Entity<Viewport<TestRenderEngine>>,
+    viewport: Entity<Viewport>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

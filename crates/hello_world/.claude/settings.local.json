@@ -15,7 +15,9 @@
       "Bash(mkdir:*)",
       "Read(//c/Users/redst/OneDrive/Documents/GitHub/gpui-component/crates/ui/src/json_ui/**)",
       "Read(//c/Users/redst/OneDrive/Documents/GitHub/gpui-component/crates/ui/**)",
-      "Read(//c/Users/redst/OneDrive/Documents/GitHub/gpui-component/crates/story/src/**)"
+      "Read(//c/Users/redst/OneDrive/Documents/GitHub/gpui-component/crates/story/src/**)",
+      "Bash(find:*)",
+      "Read(//c/Users/redst/OneDrive/Documents/GitHub/gpui-component/crates/story/**)"
     ],
     "deny": [],
     "ask": []

@@ -57,6 +57,7 @@ impl Gallery {
                     StoryContainer::panel::<ImageStory>(window, cx),
                     StoryContainer::panel::<IndicatorStory>(window, cx),
                     StoryContainer::panel::<InputStory>(window, cx),
+                    StoryContainer::panel::<JsonUIStory>(window, cx),
                     StoryContainer::panel::<KbdStory>(window, cx),
                     StoryContainer::panel::<LabelStory>(window, cx),
                     StoryContainer::panel::<ListStory>(window, cx),

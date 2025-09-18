@@ -2,7 +2,7 @@
   "type": "column",
   "props": {
     "padding": 20,
-    "backgroundColor": "white"
+    "backgroundColor": "black"
   },
   "children": [
     {

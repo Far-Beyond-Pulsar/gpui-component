@@ -58,10 +58,24 @@ impl JsonCanvas {
         self.parser.clear_cache();
         self.load()
     }
+
+    pub fn is_loaded(&self) -> bool {
+        self.current_ui.is_some()
+    }
+
+    pub fn get_ui(&self) -> Option<&UiComponent> {
+        self.current_ui.as_ref()
+    }
+
+    pub fn load_from_string(&mut self, json_content: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let ui = self.parser.parse_from_string(json_content)?;
+        self.current_ui = Some(ui);
+        Ok(())
+    }
 }
 
 impl Render for JsonCanvas {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if let Ok(reloaded) = self.check_and_reload() {
             if reloaded {
                 cx.notify();
@@ -80,7 +94,7 @@ impl Render for JsonCanvas {
 }
 
 pub fn create_json_canvas_view(root_path: impl AsRef<Path>, cx: &mut Context<impl Render>) -> Entity<JsonCanvas> {
-    cx.new(|cx| {
+    cx.new(|_cx| {
         let mut canvas = JsonCanvas::new(root_path);
         if let Err(e) = canvas.load() {
             eprintln!("Error loading JSON UI: {}", e);
