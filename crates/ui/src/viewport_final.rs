@@ -1,8 +1,8 @@
 use gpui::{
     div, Bounds, DismissEvent, EventEmitter, Element, ElementId, GlobalElementId, InspectorElementId,
     FocusHandle, Focusable, InteractiveElement, IntoElement, LayoutId,
-    ParentElement as _, Pixels, Render, RenderImage, Size, Styled as _, px, relative,
-    Context, Point, App, Window, StatefulInteractiveElement, Corners, Style, PaintQuad, Hsla,
+    ParentElement as _, Pixels, Render, RenderImage, Size, Styled as _, px,
+    Context, Point, App, Window, StatefulInteractiveElement, Corners, Style,
 };
 use std::sync::{Arc, Mutex, atomic::{AtomicBool, AtomicUsize, Ordering}};
 use image::ImageBuffer;
@@ -164,34 +164,14 @@ impl DoubleBuffer {
 /// Hook for refresh notifications - called when rendering is complete
 pub type RefreshHook = Arc<dyn Fn() + Send + Sync>;
 
-/// ULTRA LOW-LEVEL: Direct GPU buffer management for thousands of FPS
+/// Custom element for viewport rendering
 pub struct ViewportElement {
     texture: Option<Arc<RenderImage>>,
-    cached_texture: Option<Arc<RenderImage>>, // Persistent GPU texture
-    last_texture_id: Option<usize>, // Track if texture changed
-    paint_count: u64, // Track paint calls for performance
-    gpu_buffer_id: Option<u64>, // Direct GPU buffer handle for streaming
-    skip_texture_updates: bool, // Skip expensive texture operations
-    use_direct_quad_rendering: bool, // Bypass texture system entirely
 }
 
 impl ViewportElement {
     pub fn new(texture: Option<Arc<RenderImage>>) -> Self {
-        Self { 
-            texture,
-            cached_texture: None,
-            last_texture_id: None,
-            paint_count: 0,
-            gpu_buffer_id: None,
-            skip_texture_updates: false,
-            use_direct_quad_rendering: true, // Enable by default for max performance
-        }
-    }
-    
-    /// ULTRA PERFORMANCE: Enable direct GPU streaming mode
-    pub fn enable_streaming_mode(&mut self) {
-        self.skip_texture_updates = true;
-        self.use_direct_quad_rendering = true;
+        Self { texture }
     }
 }
 
@@ -214,15 +194,7 @@ impl Element for ViewportElement {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        // Create a style that fills available space
-        let style = Style {
-            size: Size {
-                width: relative(1.0).into(), // Fill available width
-                height: relative(1.0).into(), // Fill available height
-            },
-            ..Style::default()
-        };
-        let layout_id = window.request_layout(style, None, cx);
+        let layout_id = window.request_layout(Style::default(), None, cx);
         (layout_id, ())
     }
 
@@ -248,55 +220,6 @@ impl Element for ViewportElement {
         window: &mut Window,
         _cx: &mut App,
     ) {
-        self.paint_count += 1;
-        
-        // ULTRA AGGRESSIVE MODE: Use direct quad rendering for maximum FPS
-        if self.use_direct_quad_rendering {
-            // Skip ALL texture operations and use fastest possible rendering
-            if self.paint_count % 20 == 0 {
-                // Only occasionally check for texture updates to minimize overhead
-                if let Some(ref texture) = self.texture {
-                    self.cached_texture = Some(texture.clone());
-                }
-            }
-            
-            // FASTEST POSSIBLE PATH: Direct quad without any texture processing
-            if let Some(ref cached) = self.cached_texture {
-                // Use texture only every 5th frame to maintain visual quality
-                if self.paint_count % 5 == 0 {
-                    let _ = window.paint_image(
-                        bounds,
-                        Corners::all(px(0.0)),
-                        cached.clone(),
-                        0,
-                        false,
-                    );
-                } else {
-                    // Use solid quad for intermediate frames - MUCH faster
-                    window.paint_quad(PaintQuad {
-                        bounds,
-                        corner_radii: Corners::all(px(0.0)),
-                        background: Hsla { h: 0.0, s: 0.0, l: 0.1, a: 1.0 }.into(), // Dark gray
-                        border_widths: Default::default(),
-                        border_color: Default::default(),
-                        border_style: Default::default(),
-                    });
-                }
-            } else {
-                // No texture available - use solid quad
-                window.paint_quad(PaintQuad {
-                    bounds,
-                    corner_radii: Corners::all(px(0.0)),
-                    background: Hsla { h: 0.0, s: 0.0, l: 0.0, a: 1.0 }.into(), // Black
-                    border_widths: Default::default(),
-                    border_color: Default::default(),
-                    border_style: Default::default(),
-                });
-            }
-            return;
-        }
-        
-        // FALLBACK: Normal texture rendering for compatibility
         if let Some(ref texture) = self.texture {
             let _ = window.paint_image(
                 bounds,
@@ -317,56 +240,50 @@ impl IntoElement for ViewportElement {
     }
 }
 
-/// ZERO-COPY viewport with shared GPU texture - NO data transfer between threads
+/// Zero-copy viewport with atomic buffer swapping
 pub struct Viewport {
     double_buffer: Arc<DoubleBuffer>,
-    persistent_gpu_texture: Arc<Mutex<Option<Arc<RenderImage>>>>, // Persistent GPU texture, created once
+    shared_texture: Arc<Mutex<Option<Arc<RenderImage>>>>, // Pre-made texture ready to swap
+    metrics: ViewportMetrics,
     focus_handle: FocusHandle,
     last_width: u32,
     last_height: u32,
     debug_enabled: bool,
-    texture_initialized: Arc<AtomicBool>, // Track if GPU texture is ready
 }
 
 impl Viewport {
-    /// Initialize persistent GPU texture from current buffer state - CALLED ONCE
-    fn ensure_gpu_texture_initialized(&mut self) -> Option<Arc<RenderImage>> {
-        if !self.texture_initialized.load(Ordering::Relaxed) {
-            // Create GPU texture ONCE from current front buffer
-            if let Ok(front_buffer) = self.double_buffer.get_front_buffer().try_lock() {
-                if front_buffer.buffer.len() > 0 {
-                    if let Some(rgba_image) = ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(
-                        front_buffer.width,
-                        front_buffer.height,
-                        front_buffer.buffer.clone(),
-                    ) {
-                        let frame = image::Frame::new(rgba_image);
-                        let texture = Arc::new(RenderImage::new(vec![frame]));
-                        
-                        // Store persistent texture
-                        if let Ok(mut gpu_texture) = self.persistent_gpu_texture.lock() {
-                            *gpu_texture = Some(texture.clone());
-                            self.texture_initialized.store(true, Ordering::Relaxed);
-                            
-                            if self.debug_enabled {
-                                println!("[VIEWPORT] Initialized persistent GPU texture {}x{}", 
-                                    front_buffer.width, front_buffer.height);
-                            }
-                            
-                            return Some(texture);
-                        }
-                    }
+    /// Updates GPU texture ONLY if needed - zero memory operations on UI thread
+    fn update_texture_if_needed(&mut self) -> Option<Arc<RenderImage>> {
+        let ui_start = std::time::Instant::now();
+        
+        // Try to get pre-made texture (zero-copy)
+        let texture = {
+            let grab_start = std::time::Instant::now();
+            let mut shared = self.shared_texture.lock().unwrap();
+            let texture = shared.take(); // Zero-copy take
+            let grab_time = grab_start.elapsed();
+            
+            if self.debug_enabled && grab_time.as_micros() > 50 {
+                println!("[VIEWPORT-UI] Texture grab: {}μs", grab_time.as_micros());
+            }
+            
+            if self.debug_enabled {
+                if texture.is_some() {
+                    println!("[VIEWPORT-UI] Got texture from background task");
+                } else {
+                    println!("[VIEWPORT-UI] No texture available from background task");
                 }
             }
-            None
-        } else {
-            // Return existing persistent texture - NO recreation
-            if let Ok(gpu_texture) = self.persistent_gpu_texture.lock() {
-                gpu_texture.clone()
-            } else {
-                None
-            }
+            
+            texture
+        };
+        
+        let total_ui_time = ui_start.elapsed();
+        if self.debug_enabled && total_ui_time.as_micros() > 100 {
+            println!("[VIEWPORT-UI] Total UI time: {}μs", total_ui_time.as_micros());
         }
+        
+        texture
     }
 }
 
@@ -380,9 +297,16 @@ impl EventEmitter<DismissEvent> for Viewport {}
 
 impl Render for Viewport {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        // Get persistent texture - NO processing on UI thread
-        let texture = self.ensure_gpu_texture_initialized();
+        let paint_start = std::time::Instant::now();
         
+        // Get ready texture with zero operations on UI thread
+        let texture = self.update_texture_if_needed();
+        
+        let paint_time = paint_start.elapsed();
+        if self.debug_enabled && paint_time.as_micros() > 200 {
+            println!("[VIEWPORT-UI] Paint time: {}μs", paint_time.as_micros());
+        }
+
         div()
             .id("viewport")
             .size_full()
@@ -392,35 +316,142 @@ impl Render for Viewport {
     }
 }
 
-/// Create zero-copy viewport with shared GPU texture - NO BACKGROUND PROCESSING
+/// Create zero-copy viewport with pre-rendered textures
 pub fn create_viewport_with_background_rendering<V: 'static>(
     initial_width: u32,
     initial_height: u32,
     cx: &mut Context<V>,
 ) -> (Viewport, Arc<DoubleBuffer>, RefreshHook) {
-    println!("[VIEWPORT] Creating zero-copy viewport {}x{} - shared GPU texture mode", initial_width, initial_height);
+    println!("[VIEWPORT] Creating zero-copy viewport {}x{}", initial_width, initial_height);
     
     let double_buffer = Arc::new(DoubleBuffer::new(initial_width, initial_height));
     
     let viewport = Viewport {
         double_buffer: Arc::clone(&double_buffer),
-        persistent_gpu_texture: Arc::new(Mutex::new(None)),
+        shared_texture: Arc::new(Mutex::new(None)),
+        metrics: ViewportMetrics::default(),
         focus_handle: cx.focus_handle(),
         last_width: initial_width,
         last_height: initial_height,
         debug_enabled: cfg!(debug_assertions),
-        texture_initialized: Arc::new(AtomicBool::new(false)),
     };
 
-    // Simple refresh hook - no background processing
+    // Channel for refresh notifications
+    let (refresh_sender, refresh_receiver) = smol::channel::unbounded::<()>();
+    let processing_flag = Arc::new(AtomicBool::new(false));
+    let processing_flag_clone = Arc::clone(&processing_flag);
+    
     let refresh_hook: RefreshHook = Arc::new(move || {
-        // Just signal that new data is available - no actual processing
-        // The ViewportElement will handle GPU texture creation on-demand
-        if cfg!(debug_assertions) {
-            println!("[VIEWPORT] Refresh signal (zero-copy mode)");
+        // Skip if already processing to prevent queue buildup
+        if processing_flag_clone.load(Ordering::Relaxed) {
+            return;
+        }
+        let send_result = refresh_sender.try_send(()); // Non-blocking send
+        if send_result.is_ok() {
+            println!("[VIEWPORT-BG] Refresh signal sent successfully");
+        } else {
+            println!("[VIEWPORT-BG] Failed to send refresh signal: {:?}", send_result);
         }
     });
 
-    println!("[VIEWPORT] Zero-copy viewport created - render engine will draw directly to shared texture");
+    // Background task for texture pre-processing - use a separate thread
+    let entity = cx.entity();
+    let buffer_ref = Arc::clone(&double_buffer);
+    let shared_texture_ref = Arc::clone(&viewport.shared_texture);
+    let processing_flag_ref = Arc::clone(&processing_flag);
+    let debug_enabled = cfg!(debug_assertions);
+    
+    // Use a separate thread with blocking operations instead of async
+    std::thread::spawn(move || {
+        println!("[VIEWPORT-BG] Background task started, waiting for refresh signals...");
+        
+        loop {
+            // Use blocking recv instead of async
+            match refresh_receiver.recv_blocking() {
+                Ok(()) => {
+                    println!("[VIEWPORT-BG] Received refresh signal, processing buffer...");
+                    processing_flag_ref.store(true, Ordering::Relaxed);
+                    
+                    let process_start = std::time::Instant::now();
+                    
+                    // Drain queue to prevent backlog
+                    while refresh_receiver.try_recv().is_ok() {}
+                    
+                    // Get front buffer data (ALREADY in RGBA8 format)
+                    let texture_result = {
+                        let front_buffer = buffer_ref.get_front_buffer();
+                        let buffer_guard = match front_buffer.lock() {
+                            Ok(guard) => guard,
+                            Err(_) => {
+                                processing_flag_ref.store(false, Ordering::Relaxed);
+                                continue;
+                            }
+                        };
+                        
+                        // Skip invalid dimensions
+                        if buffer_guard.width == 0 || buffer_guard.height == 0 {
+                            processing_flag_ref.store(false, Ordering::Relaxed);
+                            continue;
+                        }
+                        
+                        // DEBUG: Check if buffer has any non-zero data
+                        let non_zero_pixels = buffer_guard.buffer.iter().take(1000).filter(|&&b| b != 0).count();
+                        println!("[VIEWPORT-BG] Buffer debug: {}x{} size, {} non-zero bytes in first 1000, total buffer size: {}", 
+                            buffer_guard.width, buffer_guard.height, non_zero_pixels, buffer_guard.buffer.len());
+                        
+                        // ZERO CONVERSION - create image::Frame from RGBA8 data
+                        let texture_create_start = std::time::Instant::now();
+                        
+                        // Create an image::Frame from our RGBA8 buffer
+                        let rgba_image = match ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(
+                            buffer_guard.width,
+                            buffer_guard.height,
+                            buffer_guard.buffer.clone(),
+                        ) {
+                            Some(img) => img,
+                            None => {
+                                processing_flag_ref.store(false, Ordering::Relaxed);
+                                continue;
+                            }
+                        };
+                        
+                        let frame = image::Frame::new(rgba_image);
+                        let texture = Arc::new(RenderImage::new(vec![frame]));
+                        
+                        let texture_create_time = texture_create_start.elapsed();
+                        let dimensions = (buffer_guard.width, buffer_guard.height);
+                        
+                        if debug_enabled {
+                            println!("[VIEWPORT-BG] Zero-copy texture: create={}μs ({}x{})",
+                                texture_create_time.as_micros(),
+                                dimensions.0,
+                                dimensions.1);
+                        }
+                        
+                        texture
+                    };
+                    
+                    // Store completed texture
+                    {
+                        let mut shared = shared_texture_ref.lock().unwrap();
+                        *shared = Some(texture_result);
+                    }
+                    
+                    let total_time = process_start.elapsed();
+                    if debug_enabled {
+                        println!("[VIEWPORT-BG] Total process time: {}μs", total_time.as_micros());
+                    }
+                    
+                    processing_flag_ref.store(false, Ordering::Relaxed);
+                },
+                Err(_) => {
+                    // Channel closed, exit the task
+                    println!("[VIEWPORT-BG] Channel closed, exiting background task");
+                    break;
+                }
+            }
+        }
+    });
+
     (viewport, double_buffer, refresh_hook)
 }
