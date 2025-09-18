@@ -3,6 +3,7 @@ use gpui::{
 };
 use std::sync::{Arc, Mutex, atomic::{AtomicBool, AtomicUsize, Ordering}};
 use image::ImageBuffer;
+use futures::FutureExt;
 
 /// Performance metrics for the viewport
 #[derive(Debug, Clone, Default)]
@@ -248,6 +249,8 @@ pub struct Viewport {
     last_width: u32,
     last_height: u32,
     debug_enabled: bool,
+    // Cleanup mechanism to prevent memory leaks
+    shutdown_sender: Option<smol::channel::Sender<()>>,
 }
 
 impl Viewport {
@@ -325,6 +328,12 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
     
     let double_buffer = Arc::new(DoubleBuffer::new(initial_width, initial_height));
     
+    // Channel for refresh notifications - bounded to prevent memory leaks
+    let (refresh_sender, refresh_receiver) = smol::channel::bounded::<()>(1);
+    
+    // Shutdown channel for cleanup
+    let (shutdown_sender, shutdown_receiver) = smol::channel::bounded::<()>(1);
+    
     let viewport = cx.new(|cx| Viewport {
         double_buffer: Arc::clone(&double_buffer),
         shared_texture: Arc::new(Mutex::new(None)),
@@ -333,10 +342,9 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
         last_width: initial_width,
         last_height: initial_height,
         debug_enabled: cfg!(debug_assertions),
+        shutdown_sender: Some(shutdown_sender),
     });
 
-    // Channel for refresh notifications
-    let (refresh_sender, refresh_receiver) = smol::channel::unbounded::<()>();
     let processing_flag = Arc::new(AtomicBool::new(false));
     let processing_flag_clone = Arc::clone(&processing_flag);
     
@@ -364,13 +372,15 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
         println!("[VIEWPORT-BG] Background task started, waiting for refresh signals...");
         
         loop {
-            // Use async recv to avoid blocking GPUI runtime
-            match refresh_receiver.recv().await {
-                Ok(()) => {
-                    println!("[VIEWPORT-BG] Received refresh signal, processing buffer...");
-                    processing_flag_ref.store(true, Ordering::Relaxed);
-                    
-                    let process_start = std::time::Instant::now();
+            // Use select! to listen for both refresh and shutdown signals
+            futures::select! {
+                refresh_result = refresh_receiver.recv().fuse() => {
+                    match refresh_result {
+                        Ok(()) => {
+                            println!("[VIEWPORT-BG] Received refresh signal, processing buffer...");
+                            processing_flag_ref.store(true, Ordering::Relaxed);
+                            
+                            let process_start = std::time::Instant::now();
                     
                     // Drain queue to prevent backlog
                     while refresh_receiver.try_recv().is_ok() {}
@@ -444,12 +454,19 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
                     if debug_enabled {
                         println!("[VIEWPORT-BG] Total process time: {}μs", total_time.as_micros());
                     }
-                    
-                    processing_flag_ref.store(false, Ordering::Relaxed);
+                            
+                            processing_flag_ref.store(false, Ordering::Relaxed);
+                        },
+                        Err(_) => {
+                            // Channel closed, exit the task
+                            println!("[VIEWPORT-BG] Refresh channel closed, exiting background task");
+                            break;
+                        }
+                    }
                 },
-                Err(_) => {
-                    // Channel closed, exit the task
-                    println!("[VIEWPORT-BG] Channel closed, exiting background task");
+                shutdown_result = shutdown_receiver.recv().fuse() => {
+                    // Shutdown signal received
+                    println!("[VIEWPORT-BG] Shutdown signal received, exiting background task");
                     break;
                 }
             }
