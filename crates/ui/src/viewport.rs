@@ -295,7 +295,7 @@ impl Drop for Viewport {
 
 impl Viewport {
     /// Create a new viewport and return it along with buffer access and refresh hook
-    /// Uses proper GPUI background task pattern for reactive refreshes
+    /// Uses direct callback mechanism for instant main thread communication
     pub fn new(initial_width: u32, initial_height: u32, format: FramebufferFormat, cx: &mut Context<impl Focusable>) -> (Self, ViewportBuffers, RefreshHook) {
         let double_buffer = Arc::new(Mutex::new(DoubleBuffer::new(initial_width, initial_height, format)));
         let metrics = Arc::new(Mutex::new(ViewportMetrics::default()));
@@ -304,12 +304,6 @@ impl Viewport {
         let buffers = ViewportBuffers {
             double_buffer: double_buffer.clone(),
         };
-
-        // Create async channel for GPUI background task communication
-        let (refresh_sender, refresh_receiver) = smol::channel::unbounded::<()>();
-        let refresh_hook: RefreshHook = Arc::new(move || {
-            let _ = refresh_sender.try_send(()); // Send signal to background task
-        });
 
         let viewport = Self {
             focus_handle: cx.focus_handle(),
@@ -327,13 +321,26 @@ impl Viewport {
             refresh_trigger: Arc::new(AtomicBool::new(false)),
         };
 
-        // Start GPUI background task for reactive refreshes (GPML pattern)
-        cx.spawn(async move |this, mut cx| {
-            while let Ok(()) = refresh_receiver.recv().await {
-                // Update and trigger reactive refresh - this is the key GPUI pattern
-                let _ = this.update(cx, |_viewport, cx| {
-                    cx.notify(); // Triggers GPUI's reactive refresh system
-                });
+        // Create simple channel for direct refresh hook without async complexity
+        let (refresh_sender, refresh_receiver) = smol::channel::unbounded::<()>();
+        let refresh_hook: RefreshHook = Arc::new(move || {
+            let _ = refresh_sender.try_send(()); // Non-blocking send
+        });
+
+        // Start simple background task that immediately refreshes on any signal
+        let entity = cx.entity();
+        cx.spawn(async move |_this, mut cx| {
+            loop {
+                // Wait for refresh signal
+                if refresh_receiver.recv().await.is_ok() {
+                    // Drain all pending signals to avoid backlog
+                    while refresh_receiver.try_recv().is_ok() {}
+                    
+                    // Immediate refresh without debouncing for 240+ FPS
+                    let _ = entity.update(cx, |_viewport, cx| {
+                        cx.notify(); // Instant GPUI reactive refresh
+                    });
+                }
             }
         }).detach();
 

@@ -93,9 +93,11 @@ impl LevelEditorPanel {
         refresh_hook: RefreshHook,
         render_enabled: Arc<std::sync::atomic::AtomicBool>,
     ) {
-        // Target 60 FPS for smooth animation
-        let target_frame_time = Duration::from_millis(16); // 1000 / 60
+        // Target high FPS for smooth rendering, but limit UI refresh calls
+        let target_frame_time = Duration::from_millis(8); // ~120 FPS rendering
         let mut frame_count = 0u64;
+        let mut last_ui_refresh = std::time::Instant::now();
+        let ui_refresh_interval = Duration::from_millis(16); // Limit UI refreshes to ~60fps
         
         while render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
             let frame_start = std::time::Instant::now();
@@ -115,9 +117,14 @@ impl LevelEditorPanel {
             if render_successful {
                 buffers.swap_buffers();
                 
-                // Step 3: Trigger GPUI refresh after swap is complete
-                // Now UI thread can read from stable front buffer
-                refresh_hook();
+                // Step 3: Smart UI refresh - only call hook when enough time has passed
+                // This reduces load on GPUI's reactive system while maintaining high render FPS
+                let now = std::time::Instant::now();
+                if now.duration_since(last_ui_refresh) >= ui_refresh_interval {
+                    refresh_hook();
+                    last_ui_refresh = now;
+                }
+                
                 frame_count += 1;
             }
             
