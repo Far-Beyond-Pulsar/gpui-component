@@ -21,6 +21,7 @@ tracing = "0.1.41"
 rust-embed = "8.5.0"
 flume = "0.11"
 tokio = { version = "1", features = ["full"] }
+windows.workspace = true
 
 [lints]
 workspace = true

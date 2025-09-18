@@ -65,6 +65,37 @@ impl LevelEditorPanel {
         let enabled_clone = render_enabled.clone();
         
         thread::spawn(move || {
+            // Set thread priority and core affinity for dedicated rendering
+            #[cfg(target_os = "windows")]
+            {
+                let handle = unsafe { windows::Win32::System::Threading::GetCurrentThread() };
+                
+                // Set to high priority for smooth rendering
+                unsafe {
+                    windows::Win32::System::Threading::SetThreadPriority(
+                        handle, 
+                        windows::Win32::System::Threading::THREAD_PRIORITY_ABOVE_NORMAL
+                    );
+                }
+                
+                // Try to pin to a dedicated core (last available core)
+                let system_info = unsafe {
+                    let mut si = std::mem::zeroed();
+                    windows::Win32::System::SystemInformation::GetSystemInfo(&mut si);
+                    si
+                };
+                
+                // Use the last core for rendering to avoid main thread interference
+                let num_cores = system_info.dwNumberOfProcessors;
+                if num_cores > 1 {
+                    let render_core_mask = 1usize << (num_cores - 1);
+                    unsafe {
+                        windows::Win32::System::Threading::SetThreadAffinityMask(handle, render_core_mask);
+                    }
+                    println!("[RENDER] Pinned render thread to core {}", num_cores - 1);
+                }
+            }
+            
             Self::render_thread_controlled(engine_clone, buffers_clone, hook_clone, enabled_clone);
         });
 
@@ -86,24 +117,28 @@ impl LevelEditorPanel {
         }
     }
 
-    /// Controlled render thread with proper double buffering to prevent flickering
+    /// Controlled render thread with proper double buffering and CPU throttling
     fn render_thread_controlled(
         engine: Arc<Mutex<RainbowRenderEngine>>,
         buffers: Arc<ViewportBuffers>,
         refresh_hook: RefreshHook,
         render_enabled: Arc<std::sync::atomic::AtomicBool>,
     ) {
-        // Target high FPS for smooth rendering, but limit UI refresh calls
-        let target_frame_time = Duration::from_millis(8); // ~120 FPS rendering
+        // Adaptive frame timing to prevent CPU pegging
+        let base_frame_time = Duration::from_millis(8); // ~120 FPS baseline
+        let mut adaptive_frame_time = base_frame_time;
         let mut frame_count = 0u64;
         let mut last_ui_refresh = std::time::Instant::now();
         let ui_refresh_interval = Duration::from_millis(16); // Limit UI refreshes to ~60fps
+        
+        // CPU throttling parameters
+        let mut consecutive_fast_frames = 0u32;
+        let max_cpu_usage = 85; // Don't use more than 85% of the dedicated core
         
         while render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
             let frame_start = std::time::Instant::now();
             
             // Step 1: Render to back buffer with exclusive access
-            // This happens without any contention from the UI thread
             let render_successful = if let Ok(mut engine_guard) = engine.try_lock() {
                 buffers.with_back_buffer(|back_buffer| {
                     engine_guard.render(back_buffer);
@@ -113,12 +148,10 @@ impl LevelEditorPanel {
             };
             
             // Step 2: Only if render was successful, do atomic swap
-            // This is the only point where buffers are briefly locked
             if render_successful {
                 buffers.swap_buffers();
                 
-                // Step 3: Smart UI refresh - only call hook when enough time has passed
-                // This reduces load on GPUI's reactive system while maintaining high render FPS
+                // Step 3: Smart UI refresh with throttling
                 let now = std::time::Instant::now();
                 if now.duration_since(last_ui_refresh) >= ui_refresh_interval {
                     refresh_hook();
@@ -128,19 +161,40 @@ impl LevelEditorPanel {
                 frame_count += 1;
             }
             
-            // Step 4: Frame rate control
             let frame_time = frame_start.elapsed();
-            let sleep_time = if frame_time < target_frame_time {
-                target_frame_time - frame_time
+            
+            // Adaptive CPU throttling to prevent core pegging
+            if frame_time < adaptive_frame_time.mul_f32(0.5) {
+                consecutive_fast_frames += 1;
+                // If we're consistently finishing frames too quickly, throttle more
+                if consecutive_fast_frames > 10 {
+                    adaptive_frame_time = adaptive_frame_time.mul_f32(1.1).min(Duration::from_millis(16));
+                    consecutive_fast_frames = 0;
+                }
             } else {
-                Duration::from_millis(1) // Minimum yield
-            };
+                consecutive_fast_frames = 0;
+                // Gradually reduce throttling if we're not finishing too quickly
+                adaptive_frame_time = adaptive_frame_time.mul_f32(0.99).max(base_frame_time);
+            }
+            
+            // Calculate sleep time to maintain target CPU usage
+            let target_cpu_usage = max_cpu_usage as f32 / 100.0;
+            let work_time = frame_time.as_secs_f32();
+            let total_frame_time = work_time / target_cpu_usage;
+            let sleep_time = Duration::from_secs_f32(total_frame_time - work_time).max(Duration::from_millis(1));
             
             thread::sleep(sleep_time);
             
-            // Periodic yield for better thread cooperation
+            // Cooperative yielding every 30 frames for better system responsiveness
             if frame_count % 30 == 0 {
                 thread::yield_now();
+                // Extra yield for system responsiveness
+                thread::sleep(Duration::from_micros(100));
+            }
+            
+            // Periodic longer sleep to ensure we don't completely dominate the core
+            if frame_count % 120 == 0 { // Every ~1 second at 120fps
+                thread::sleep(Duration::from_millis(2));
             }
         }
     }

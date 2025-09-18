@@ -280,6 +280,9 @@ pub struct Viewport {
 
     // GPUI refresh mechanism
     refresh_trigger: Arc<AtomicBool>,
+    
+    // Prepared texture from background thread
+    prepared_texture: Arc<Mutex<Option<(Arc<RenderImage>, u64, u32, u32)>>>,
 }
 
 impl Drop for Viewport {
@@ -319,6 +322,7 @@ impl Viewport {
             last_height: initial_height,
             debug_enabled: cfg!(debug_assertions),
             refresh_trigger: Arc::new(AtomicBool::new(false)),
+            prepared_texture: Arc::new(Mutex::new(None)),
         };
 
         // Create simple channel for direct refresh hook without async complexity
@@ -327,19 +331,89 @@ impl Viewport {
             let _ = refresh_sender.try_send(()); // Non-blocking send
         });
 
-        // Start simple background task that immediately refreshes on any signal
+        // Start background task that pre-processes textures OFF main thread
         let entity = cx.entity();
-        cx.spawn(async move |_this, mut cx| {
+        let buffer_ref = double_buffer.clone();
+        let prepared_texture_ref = viewport.prepared_texture.clone();
+        cx.spawn(async move |_this, cx| {
             loop {
                 // Wait for refresh signal
                 if refresh_receiver.recv().await.is_ok() {
                     // Drain all pending signals to avoid backlog
                     while refresh_receiver.try_recv().is_ok() {}
                     
-                    // Immediate refresh without debouncing for 240+ FPS
-                    let _ = entity.update(cx, |_viewport, cx| {
-                        cx.notify(); // Instant GPUI reactive refresh
-                    });
+                    // Pre-process texture on background thread to avoid blocking UI
+                    let prepared_texture = {
+                        let buffer_guard = match buffer_ref.lock() {
+                            Ok(guard) => guard,
+                            Err(_) => continue,
+                        };
+                        let front_buffer = buffer_guard.get_front_buffer();
+                        
+                        // Skip if invalid dimensions
+                        if front_buffer.width == 0 || front_buffer.height == 0 {
+                            continue;
+                        }
+                        
+                        // Do expensive texture conversion on background thread
+                        let mut rgba_buffer = vec![0u8; front_buffer.width as usize * front_buffer.height as usize * 4];
+                        
+                        match front_buffer.format {
+                            FramebufferFormat::Rgba8 => {
+                                rgba_buffer.copy_from_slice(&front_buffer.buffer);
+                            }
+                            FramebufferFormat::Bgra8 => {
+                                for (i, chunk) in front_buffer.buffer.chunks_exact(4).enumerate() {
+                                    let offset = i * 4;
+                                    rgba_buffer[offset] = chunk[2];     // R
+                                    rgba_buffer[offset + 1] = chunk[1]; // G
+                                    rgba_buffer[offset + 2] = chunk[0]; // B
+                                    rgba_buffer[offset + 3] = chunk[3]; // A
+                                }
+                            }
+                            FramebufferFormat::Rgb8 => {
+                                for (i, chunk) in front_buffer.buffer.chunks_exact(3).enumerate() {
+                                    let offset = i * 4;
+                                    rgba_buffer[offset] = chunk[0];     // R
+                                    rgba_buffer[offset + 1] = chunk[1]; // G
+                                    rgba_buffer[offset + 2] = chunk[2]; // B
+                                    rgba_buffer[offset + 3] = 255;     // A
+                                }
+                            }
+                            FramebufferFormat::Bgr8 => {
+                                for (i, chunk) in front_buffer.buffer.chunks_exact(3).enumerate() {
+                                    let offset = i * 4;
+                                    rgba_buffer[offset] = chunk[2];     // R
+                                    rgba_buffer[offset + 1] = chunk[1]; // G
+                                    rgba_buffer[offset + 2] = chunk[0]; // B
+                                    rgba_buffer[offset + 3] = 255;     // A
+                                }
+                            }
+                        }
+                        
+                        // Create the expensive texture on background thread
+                        if let Some(image_buffer) = image::ImageBuffer::from_vec(
+                            front_buffer.width,
+                            front_buffer.height,
+                            rgba_buffer,
+                        ) {
+                            Some((Arc::new(RenderImage::new([image::Frame::new(image_buffer)])), front_buffer.generation(), front_buffer.width, front_buffer.height))
+                        } else {
+                            None
+                        }
+                    };
+                    
+                    // Store prepared texture for main thread to pick up
+                    if let Some(texture_data) = prepared_texture {
+                        if let Ok(mut prepared) = prepared_texture_ref.lock() {
+                            *prepared = Some(texture_data);
+                        }
+                        
+                        // Signal main thread for immediate refresh
+                        let _ = entity.update(cx, |_viewport, cx| {
+                            cx.notify(); // Fast UI refresh - no blocking operations
+                        });
+                    }
                 }
             }
         }).detach();
@@ -404,109 +478,30 @@ impl Viewport {
     }
 
     fn update_texture_if_needed(&mut self, _window: &mut Window) {
-        let buffer_guard = match self.double_buffer.lock() {
-            Ok(guard) => guard,
-            Err(_) => return,
-        };
-
-        let front_buffer = buffer_guard.get_front_buffer();
-
-        // Check if texture needs updating
-        let needs_update = self.current_texture.is_none()
-            || self.texture_dirty
-            || front_buffer.generation() != self.last_texture_generation
-            || self.should_refresh();
-
-        if !needs_update {
-            return;
-        }
-
-        // Clear refresh flag since we're handling the update
-        self.clear_refresh_flag();
-
-        // Throttle updates during rapid resizing to prevent memory pressure
-        if front_buffer.width != self.last_width || front_buffer.height != self.last_height {
-            self.last_width = front_buffer.width;
-            self.last_height = front_buffer.height;
-
-            // Skip update if dimensions are invalid
-            if front_buffer.width == 0 || front_buffer.height == 0 {
+        // UI thread does ZERO texture work - only grabs completed texture from background thread
+        if let Ok(mut prepared) = self.prepared_texture.lock() {
+            if let Some((render_image, generation, width, height)) = prepared.take() {
+                // Instant swap - NO conversion, NO allocation, NO processing
+                self.current_texture = Some(render_image);
+                self.last_texture_generation = generation;
+                self.last_width = width;
+                self.last_height = height;
+                self.texture_dirty = false;
+                
+                // Update metrics
+                if let Ok(mut metrics) = self.metrics.lock() {
+                    metrics.texture_updates += 1;
+                }
+                
+                if self.debug_enabled {
+                    println!("[VIEWPORT] Pre-made texture swapped instantly: {}x{} gen:{}", width, height, generation);
+                }
                 return;
             }
         }
-
-        // Reuse conversion buffer to avoid allocations
-        let required_size = match front_buffer.format {
-            FramebufferFormat::Rgba8 | FramebufferFormat::Bgra8 => front_buffer.buffer.len(),
-            FramebufferFormat::Rgb8 | FramebufferFormat::Bgr8 => front_buffer.buffer.len() * 4 / 3,
-        };
-
-        if self.rgba_conversion_buffer.len() != required_size {
-            self.rgba_conversion_buffer.resize(required_size, 0);
-        }
-
-        // Convert to RGBA8 format for GPUI using pre-allocated buffer
-        let rgba_buffer = match front_buffer.format {
-            FramebufferFormat::Rgba8 => {
-                self.rgba_conversion_buffer.copy_from_slice(&front_buffer.buffer);
-                &self.rgba_conversion_buffer
-            }
-            FramebufferFormat::Bgra8 => {
-                // Convert BGRA to RGBA in-place
-                for (i, chunk) in front_buffer.buffer.chunks_exact(4).enumerate() {
-                    let offset = i * 4;
-                    self.rgba_conversion_buffer[offset] = chunk[2];     // R
-                    self.rgba_conversion_buffer[offset + 1] = chunk[1]; // G
-                    self.rgba_conversion_buffer[offset + 2] = chunk[0]; // B
-                    self.rgba_conversion_buffer[offset + 3] = chunk[3]; // A
-                }
-                &self.rgba_conversion_buffer
-            }
-            FramebufferFormat::Rgb8 => {
-                // Convert RGB to RGBA
-                for (i, chunk) in front_buffer.buffer.chunks_exact(3).enumerate() {
-                    let offset = i * 4;
-                    self.rgba_conversion_buffer[offset] = chunk[0];     // R
-                    self.rgba_conversion_buffer[offset + 1] = chunk[1]; // G
-                    self.rgba_conversion_buffer[offset + 2] = chunk[2]; // B
-                    self.rgba_conversion_buffer[offset + 3] = 255;     // A
-                }
-                &self.rgba_conversion_buffer
-            }
-            FramebufferFormat::Bgr8 => {
-                // Convert BGR to RGBA
-                for (i, chunk) in front_buffer.buffer.chunks_exact(3).enumerate() {
-                    let offset = i * 4;
-                    self.rgba_conversion_buffer[offset] = chunk[2];     // R
-                    self.rgba_conversion_buffer[offset + 1] = chunk[1]; // G
-                    self.rgba_conversion_buffer[offset + 2] = chunk[0]; // B
-                    self.rgba_conversion_buffer[offset + 3] = 255;     // A
-                }
-                &self.rgba_conversion_buffer
-            }
-        };
-
-        // Create image buffer from converted data
-        if let Some(image_buffer) = image::ImageBuffer::from_vec(
-            front_buffer.width,
-            front_buffer.height,
-            rgba_buffer.to_vec(), // Only clone when creating the texture
-        ) {
-            let render_image = Arc::new(RenderImage::new([image::Frame::new(image_buffer)]));
-            self.current_texture = Some(render_image);
-            self.last_texture_generation = front_buffer.generation();
-            self.texture_dirty = false;
-
-            // Update metrics
-            if let Ok(mut metrics) = self.metrics.lock() {
-                metrics.texture_updates += 1;
-            }
-
-            if self.debug_enabled {
-                println!("[VIEWPORT] Texture updated: {}x{} gen:{}",
-                    front_buffer.width, front_buffer.height, front_buffer.generation());
-            }
-        }
+        
+        // Only clear refresh flag - NO other work on UI thread
+        self.clear_refresh_flag();
     }
 }
 
