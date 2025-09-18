@@ -1,8 +1,8 @@
 use gpui::{
-    canvas, div, Bounds, DismissEvent, EventEmitter,
-    FocusHandle, Focusable, InteractiveElement, IntoElement,
+    div, Bounds, DismissEvent, EventEmitter, Element, ElementId, GlobalElementId, InspectorElementId,
+    FocusHandle, Focusable, InteractiveElement, IntoElement, LayoutId,
     ParentElement as _, Pixels, Render, RenderImage, Size, Styled as _, px,
-    Context, Point, App, Window, StatefulInteractiveElement,
+    Context, Point, App, Window, StatefulInteractiveElement, Corners, Style,
 };
 use std::sync::{Arc, Mutex, atomic::{AtomicBool, AtomicUsize, Ordering}};
 use image::ImageBuffer;
@@ -164,10 +164,86 @@ impl DoubleBuffer {
 /// Hook for refresh notifications - called when rendering is complete
 pub type RefreshHook = Arc<dyn Fn() + Send + Sync>;
 
+/// Custom element for viewport rendering
+pub struct ViewportElement {
+    texture: Option<Arc<RenderImage>>,
+}
+
+impl ViewportElement {
+    pub fn new(texture: Option<Arc<RenderImage>>) -> Self {
+        Self { texture }
+    }
+}
+
+impl Element for ViewportElement {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        Some(ElementId::Name("viewport-element".into()))
+    }
+
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, Self::RequestLayoutState) {
+        let layout_id = window.request_layout(Style::default(), None, cx);
+        (layout_id, ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _request_layout: &mut Self::RequestLayoutState,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> Self::PrepaintState {
+        // Nothing to do
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _request_layout: &mut Self::RequestLayoutState,
+        _prepaint: &mut Self::PrepaintState,
+        window: &mut Window,
+        _cx: &mut App,
+    ) {
+        if let Some(ref texture) = self.texture {
+            let _ = window.paint_image(
+                bounds,
+                Corners::all(px(0.0)),
+                texture.clone(),
+                0,
+                false,
+            );
+        }
+    }
+}
+
+impl IntoElement for ViewportElement {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
 /// Zero-copy viewport with atomic buffer swapping
 pub struct Viewport {
     double_buffer: Arc<DoubleBuffer>,
-    shared_texture: Arc<Mutex<Option<RenderImage>>>, // Pre-made texture ready to swap
+    shared_texture: Arc<Mutex<Option<Arc<RenderImage>>>>, // Pre-made texture ready to swap
     metrics: ViewportMetrics,
     focus_handle: FocusHandle,
     last_width: u32,
@@ -177,7 +253,7 @@ pub struct Viewport {
 
 impl Viewport {
     /// Updates GPU texture ONLY if needed - zero memory operations on UI thread
-    fn update_texture_if_needed(&mut self) -> Option<RenderImage> {
+    fn update_texture_if_needed(&mut self) -> Option<Arc<RenderImage>> {
         let ui_start = std::time::Instant::now();
         
         // Try to get pre-made texture (zero-copy)
@@ -225,20 +301,7 @@ impl Render for Viewport {
         div()
             .id("viewport")
             .size_full()
-            .child(
-                canvas(
-                    move |bounds, _, _, _| {
-                        // Empty bounds callback
-                    },
-                    move |bounds, _, _, cx| {
-                        // Paint function - render the texture if available
-                        if let Some(ref texture_ref) = texture {
-                            cx.paint_image(bounds, texture_ref.clone());
-                        }
-                    }
-                )
-                .size_full()
-            )
+            .child(ViewportElement::new(texture))
             .focusable()
             .focus(|style| style) // Apply focus styling
     }
@@ -328,7 +391,7 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
                     };
                     
                     let frame = image::Frame::new(rgba_image);
-                    let texture = RenderImage::new(vec![frame]);
+                    let texture = Arc::new(RenderImage::new(vec![frame]));
                     
                     let texture_create_time = texture_create_start.elapsed();
                     let dimensions = (buffer_guard.width, buffer_guard.height);
