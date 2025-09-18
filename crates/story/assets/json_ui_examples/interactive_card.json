@@ -1,0 +1,30 @@
+{
+  "type": "div",
+  "props": {
+    "padding": 20,
+    "backgroundColor": "green"
+  },
+  "children": [
+    {
+      "type": "h3",
+      "props": {
+        "content": "${title}",
+        "color": "white"
+      }
+    },
+    {
+      "type": "text",
+      "props": {
+        "content": "${content}",
+        "color": "white"
+      }
+    },
+    {
+      "type": "text",
+      "props": {
+        "content": "🔥 Try editing this file and watch the UI update!",
+        "color": "white"
+      }
+    }
+  ]
+}

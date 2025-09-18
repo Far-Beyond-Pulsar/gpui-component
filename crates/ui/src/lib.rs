@@ -39,6 +39,7 @@ pub mod highlighter;
 pub mod history;
 pub mod indicator;
 pub mod input;
+pub mod json_ui;
 pub mod label;
 pub mod link;
 pub mod list;

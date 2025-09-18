@@ -1,0 +1,48 @@
+{
+  "type": "column",
+  "props": {
+    "padding": 30
+  },
+  "children": [
+    {
+      "type": "h2",
+      "children": ["Interactive Hot Reload Demo"]
+    },
+    {
+      "type": "text",
+      "props": {
+        "content": "Try editing any of the JSON files to see hot reload in action!"
+      }
+    },
+    {
+      "$ref": "interactive_card.json",
+      "props": {
+        "title": "Hot Reload Card",
+        "content": "Edit interactive_card.json to see changes instantly"
+      }
+    },
+    {
+      "type": "row",
+      "props": {
+        "margin": 15,
+        "padding": 10,
+        "backgroundColor": "yellow"
+      },
+      "children": [
+        {
+          "type": "text",
+          "props": {
+            "content": "🔥 This yellow section will update when you edit this file!"
+          }
+        },
+        {
+          "type": "button",
+          "children": ["Hot Reload Test"]
+        }
+      ]
+    },
+    {
+      "$ref": "nested_example.json"
+    }
+  ]
+}

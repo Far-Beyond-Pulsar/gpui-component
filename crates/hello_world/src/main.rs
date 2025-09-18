@@ -4,6 +4,7 @@ use gpui_component::{
 };
 
 mod assets;
+mod engine;
 mod ui;
 
 pub use assets::Assets;

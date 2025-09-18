@@ -19,6 +19,7 @@ mod icon_story;
 mod image_story;
 mod indicator_story;
 mod input_story;
+mod json_ui_story;
 mod kbd_story;
 mod label_story;
 mod list_story;
@@ -77,6 +78,7 @@ pub use icon_story::IconStory;
 pub use image_story::ImageStory;
 pub use indicator_story::IndicatorStory;
 pub use input_story::InputStory;
+pub use json_ui_story::JsonUIStory;
 pub use kbd_story::KbdStory;
 pub use label_story::LabelStory;
 pub use list_story::ListStory;
@@ -645,6 +647,7 @@ impl StoryState {
             "IconStory" => story!(IconStory),
             "ImageStory" => story!(ImageStory),
             "InputStory" => story!(InputStory),
+            "JsonUIStory" => story!(JsonUIStory),
             "ListStory" => story!(ListStory),
             "ModalStory" => story!(ModalStory),
             "PopoverStory" => story!(PopoverStory),

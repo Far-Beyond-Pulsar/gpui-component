@@ -1,0 +1,20 @@
+{
+  "type": "div",
+  "props": {
+    "padding": 15,
+    "backgroundColor": "blue",
+    "color": "white"
+  },
+  "children": [
+    {
+      "type": "h2",
+      "props": {
+        "content": "${title}"
+      }
+    },
+    {
+      "type": "text",
+      "children": ["This is a reusable header component"]
+    }
+  ]
+}
