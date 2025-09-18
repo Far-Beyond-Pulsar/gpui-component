@@ -2,7 +2,7 @@ use gpui::*;
 use gpui_component::{
     button::Button, dock::{Panel, PanelEvent}, h_flex, resizable::{h_resizable, resizable_panel, ResizableState}, v_flex, ActiveTheme as _, IconName, Selectable, StyledExt
 };
-use gpui_component::viewport::{Viewport, ViewportBuffers, RefreshHook, FramebufferFormat};
+use gpui_component::viewport_new::{Viewport, DoubleBuffer, RefreshHook, create_viewport_with_background_rendering};
 
 use crate::ui::shared::{Toolbar, ToolbarButton, ViewportControls, StatusBar};
 use crate::ui::rainbow_engine::{RainbowRenderEngine, RainbowPattern};
@@ -22,7 +22,7 @@ pub struct LevelEditorPanel {
     
     // Rainbow engine state
     render_engine: Arc<Mutex<RainbowRenderEngine>>,
-    buffers: Arc<ViewportBuffers>,
+    buffers: Arc<DoubleBuffer>,
     refresh_hook: RefreshHook,
     current_pattern: RainbowPattern,
     render_speed: f32,
@@ -42,12 +42,11 @@ impl LevelEditorPanel {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let resizable_state = ResizableState::new(cx);
         
-        // Create viewport with proper GPUI background task pattern
-        let (viewport_instance, buffers, refresh_hook) = Viewport::new(
+        // Create viewport with zero-copy background rendering
+        let (viewport_instance, buffers, refresh_hook) = create_viewport_with_background_rendering(
             800, 
             600, 
-            FramebufferFormat::Rgba8, 
-            cx  // Pass context for GPUI background task setup
+            cx  // Context for background task setup
         );
         
         // Create the viewport entity
@@ -120,7 +119,7 @@ impl LevelEditorPanel {
     /// Controlled render thread with proper double buffering and CPU throttling
     fn render_thread_controlled(
         engine: Arc<Mutex<RainbowRenderEngine>>,
-        buffers: Arc<ViewportBuffers>,
+        buffers: Arc<DoubleBuffer>,
         refresh_hook: RefreshHook,
         render_enabled: Arc<std::sync::atomic::AtomicBool>,
     ) {
@@ -137,25 +136,45 @@ impl LevelEditorPanel {
         
         while render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
             let frame_start = std::time::Instant::now();
+            let mut timing_debug = frame_count % 60 == 0; // Debug every 60 frames (~1 sec)
             
-            // Step 1: Render to back buffer with exclusive access
+            // Step 1: Render to back buffer with exclusive access (DIRECT RGBA8)
+            let render_start = std::time::Instant::now();
             let render_successful = if let Ok(mut engine_guard) = engine.try_lock() {
-                buffers.with_back_buffer(|back_buffer| {
-                    engine_guard.render(back_buffer);
-                }).is_some()
+                let back_buffer = buffers.get_back_buffer();
+                if let Ok(mut buffer_guard) = back_buffer.try_lock() {
+                    // Render DIRECTLY in RGBA8 format - NO CONVERSION NEEDED
+                    engine_guard.render_rgba8(&mut *buffer_guard);
+                    true
+                } else {
+                    false
+                }
             } else {
                 false
             };
+            let render_time = render_start.elapsed();
             
-            // Step 2: Only if render was successful, do atomic swap
+            // Step 2: Only if render was successful, do atomic swap (zero-copy)
             if render_successful {
-                buffers.swap_buffers();
+                let swap_start = std::time::Instant::now();
+                buffers.swap_buffers(); // Atomic pointer swap - zero operations
+                let swap_time = swap_start.elapsed();
                 
                 // Step 3: Smart UI refresh with throttling
+                let refresh_start = std::time::Instant::now();
                 let now = std::time::Instant::now();
                 if now.duration_since(last_ui_refresh) >= ui_refresh_interval {
                     refresh_hook();
                     last_ui_refresh = now;
+                }
+                let refresh_time = refresh_start.elapsed();
+                
+                if timing_debug {
+                    println!("[RENDER-THREAD] Frame {}: render={}μs, swap={}μs, refresh={}μs", 
+                        frame_count, 
+                        render_time.as_micros(), 
+                        swap_time.as_micros(), 
+                        refresh_time.as_micros());
                 }
                 
                 frame_count += 1;
@@ -178,12 +197,22 @@ impl LevelEditorPanel {
             }
             
             // Calculate sleep time to maintain target CPU usage
+            let throttle_start = std::time::Instant::now();
             let target_cpu_usage = max_cpu_usage as f32 / 100.0;
             let work_time = frame_time.as_secs_f32();
             let total_frame_time = work_time / target_cpu_usage;
             let sleep_time = Duration::from_secs_f32(total_frame_time - work_time).max(Duration::from_millis(1));
             
             thread::sleep(sleep_time);
+            let throttle_time = throttle_start.elapsed();
+            
+            if timing_debug {
+                println!("[RENDER-THREAD] Throttling: work_time={:.2}ms, sleep_time={:.2}ms, throttle_total={:.2}ms, adaptive_frame_time={:.2}ms", 
+                    work_time * 1000.0, 
+                    sleep_time.as_secs_f32() * 1000.0,
+                    throttle_time.as_secs_f32() * 1000.0,
+                    adaptive_frame_time.as_secs_f32() * 1000.0);
+            }
             
             // Cooperative yielding every 30 frames for better system responsiveness
             if frame_count % 30 == 0 {
