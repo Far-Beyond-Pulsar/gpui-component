@@ -295,25 +295,25 @@ impl Drop for Viewport {
 
 impl Viewport {
     /// Create a new viewport and return it along with buffer access and refresh hook
-    pub fn new(initial_width: u32, initial_height: u32, format: FramebufferFormat, cx: &mut App) -> (Self, ViewportBuffers, RefreshHook) {
+    /// Uses proper GPUI background task pattern for reactive refreshes
+    pub fn new(initial_width: u32, initial_height: u32, format: FramebufferFormat, cx: &mut Context<impl Focusable>) -> (Self, ViewportBuffers, RefreshHook) {
         let double_buffer = Arc::new(Mutex::new(DoubleBuffer::new(initial_width, initial_height, format)));
         let metrics = Arc::new(Mutex::new(ViewportMetrics::default()));
-        let refresh_trigger = Arc::new(AtomicBool::new(false));
 
         // Create buffer handle for external access
         let buffers = ViewportBuffers {
             double_buffer: double_buffer.clone(),
         };
 
-        // Create refresh hook
-        let refresh_flag = refresh_trigger.clone();
+        // Create async channel for GPUI background task communication
+        let (refresh_sender, refresh_receiver) = smol::channel::unbounded::<()>();
         let refresh_hook: RefreshHook = Arc::new(move || {
-            refresh_flag.store(true, Ordering::Relaxed);
+            let _ = refresh_sender.try_send(()); // Send signal to background task
         });
 
         let viewport = Self {
             focus_handle: cx.focus_handle(),
-            double_buffer,
+            double_buffer: double_buffer.clone(),
             visible: true,
             bounds: Bounds::default(),
             metrics,
@@ -324,8 +324,18 @@ impl Viewport {
             last_width: initial_width,
             last_height: initial_height,
             debug_enabled: cfg!(debug_assertions),
-            refresh_trigger,
+            refresh_trigger: Arc::new(AtomicBool::new(false)),
         };
+
+        // Start GPUI background task for reactive refreshes (GPML pattern)
+        cx.spawn(async move |this, mut cx| {
+            while let Ok(()) = refresh_receiver.recv().await {
+                // Update and trigger reactive refresh - this is the key GPUI pattern
+                let _ = this.update(cx, |_viewport, cx| {
+                    cx.notify(); // Triggers GPUI's reactive refresh system
+                });
+            }
+        }).detach();
 
         (viewport, buffers, refresh_hook)
     }

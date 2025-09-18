@@ -2,9 +2,13 @@ use gpui::*;
 use gpui_component::{
     button::Button, dock::{Panel, PanelEvent}, h_flex, resizable::{h_resizable, resizable_panel, ResizableState}, v_flex, ActiveTheme as _, IconName, Selectable, StyledExt
 };
-use gpui_component::viewport::{Viewport, TestRenderEngine};
+use gpui_component::viewport::{Viewport, ViewportBuffers, RefreshHook, FramebufferFormat};
 
 use crate::ui::shared::{Toolbar, ToolbarButton, ViewportControls, StatusBar};
+use crate::ui::rainbow_engine::{RainbowRenderEngine, RainbowPattern};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 
 pub struct LevelEditorPanel {
     focus_handle: FocusHandle,
@@ -15,6 +19,14 @@ pub struct LevelEditorPanel {
     camera_mode: CameraMode,
     resizable_state: Entity<ResizableState>,
     viewport: Entity<Viewport>,
+    
+    // Rainbow engine state
+    render_engine: Arc<Mutex<RainbowRenderEngine>>,
+    buffers: Arc<ViewportBuffers>,
+    refresh_hook: RefreshHook,
+    current_pattern: RainbowPattern,
+    render_speed: f32,
+    render_enabled: Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -29,19 +41,31 @@ pub enum CameraMode {
 impl LevelEditorPanel {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let resizable_state = ResizableState::new(cx);
-        let viewport = cx.new(|cx| {
-            Viewport::new(
-                TestRenderEngine::new(),
-                800,
-                600,
-                cx,
-            )
-        });
-
-        // Set up the entity reference
-        let viewport_entity = viewport.clone();
-        viewport.update(cx, |viewport, cx| {
-            viewport.set_entity(viewport_entity, cx);
+        
+        // Create viewport with proper GPUI background task pattern
+        let (viewport_instance, buffers, refresh_hook) = Viewport::new(
+            800, 
+            600, 
+            FramebufferFormat::Rgba8, 
+            cx  // Pass context for GPUI background task setup
+        );
+        
+        // Create the viewport entity
+        let viewport = cx.new(|_cx| viewport_instance);
+        
+        // Create rainbow render engine
+        let render_engine = Arc::new(Mutex::new(RainbowRenderEngine::new()));
+        let buffers = Arc::new(buffers);
+        let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        
+        // Spawn render thread that uses the refresh hook to trigger GPUI reactive updates
+        let engine_clone = render_engine.clone();
+        let buffers_clone = buffers.clone();
+        let hook_clone = refresh_hook.clone();
+        let enabled_clone = render_enabled.clone();
+        
+        thread::spawn(move || {
+            Self::render_thread_controlled(engine_clone, buffers_clone, hook_clone, enabled_clone);
         });
 
         Self {
@@ -53,6 +77,83 @@ impl LevelEditorPanel {
             camera_mode: CameraMode::Perspective,
             resizable_state,
             viewport,
+            render_engine,
+            buffers,
+            refresh_hook,
+            current_pattern: RainbowPattern::Waves,
+            render_speed: 2.0,
+            render_enabled,
+        }
+    }
+
+    /// Controlled render thread with proper double buffering to prevent flickering
+    fn render_thread_controlled(
+        engine: Arc<Mutex<RainbowRenderEngine>>,
+        buffers: Arc<ViewportBuffers>,
+        refresh_hook: RefreshHook,
+        render_enabled: Arc<std::sync::atomic::AtomicBool>,
+    ) {
+        // Target 60 FPS for smooth animation
+        let target_frame_time = Duration::from_millis(16); // 1000 / 60
+        let mut frame_count = 0u64;
+        
+        while render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
+            let frame_start = std::time::Instant::now();
+            
+            // Step 1: Render to back buffer with exclusive access
+            // This happens without any contention from the UI thread
+            let render_successful = if let Ok(mut engine_guard) = engine.try_lock() {
+                buffers.with_back_buffer(|back_buffer| {
+                    engine_guard.render(back_buffer);
+                }).is_some()
+            } else {
+                false
+            };
+            
+            // Step 2: Only if render was successful, do atomic swap
+            // This is the only point where buffers are briefly locked
+            if render_successful {
+                buffers.swap_buffers();
+                
+                // Step 3: Trigger GPUI refresh after swap is complete
+                // Now UI thread can read from stable front buffer
+                refresh_hook();
+                frame_count += 1;
+            }
+            
+            // Step 4: Frame rate control
+            let frame_time = frame_start.elapsed();
+            let sleep_time = if frame_time < target_frame_time {
+                target_frame_time - frame_time
+            } else {
+                Duration::from_millis(1) // Minimum yield
+            };
+            
+            thread::sleep(sleep_time);
+            
+            // Periodic yield for better thread cooperation
+            if frame_count % 30 == 0 {
+                thread::yield_now();
+            }
+        }
+    }
+
+    pub fn toggle_rendering(&mut self) {
+        let current = self.render_enabled.load(std::sync::atomic::Ordering::Relaxed);
+        self.render_enabled.store(!current, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn set_rainbow_pattern(&mut self, pattern: RainbowPattern) {
+        self.current_pattern = pattern;
+        if let Ok(mut engine) = self.render_engine.lock() {
+            engine.set_pattern(pattern);
+        }
+    }
+
+    pub fn set_render_speed(&mut self, speed: f32) {
+        self.render_speed = speed;
+        if let Ok(mut engine) = self.render_engine.lock() {
+            engine.set_speed(speed);
         }
     }
 
@@ -196,36 +297,160 @@ impl LevelEditorPanel {
                     .left_4()
                     .child(self.render_performance_overlay(cx))
             )
+            .child(
+                // Rainbow pattern controls
+                div()
+                    .absolute()
+                    .bottom_4()
+                    .right_4()
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .p_2()
+                            .bg(cx.theme().background.opacity(0.9))
+                            .rounded(cx.theme().radius)
+                            .border_1()
+                            .border_color(cx.theme().border)
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_semibold()
+                                    .text_color(cx.theme().foreground)
+                                    .child("🌈 Rainbow Patterns")
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_1()
+                                    .child(
+                                        Button::new("waves")
+                                            .child("Waves")
+                                            .selected(matches!(self.current_pattern, RainbowPattern::Waves))
+                                            .on_click(cx.listener(|this, _event, _window, _cx| {
+                                                this.set_rainbow_pattern(RainbowPattern::Waves);
+                                            }))
+                                    )
+                                    .child(
+                                        Button::new("spiral")
+                                            .child("Spiral")
+                                            .selected(matches!(self.current_pattern, RainbowPattern::Spiral))
+                                            .on_click(cx.listener(|this, _event, _window, _cx| {
+                                                this.set_rainbow_pattern(RainbowPattern::Spiral);
+                                            }))
+                                    )
+                                    .child(
+                                        Button::new("plasma")
+                                            .child("Plasma")
+                                            .selected(matches!(self.current_pattern, RainbowPattern::Plasma))
+                                            .on_click(cx.listener(|this, _event, _window, _cx| {
+                                                this.set_rainbow_pattern(RainbowPattern::Plasma);
+                                            }))
+                                    )
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_1()
+                                    .child(
+                                        Button::new("ripples")
+                                            .child("Ripples")
+                                            .selected(matches!(self.current_pattern, RainbowPattern::Ripples))
+                                            .on_click(cx.listener(|this, _event, _window, _cx| {
+                                                this.set_rainbow_pattern(RainbowPattern::Ripples);
+                                            }))
+                                    )
+                                    .child(
+                                        Button::new("matrix")
+                                            .child("Matrix")
+                                            .selected(matches!(self.current_pattern, RainbowPattern::Matrix))
+                                            .on_click(cx.listener(|this, _event, _window, _cx| {
+                                                this.set_rainbow_pattern(RainbowPattern::Matrix);
+                                            }))
+                                    )
+                            )
+                    )
+            )
     }
 
     fn render_performance_overlay(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let viewport = self.viewport.read(cx);
-        let metrics = viewport.metrics();
+        let viewport_metrics = self.viewport.read(cx).metrics();
+        
+        // Get rainbow engine metrics
+        let (engine_fps, frame_count, pattern_name) = if let Ok(engine) = self.render_engine.lock() {
+            let fps = engine.get_fps();
+            let frames = engine.get_frame_count();
+            let pattern = format!("{:?}", self.current_pattern);
+            (fps, frames, pattern)
+        } else {
+            (0.0, 0, "Unknown".to_string())
+        };
 
-        h_flex()
-            .gap_2()
+        v_flex()
+            .gap_1()
             .p_2()
             .bg(cx.theme().background.opacity(0.9))
             .rounded(cx.theme().radius)
             .border_1()
             .border_color(cx.theme().border)
             .child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().foreground)
-                    .child(format!("FPS: {:.1}", metrics.fps))
+                h_flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_semibold()
+                            .text_color(if engine_fps > 200.0 { 
+                                cx.theme().success 
+                            } else if engine_fps > 120.0 { 
+                                cx.theme().warning 
+                            } else { 
+                                cx.theme().accent 
+                            })
+                            .child(format!("🌈 {:.1} FPS", engine_fps))
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("Target: 30"))
+                    )
+                    .child(
+                        Button::new("toggle_render")
+                            .child(if self.render_enabled.load(std::sync::atomic::Ordering::Relaxed) { "⏸" } else { "▶" })
+                            .on_click(cx.listener(|this, _event, _window, _cx| {
+                                this.toggle_rendering();
+                            }))
+                    )
             )
             .child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(format!("Frame: {:.1}ms", metrics.avg_frame_time_ms))
+                h_flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().foreground)
+                            .child(format!("Frames: {}", frame_count))
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("Pattern: {}", pattern_name))
+                    )
             )
             .child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(format!("Frames: {}", metrics.frame_count))
+                h_flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("GPUI: {:.1} FPS", viewport_metrics.fps))
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("Textures: {}", viewport_metrics.texture_updates))
+                    )
             )
     }
 
