@@ -1,8 +1,5 @@
 use gpui::{
-    div, Bounds, DismissEvent, EventEmitter, Element, ElementId, GlobalElementId, InspectorElementId,
-    FocusHandle, Focusable, InteractiveElement, IntoElement, LayoutId,
-    ParentElement as _, Pixels, Render, RenderImage, Size, Styled as _, px,
-    Context, Point, App, Window, StatefulInteractiveElement, Corners, Style,
+    div, px, App, AppContext, Bounds, Context, Corners, DismissEvent, Element, ElementId, Entity, EventEmitter, FocusHandle, Focusable, GlobalElementId, InspectorElementId, InteractiveElement, IntoElement, LayoutId, ParentElement as _, Pixels, Point, Render, RenderImage, Size, StatefulInteractiveElement, Style, Styled as _, Window
 };
 use std::sync::{Arc, Mutex, atomic::{AtomicBool, AtomicUsize, Ordering}};
 use image::ImageBuffer;
@@ -194,7 +191,9 @@ impl Element for ViewportElement {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        let layout_id = window.request_layout(Style::default(), None, cx);
+        let mut style = Style::default();
+        style.size = Size::full(); // This tells the element to take full available space
+        let layout_id = window.request_layout(style, None, cx);
         (layout_id, ())
     }
 
@@ -321,12 +320,12 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
     initial_width: u32,
     initial_height: u32,
     cx: &mut Context<V>,
-) -> (Viewport, Arc<DoubleBuffer>, RefreshHook) {
+) -> (Entity<Viewport>, Arc<DoubleBuffer>, RefreshHook) {
     println!("[VIEWPORT] Creating zero-copy viewport {}x{}", initial_width, initial_height);
     
     let double_buffer = Arc::new(DoubleBuffer::new(initial_width, initial_height));
     
-    let viewport = Viewport {
+    let viewport = cx.new(|cx| Viewport {
         double_buffer: Arc::clone(&double_buffer),
         shared_texture: Arc::new(Mutex::new(None)),
         metrics: ViewportMetrics::default(),
@@ -334,7 +333,7 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
         last_width: initial_width,
         last_height: initial_height,
         debug_enabled: cfg!(debug_assertions),
-    };
+    });
 
     // Channel for refresh notifications
     let (refresh_sender, refresh_receiver) = smol::channel::unbounded::<()>();
@@ -354,20 +353,19 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
         }
     });
 
-    // Background task for texture pre-processing - use a separate thread
-    let entity = cx.entity();
+    // Background task for texture pre-processing - use GPUI async task
     let buffer_ref = Arc::clone(&double_buffer);
-    let shared_texture_ref = Arc::clone(&viewport.shared_texture);
     let processing_flag_ref = Arc::clone(&processing_flag);
     let debug_enabled = cfg!(debug_assertions);
-    
-    // Use a separate thread with blocking operations instead of async
-    std::thread::spawn(move || {
+
+    // Use GPUI async task that can properly notify the viewport entity
+    viewport.update(cx, |_viewport, cx| {
+        cx.spawn(async move |viewport_entity, mut cx| {
         println!("[VIEWPORT-BG] Background task started, waiting for refresh signals...");
         
         loop {
-            // Use blocking recv instead of async
-            match refresh_receiver.recv_blocking() {
+            // Use async recv to avoid blocking GPUI runtime
+            match refresh_receiver.recv().await {
                 Ok(()) => {
                     println!("[VIEWPORT-BG] Received refresh signal, processing buffer...");
                     processing_flag_ref.store(true, Ordering::Relaxed);
@@ -426,10 +424,20 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
                         texture
                     };
                     
-                    // Store completed texture
-                    {
-                        let mut shared = shared_texture_ref.lock().unwrap();
-                        *shared = Some(texture_result);
+                    // Update the viewport entity and store texture + trigger re-render (like GPML canvas)
+                    let update_result = viewport_entity.update(cx, |viewport, cx| {
+                        // Store completed texture in the viewport's shared_texture
+                        {
+                            let mut shared = viewport.shared_texture.lock().unwrap();
+                            *shared = Some(texture_result);
+                        }
+                        
+                        // Viewport has new texture available, trigger re-render
+                        cx.notify();
+                    });
+                    
+                    if let Err(e) = update_result {
+                        println!("[VIEWPORT-BG] Failed to update viewport entity: {:?}", e);
                     }
                     
                     let total_time = process_start.elapsed();
@@ -446,6 +454,7 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
                 }
             }
         }
+        }).detach();
     });
 
     (viewport, double_buffer, refresh_hook)

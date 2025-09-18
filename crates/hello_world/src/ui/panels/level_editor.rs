@@ -43,14 +43,11 @@ impl LevelEditorPanel {
         let resizable_state = ResizableState::new(cx);
         
         // Create viewport with zero-copy background rendering
-        let (viewport_instance, buffers, refresh_hook) = create_viewport_with_background_rendering(
+        let (viewport, buffers, refresh_hook) = create_viewport_with_background_rendering(
             800, 
             600, 
             cx  // Context for background task setup
         );
-        
-        // Create the viewport entity
-        let viewport = cx.new(|_cx| viewport_instance);
         
         // Create rainbow render engine
         let render_engine = Arc::new(Mutex::new(RainbowRenderEngine::new()));
@@ -507,6 +504,7 @@ impl LevelEditorPanel {
                                 cx.theme().accent 
                             })
                             .child(format!("🌈 {:.1} FPS", engine_fps))
+                            .text_color(cx.theme().foreground)
                     )
                     .child(
                         div()
