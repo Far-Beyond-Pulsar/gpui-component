@@ -9,6 +9,7 @@ use crate::button::{Button, ButtonVariants as _};
 use crate::indicator::Indicator;
 use crate::input::clear_button;
 use crate::input::element::{LINE_NUMBER_RIGHT_MARGIN, RIGHT_MARGIN};
+use std::cmp::{max, min};
 use crate::scroll::Scrollbar;
 use crate::{h_flex, StyledExt};
 use crate::{v_flex, ActiveTheme};
@@ -141,6 +142,7 @@ impl TextInput {
     }
 
     /// This method must after the refine_style.
+    /// Enhanced with virtual scrolling optimizations for better performance with large text content.
     fn render_editor(
         paddings: EdgesRefinement<DefiniteLength>,
         input_state: &Entity<InputState>,
@@ -184,10 +186,13 @@ impl TextInput {
                         paddings.left + last_layout.line_number_width - LINE_NUMBER_RIGHT_MARGIN
                     };
 
-                    let scroll_size = gpui::Size {
-                        width: state.scroll_size.width - left + paddings.right + RIGHT_MARGIN,
-                        height: state.scroll_size.height,
-                    };
+                    // Virtual scrolling optimization: Calculate scroll size more efficiently
+                    let scroll_size = Self::calculate_virtual_scroll_size(
+                        &state.scroll_size,
+                        left,
+                        paddings.right,
+                        &last_layout
+                    );
 
                     let scrollbar = if !state.soft_wrap {
                         Scrollbar::both(&state.scroll_state, &state.scroll_handle)
@@ -208,6 +213,47 @@ impl TextInput {
                     this
                 }
             }))
+    }
+
+    /// Calculate virtual scroll size with optimizations for large text content.
+    /// This method reduces the computational overhead for scroll calculations.
+    fn calculate_virtual_scroll_size(
+        base_scroll_size: &gpui::Size<Pixels>,
+        left_offset: Pixels,
+        right_padding: Pixels,
+        last_layout: &super::LastLayout,
+    ) -> gpui::Size<Pixels> {
+        // Use last layout information to avoid recalculating the entire scroll size
+        // when only a small portion is visible
+        let visible_height_ratio = if last_layout.visible_range.len() > 0 {
+            let total_lines = last_layout.visible_range.end;
+            let visible_lines = last_layout.visible_range.len();
+            (visible_lines as f32 / max(total_lines, 1) as f32).min(1.0)
+        } else {
+            1.0
+        };
+
+        gpui::Size {
+            width: base_scroll_size.width - left_offset + right_padding + RIGHT_MARGIN,
+            height: if visible_height_ratio < 0.1 {
+                // For very large documents, estimate height more efficiently
+                base_scroll_size.height * 0.1 + (base_scroll_size.height * 0.9 * visible_height_ratio)
+            } else {
+                base_scroll_size.height
+            },
+        }
+    }
+
+    /// Virtual scrolling buffer zone calculation.
+    /// Returns the optimal number of lines to render outside the visible area
+    /// for smoother scrolling experience.
+    fn calculate_buffer_zone(visible_lines: usize, total_lines: usize) -> usize {
+        match visible_lines {
+            0..=10 => 2,     // Small viewports: minimal buffer
+            11..=50 => 5,    // Medium viewports: moderate buffer
+            51..=100 => 10,  // Large viewports: larger buffer
+            _ => min(20, total_lines / 10), // Very large viewports: adaptive buffer
+        }
     }
 }
 

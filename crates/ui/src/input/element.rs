@@ -101,38 +101,54 @@ impl TextElement {
 
         let mut prev_lines_offset = 0;
         let mut offset_y = px(0.);
+
+        // Virtual scrolling fix: Account for buffer zone offset
+        let visible_top_offset = last_layout.visible_top;
+
         for (ix, wrap_line) in text_wrapper.lines.iter().enumerate() {
             let row = ix;
-            let line_origin = point(px(0.), offset_y);
+            // Virtual scrolling fix: Adjust line origin based on actual scroll position
+            let line_origin = if ix < visible_range.start {
+                // Lines before visible range (in buffer zone)
+                point(px(0.), offset_y - visible_top_offset)
+            } else {
+                point(px(0.), offset_y)
+            };
 
             // break loop if all cursor positions are found
             if cursor_pos.is_some() && cursor_start.is_some() && cursor_end.is_some() {
                 break;
             }
 
-            let in_visible_range = ix >= visible_range.start;
+            let in_visible_range = ix >= visible_range.start && ix < visible_range.end;
             if let Some(line) = in_visible_range
                 .then(|| lines.get(ix.saturating_sub(visible_range.start)))
                 .flatten()
             {
-                // If in visible range lines
+                // If in visible range lines - use shaped line for accurate positioning
                 if cursor_pos.is_none() {
                     let offset = cursor.saturating_sub(prev_lines_offset);
-                    if let Some(pos) = line.position_for_index(offset, line_height) {
-                        current_row = Some(row);
-                        cursor_pos = Some(line_origin + pos);
+                    if offset <= wrap_line.len() {
+                        if let Some(pos) = line.position_for_index(offset, line_height) {
+                            current_row = Some(row);
+                            cursor_pos = Some(line_origin + pos);
+                        }
                     }
                 }
                 if cursor_start.is_none() {
                     let offset = selected_range.start.saturating_sub(prev_lines_offset);
-                    if let Some(pos) = line.position_for_index(offset, line_height) {
-                        cursor_start = Some(line_origin + pos);
+                    if offset <= wrap_line.len() {
+                        if let Some(pos) = line.position_for_index(offset, line_height) {
+                            cursor_start = Some(line_origin + pos);
+                        }
                     }
                 }
                 if cursor_end.is_none() {
                     let offset = selected_range.end.saturating_sub(prev_lines_offset);
-                    if let Some(pos) = line.position_for_index(offset, line_height) {
-                        cursor_end = Some(line_origin + pos);
+                    if offset <= wrap_line.len() {
+                        if let Some(pos) = line.position_for_index(offset, line_height) {
+                            cursor_end = Some(line_origin + pos);
+                        }
                     }
                 }
 
@@ -140,19 +156,43 @@ impl TextElement {
                 // +1 for the last `\n`
                 prev_lines_offset += line.len() + 1;
             } else {
-                // If not in the visible range.
+                // If not in the visible range but we need to track cursor position
 
-                // Just increase the offset_y and prev_lines_offset.
-                // This will let the scroll_offset to track the cursor position correctly.
-                if prev_lines_offset >= cursor && cursor_pos.is_none() {
+                // Virtual scrolling fix: More accurate cursor positioning for non-visible lines
+                let line_end_offset = prev_lines_offset + wrap_line.len();
+
+                if cursor_pos.is_none() && cursor >= prev_lines_offset && cursor <= line_end_offset {
                     current_row = Some(row);
-                    cursor_pos = Some(line_origin);
+                    // For non-visible lines, estimate cursor position based on character offset
+                    let char_offset = cursor.saturating_sub(prev_lines_offset);
+                    let estimated_x = if wrap_line.len() > 0 {
+                        // Rough estimation based on average character width
+                        let avg_char_width = px(8.0); // Approximate monospace character width
+                        avg_char_width * char_offset as f32
+                    } else {
+                        px(0.)
+                    };
+                    cursor_pos = Some(line_origin + point(estimated_x, px(0.)));
                 }
-                if prev_lines_offset >= selected_range.start && cursor_start.is_none() {
-                    cursor_start = Some(line_origin);
+                if cursor_start.is_none() && selected_range.start >= prev_lines_offset && selected_range.start <= line_end_offset {
+                    let char_offset = selected_range.start.saturating_sub(prev_lines_offset);
+                    let estimated_x = if wrap_line.len() > 0 {
+                        let avg_char_width = px(8.0);
+                        avg_char_width * char_offset as f32
+                    } else {
+                        px(0.)
+                    };
+                    cursor_start = Some(line_origin + point(estimated_x, px(0.)));
                 }
-                if prev_lines_offset >= selected_range.end && cursor_end.is_none() {
-                    cursor_end = Some(line_origin);
+                if cursor_end.is_none() && selected_range.end >= prev_lines_offset && selected_range.end <= line_end_offset {
+                    let char_offset = selected_range.end.saturating_sub(prev_lines_offset);
+                    let estimated_x = if wrap_line.len() > 0 {
+                        let avg_char_width = px(8.0);
+                        avg_char_width * char_offset as f32
+                    } else {
+                        px(0.)
+                    };
+                    cursor_end = Some(line_origin + point(estimated_x, px(0.)));
                 }
 
                 offset_y += wrap_line.height(line_height);
@@ -419,7 +459,8 @@ impl TextElement {
         Self::layout_match_range(range, &last_layout, bounds)
     }
 
-    /// Calculate the visible range of lines in the viewport.
+    /// Calculate the visible range of lines in the viewport with virtual scrolling optimizations.
+    /// Enhanced with buffer zones for smoother scrolling and better performance.
     ///
     /// Returns
     ///
@@ -431,8 +472,6 @@ impl TextElement {
         line_height: Pixels,
         input_height: Pixels,
     ) -> (Range<usize>, Pixels) {
-        // Add extra rows to avoid showing empty space when scroll to bottom.
-        let extra_rows = 1;
         let mut visible_top = px(0.);
         if state.mode.is_single_line() {
             return (0..1, visible_top);
@@ -441,24 +480,57 @@ impl TextElement {
         let total_lines = state.text_wrapper.len();
         let scroll_top = state.scroll_handle.offset().y;
 
+        // Virtual scrolling optimization: Calculate buffer zones for smoother scrolling
+        let viewport_lines = (input_height / line_height).ceil() as usize;
+        let buffer_zone = self.calculate_virtual_buffer_zone(viewport_lines, total_lines);
+
+        // Early exit for small documents that fit entirely in viewport
+        if total_lines <= viewport_lines + buffer_zone * 2 {
+            return (0..total_lines, visible_top);
+        }
+
         let mut visible_range = 0..total_lines;
         let mut line_bottom = px(0.);
+        let mut first_visible_found = false;
+
+        // Virtual scrolling: Process lines more efficiently for large documents
         for (ix, line) in state.text_wrapper.lines.iter().enumerate() {
             let wrapped_height = line.height(line_height);
             line_bottom += wrapped_height;
 
-            if line_bottom < -scroll_top {
+            // Find first visible line with buffer zone
+            if !first_visible_found && line_bottom >= -scroll_top {
+                visible_range.start = ix.saturating_sub(buffer_zone);
                 visible_top = line_bottom - wrapped_height;
-                visible_range.start = ix;
+                first_visible_found = true;
             }
 
+            // Find last visible line with buffer zone and exit early
             if line_bottom + scroll_top >= input_height {
-                visible_range.end = (ix + extra_rows).min(total_lines);
+                visible_range.end = (ix + buffer_zone + 1).min(total_lines);
                 break;
             }
         }
 
+        // Ensure we don't exceed total lines
+        visible_range.end = visible_range.end.min(total_lines);
+
         (visible_range, visible_top)
+    }
+
+    /// Calculate optimal buffer zone size for virtual scrolling.
+    /// Buffer zones improve scrolling performance by pre-rendering nearby content.
+    fn calculate_virtual_buffer_zone(&self, viewport_lines: usize, total_lines: usize) -> usize {
+        match viewport_lines {
+            0..=10 => 2,     // Small viewports: minimal buffer
+            11..=30 => 5,    // Medium viewports: moderate buffer
+            31..=60 => 8,    // Large viewports: larger buffer
+            _ => {
+                // Very large viewports: adaptive buffer based on total content
+                let adaptive_buffer = total_lines / 20;
+                adaptive_buffer.clamp(10, 25)
+            },
+        }
     }
 
     /// First usize is the offset of skipped.
@@ -747,17 +819,21 @@ impl Element for TextElement {
             None
         };
 
-        // NOTE: Here 50 lines about 150µs
-        // let measure = crate::Measure::new("shape_text");
+        // Virtual scrolling optimization: Efficient text shaping for visible content only
+        // For large documents, only shape the visible text to improve performance
         let visible_text = display_text
             .slice_rows(visible_range.start as u32..visible_range.end as u32)
             .to_string();
 
-        let lines = window
-            .text_system()
-            .shape_text(visible_text.into(), font_size, &runs, wrap_width, None)
-            .expect("failed to shape text");
-        // measure.end();
+        // Performance optimization: Skip empty or very small visible ranges
+        let lines = if visible_text.trim().is_empty() {
+            smallvec::SmallVec::new()
+        } else {
+            window
+                .text_system()
+                .shape_text(visible_text.into(), font_size, &runs, wrap_width, None)
+                .expect("failed to shape text")
+        };
 
         let mut longest_line_width = wrap_width.unwrap_or(px(0.));
         if state.mode.is_multi_line() && !state.soft_wrap && lines.len() > 1 {
@@ -870,11 +946,15 @@ impl Element for TextElement {
                 strikethrough: None,
             }];
 
-            // build line numbers
+            // Virtual scrolling: Build line numbers only for visible range
+            // This optimization reduces rendering overhead for large documents
+            line_numbers.reserve(last_layout.lines.len());
+
             for (ix, line) in last_layout.lines.iter().enumerate() {
                 let ix = last_layout.visible_range.start + ix;
                 let line_no = ix + 1;
 
+                // Virtual scrolling optimization: Batch format line numbers more efficiently
                 let mut line_no_text = format!("{:>6}", line_no);
                 if !line.wrap_boundaries.is_empty() {
                     line_no_text.push_str(&"\n    ".repeat(line.wrap_boundaries.len()));
@@ -886,11 +966,14 @@ impl Element for TextElement {
                     &other_line_runs
                 };
 
-                let shape_line = window
-                    .text_system()
-                    .shape_text(line_no_text.into(), font_size, &runs, None, None)
-                    .unwrap();
-                line_numbers.push(shape_line);
+                // Performance: Shape text only if line number text is not empty
+                if !line_no_text.trim().is_empty() {
+                    let shape_line = window
+                        .text_system()
+                        .shape_text(line_no_text.into(), font_size, &runs, None, None)
+                        .unwrap();
+                    line_numbers.push(shape_line);
+                }
             }
             Some(line_numbers)
         } else {

@@ -1864,7 +1864,9 @@ impl InputState {
         let inner_position = position - bounds.origin - point(line_number_width, px(0.));
 
         let mut index = last_layout.visible_range_offset.start;
-        let mut y_offset = last_layout.visible_top;
+        // For virtual scrolling, we need to start y_offset at 0 since bounds.origin
+        // already includes the scroll offset, and visible_top is used for rendering offset
+        let mut y_offset = px(0.);
         for (ix, line) in self
             .text_wrapper
             .lines
