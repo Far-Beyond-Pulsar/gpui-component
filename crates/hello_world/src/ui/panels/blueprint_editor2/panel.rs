@@ -144,6 +144,10 @@ impl BlueprintEditorPanel {
         &mut self.graph
     }
 
+    pub fn focus_handle(&self) -> &FocusHandle {
+        &self.focus_handle
+    }
+
     pub fn add_node(&mut self, node: BlueprintNode, cx: &mut Context<Self>) {
         self.graph.nodes.push(node);
         cx.notify();
