@@ -26,6 +26,10 @@ pub struct BlueprintEditorPanel {
     pub is_panning: bool,
     pub pan_start: Point<f32>,
     pub pan_start_offset: Point<f32>,
+    // Selection state
+    pub selection_start: Option<Point<f32>>,
+    pub selection_end: Option<Point<f32>>,
+    pub last_mouse_pos: Option<Point<f32>>,
 }
 
 #[derive(Clone, Debug)]
@@ -113,6 +117,7 @@ impl BlueprintEditorPanel {
             selected_nodes: vec![],
             zoom_level: 1.0,
             pan_offset: Point::new(0.0, 0.0),
+            virtualization_stats: super::VirtualizationStats::default(),
         };
 
         Self {
@@ -125,6 +130,9 @@ impl BlueprintEditorPanel {
             is_panning: false,
             pan_start: Point::new(0.0, 0.0),
             pan_start_offset: Point::new(0.0, 0.0),
+            selection_start: None,
+            selection_end: None,
+            last_mouse_pos: None,
         }
     }
 
@@ -141,24 +149,6 @@ impl BlueprintEditorPanel {
         cx.notify();
     }
 
-    pub fn select_node(&mut self, node_id: Option<String>, cx: &mut Context<Self>) {
-        match node_id {
-            Some(id) => {
-                self.graph.selected_nodes.clear();
-                self.graph.selected_nodes.push(id.clone());
-                for node in &mut self.graph.nodes {
-                    node.is_selected = node.id == id;
-                }
-            }
-            None => {
-                self.graph.selected_nodes.clear();
-                for node in &mut self.graph.nodes {
-                    node.is_selected = false;
-                }
-            }
-        }
-        cx.notify();
-    }
 
     pub fn start_drag(&mut self, node_id: String, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
         if let Some(node) = self.graph.nodes.iter().find(|n| n.id == node_id) {
@@ -430,6 +420,92 @@ impl BlueprintEditorPanel {
         );
 
         cx.notify();
+    }
+
+    // Selection methods
+    pub fn select_node(&mut self, node_id: Option<String>, cx: &mut Context<Self>) {
+        self.graph.selected_nodes.clear();
+        if let Some(id) = node_id {
+            self.graph.selected_nodes.push(id);
+        }
+        cx.notify();
+    }
+
+    pub fn start_selection_drag(&mut self, start_pos: Point<f32>, add_to_selection: bool, cx: &mut Context<Self>) {
+        self.selection_start = Some(start_pos);
+        self.selection_end = Some(start_pos);
+
+        if !add_to_selection {
+            self.graph.selected_nodes.clear();
+        }
+        cx.notify();
+    }
+
+    pub fn is_selecting(&self) -> bool {
+        self.selection_start.is_some() && self.selection_end.is_some()
+    }
+
+    pub fn update_selection_drag(&mut self, current_pos: Point<f32>, cx: &mut Context<Self>) {
+        if self.selection_start.is_some() {
+            self.selection_end = Some(current_pos);
+
+            // Update selection based on current drag area
+            self.update_node_selection_from_drag(cx);
+        }
+    }
+
+    pub fn end_selection_drag(&mut self, cx: &mut Context<Self>) {
+        self.selection_start = None;
+        self.selection_end = None;
+        cx.notify();
+    }
+
+    fn update_node_selection_from_drag(&mut self, cx: &mut Context<Self>) {
+        if let (Some(start), Some(end)) = (self.selection_start, self.selection_end) {
+            let min_x = start.x.min(end.x);
+            let max_x = start.x.max(end.x);
+            let min_y = start.y.min(end.y);
+            let max_y = start.y.max(end.y);
+
+            // Check ALL nodes (not just rendered ones) for intersection with selection box
+            for node in &self.graph.nodes {
+                let node_left = node.position.x;
+                let node_top = node.position.y;
+                let node_right = node.position.x + node.size.width;
+                let node_bottom = node.position.y + node.size.height;
+
+                // Check if node intersects with selection box
+                let intersects = !(node_right < min_x || node_left > max_x ||
+                                  node_bottom < min_y || node_top > max_y);
+
+                if intersects {
+                    if !self.graph.selected_nodes.contains(&node.id) {
+                        self.graph.selected_nodes.push(node.id.clone());
+                    }
+                } else {
+                    // Remove from selection if not intersecting (for live drag selection)
+                    self.graph.selected_nodes.retain(|id| id != &node.id);
+                }
+            }
+            cx.notify();
+        }
+    }
+
+    pub fn delete_selected_nodes(&mut self, cx: &mut Context<Self>) {
+        if !self.graph.selected_nodes.is_empty() {
+            // Remove selected nodes
+            self.graph.nodes.retain(|node| !self.graph.selected_nodes.contains(&node.id));
+
+            // Remove connections involving deleted nodes
+            self.graph.connections.retain(|connection| {
+                !self.graph.selected_nodes.contains(&connection.from_node_id) &&
+                !self.graph.selected_nodes.contains(&connection.to_node_id)
+            });
+
+            // Clear selection
+            self.graph.selected_nodes.clear();
+            cx.notify();
+        }
     }
 
 }

@@ -414,7 +414,6 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
     // Use GPUI async task that can properly notify the viewport entity
     viewport.update(cx, |viewport, cx| {
         let task = cx.spawn(async move |viewport_entity, cx| {
-        println!("[VIEWPORT-BG] Background task started, waiting for refresh signals...");
         
         loop {
             // Use select! to listen for both refresh and shutdown signals
@@ -422,7 +421,6 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
                 refresh_result = refresh_receiver.recv().fuse() => {
                     match refresh_result {
                         Ok(()) => {
-                            println!("[VIEWPORT-BG] Received refresh signal, processing buffer...");
                             processing_flag_ref.store(true, Ordering::Relaxed);
                             
                             let process_start = std::time::Instant::now();

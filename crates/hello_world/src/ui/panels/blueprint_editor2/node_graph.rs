@@ -5,7 +5,6 @@ use gpui_component::{
     h_flex, v_flex,
     ActiveTheme as _, StyledExt,
     IconName,
-    context_menu::ContextMenuExt,
 };
 
 use super::*;
@@ -26,8 +25,11 @@ impl NodeGraphRenderer {
             .child(Self::render_grid_background(cx))
             .child(Self::render_nodes(panel, cx))
             .child(Self::render_connections(panel, cx))
+            .child(Self::render_selection_box(panel, cx))
+            .child(Self::render_viewport_bounds_debug(panel, cx))
+            .child(Self::render_debug_overlay(panel, cx))
             .child(Self::render_graph_controls(panel, cx))
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|panel, event: &MouseDownEvent, _window, cx| {
+            .on_mouse_down(gpui::MouseButton::Right, cx.listener(|panel, event: &MouseDownEvent, _window, cx| {
                 let mouse_pos = Point::new(event.position.x.0, event.position.y.0);
 
                 // Only start panning if not connecting and not already dragging a node
@@ -35,8 +37,29 @@ impl NodeGraphRenderer {
                     // Start panning if not connecting
                     panel.start_panning(mouse_pos, cx);
                 }
-                // Click on background deselects all nodes
-                panel.select_node(None, cx);
+            }))
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|panel, event: &MouseDownEvent, _window, cx| {
+                let mouse_pos = Point::new(event.position.x.0, event.position.y.0);
+                let graph_pos = Self::screen_to_graph_pos(Point::new(px(mouse_pos.x), px(mouse_pos.y)), &panel.graph);
+
+                // Check if clicking on a node (check ALL nodes, not just rendered ones)
+                let clicked_node = panel.graph.nodes.iter().find(|node| {
+                    let node_left = node.position.x;
+                    let node_top = node.position.y;
+                    let node_right = node.position.x + node.size.width;
+                    let node_bottom = node.position.y + node.size.height;
+
+                    graph_pos.x >= node_left && graph_pos.x <= node_right &&
+                    graph_pos.y >= node_top && graph_pos.y <= node_bottom
+                });
+
+                if let Some(node) = clicked_node {
+                    // Single click on node - select only this node
+                    panel.select_node(Some(node.id.clone()), cx);
+                } else {
+                    // Start selection drag
+                    panel.start_selection_drag(graph_pos, event.modifiers.control, cx);
+                }
             }))
             .on_mouse_move(cx.listener(|panel, event: &MouseMoveEvent, _window, cx| {
                 let mouse_pos = Point::new(event.position.x.0, event.position.y.0);
@@ -47,6 +70,10 @@ impl NodeGraphRenderer {
                 } else if panel.dragging_connection.is_some() {
                     // Update mouse position for drag line rendering
                     panel.update_connection_drag(mouse_pos, cx);
+                } else if panel.is_selecting() {
+                    // Update selection drag
+                    let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
+                    panel.update_selection_drag(graph_pos, cx);
                 } else if panel.is_panning() && panel.dragging_node.is_none() {
                     // Only update panning if we're not dragging a node
                     panel.update_pan(mouse_pos, cx);
@@ -58,7 +85,15 @@ impl NodeGraphRenderer {
                 } else if panel.dragging_connection.is_some() {
                     // Cancel connection if not dropped on a pin
                     panel.cancel_connection_drag(cx);
+                } else if panel.is_selecting() {
+                    // End selection drag
+                    panel.end_selection_drag(cx);
                 } else if panel.is_panning() {
+                    panel.end_panning(cx);
+                }
+            }))
+            .on_mouse_up(gpui::MouseButton::Right, cx.listener(|panel, _event: &MouseUpEvent, _window, cx| {
+                if panel.is_panning() {
                     panel.end_panning(cx);
                 }
             }))
@@ -76,6 +111,8 @@ impl NodeGraphRenderer {
             .on_key_down(cx.listener(|panel, event: &KeyDownEvent, _window, cx| {
                 if event.keystroke.key == "Escape" && panel.dragging_connection.is_some() {
                     panel.cancel_connection_drag(cx);
+                } else if event.keystroke.key == "Delete" || event.keystroke.key == "Backspace" {
+                    panel.delete_selected_nodes(cx);
                 }
             }))
     }
@@ -102,13 +139,35 @@ impl NodeGraphRenderer {
     }
 
     fn render_nodes(panel: &mut BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
-        // Clone the nodes so we don't hold a borrow on panel
-        let nodes: Vec<BlueprintNode> = panel.graph.nodes.iter().cloned().collect();
+        let _render_start = std::time::Instant::now();
+
+        // Only render nodes that are visible within the viewport (we'll calculate bounds in the element)
+        let visible_nodes: Vec<BlueprintNode> = panel.graph.nodes
+            .iter()
+            .filter(|node| Self::is_node_visible_simple(node, &panel.graph))
+            .map(|node| {
+                let mut node = node.clone();
+                node.is_selected = panel.graph.selected_nodes.contains(&node.id);
+                node
+            })
+            .collect();
+
+        // Note: We can't mutate panel here since it's borrowed immutably
+        // Virtualization stats will be updated in a different way
+
+        // Debug info for virtualization
+        if cfg!(debug_assertions) && panel.graph.nodes.len() != visible_nodes.len() {
+            println!("[BLUEPRINT-VIRTUALIZATION] Rendering {} of {} nodes (saved {:.1}%)",
+                     visible_nodes.len(),
+                     panel.graph.nodes.len(),
+                     (1.0 - visible_nodes.len() as f32 / panel.graph.nodes.len() as f32) * 100.0);
+        }
+
         div()
             .absolute()
             .inset_0()
             .children(
-                nodes.into_iter().map(|node| {
+                visible_nodes.into_iter().map(|node| {
                     Self::render_blueprint_node(&node, panel, cx)
                 })
             )
@@ -139,11 +198,16 @@ impl NodeGraphRenderer {
             .child(
                 v_flex()
                     .bg(cx.theme().background)
-                    .border_2()
                     .border_color(if node.is_selected {
-                        cx.theme().accent
+                        gpui::yellow()
                     } else {
                         node_color
+                    })
+                    .when(node.is_selected, |style| {
+                        style.border_4() // Thick border for selected nodes
+                    })
+                    .when(!node.is_selected, |style| {
+                        style.border_2() // Normal border for unselected nodes
                     })
                     .rounded(px(8.0 * panel.graph.zoom_level))
                     .shadow_lg()
@@ -314,15 +378,34 @@ impl NodeGraphRenderer {
             .into_any_element()
     }
 
-    fn render_connections(panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
+    fn render_connections(panel: &mut BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
         let mut elements = Vec::new();
 
-        // Render existing connections
-        for connection in &panel.graph.connections {
+        // Only render connections that connect to visible nodes
+        let visible_connections: Vec<&Connection> = panel.graph.connections
+            .iter()
+            .filter(|connection| Self::is_connection_visible_simple(connection, &panel.graph))
+            .collect();
+
+        // Note: We can't mutate panel here since it's borrowed immutably
+        // Connection virtualization stats will be updated in a different way
+
+        // Debug info for connection virtualization
+        if cfg!(debug_assertions) && panel.graph.connections.len() != visible_connections.len() {
+            println!("[BLUEPRINT-VIRTUALIZATION] Rendering {} of {} connections (saved {:.1}%)",
+                     visible_connections.len(),
+                     panel.graph.connections.len(),
+                     if panel.graph.connections.len() > 0 {
+                         (1.0 - visible_connections.len() as f32 / panel.graph.connections.len() as f32) * 100.0
+                     } else { 0.0 });
+        }
+
+        // Render visible connections
+        for connection in visible_connections {
             elements.push(Self::render_connection(connection, panel, cx));
         }
 
-        // Render dragging connection if present
+        // Always render dragging connection if present
         if let Some(ref drag) = panel.dragging_connection {
             elements.push(Self::render_dragging_connection(drag, panel, cx));
         }
@@ -477,37 +560,327 @@ impl NodeGraphRenderer {
         )
     }
 
+    fn render_selection_box(panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
+        if let (Some(start), Some(end)) = (panel.selection_start, panel.selection_end) {
+            // Convert selection bounds to screen coordinates
+            let start_screen = Self::graph_to_screen_pos(start, &panel.graph);
+            let end_screen = Self::graph_to_screen_pos(end, &panel.graph);
+
+            let left = start_screen.x.min(end_screen.x);
+            let top = start_screen.y.min(end_screen.y);
+            let width = (end_screen.x - start_screen.x).abs();
+            let height = (end_screen.y - start_screen.y).abs();
+
+            div()
+                .absolute()
+                .inset_0()
+                .child(
+                    div()
+                        .absolute()
+                        .left(px(left))
+                        .top(px(top))
+                        .w(px(width))
+                        .h(px(height))
+                        .border_1()
+                        .border_color(cx.theme().accent.opacity(0.8))
+                        .bg(cx.theme().accent.opacity(0.1))
+                        .rounded(px(2.0))
+                )
+                .into_any_element()
+        } else {
+            div().into_any_element()
+        }
+    }
+
+    fn render_viewport_bounds_debug(panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
+        if !cfg!(debug_assertions) {
+            return div().into_any_element();
+        }
+
+        // Calculate the exact same viewport bounds used by the culling system
+        let screen_to_graph_origin = Self::screen_to_graph_pos(Point::new(px(0.0), px(0.0)), &panel.graph);
+        let screen_to_graph_end = Self::screen_to_graph_pos(Point::new(px(3840.0), px(2160.0)), &panel.graph);
+        let padding_in_graph_space = 200.0 / panel.graph.zoom_level;
+
+        let visible_left = screen_to_graph_origin.x - padding_in_graph_space;
+        let visible_top = screen_to_graph_origin.y - padding_in_graph_space;
+        let visible_right = screen_to_graph_end.x + padding_in_graph_space;
+        let visible_bottom = screen_to_graph_end.y + padding_in_graph_space;
+
+        // Convert back to screen coordinates for rendering
+        let top_left_screen = Self::graph_to_screen_pos(Point::new(visible_left, visible_top), &panel.graph);
+        let bottom_right_screen = Self::graph_to_screen_pos(Point::new(visible_right, visible_bottom), &panel.graph);
+
+        let width = bottom_right_screen.x - top_left_screen.x;
+        let height = bottom_right_screen.y - top_left_screen.y;
+
+        div()
+            .absolute()
+            .inset_0()
+            .child(
+                div()
+                    .absolute()
+                    .left(px(top_left_screen.x))
+                    .top(px(top_left_screen.y))
+                    .w(px(width))
+                    .h(px(height))
+                    .border_2()
+                    .border_color(gpui::yellow())
+                    // Debug overlay - shows viewport bounds for culling
+            )
+            .into_any_element()
+    }
+
+    fn render_debug_overlay(panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
+        // Always show debug overlay for now to help diagnose viewport issues
+
+        // Calculate all the viewport metrics
+        let screen_to_graph_origin = Self::screen_to_graph_pos(Point::new(px(0.0), px(0.0)), &panel.graph);
+        let screen_to_graph_end = Self::screen_to_graph_pos(Point::new(px(3840.0), px(2160.0)), &panel.graph);
+        let padding_in_graph_space = 200.0 / panel.graph.zoom_level;
+
+        let visible_left = screen_to_graph_origin.x - padding_in_graph_space;
+        let visible_top = screen_to_graph_origin.y - padding_in_graph_space;
+        let visible_right = screen_to_graph_end.x + padding_in_graph_space;
+        let visible_bottom = screen_to_graph_end.y + padding_in_graph_space;
+
+        // Calculate viewport dimensions
+        let viewport_width = visible_right - visible_left;
+        let viewport_height = visible_bottom - visible_top;
+
+        // Count visible vs culled nodes and connections
+        let visible_node_count = panel.graph.nodes
+            .iter()
+            .filter(|node| Self::is_node_visible_simple(node, &panel.graph))
+            .count();
+        let culled_node_count = panel.graph.nodes.len() - visible_node_count;
+
+        let visible_connection_count = panel.graph.connections
+            .iter()
+            .filter(|connection| Self::is_connection_visible_simple(connection, &panel.graph))
+            .count();
+        let culled_connection_count = panel.graph.connections.len() - visible_connection_count;
+
+        // Get actual container dimensions (approximation)
+        let container_width = 3840.0; // Using our fixed screen bounds
+        let container_height = 2160.0;
+
+        div()
+            .absolute()
+            .top_4()
+            .left_4()
+            .child(
+                div()
+                    .p_3()
+                    .bg(cx.theme().background.opacity(0.95))
+                    .rounded(cx.theme().radius)
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .shadow_lg()
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_bold()
+                                    .text_color(cx.theme().accent)
+                                    .child("Blueprint Viewport Debug")
+                            )
+                            .child(
+                                div()
+                                    .h(px(1.0))
+                                    .bg(cx.theme().border)
+                                    .my_1()
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().info)
+                                    .child(format!("Container: {:.0}×{:.0}px", container_width, container_height))
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().info)
+                                    .child(format!("Render Bounds: {:.0}×{:.0}", viewport_width, viewport_height))
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!("Origin: ({:.0}, {:.0})", visible_left, visible_top))
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!("End: ({:.0}, {:.0})", visible_right, visible_bottom))
+                            )
+                            .child(
+                                div()
+                                    .h(px(1.0))
+                                    .bg(cx.theme().border)
+                                    .my_1()
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().success)
+                                    .child(format!("Nodes Rendered: {}", visible_node_count))
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().danger)
+                                    .child(format!("Nodes Culled: {}", culled_node_count))
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!("Total Nodes: {}", panel.graph.nodes.len()))
+                            )
+                            .child(
+                                div()
+                                    .h(px(1.0))
+                                    .bg(cx.theme().border)
+                                    .my_1()
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().success)
+                                    .child(format!("Connections Rendered: {}", visible_connection_count))
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().danger)
+                                    .child(format!("Connections Culled: {}", culled_connection_count))
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!("Total Connections: {}", panel.graph.connections.len()))
+                            )
+                            .child(
+                                div()
+                                    .h(px(1.0))
+                                    .bg(cx.theme().border)
+                                    .my_1()
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().warning)
+                                    .child(format!("Zoom: {:.2}x", panel.graph.zoom_level))
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().warning)
+                                    .child(format!("Pan: ({:.0}, {:.0})", panel.graph.pan_offset.x, panel.graph.pan_offset.y))
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().warning)
+                                    .child(format!("Padding: {:.0}", padding_in_graph_space))
+                            )
+                    )
+            )
+            .into_any_element()
+    }
+
     fn render_graph_controls(panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
         div()
             .absolute()
             .bottom_4()
             .right_4()
             .child(
-                h_flex()
+                v_flex()
                     .gap_2()
-                    .p_2()
-                    .bg(cx.theme().background.opacity(0.9))
-                    .rounded(cx.theme().radius)
-                    .border_1()
-                    .border_color(cx.theme().border)
+                    .items_end()
+                    // Simplified controls since we have comprehensive debug overlay in top-left
                     .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("Zoom: {:.0}%", panel.graph.zoom_level * 100.0))
-                    )
-                    .child(
-                        Button::new("zoom_fit")
-                            .icon(IconName::CircleCheck)
-                            .tooltip("Fit to View")
-                            .on_click(cx.listener(|panel, _, _window, cx| {
-                                let graph = panel.get_graph_mut();
-                                graph.zoom_level = 1.0;
-                                graph.pan_offset = Point::new(0.0, 0.0);
-                                cx.notify();
-                            }))
+                        h_flex()
+                            .gap_2()
+                            .p_2()
+                            .bg(cx.theme().background.opacity(0.9))
+                            .rounded(cx.theme().radius)
+                            .border_1()
+                            .border_color(cx.theme().border)
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!("Zoom: {:.0}%", panel.graph.zoom_level * 100.0))
+                            )
+                            .child(
+                                Button::new("zoom_fit")
+                                    .icon(IconName::CircleCheck)
+                                    .tooltip("Fit to View")
+                                    .on_click(cx.listener(|panel, _, _window, cx| {
+                                        let graph = panel.get_graph_mut();
+                                        graph.zoom_level = 1.0;
+                                        graph.pan_offset = Point::new(0.0, 0.0);
+                                        cx.notify();
+                                    }))
+                            )
                     )
             )
+    }
+
+    // Virtualization helper functions using viewport-aware culling
+    fn is_node_visible_simple(node: &BlueprintNode, graph: &BlueprintGraph) -> bool {
+        // Calculate node position in screen coordinates
+        let node_screen_pos = Self::graph_to_screen_pos(node.position, graph);
+        let node_screen_size = Size::new(
+            node.size.width * graph.zoom_level,
+            node.size.height * graph.zoom_level,
+        );
+
+        // Calculate the visible area based on the inverse of current pan/zoom
+        // This creates a dynamic culling frustum that properly accounts for viewport transformations
+
+        // Convert screen bounds back to graph space for accurate culling
+        let screen_to_graph_origin = Self::screen_to_graph_pos(Point::new(px(0.0), px(0.0)), graph);
+        let screen_to_graph_end = Self::screen_to_graph_pos(Point::new(px(3840.0), px(2160.0)), graph); // 4K bounds
+
+        // Add generous padding in graph space to prevent premature culling
+        let padding_in_graph_space = 200.0 / graph.zoom_level; // Padding scales with zoom
+
+        let visible_left = screen_to_graph_origin.x - padding_in_graph_space;
+        let visible_top = screen_to_graph_origin.y - padding_in_graph_space;
+        let visible_right = screen_to_graph_end.x + padding_in_graph_space;
+        let visible_bottom = screen_to_graph_end.y + padding_in_graph_space;
+
+        // Check if node intersects with visible bounds in graph space
+        let node_left = node.position.x;
+        let node_top = node.position.y;
+        let node_right = node.position.x + node.size.width;
+        let node_bottom = node.position.y + node.size.height;
+
+        !(node_left > visible_right ||
+          node_right < visible_left ||
+          node_top > visible_bottom ||
+          node_bottom < visible_top)
+    }
+
+    fn is_connection_visible_simple(connection: &Connection, graph: &BlueprintGraph) -> bool {
+        // A connection is visible if either of its nodes is visible
+        let from_node = graph.nodes.iter().find(|n| n.id == connection.from_node_id);
+        let to_node = graph.nodes.iter().find(|n| n.id == connection.to_node_id);
+
+        match (from_node, to_node) {
+            (Some(from), Some(to)) => {
+                Self::is_node_visible_simple(from, graph) ||
+                Self::is_node_visible_simple(to, graph)
+            }
+            _ => false, // If either node doesn't exist, don't render the connection
+        }
     }
 
     // Helper functions for coordinate conversion

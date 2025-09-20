@@ -106,6 +106,16 @@ pub struct BlueprintGraph {
     pub selected_nodes: Vec<String>,
     pub zoom_level: f32,
     pub pan_offset: Point<f32>,
+    pub virtualization_stats: VirtualizationStats,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct VirtualizationStats {
+    pub total_nodes: usize,
+    pub rendered_nodes: usize,
+    pub total_connections: usize,
+    pub rendered_connections: usize,
+    pub last_update_ms: f32,
 }
 
 // JSON schema structures for loading node definitions
