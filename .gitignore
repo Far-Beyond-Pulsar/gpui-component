@@ -6,3 +6,4 @@
 index.scip
 *.log
 *.exe
+crates/wef-example/.claude/settings.local.json

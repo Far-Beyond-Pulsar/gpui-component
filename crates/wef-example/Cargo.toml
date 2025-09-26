@@ -7,9 +7,11 @@ edition = "2024"
 embed-manifest = "1.4.0"
 
 [dependencies]
-gpui-webview = { path = "../../" }
+gpui-webview = { path = "../webview" }
 gpui.workspace = true
 gpui-component.workspace = true
 serde = { version = "1.0.219", features = ["derive"] }
 futures-util = "0.3.31"
 flume = "0.11.1"
+rust-embed = "8.7.2"
+anyhow = "1.0.99"
