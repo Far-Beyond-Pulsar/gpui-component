@@ -13,3 +13,5 @@ gpui-component.workspace = true
 serde = { version = "1.0.219", features = ["derive"] }
 futures-util = "0.3.31"
 flume = "0.11.1"
+rust-embed = "8.7.2"
+anyhow = "1.0.99"

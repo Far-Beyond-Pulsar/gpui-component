@@ -9742,12 +9742,14 @@ dependencies = [
 name = "wef-example"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "embed-manifest",
  "flume",
  "futures-util",
  "gpui",
  "gpui-component",
  "gpui-webview",
+ "rust-embed",
  "serde",
 ]
 
