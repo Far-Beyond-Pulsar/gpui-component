@@ -13,8 +13,8 @@ use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::{Button, ButtonVariants},
     input::{InputEvent, InputState, TextInput},
-    scroll::{ScrollableAxis, Scrollable},
-    ActiveTheme, IconName, Root, Selectable, Sizable, TitleBar, h_flex, v_flex,
+    scroll::ScrollbarAxis,
+    ActiveTheme, IconName, Root, Selectable, Sizable, StyledExt, TitleBar, h_flex, v_flex,
 };
 use gpui_webview::{
     events::TitleChangedEvent,
@@ -195,107 +195,134 @@ impl Main {
 
     fn render_integrated_titlebar(&self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         TitleBar::new()
-            // Left side: Navigation controls and tabs
+            // Left side: Navigation controls (fixed width, won't be pushed off)
             .child(
                 h_flex()
                     .items_center()
-                    .gap_2()
-                    .flex_1()
+                    .gap_1()
+                    .px_2()
+                    .py_1() // Add vertical padding for easier grabbing
+                    .flex_shrink_0() // Prevent from being compressed
                     // Stop propagation to allow controls to work without triggering window drag
                     .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(
-                        h_flex()
-                            .gap_1()
-                            .child(
-                                Button::new("back")
-                                    .icon(IconName::ChevronLeft)
-                                    .small()
-                                    .ghost()
-                                    .tooltip("Go Back")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.navigate_back(window, cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("forward")
-                                    .icon(IconName::ChevronRight)
-                                    .small()
-                                    .ghost()
-                                    .tooltip("Go Forward")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.navigate_forward(window, cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("reload")
-                                    .icon(IconName::Replace)
-                                    .small()
-                                    .ghost()
-                                    .tooltip("Reload")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.reload_page(window, cx);
-                                    })),
-                            )
+                        Button::new("back")
+                            .icon(IconName::ChevronLeft)
+                            .small()
+                            .ghost()
+                            .tooltip("Go Back")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.navigate_back(window, cx);
+                            })),
                     )
-                    // Tabs integrated into titlebar
                     .child(
-                        h_flex()
-                            .flex_1()
-                            .gap_1()
-                            .px_2()
-                            .children(self.tabs.iter().enumerate().map(|(index, tab)| {
-                                h_flex()
-                                    .items_center()
-                                    .max_w_48()
-                                    .child(
-                                        Button::new(("tab", index))
-                                            .child(
-                                                div()
-                                                    .max_w_40()
-                                                    .overflow_hidden()
-                                                    .text_ellipsis()
-                                                    .whitespace_nowrap()
-                                                    .child(tab.title.clone())
-                                            )
-                                            .when(index == self.active_tab_index, |this| {
-                                                this.selected(true)
-                                            })
-                                            .ghost()
-                                            .small()
-                                            .on_click(cx.listener(move |this, _, window, cx| {
-                                                this.set_active_tab(index, window, cx);
-                                            }))
-                                    )
-                                    .when(self.tabs.len() > 1, |this| {
-                                        this.child(
-                                            Button::new(("close-tab", index))
-                                                .icon(IconName::Close)
-                                                .xsmall()
-                                                .ghost()
-                                                .on_click(cx.listener(move |this, _, window, cx| {
-                                                    this.close_tab(index, window, cx);
-                                                }))
-                                        )
-                                    })
-                            }))
+                        Button::new("forward")
+                            .icon(IconName::ChevronRight)
+                            .small()
+                            .ghost()
+                            .tooltip("Go Forward")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.navigate_forward(window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("reload")
+                            .icon(IconName::Replace)
+                            .small()
+                            .ghost()
+                            .tooltip("Reload")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.reload_page(window, cx);
+                            })),
+                    )
+            )
+            // Middle: Tabs section with constrained width that scrolls internally
+            .child(
+                div()
+                    .flex_1() // Take remaining space between nav and address bar
+                    .py_1() // Add vertical padding for easier grabbing (draggable area!)
+                    .px_1()
+                    .min_w_0() // Allow shrinking
+                    .overflow_hidden() // Hide overflow to enable scrolling
+                    .child(
+                        div()
+                            .w_full()
+                            .h_full()
+                            .scrollable(ScrollbarAxis::Horizontal)
+                            .id("tabs-scroll")
                             .child(
-                                Button::new("new-tab")
-                                    .icon(IconName::Plus)
-                                    .xsmall()
-                                    .ghost()
-                                    .tooltip("New Tab")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.create_new_tab("https://www.google.com", window, cx);
-                                    })),
+                                h_flex()
+                                    .gap_1()
+                                    .items_center()
+                                    .w_auto() // Auto width to fit content
+                                    // Don't stop propagation on the container - only on individual buttons
+                                    .children(self.tabs.iter().enumerate().map(|(index, tab)| {
+                                        h_flex()
+                                            .items_center()
+                                            .min_w_24()
+                                            .max_w_48()
+                                            .flex_shrink_0() // Prevent tabs from shrinking
+                                            // Stop propagation only on tab buttons
+                                            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                            .child(
+                                                Button::new(("tab", index))
+                                                    .child(
+                                                        div()
+                                                            .max_w_40()
+                                                            .overflow_hidden()
+                                                            .text_ellipsis()
+                                                            .whitespace_nowrap()
+                                                            .child(tab.title.clone())
+                                                    )
+                                                    .when(index == self.active_tab_index, |this| {
+                                                        this.selected(true)
+                                                    })
+                                                    .ghost()
+                                                    .small()
+                                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                                        this.set_active_tab(index, window, cx);
+                                                    }))
+                                            )
+                                            .when(self.tabs.len() > 1, |this| {
+                                                this.child(
+                                                    Button::new(("close-tab", index))
+                                                        .icon(IconName::Close)
+                                                        .xsmall()
+                                                        .ghost()
+                                                        .on_click(cx.listener(move |this, _, window, cx| {
+                                                            this.close_tab(index, window, cx);
+                                                        }))
+                                                )
+                                            })
+                                    }))
+                                    .child(
+                                        div()
+                                            // Stop propagation only on the new tab button
+                                            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                            .child(
+                                                Button::new("new-tab")
+                                                    .icon(IconName::Plus)
+                                                    .xsmall()
+                                                    .ghost()
+                                                    .tooltip("New Tab")
+                                                    .flex_shrink_0() // Prevent new tab button from shrinking
+                                                    .on_click(cx.listener(|this, _, window, cx| {
+                                                        this.create_new_tab("https://www.google.com", window, cx);
+                                                    })),
+                                            )
+                                    )
                             )
                     )
             )
-            // Right side: Address bar and menu
+            // Right side: Address bar and menu (fixed width, won't be pushed off)
             .child(
                 h_flex()
                     .items_center()
                     .gap_2()
-                    .w_96()
+                    .w_80() // Fixed width to ensure it's never pushed off
+                    .py_1() // Add vertical padding for easier grabbing
+                    .px_2()
+                    .flex_shrink_0() // Prevent from being compressed
                     // Stop propagation for interactive elements
                     .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(
