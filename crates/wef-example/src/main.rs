@@ -6,14 +6,15 @@ use assets::Assets;
 use futures_util::StreamExt;
 use gpui::{
     div, px, size, App, AppContext, Application, Bounds, Context,
-    Entity, IntoElement, ParentElement, Render, Styled, Timer, Window,
+    Entity, InteractiveElement, IntoElement, ParentElement, Render, Styled, Timer, Window,
     WindowBounds, WindowOptions,
 };
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::{Button, ButtonVariants},
     input::{InputEvent, InputState, TextInput},
-    ActiveTheme, IconName, Root, Selectable, Sizable, h_flex, v_flex,
+    scroll::{ScrollableAxis, Scrollable},
+    ActiveTheme, IconName, Root, Selectable, Sizable, TitleBar, h_flex, v_flex,
 };
 use gpui_webview::{
     events::TitleChangedEvent,
@@ -192,112 +193,129 @@ impl Main {
         }
     }
 
-    fn render_toolbar(&self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        h_flex()
-            .gap_2()
-            .p_2()
-            .bg(cx.theme().tab_bar)
-            .border_b_1()
-            .border_color(cx.theme().border)
+    fn render_integrated_titlebar(&self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        TitleBar::new()
+            // Left side: Navigation controls and tabs
             .child(
-                Button::new("back")
-                    .icon(IconName::ChevronLeft)
-                    .small()
-                    .ghost()
-                    .tooltip("Go Back")
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.navigate_back(window, cx);
-                    })),
-            )
-            .child(
-                Button::new("forward")
-                    .icon(IconName::ChevronRight)
-                    .small()
-                    .ghost()
-                    .tooltip("Go Forward")
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.navigate_forward(window, cx);
-                    })),
-            )
-            .child(
-                Button::new("reload")
-                    .icon(IconName::Replace)
-                    .small()
-                    .ghost()
-                    .tooltip("Reload")
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.reload_page(window, cx);
-                    })),
-            )
-            .child(
-                div()
+                h_flex()
+                    .items_center()
+                    .gap_2()
                     .flex_1()
-                    .px_2()
-                    .when_some(self.tabs.get(self.active_tab_index), |this, active_tab| {
-                        this.child(TextInput::new(&active_tab.address_state))
-                    })
+                    // Stop propagation to allow controls to work without triggering window drag
+                    .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .child(
+                        h_flex()
+                            .gap_1()
+                            .child(
+                                Button::new("back")
+                                    .icon(IconName::ChevronLeft)
+                                    .small()
+                                    .ghost()
+                                    .tooltip("Go Back")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.navigate_back(window, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("forward")
+                                    .icon(IconName::ChevronRight)
+                                    .small()
+                                    .ghost()
+                                    .tooltip("Go Forward")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.navigate_forward(window, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("reload")
+                                    .icon(IconName::Replace)
+                                    .small()
+                                    .ghost()
+                                    .tooltip("Reload")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.reload_page(window, cx);
+                                    })),
+                            )
+                    )
+                    // Tabs integrated into titlebar
+                    .child(
+                        h_flex()
+                            .flex_1()
+                            .gap_1()
+                            .px_2()
+                            .children(self.tabs.iter().enumerate().map(|(index, tab)| {
+                                h_flex()
+                                    .items_center()
+                                    .max_w_48()
+                                    .child(
+                                        Button::new(("tab", index))
+                                            .child(
+                                                div()
+                                                    .max_w_40()
+                                                    .overflow_hidden()
+                                                    .text_ellipsis()
+                                                    .whitespace_nowrap()
+                                                    .child(tab.title.clone())
+                                            )
+                                            .when(index == self.active_tab_index, |this| {
+                                                this.selected(true)
+                                            })
+                                            .ghost()
+                                            .small()
+                                            .on_click(cx.listener(move |this, _, window, cx| {
+                                                this.set_active_tab(index, window, cx);
+                                            }))
+                                    )
+                                    .when(self.tabs.len() > 1, |this| {
+                                        this.child(
+                                            Button::new(("close-tab", index))
+                                                .icon(IconName::Close)
+                                                .xsmall()
+                                                .ghost()
+                                                .on_click(cx.listener(move |this, _, window, cx| {
+                                                    this.close_tab(index, window, cx);
+                                                }))
+                                        )
+                                    })
+                            }))
+                            .child(
+                                Button::new("new-tab")
+                                    .icon(IconName::Plus)
+                                    .xsmall()
+                                    .ghost()
+                                    .tooltip("New Tab")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.create_new_tab("https://www.google.com", window, cx);
+                                    })),
+                            )
+                    )
             )
+            // Right side: Address bar and menu
             .child(
-                Button::new("new-tab")
-                    .icon(IconName::Plus)
-                    .small()
-                    .ghost()
-                    .tooltip("New Tab")
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.create_new_tab("https://www.google.com", window, cx);
-                    })),
-            )
-            .child(
-                Button::new("menu")
-                    .icon(IconName::Menu)
-                    .small()
-                    .ghost()
-                    .tooltip("Menu")
+                h_flex()
+                    .items_center()
+                    .gap_2()
+                    .w_96()
+                    // Stop propagation for interactive elements
+                    .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .child(
+                        div()
+                            .flex_1()
+                            .when_some(self.tabs.get(self.active_tab_index), |this, active_tab| {
+                                this.child(TextInput::new(&active_tab.address_state))
+                            })
+                    )
+                    .child(
+                        Button::new("menu")
+                            .icon(IconName::Menu)
+                            .small()
+                            .ghost()
+                            .tooltip("Menu")
+                    )
             )
     }
 
-    fn render_tab_bar(&self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        h_flex()
-            .gap_1()
-            .bg(cx.theme().tab_bar)
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .children(self.tabs.iter().enumerate().map(|(index, tab)| {
-                h_flex()
-                    .items_center()
-                    .border_r_1()
-                    .border_color(cx.theme().border)
-                    .child(
-                        Button::new(("tab", index))
-                            .child(
-                                div()
-                                    .max_w_48()
-                                    .overflow_hidden()
-                                    .text_ellipsis()
-                                    .whitespace_nowrap()
-                                    .child(tab.title.clone())
-                            )
-                            .when(index == self.active_tab_index, |this| {
-                                this.selected(true)
-                            })
-                            .ghost()
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.set_active_tab(index, window, cx);
-                            }))
-                    )
-                    .when(self.tabs.len() > 1, |this| {
-                        this.child(
-                            Button::new(("close-tab", index))
-                                .icon(IconName::Close)
-                                .xsmall()
-                                .ghost()
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.close_tab(index, window, cx);
-                                }))
-                        )
-                    })
-            }))
-    }
+
 }
 
 impl Render for Main {
@@ -305,8 +323,8 @@ impl Render for Main {
         v_flex()
             .size_full()
             .bg(cx.theme().background)
-            .child(self.render_toolbar(window, cx))
-            .child(self.render_tab_bar(window, cx))
+            // Single integrated titlebar with tabs, navigation, address bar, and window controls
+            .child(self.render_integrated_titlebar(window, cx))
             .child(
                 div()
                     .flex_1()
@@ -345,6 +363,7 @@ fn run() {
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
+                titlebar: Some(TitleBar::title_bar_options()), // Use GPUI component titlebar options
                 ..Default::default()
             },
             |window, cx| {
@@ -358,6 +377,21 @@ fn run() {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    wef::launch(Settings::new(), run);
+    // Configure CEF settings with proper cache paths to avoid singleton warnings
+    let exe_path = std::env::current_exe().unwrap();
+    let exe_dir = exe_path.parent().unwrap();
+    let cache_dir = exe_dir.join("cef_cache");
+    let root_cache_dir = exe_dir.join("cef_root_cache");
+
+    // Create cache directories if they don't exist
+    std::fs::create_dir_all(&cache_dir).ok();
+    std::fs::create_dir_all(&root_cache_dir).ok();
+
+    let settings = Settings::new()
+        .cache_path(cache_dir.to_string_lossy().as_bytes())
+        .root_cache_path(root_cache_dir.to_string_lossy().as_bytes())
+        .browser_subprocess_path(exe_path.to_string_lossy().as_bytes());
+
+    wef::launch(settings, run);
     Ok(())
 }

@@ -9,7 +9,6 @@ members = [
     "crates/wef-example"
 ]
 
-default-members = ["crates/story"]
 resolver = "2"
 
 [workspace.dependencies]
