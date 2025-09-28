@@ -142,9 +142,9 @@ impl NodeTemplateParser {
 
             pins.push(PinDefinition {
                 name: name.to_string(),
-                data_type: Self::normalize_data_type(data_type),
+                data_type: data_type.to_string(), // Preserve original type for TypeInfo parsing
                 description: format!("{} input", name),
-                default_value: Self::get_default_value(data_type),
+                default_value: Self::get_default_value_for_type(data_type),
             });
         }
 
@@ -186,7 +186,7 @@ impl NodeTemplateParser {
                 for (i, type_str) in types.iter().enumerate() {
                     pins.push(PinDefinition {
                         name: format!("output_{}", i),
-                        data_type: Self::normalize_data_type(type_str),
+                        data_type: type_str.trim().to_string(), // Preserve original type for TypeInfo parsing
                         description: format!("Output {}", i),
                         default_value: None,
                     });
@@ -195,7 +195,7 @@ impl NodeTemplateParser {
                 // Single return type
                 pins.push(PinDefinition {
                     name: "result".to_string(),
-                    data_type: Self::normalize_data_type(return_type),
+                    data_type: return_type.to_string(), // Preserve original type for TypeInfo parsing
                     description: "Result".to_string(),
                     default_value: None,
                 });
@@ -205,23 +205,34 @@ impl NodeTemplateParser {
         Ok(pins)
     }
 
-    fn normalize_data_type(rust_type: &str) -> String {
-        match rust_type.trim() {
-            "f32" | "f64" | "i32" | "i64" | "u32" | "u64" | "isize" | "usize" => "number".to_string(),
-            "bool" => "boolean".to_string(),
-            "String" | "&str" => "string".to_string(),
-            "(f32, f32)" => "vector2".to_string(),
-            "(f32, f32, f32)" => "vector3".to_string(),
-            "(f32, f32, f32, f32)" => "color".to_string(),
-            other => other.to_lowercase(),
-        }
-    }
+    // Type normalization is now handled by the TypeInfo system
 
-    fn get_default_value(data_type: &str) -> Option<String> {
+    fn get_default_value_for_type(data_type: &str) -> Option<String> {
+        // Use TypeInfo to determine appropriate defaults for Rust types
         match data_type {
+            // Basic Rust types
+            "i8" | "i16" | "i32" | "i64" | "i128" | "isize" => Some("0".to_string()),
+            "u8" | "u16" | "u32" | "u64" | "u128" | "usize" => Some("0".to_string()),
+            "f32" | "f64" => Some("0.0".to_string()),
+            "bool" => Some("false".to_string()),
+            "String" => Some("String::new()".to_string()),
+            "&str" => Some("\"\"".to_string()),
+            "char" => Some("'\\0'".to_string()),
+
+            // Legacy compatibility
             "number" => Some("0".to_string()),
-            "bool" | "boolean" => Some("false".to_string()),
+            "boolean" => Some("false".to_string()),
             "string" => Some("\"\"".to_string()),
+
+            // Collection types get None - they'll need proper initialization
+            _ if data_type.starts_with("Vec<") => None,
+            _ if data_type.starts_with("HashMap<") => None,
+            _ if data_type.starts_with("HashSet<") => None,
+            _ if data_type.starts_with("Option<") => Some("None".to_string()),
+            _ if data_type.starts_with("Arc<") => None,
+            _ if data_type.starts_with("Box<") => None,
+
+            // Unknown types
             _ => None,
         }
     }

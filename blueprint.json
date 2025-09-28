@@ -1,0 +1,105 @@
+{
+  "nodes": {
+    "e1f51ec8-0c99-4349-8d6c-487b7523f450": {
+      "id": "e1f51ec8-0c99-4349-8d6c-487b7523f450",
+      "node_type": "sqrt",
+      "position": {
+        "x": 355.0,
+        "y": 251.0
+      },
+      "properties": {},
+      "inputs": {
+        "value": {
+          "name": "value",
+          "pin_type": "Input",
+          "data_type": "Number",
+          "connected_to": []
+        },
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "begin_play": {
+      "id": "begin_play",
+      "node_type": "begin_play",
+      "position": {
+        "x": 100.0,
+        "y": 100.0
+      },
+      "properties": {},
+      "inputs": {},
+      "outputs": {
+        "exec_out": {
+          "name": "exec_out",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": [
+            "connection_1"
+          ]
+        }
+      }
+    },
+    "print_string": {
+      "id": "print_string",
+      "node_type": "print_string",
+      "position": {
+        "x": 400.0,
+        "y": 100.0
+      },
+      "properties": {
+        "message": {
+          "String": "Hello World!"
+        },
+        "print_to_screen": {
+          "Boolean": true
+        }
+      },
+      "inputs": {
+        "text_in": {
+          "name": "text_in",
+          "pin_type": "Input",
+          "data_type": "String",
+          "connected_to": []
+        },
+        "exec_in": {
+          "name": "exec_in",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": [
+            "connection_1"
+          ]
+        }
+      },
+      "outputs": {
+        "exec_out": {
+          "name": "exec_out",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": []
+        }
+      }
+    }
+  },
+  "connections": [
+    {
+      "id": "connection_1",
+      "source_node": "begin_play",
+      "source_pin": "exec_out",
+      "target_node": "print_string",
+      "target_pin": "exec_in",
+      "connection_type": "Execution"
+    }
+  ],
+  "metadata": {
+    "name": "Blueprint Graph",
+    "description": "",
+    "version": "1.0.0",
+    "created_at": "2025-09-28T18:50:35.650016100+00:00",
+    "modified_at": "2025-09-28T18:50:35.650045800+00:00"
+  }
+}

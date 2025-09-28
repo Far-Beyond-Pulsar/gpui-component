@@ -11,6 +11,7 @@ use gpui::*;
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
+use crate::graph::{DataType, PinStyle};
 
 // Context menu actions for blueprint editor
 #[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -79,16 +80,8 @@ pub enum PinType {
     Output,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum DataType {
-    Execution,
-    Boolean,
-    Integer,
-    Float,
-    String,
-    Vector,
-    Object,
-}
+// DataType is now imported from crate::graph module
+// This provides the new TypeInfo-based type system with deterministic colors
 
 #[derive(Clone, Debug)]
 pub struct Connection {
@@ -182,7 +175,7 @@ impl NodeDefinitions {
                 inputs.push(PinDefinition {
                     id: exec_pin.name.clone(),
                     name: exec_pin.name.clone(),
-                    data_type: DataType::Execution,
+                    data_type: DataType::from_type_str("execution"),
                     pin_type: PinType::Input,
                 });
             }
@@ -202,7 +195,7 @@ impl NodeDefinitions {
                 outputs.push(PinDefinition {
                     id: exec_pin.name.clone(),
                     name: exec_pin.name.clone(),
-                    data_type: DataType::Execution,
+                    data_type: DataType::from_type_str("execution"),
                     pin_type: PinType::Output,
                 });
             }
@@ -247,14 +240,8 @@ impl NodeDefinitions {
     }
 
     fn convert_data_type(data_type: &str) -> DataType {
-        match data_type {
-            "execution" => DataType::Execution,
-            "boolean" => DataType::Boolean,
-            "number" => DataType::Float,
-            "string" => DataType::String,
-            "vector2" | "vector3" => DataType::Vector,
-            _ => DataType::Object,
-        }
+        // Use the new DataType system that supports TypeInfo
+        DataType::from_type_str(data_type)
     }
 
     fn get_category_color(category: &str) -> String {

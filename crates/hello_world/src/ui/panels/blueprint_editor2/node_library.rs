@@ -12,23 +12,24 @@ pub struct NodeLibraryRenderer;
 impl NodeLibraryRenderer {
     pub fn render(panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
         v_flex()
-            .size_full()
+            .w_full()
+            .h_full()
+            .min_h_0()
             .gap_2()
             .child(
-                v_flex()
+                div()
                     .w_full()
                     .p_2()
-                    .gap_2()
                     .child(
-                        div()
-                            .text_sm()
-                            .font_semibold()
-                            .text_color(cx.theme().foreground)
-                            .child("Node Library")
-                    )
-                    .child(
-                        div()
-                            .w_full()
+                        v_flex()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_semibold()
+                                    .text_color(cx.theme().foreground)
+                                    .child("Node Library")
+                            )
                             .child(
                                 TextInput::new(panel.get_search_input_state())
                             )
@@ -36,13 +37,21 @@ impl NodeLibraryRenderer {
             )
             .child(
                 div()
-                    .flex_1()
+                    .relative()
                     .bg(cx.theme().background)
                     .border_1()
                     .border_color(cx.theme().border)
                     .rounded(cx.theme().radius)
-                    .scrollable(Axis::Vertical)
-                    .child(Self::render_node_categories(panel, cx))
+                    .w_full()
+                    .h_96()
+                    .child(
+                        v_flex()
+                            .p_2()
+                            .id("node-library-content")
+                            .scrollable(Axis::Vertical)
+                            .gap_3()
+                            .child(Self::render_node_categories(panel, cx))
+                    )
             )
     }
 
@@ -51,7 +60,6 @@ impl NodeLibraryRenderer {
         let search_query = panel.get_search_query().to_lowercase();
 
         v_flex()
-            .p_2()
             .gap_3()
             .children(
                 node_definitions.categories.iter().filter_map(|category| {

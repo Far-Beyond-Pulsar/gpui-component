@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
+pub mod type_system;
+pub use type_system::*;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphDescription {
     pub nodes: HashMap<String, NodeInstance>,
@@ -70,6 +73,8 @@ pub enum PinType {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum DataType {
     Execution,
+    Typed(TypeInfo),
+    // Legacy types for backward compatibility
     String,
     Number,
     Boolean,
@@ -78,6 +83,92 @@ pub enum DataType {
     Color,
     Object,
     Array(Box<DataType>),
+}
+
+impl DataType {
+    /// Create a DataType from a type string
+    pub fn from_type_str(type_str: &str) -> Self {
+        match type_str {
+            "execution" => DataType::Execution,
+            // Parse as TypeInfo for proper type system support
+            _ => DataType::Typed(TypeInfo::parse(type_str)),
+        }
+    }
+
+    /// Get the TypeInfo for this DataType (if applicable)
+    pub fn type_info(&self) -> Option<&TypeInfo> {
+        match self {
+            DataType::Typed(type_info) => Some(type_info),
+            _ => None,
+        }
+    }
+
+    /// Check if this DataType is compatible with another
+    pub fn is_compatible_with(&self, other: &DataType) -> bool {
+        match (self, other) {
+            (DataType::Execution, DataType::Execution) => true,
+            (DataType::Typed(a), DataType::Typed(b)) => a.is_compatible_with(b),
+            // Legacy compatibility
+            (DataType::String, DataType::String) => true,
+            (DataType::Number, DataType::Number) => true,
+            (DataType::Boolean, DataType::Boolean) => true,
+            (DataType::Vector2, DataType::Vector2) => true,
+            (DataType::Vector3, DataType::Vector3) => true,
+            (DataType::Color, DataType::Color) => true,
+            (DataType::Object, DataType::Object) => true,
+            // Array compatibility
+            (DataType::Array(a), DataType::Array(b)) => a.is_compatible_with(b),
+            _ => false,
+        }
+    }
+
+    /// Generate a pin style for this data type
+    pub fn generate_pin_style(&self) -> PinStyle {
+        match self {
+            DataType::Execution => PinStyle {
+                color: PinColor { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }, // Red for execution
+                icon: PinIcon::Triangle,
+                is_rainbow: false,
+            },
+            DataType::Typed(type_info) => type_info.generate_pin_style(),
+            // Legacy types
+            DataType::String => PinStyle {
+                color: PinColor { r: 0.0, g: 1.0, b: 0.0, a: 1.0 }, // Green
+                icon: PinIcon::Circle,
+                is_rainbow: false,
+            },
+            DataType::Number => PinStyle {
+                color: PinColor { r: 0.0, g: 0.0, b: 1.0, a: 1.0 }, // Blue
+                icon: PinIcon::Circle,
+                is_rainbow: false,
+            },
+            DataType::Boolean => PinStyle {
+                color: PinColor { r: 1.0, g: 1.0, b: 0.0, a: 1.0 }, // Yellow
+                icon: PinIcon::Circle,
+                is_rainbow: false,
+            },
+            DataType::Vector2 | DataType::Vector3 => PinStyle {
+                color: PinColor { r: 1.0, g: 0.0, b: 1.0, a: 1.0 }, // Magenta
+                icon: PinIcon::Circle,
+                is_rainbow: false,
+            },
+            DataType::Color => PinStyle {
+                color: PinColor { r: 0.5, g: 0.5, b: 0.5, a: 1.0 }, // Gray
+                icon: PinIcon::Circle,
+                is_rainbow: false,
+            },
+            DataType::Object => PinStyle {
+                color: PinColor { r: 0.8, g: 0.4, b: 0.2, a: 1.0 }, // Brown
+                icon: PinIcon::Hexagon,
+                is_rainbow: false,
+            },
+            DataType::Array(_) => PinStyle {
+                color: PinColor { r: 0.0, g: 0.8, b: 0.8, a: 1.0 }, // Cyan
+                icon: PinIcon::Square,
+                is_rainbow: false,
+            },
+        }
+    }
 }
 
 impl PartialEq<&str> for DataType {

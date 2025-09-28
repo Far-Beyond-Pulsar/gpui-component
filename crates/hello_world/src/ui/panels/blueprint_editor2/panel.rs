@@ -804,7 +804,8 @@ impl Render for BlueprintEditorPanel {
                                     .size_range(px(200.)..px(400.))
                                     .child(
                                         div()
-                                            .size_full()
+                                            .w_full()
+                                            .h_full()
                                             .bg(cx.theme().sidebar)
                                             .border_1()
                                             .border_color(cx.theme().border)

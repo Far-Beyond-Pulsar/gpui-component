@@ -3,7 +3,8 @@ use gpui::*;
 use gpui_component::{button::Button, h_flex, v_flex, ActiveTheme as _, IconName, StyledExt};
 
 use super::panel::BlueprintEditorPanel;
-use super::*;
+use super::{BlueprintNode, BlueprintGraph, Pin, PinType, NodeType, Connection, VirtualizationStats};
+use crate::graph::DataType;
 
 pub struct NodeGraphRenderer;
 
@@ -362,15 +363,14 @@ impl NodeGraphRenderer {
         panel: &BlueprintEditorPanel,
         cx: &mut Context<BlueprintEditorPanel>,
     ) -> impl IntoElement {
-        let pin_color = match pin.data_type {
-            DataType::Execution => cx.theme().muted,
-            DataType::Boolean => cx.theme().danger,
-            DataType::Integer => cx.theme().info,
-            DataType::Float => cx.theme().success,
-            DataType::String => cx.theme().warning,
-            DataType::Vector => cx.theme().primary,
-            DataType::Object => cx.theme().accent,
-        };
+        // Use the new type system for pin styling
+        let pin_style = pin.data_type.generate_pin_style();
+        let pin_color = gpui::Hsla {
+            h: 0.0,
+            s: 0.0,
+            l: 0.0,
+            a: pin_style.color.a,
+        }.with_rgb(pin_style.color.r, pin_style.color.g, pin_style.color.b);
 
         // Check if this pin is compatible with the current drag
         let is_compatible = if let Some(ref drag) = panel.dragging_connection {
@@ -557,16 +557,15 @@ impl NodeGraphRenderer {
         }
     }
 
-    fn get_pin_color(data_type: &DataType, cx: &mut Context<BlueprintEditorPanel>) -> gpui::Hsla {
-        match data_type {
-            DataType::Execution => cx.theme().muted,
-            DataType::Boolean => cx.theme().danger,
-            DataType::Integer => cx.theme().info,
-            DataType::Float => cx.theme().success,
-            DataType::String => cx.theme().warning,
-            DataType::Vector => cx.theme().primary,
-            DataType::Object => cx.theme().accent,
-        }
+    fn get_pin_color(data_type: &DataType, _cx: &mut Context<BlueprintEditorPanel>) -> gpui::Hsla {
+        // Use the new type system to generate pin colors
+        let pin_style = data_type.generate_pin_style();
+        gpui::Hsla {
+            h: 0.0, // Will be set properly below
+            s: 0.0,
+            l: 0.0,
+            a: pin_style.color.a,
+        }.with_rgb(pin_style.color.r, pin_style.color.g, pin_style.color.b)
     }
 
     fn calculate_pin_position(
