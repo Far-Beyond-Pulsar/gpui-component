@@ -83,6 +83,57 @@ impl ToolbarRenderer {
                     }))
             )
             .child(
+                div()
+                    .w_px()
+                    .h_6()
+                    .bg(cx.theme().border)
+                    .mx_2()
+            )
+            .child(
+                Button::new("save")
+                    .icon(IconName::Check)
+                    .tooltip("Save Blueprint (Ctrl+S)")
+                    .on_click(cx.listener(|panel, _, _window, _cx| {
+                        if let Err(e) = panel.save_blueprint("blueprint.json") {
+                            eprintln!("Failed to save blueprint: {}", e);
+                        } else {
+                            println!("Blueprint saved to blueprint.json");
+                        }
+                    }))
+            )
+            .child(
+                Button::new("load")
+                    .icon(IconName::Inbox)
+                    .tooltip("Load Blueprint (Ctrl+O)")
+                    .on_click(cx.listener(|panel, _, _window, cx| {
+                        if let Err(e) = panel.load_blueprint("blueprint.json", cx) {
+                            eprintln!("Failed to load blueprint: {}", e);
+                        } else {
+                            println!("Blueprint loaded from blueprint.json");
+                        }
+                    }))
+            )
+            .child(
+                Button::new("compile")
+                    .icon(IconName::ChevronRight)
+                    .tooltip("Compile to Rust (Ctrl+B)")
+                    .on_click(cx.listener(|panel, _, _window, _cx| {
+                        match panel.compile_to_rust() {
+                            Ok(rust_code) => {
+                                if let Err(e) = std::fs::write("compiled_blueprint.rs", &rust_code) {
+                                    eprintln!("Failed to write compiled code: {}", e);
+                                } else {
+                                    println!("Blueprint compiled to compiled_blueprint.rs");
+                                    println!("Generated code:\n{}", rust_code);
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("Compilation failed: {}", e);
+                            }
+                        }
+                    }))
+            )
+            .child(
                 div().flex_1() // Spacer
             )
             .child(

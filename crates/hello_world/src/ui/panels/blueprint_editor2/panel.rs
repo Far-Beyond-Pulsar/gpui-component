@@ -5,6 +5,7 @@ use gpui_component::{
     v_flex,
     ActiveTheme as _, StyledExt,
     context_menu::ContextMenuExt,
+    input::{InputState, InputEvent},
 };
 
 use super::*;
@@ -30,6 +31,10 @@ pub struct BlueprintEditorPanel {
     pub selection_start: Option<Point<f32>>,
     pub selection_end: Option<Point<f32>>,
     pub last_mouse_pos: Option<Point<f32>>,
+    // Node library search
+    pub search_query: String,
+    pub search_input_state: Entity<InputState>,
+    _search_subscription: Subscription,
 }
 
 #[derive(Clone, Debug)]
@@ -44,6 +49,9 @@ pub struct ConnectionDrag {
 impl BlueprintEditorPanel {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let resizable_state = ResizableState::new(cx);
+        let search_input_state = cx.new(|cx| InputState::new(_window, cx));
+
+        let search_subscription = cx.subscribe_in(&search_input_state, _window, Self::on_search_input);
 
         // Create sample nodes
         let mut nodes = Vec::new();
@@ -133,6 +141,9 @@ impl BlueprintEditorPanel {
             selection_start: None,
             selection_end: None,
             last_mouse_pos: None,
+            search_query: String::new(),
+            search_input_state,
+            _search_subscription: search_subscription,
         }
     }
 
@@ -148,9 +159,231 @@ impl BlueprintEditorPanel {
         &self.focus_handle
     }
 
+    pub fn update_search_query(&mut self, query: String, cx: &mut Context<Self>) {
+        self.search_query = query;
+        cx.notify();
+    }
+
+    pub fn get_search_query(&self) -> &str {
+        &self.search_query
+    }
+
+    pub fn get_search_input_state(&self) -> &Entity<InputState> {
+        &self.search_input_state
+    }
+
+    fn on_search_input(
+        &mut self,
+        _input_state: &Entity<InputState>,
+        event: &InputEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let InputEvent::Change = event {
+            let text = self.search_input_state.read(cx).value().to_string();
+            self.search_query = text;
+            cx.notify();
+        }
+    }
+
     pub fn add_node(&mut self, node: BlueprintNode, cx: &mut Context<Self>) {
         self.graph.nodes.push(node);
         cx.notify();
+    }
+
+    /// Compile the current graph to Rust source code
+    pub fn compile_to_rust(&self) -> Result<String, String> {
+        // Convert blueprint graph to our graph description format
+        let graph_description = self.convert_to_graph_description()?;
+
+        // Create compiler and compile
+        let compiler = crate::compiler::create_graph_compiler()?;
+        compiler.compile_graph(&graph_description)
+    }
+
+    /// Convert blueprint graph to graph description format
+    fn convert_to_graph_description(&self) -> Result<crate::graph::GraphDescription, String> {
+        use crate::graph::*;
+        use std::collections::HashMap;
+
+        let mut graph_desc = GraphDescription::new("Blueprint Graph");
+
+        // Convert nodes
+        for bp_node in &self.graph.nodes {
+            let mut node_instance = NodeInstance::new(
+                &bp_node.id,
+                &self.get_node_type_from_blueprint(&bp_node)?,
+                Position { x: bp_node.position.x, y: bp_node.position.y }
+            );
+
+            // Convert pins
+            for pin in &bp_node.inputs {
+                let data_type = self.convert_blueprint_data_type(&pin.data_type);
+                node_instance.add_input_pin(&pin.id, data_type);
+            }
+
+            for pin in &bp_node.outputs {
+                let data_type = self.convert_blueprint_data_type(&pin.data_type);
+                node_instance.add_output_pin(&pin.id, data_type);
+            }
+
+            // Convert properties
+            for (key, value) in &bp_node.properties {
+                let prop_value = if value.parse::<f64>().is_ok() {
+                    PropertyValue::Number(value.parse().unwrap())
+                } else if value.parse::<bool>().is_ok() {
+                    PropertyValue::Boolean(value.parse().unwrap())
+                } else {
+                    PropertyValue::String(value.clone())
+                };
+                node_instance.set_property(key, prop_value);
+            }
+
+            graph_desc.add_node(node_instance);
+        }
+
+        // Convert connections
+        for connection in &self.graph.connections {
+            let graph_connection = Connection::new(
+                &connection.id,
+                &connection.from_node_id,
+                &connection.from_pin_id,
+                &connection.to_node_id,
+                &connection.to_pin_id,
+                ConnectionType::Execution, // Determine type based on pins
+            );
+            graph_desc.add_connection(graph_connection);
+        }
+
+        Ok(graph_desc)
+    }
+
+    fn get_node_type_from_blueprint(&self, bp_node: &BlueprintNode) -> Result<String, String> {
+        // Try to find the original node type from definitions
+        let node_definitions = NodeDefinitions::load();
+
+        // Search through all categories for a matching node
+        for category in &node_definitions.categories {
+            for node_def in &category.nodes {
+                if node_def.name == bp_node.title {
+                    return Ok(node_def.id.clone());
+                }
+            }
+        }
+
+        // Fallback: use title as type
+        Ok(bp_node.title.replace(" ", "_").to_lowercase())
+    }
+
+    fn convert_blueprint_data_type(&self, bp_type: &DataType) -> crate::graph::DataType {
+        match bp_type {
+            DataType::Execution => crate::graph::DataType::Execution,
+            DataType::Boolean => crate::graph::DataType::Boolean,
+            DataType::Integer => crate::graph::DataType::Number,
+            DataType::Float => crate::graph::DataType::Number,
+            DataType::String => crate::graph::DataType::String,
+            DataType::Vector => crate::graph::DataType::Vector3,
+            DataType::Object => crate::graph::DataType::Object,
+        }
+    }
+
+    /// Save the current graph to a JSON file
+    pub fn save_blueprint(&self, file_path: &str) -> Result<(), String> {
+        let graph_description = self.convert_to_graph_description()?;
+        let json = serde_json::to_string_pretty(&graph_description)
+            .map_err(|e| format!("Failed to serialize graph: {}", e))?;
+
+        std::fs::write(file_path, json)
+            .map_err(|e| format!("Failed to write file: {}", e))?;
+
+        Ok(())
+    }
+
+    /// Load a graph from a JSON file
+    pub fn load_blueprint(&mut self, file_path: &str, cx: &mut Context<Self>) -> Result<(), String> {
+        let json = std::fs::read_to_string(file_path)
+            .map_err(|e| format!("Failed to read file: {}", e))?;
+
+        let graph_description: crate::graph::GraphDescription = serde_json::from_str(&json)
+            .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+
+        // Convert back to blueprint format
+        self.graph = self.convert_from_graph_description(&graph_description)?;
+        cx.notify();
+
+        Ok(())
+    }
+
+    fn convert_from_graph_description(&self, graph_desc: &crate::graph::GraphDescription) -> Result<BlueprintGraph, String> {
+        let mut nodes = Vec::new();
+        let mut connections = Vec::new();
+
+        // Convert nodes
+        for (node_id, node_instance) in &graph_desc.nodes {
+            let bp_node = BlueprintNode {
+                id: node_id.clone(),
+                title: node_instance.node_type.replace('_', " "),
+                icon: "⚙️".to_string(), // Default icon
+                node_type: NodeType::Logic, // Default type
+                position: Point::new(node_instance.position.x, node_instance.position.y),
+                size: Size::new(150.0, 100.0),
+                inputs: node_instance.inputs.iter().map(|(pin_id, pin)| Pin {
+                    id: pin_id.clone(),
+                    name: pin.name.clone(),
+                    pin_type: PinType::Input,
+                    data_type: self.convert_from_graph_data_type(&pin.data_type),
+                }).collect(),
+                outputs: node_instance.outputs.iter().map(|(pin_id, pin)| Pin {
+                    id: pin_id.clone(),
+                    name: pin.name.clone(),
+                    pin_type: PinType::Output,
+                    data_type: self.convert_from_graph_data_type(&pin.data_type),
+                }).collect(),
+                properties: node_instance.properties.iter().map(|(k, v)| {
+                    let value_str = match v {
+                        crate::graph::PropertyValue::String(s) => s.clone(),
+                        crate::graph::PropertyValue::Number(n) => n.to_string(),
+                        crate::graph::PropertyValue::Boolean(b) => b.to_string(),
+                        _ => "".to_string(),
+                    };
+                    (k.clone(), value_str)
+                }).collect(),
+                is_selected: false,
+            };
+            nodes.push(bp_node);
+        }
+
+        // Convert connections
+        for connection in &graph_desc.connections {
+            let bp_connection = Connection {
+                id: connection.id.clone(),
+                from_node_id: connection.source_node.clone(),
+                from_pin_id: connection.source_pin.clone(),
+                to_node_id: connection.target_node.clone(),
+                to_pin_id: connection.target_pin.clone(),
+            };
+            connections.push(bp_connection);
+        }
+
+        Ok(BlueprintGraph {
+            nodes,
+            connections,
+            selected_nodes: vec![],
+            zoom_level: 1.0,
+            pan_offset: Point::new(0.0, 0.0),
+            virtualization_stats: VirtualizationStats::default(),
+        })
+    }
+
+    fn convert_from_graph_data_type(&self, graph_type: &crate::graph::DataType) -> DataType {
+        match graph_type {
+            crate::graph::DataType::Execution => DataType::Execution,
+            crate::graph::DataType::Boolean => DataType::Boolean,
+            crate::graph::DataType::Number => DataType::Float,
+            crate::graph::DataType::String => DataType::String,
+            crate::graph::DataType::Vector2 | crate::graph::DataType::Vector3 => DataType::Vector,
+            _ => DataType::Object,
+        }
     }
 
 

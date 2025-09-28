@@ -1,9 +1,8 @@
 use gpui::*;
 use gpui_component::{
-    button::Button,
     h_flex, v_flex,
     ActiveTheme as _, StyledExt,
-    IconName,
+    input::TextInput,
 };
 
 use super::{panel::BlueprintEditorPanel, NodeDefinitions};
@@ -16,11 +15,10 @@ impl NodeLibraryRenderer {
             .size_full()
             .gap_2()
             .child(
-                h_flex()
+                v_flex()
                     .w_full()
                     .p_2()
-                    .justify_between()
-                    .items_center()
+                    .gap_2()
                     .child(
                         div()
                             .text_sm()
@@ -29,9 +27,11 @@ impl NodeLibraryRenderer {
                             .child("Node Library")
                     )
                     .child(
-                        Button::new("search")
-                            .icon(IconName::Search)
-                            .tooltip("Search Nodes")
+                        div()
+                            .w_full()
+                            .child(
+                                TextInput::new(panel.get_search_input_state())
+                            )
                     )
             )
             .child(
@@ -41,19 +41,43 @@ impl NodeLibraryRenderer {
                     .border_1()
                     .border_color(cx.theme().border)
                     .rounded(cx.theme().radius)
-                    .child(Self::render_node_categories(cx))
+                    .scrollable(Axis::Vertical)
+                    .child(Self::render_node_categories(panel, cx))
             )
     }
 
-    fn render_node_categories(cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
+    fn render_node_categories(panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
         let node_definitions = NodeDefinitions::load();
+        let search_query = panel.get_search_query().to_lowercase();
 
         v_flex()
             .p_2()
             .gap_3()
             .children(
-                node_definitions.categories.iter().map(|category| {
-                    Self::render_node_category(&category.name, category, cx)
+                node_definitions.categories.iter().filter_map(|category| {
+                    // Filter nodes based on search query
+                    let filtered_nodes: Vec<_> = if search_query.is_empty() {
+                        category.nodes.iter().collect()
+                    } else {
+                        category.nodes.iter().filter(|node| {
+                            node.name.to_lowercase().contains(&search_query) ||
+                            node.description.to_lowercase().contains(&search_query) ||
+                            category.name.to_lowercase().contains(&search_query)
+                        }).collect()
+                    };
+
+                    // Only render category if it has matching nodes
+                    if filtered_nodes.is_empty() {
+                        None
+                    } else {
+                        // Create a temporary category with filtered nodes
+                        let filtered_category = super::NodeCategory {
+                            name: category.name.clone(),
+                            color: category.color.clone(),
+                            nodes: filtered_nodes.into_iter().cloned().collect(),
+                        };
+                        Some(Self::render_node_category(&category.name, &filtered_category, cx))
+                    }
                 })
             )
     }
