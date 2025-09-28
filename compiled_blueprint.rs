@@ -1,27 +1,10 @@
-use std::collections::HashMap;
-
+fn print_string_6095194a_2ed8_4fdf_aa3b_cf58f212882d() {
+    println!("[DEBUG] {}", "");
+}
+fn print_string_print_string() {
+    println!("[DEBUG] {}", "Hello World!");
+}
 fn main() {
-    // Generated Blueprint Code
-    let mut variables: HashMap<String, Box<dyn std::any::Any>> = HashMap::new();
+    print_string_print_string();
 
-    // Node: print_string
-    //! A debug node that prints a string to the console.
-    
-    /// Print a string to the console for debugging.
-    fn node_print_string() {
-        println!("[DEBUG] {}", "Hello World!");
-    }
-    // Node: begin_play
-    //! Entry point node. All nodes connected to 'exec_out' will be placed in main().
-    
-    /// Main entry point for execution.
-    fn main() {
-            //! A debug node that prints a string to the console.
-        
-        /// Print a string to the console for debugging.
-        fn node_print_string() {
-            println!("[DEBUG] {}", "Hello World!");
-        }
-    
-    }
 }

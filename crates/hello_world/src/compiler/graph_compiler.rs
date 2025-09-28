@@ -22,39 +22,98 @@ impl GraphCompiler {
     pub fn compile_graph(&self, graph: &GraphDescription) -> Result<String, String> {
         let execution_order = graph.get_execution_order()?;
 
-        let mut generated_code = String::new();
+        let mut function_defs = String::new();
+        let mut main_body = String::new();
+        let mut seen_functions = std::collections::HashSet::new();
 
-        // Add standard imports and setup
-        generated_code.push_str("use std::collections::HashMap;\n\n");
-        generated_code.push_str("fn main() {\n");
-        generated_code.push_str("    // Generated Blueprint Code\n");
-        generated_code.push_str("    let mut variables: HashMap<String, Box<dyn std::any::Any>> = HashMap::new();\n\n");
-
-        // Compile each node in execution order
+        // Collect function definitions and calls for main()
         for node_id in &execution_order {
             if let Some(node_instance) = graph.nodes.get(node_id) {
-                let node_code = self.compile_node(node_instance, graph)?;
-                generated_code.push_str(&format!("    // Node: {}\n", node_instance.id));
-                generated_code.push_str(&node_code);
-                generated_code.push_str("\n");
+                let node_def = self.node_definitions
+                    .get(&node_instance.node_type)
+                    .ok_or_else(|| format!("Node definition not found: {}", node_instance.node_type))?;
+
+                let fn_name = format!("{}_{}", node_instance.node_type, node_instance.id.replace("-", "_"));
+                let mut template_vars = std::collections::HashMap::new();
+                template_vars.insert("pulsar_node_fn_id".to_string(), fn_name.clone());
+                // Process input connections and properties
+                for (pin_name, pin) in &node_instance.inputs {
+                    let variable_name = format!("in_{}_{}", pin_name, pin.data_type);
+
+                    if let Some(connected_value) = self.get_connected_value(&pin.connected_to, graph) {
+                        template_vars.insert(variable_name, connected_value);
+                    } else if let Some(property_value) = node_instance.properties.get(pin_name) {
+                        template_vars.insert(variable_name, self.property_value_to_string(property_value));
+                    } else {
+                        // Use default value
+                        if let Some(input_def) = node_def.inputs.iter().find(|i| i.name == *pin_name) {
+                            if let Some(default) = &input_def.default_value {
+                                template_vars.insert(variable_name, default.clone());
+                            } else {
+                                return Err(format!("No value provided for input pin: {}", pin_name));
+                            }
+                        }
+                    }
+                }
+
+                // Process execution connections
+                for (pin_name, pin) in &node_instance.outputs {
+                    if pin.data_type == "execution" {
+                        let exec_var = format!("pulsar_exec_{}", pin_name);
+                        let exec_code = self.get_execution_chain(&pin.connected_to, graph)?;
+                        template_vars.insert(exec_var, exec_code);
+                    }
+                }
+
+                // Use compile_node with correct template_vars
+                let node_code = self.compile_node_with_vars(node_instance, graph, &template_vars)?;
+                if let Some(extracted_fn_name) = extract_fn_name(&node_code) {
+                    if let Some(fn_block) = extract_fn_block(&node_code) {
+                        if !seen_functions.contains(&fn_name) {
+                            function_defs.push_str(&format!("{}\n", fn_block));
+                            seen_functions.insert(fn_name.clone());
+                        }
+                        // For execution order nodes, calls are handled by exec chains, don't add here
+                    }
+                } else {
+                    // For statement-based nodes, add to main_body if needed, but since no wrapper, perhaps not
+                }
             }
         }
 
-        // Compile pure nodes (those not in execution flow)
+        // Collect pure node function definitions and calls
         for (node_id, node_instance) in &graph.nodes {
             if !execution_order.contains(node_id) {
                 if let Some(node_def) = self.node_definitions.get(&node_instance.node_type) {
                     if node_def.is_pure {
-                        let node_code = self.compile_node(node_instance, graph)?;
-                        generated_code.push_str(&format!("    // Pure Node: {}\n", node_instance.id));
-                        generated_code.push_str(&node_code);
-                        generated_code.push_str("\n");
+                        let fn_name = format!("{}_{}", node_instance.node_type, node_instance.id.replace("-", "_"));
+                        let mut template_vars = std::collections::HashMap::new();
+                        template_vars.insert("pulsar_node_fn_id".to_string(), fn_name.clone());
+                        let node_code = self.compile_node_with_vars(node_instance, graph, &template_vars)?;
+                        if let Some(extracted_fn_name) = extract_fn_name(&node_code) {
+                            if let Some(fn_block) = extract_fn_block(&node_code) {
+                                if !seen_functions.contains(&fn_name) {
+                                    function_defs.push_str(&format!("{}\n", fn_block));
+                                    seen_functions.insert(fn_name.clone());
+                                }
+                                main_body.push_str(&format!("    {}();\n", fn_name));
+                            }
+                        } else {
+                            main_body.push_str(&format!("    {}\n", node_code));
+                        }
                     }
                 }
             }
         }
 
-        generated_code.push_str("}\n");
+        // Output all code blocks as-is
+        let mut generated_code = String::new();
+        generated_code.push_str(&function_defs);
+        if !main_body.is_empty() {
+            generated_code.push_str(&format!("\nfn main() {{\n{}}}\n", main_body));
+        } else {
+            generated_code.push_str(&main_body);
+        }
 
         Ok(generated_code)
     }
@@ -121,6 +180,49 @@ impl GraphCompiler {
         Ok(format!("    {}", rendered.replace('\n', "\n    ")))
     }
 
+    // Add a new helper to allow passing template_vars to compile_node
+    fn compile_node_with_vars(&self, node_instance: &NodeInstance, graph: &GraphDescription, template_vars: &std::collections::HashMap<String, String>) -> Result<String, String> {
+        let node_def = self.node_definitions
+            .get(&node_instance.node_type)
+            .ok_or_else(|| format!("Node definition not found: {}", node_instance.node_type))?;
+        let template = self.templates
+            .get(&node_instance.node_type)
+            .ok_or_else(|| format!("Node template not found: {}", node_instance.node_type))?;
+        let mut vars = template_vars.clone();
+        // Set input pins
+        for (pin_name, pin) in &node_instance.inputs {
+            let variable_name = format!("in_{}_{}", pin_name, pin.data_type);
+            if let Some(connected_value) = self.get_connected_value(&pin.connected_to, graph) {
+                vars.insert(variable_name, connected_value);
+            } else if let Some(property_value) = node_instance.properties.get(pin_name) {
+                vars.insert(variable_name, self.property_value_to_string(property_value));
+            } else {
+                if let Some(input_def) = node_def.inputs.iter().find(|i| i.name == *pin_name) {
+                    if let Some(default) = &input_def.default_value {
+                        vars.insert(variable_name, default.clone());
+                    } else {
+                        return Err(format!("No value provided for input pin: {}", pin_name));
+                    }
+                }
+            }
+        }
+        // Set execution pins
+        for (pin_name, pin) in &node_instance.outputs {
+            if pin.data_type == "execution" {
+                let exec_var = format!("pulsar_exec_{}", pin_name);
+                let exec_code = self.get_execution_chain(&pin.connected_to, graph)?;
+                vars.insert(exec_var, exec_code);
+            }
+        }
+        let mut template_clone = template.clone();
+        for (key, value) in vars {
+            template_clone.set(&key, &value);
+        }
+        let rendered = template_clone.render()
+            .map_err(|e| format!("Template render error for node {}: {}", node_instance.id, e))?;
+        Ok(rendered)
+    }
+
     fn get_connected_value(&self, connection_ids: &[String], graph: &GraphDescription) -> Option<String> {
         // For now, return a placeholder that references the output of the connected node
         if let Some(connection_id) = connection_ids.first() {
@@ -145,9 +247,9 @@ impl GraphCompiler {
             if let Some(connection) = graph.connections.iter().find(|c| c.id == *connection_id) {
                 if matches!(connection.connection_type, ConnectionType::Execution) {
                     if let Some(target_node) = graph.nodes.get(&connection.target_node) {
-                        let node_code = self.compile_node(target_node, graph)?;
-                        exec_code.push_str(&node_code);
-                        exec_code.push('\n');
+                        // Generate a call to the target node's function
+                        let fn_name = format!("{}_{}", target_node.node_type, target_node.id.replace("-", "_"));
+                        exec_code.push_str(&format!("{}();\n", fn_name));
                     }
                 }
             }
@@ -216,5 +318,50 @@ mod tests {
         // Test compilation (would need actual templates loaded)
         // This is just a structure test
         assert_eq!(graph.nodes.len(), 1);
+    }
+}
+
+// Helper to robustly extract function name and definition from a Rust code block
+fn extract_fn_name(code: &str) -> Option<String> {
+    // Find the first line starting with 'fn '
+    for line in code.lines() {
+        let line = line.trim_start();
+        if line.starts_with("fn ") {
+            let after_fn = &line[3..];
+            if let Some(paren_idx) = after_fn.find('(') {
+                let name = &after_fn[..paren_idx].trim();
+                let name = name.split_whitespace().last().unwrap_or("");
+                if !name.is_empty() {
+                    return Some(name.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+// Helper to robustly extract the full function definition from a Rust code block
+fn extract_fn_block(code: &str) -> Option<String> {
+    let mut in_fn = false;
+    let mut brace_count = 0;
+    let mut fn_lines = Vec::new();
+    for line in code.lines() {
+        let line_trimmed = line.trim_start();
+        if !in_fn && line_trimmed.starts_with("fn ") {
+            in_fn = true;
+        }
+        if in_fn {
+            fn_lines.push(line);
+            brace_count += line.chars().filter(|&c| c == '{').count();
+            brace_count -= line.chars().filter(|&c| c == '}').count();
+            if brace_count == 0 && in_fn {
+                break;
+            }
+        }
+    }
+    if !fn_lines.is_empty() {
+        Some(fn_lines.join("\n"))
+    } else {
+        None
     }
 }
