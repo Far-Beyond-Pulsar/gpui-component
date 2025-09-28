@@ -3,6 +3,7 @@ use gpui_component::{
     Root,
 };
 
+mod compiler;
 mod assets;
 mod engine;
 mod ui;
@@ -37,6 +38,23 @@ pub struct SelectRadius(usize);
 use ui::app::PulsarApp;
 
 fn main() {
+
+    let templates = compiler::init();
+
+    println!("Loaded {} node templates", templates.len());
+    for entry in templates.iter() {
+        println!(
+            " - {}: [{}]",
+            entry.key(),
+            entry
+            .placeholder_names()
+            .iter()
+            .map(|name| format!("\x1b[36m{}\x1b[0m", name)) // Cyan color
+            .collect::<Vec<_>>()
+            .join(", ")
+        );
+    }
+
     let app = Application::new().with_assets(Assets);
 
     app.run(move |cx| {

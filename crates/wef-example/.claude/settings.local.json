@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/redst/OneDrive/Documents/GitHub/gpui-component/crates/ui/**)",
+      "Bash(cargo check:*)",
+      "Read(//c/Users/redst/OneDrive/Documents/GitHub/PrismaUI/crates/story/**)",
+      "Read(//c/Users/redst/OneDrive/Documents/GitHub/gpui-component/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

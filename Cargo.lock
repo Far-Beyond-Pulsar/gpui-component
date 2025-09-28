@@ -2010,6 +2010,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashmap"
+version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5041cc499144891f3790297212f32a74fb938e5136a14943f338ef9e0ae276cf"
+dependencies = [
+ "cfg-if",
+ "crossbeam-utils",
+ "hashbrown 0.14.5",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core",
+]
+
+[[package]]
 name = "data-url"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6471,6 +6485,7 @@ name = "pulsar_engine"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "dashmap",
  "flume",
  "gpui",
  "gpui-component",
@@ -6480,6 +6495,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+ "tron",
  "uuid",
  "windows 0.58.0",
 ]
@@ -9411,6 +9427,18 @@ dependencies = [
  "arc-swap",
  "serde",
  "stable_deref_trait",
+]
+
+[[package]]
+name = "tron"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00e7de32a8a2715485a795af76e67d5bd038fd2a179121790a79a4edd5d3b119"
+dependencies = [
+ "glob",
+ "regex",
+ "thiserror 2.0.14",
+ "walkdir",
 ]
 
 [[package]]

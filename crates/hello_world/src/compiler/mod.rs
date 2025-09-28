@@ -42,3 +42,61 @@
 //! and fix issues in their blueprints. Overall, the Pulsar Blueprint Compiler is designed to be a powerful
 //! and flexible tool for creating and executing complex workflows using a visual programming approach.
 
+use tron::{TronTemplate, TronRef};
+use dashmap::DashMap;
+use std::path::PathBuf;
+
+pub fn init() -> DashMap<String, TronTemplate> {
+    let mut templates: DashMap<String, TronTemplate> = DashMap::new();
+    // Initialize templates here
+    
+    let engine_nodes = load_all_node_templates(&PathBuf::from("./nodes"));
+    let user_nodes = load_all_node_templates(&PathBuf::from("./user_nodes"));
+
+    // Merge the two DashMaps into a combined dashmap of all available nodes
+    templates.extend(engine_nodes);
+    templates.extend(user_nodes);
+
+    templates
+}
+
+fn load_node_template(path: &PathBuf) -> Option<TronTemplate> {
+    match std::fs::read_to_string(path) {
+        Ok(content) => {
+            match TronTemplate::new(&content) {
+                Ok(template) => Some(template),
+                Err(e) => {
+                    eprintln!("Error parsing template {}: {}", path.display(), e);
+                    None
+                }
+            }
+        },
+        Err(e) => {
+            eprintln!("Error reading file {}: {}", path.display(), e);
+            None
+        }
+    }
+}
+
+fn load_all_node_templates(dir: &PathBuf) -> DashMap<String, TronTemplate> {
+    let templates: DashMap<String, TronTemplate> = DashMap::new();
+
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("tron") {
+                    if let Some(template) = load_node_template(&path) {
+                        if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
+                            templates.insert(name.to_string(), template);
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        eprintln!("Error reading directory: {}", dir.display());
+    }
+
+    templates
+}
