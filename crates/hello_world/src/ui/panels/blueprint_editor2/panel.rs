@@ -219,13 +219,13 @@ impl BlueprintEditorPanel {
 
             // Convert pins
             for pin in &bp_node.inputs {
-                let data_type = self.convert_blueprint_data_type(&pin.data_type);
-                node_instance.add_input_pin(&pin.id, data_type);
+                // Pin data types are already in the unified format
+                node_instance.add_input_pin(&pin.id, pin.data_type.clone());
             }
 
             for pin in &bp_node.outputs {
-                let data_type = self.convert_blueprint_data_type(&pin.data_type);
-                node_instance.add_output_pin(&pin.id, data_type);
+                // Pin data types are already in the unified format
+                node_instance.add_output_pin(&pin.id, pin.data_type.clone());
             }
 
             // Convert properties
