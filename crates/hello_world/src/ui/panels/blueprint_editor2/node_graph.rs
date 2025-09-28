@@ -365,12 +365,12 @@ impl NodeGraphRenderer {
     ) -> impl IntoElement {
         // Use the new type system for pin styling
         let pin_style = pin.data_type.generate_pin_style();
-        let pin_color = gpui::Hsla {
-            h: 0.0,
-            s: 0.0,
-            l: 0.0,
+        let pin_color = gpui::Hsla::from(gpui::Rgba {
+            r: pin_style.color.r,
+            g: pin_style.color.g,
+            b: pin_style.color.b,
             a: pin_style.color.a,
-        }.with_rgb(pin_style.color.r, pin_style.color.g, pin_style.color.b);
+        });
 
         // Check if this pin is compatible with the current drag
         let is_compatible = if let Some(ref drag) = panel.dragging_connection {
@@ -560,12 +560,14 @@ impl NodeGraphRenderer {
     fn get_pin_color(data_type: &DataType, _cx: &mut Context<BlueprintEditorPanel>) -> gpui::Hsla {
         // Use the new type system to generate pin colors
         let pin_style = data_type.generate_pin_style();
-        gpui::Hsla {
-            h: 0.0, // Will be set properly below
-            s: 0.0,
-            l: 0.0,
+        // Convert RGB to HSLA using the proper GPUI color API
+        let rgba = gpui::Rgba {
+            r: pin_style.color.r,
+            g: pin_style.color.g,
+            b: pin_style.color.b,
             a: pin_style.color.a,
-        }.with_rgb(pin_style.color.r, pin_style.color.g, pin_style.color.b)
+        };
+        gpui::Hsla::from(rgba)
     }
 
     fn calculate_pin_position(
