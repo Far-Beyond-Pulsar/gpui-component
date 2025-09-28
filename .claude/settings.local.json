@@ -4,18 +4,7 @@
       "WebSearch",
       "Bash(cargo check:*)",
       "Read(//c/Users/redst/.cargo/git/checkouts/zed-a70e2ad075855582/53b2f37/crates/gpui/**)",
-      "WebFetch(domain:github.com)",
-      "Bash(find:*)",
-      "Bash(cargo run:*)",
-      "Bash(cargo wef run -p wef-example)",
-      "Bash(RUST_BACKTRACE=1 cargo wef run -p wef-example)",
-      "Bash(tasklist)",
-      "Bash(findstr:*)",
-      "Read(//c/Users/redst/.cef/**)",
-      "Bash(cargo wef:*)",
-      "Bash(./wef-example.exe)",
-      "Bash(grep:*)",
-      "Read(//c/Users/redst/OneDrive/Documents/GitHub/PrismaUI/crates/story/**)"
+      "WebFetch(domain:github.com)"
     ],
     "deny": [],
     "ask": []

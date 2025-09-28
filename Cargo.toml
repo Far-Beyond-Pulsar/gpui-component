@@ -1,14 +1,17 @@
 [workspace]
 members = [
     "crates/macros",
+    "crates/hello_world",
+    "crates/story",
     "crates/ui",
     "crates/wef",
     "crates/wef/tool",
     "crates/wef/examples/wef-winit",
     "crates/webview",
-    "crates/wef-example"
+    "crates/webview/examples/wef-example",
 ]
 
+default-members = ["crates/story"]
 resolver = "2"
 
 [workspace.dependencies]

@@ -1,6 +1,7 @@
 use std::{borrow::Cow, path::PathBuf};
 
 use anyhow::{anyhow, Result};
+
 use gpui::AssetSource;
 use rust_embed::RustEmbed;
 

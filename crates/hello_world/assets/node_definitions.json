@@ -1,0 +1,378 @@
+{
+  "categories": [
+    {
+      "name": "Events",
+      "color": "#dc2626",
+      "nodes": [
+        {
+          "id": "event_start",
+          "name": "Start",
+          "icon": "Play",
+          "description": "Execution starts here",
+          "inputs": [],
+          "outputs": [
+            {
+              "id": "exec_out",
+              "name": "",
+              "data_type": "Execution",
+              "pin_type": "Output"
+            }
+          ],
+          "properties": {}
+        },
+        {
+          "id": "event_tick",
+          "name": "Tick",
+          "icon": "Clock",
+          "description": "Called every frame",
+          "inputs": [],
+          "outputs": [
+            {
+              "id": "exec_out",
+              "name": "",
+              "data_type": "Execution",
+              "pin_type": "Output"
+            },
+            {
+              "id": "delta_time",
+              "name": "Delta Time",
+              "data_type": "Float",
+              "pin_type": "Output"
+            }
+          ],
+          "properties": {}
+        },
+        {
+          "id": "event_key_press",
+          "name": "Key Press",
+          "icon": "Keyboard",
+          "description": "Triggered when a key is pressed",
+          "inputs": [],
+          "outputs": [
+            {
+              "id": "exec_out",
+              "name": "",
+              "data_type": "Execution",
+              "pin_type": "Output"
+            },
+            {
+              "id": "key_code",
+              "name": "Key",
+              "data_type": "String",
+              "pin_type": "Output"
+            }
+          ],
+          "properties": {
+            "key": "Space"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Logic",
+      "color": "#2563eb",
+      "nodes": [
+        {
+          "id": "logic_branch",
+          "name": "Branch",
+          "icon": "GitBranch",
+          "description": "Conditional execution flow",
+          "inputs": [
+            {
+              "id": "exec_in",
+              "name": "",
+              "data_type": "Execution",
+              "pin_type": "Input"
+            },
+            {
+              "id": "condition",
+              "name": "Condition",
+              "data_type": "Boolean",
+              "pin_type": "Input"
+            }
+          ],
+          "outputs": [
+            {
+              "id": "true_out",
+              "name": "True",
+              "data_type": "Execution",
+              "pin_type": "Output"
+            },
+            {
+              "id": "false_out",
+              "name": "False",
+              "data_type": "Execution",
+              "pin_type": "Output"
+            }
+          ],
+          "properties": {}
+        },
+        {
+          "id": "logic_and",
+          "name": "AND",
+          "icon": "Plus",
+          "description": "Logical AND operation",
+          "inputs": [
+            {
+              "id": "a",
+              "name": "A",
+              "data_type": "Boolean",
+              "pin_type": "Input"
+            },
+            {
+              "id": "b",
+              "name": "B",
+              "data_type": "Boolean",
+              "pin_type": "Input"
+            }
+          ],
+          "outputs": [
+            {
+              "id": "result",
+              "name": "Result",
+              "data_type": "Boolean",
+              "pin_type": "Output"
+            }
+          ],
+          "properties": {}
+        },
+        {
+          "id": "logic_sequence",
+          "name": "Sequence",
+          "icon": "List",
+          "description": "Execute nodes in sequence",
+          "inputs": [
+            {
+              "id": "exec_in",
+              "name": "",
+              "data_type": "Execution",
+              "pin_type": "Input"
+            }
+          ],
+          "outputs": [
+            {
+              "id": "then_1",
+              "name": "Then 1",
+              "data_type": "Execution",
+              "pin_type": "Output"
+            },
+            {
+              "id": "then_2",
+              "name": "Then 2",
+              "data_type": "Execution",
+              "pin_type": "Output"
+            },
+            {
+              "id": "then_3",
+              "name": "Then 3",
+              "data_type": "Execution",
+              "pin_type": "Output"
+            }
+          ],
+          "properties": {}
+        }
+      ]
+    },
+    {
+      "name": "Math",
+      "color": "#16a34a",
+      "nodes": [
+        {
+          "id": "math_add",
+          "name": "Add",
+          "icon": "Plus",
+          "description": "Add two numbers",
+          "inputs": [
+            {
+              "id": "a",
+              "name": "A",
+              "data_type": "Float",
+              "pin_type": "Input"
+            },
+            {
+              "id": "b",
+              "name": "B",
+              "data_type": "Float",
+              "pin_type": "Input"
+            }
+          ],
+          "outputs": [
+            {
+              "id": "result",
+              "name": "Result",
+              "data_type": "Float",
+              "pin_type": "Output"
+            }
+          ],
+          "properties": {}
+        },
+        {
+          "id": "math_multiply",
+          "name": "Multiply",
+          "icon": "X",
+          "description": "Multiply two numbers",
+          "inputs": [
+            {
+              "id": "a",
+              "name": "A",
+              "data_type": "Float",
+              "pin_type": "Input"
+            },
+            {
+              "id": "b",
+              "name": "B",
+              "data_type": "Float",
+              "pin_type": "Input"
+            }
+          ],
+          "outputs": [
+            {
+              "id": "result",
+              "name": "Result",
+              "data_type": "Float",
+              "pin_type": "Output"
+            }
+          ],
+          "properties": {}
+        },
+        {
+          "id": "math_float_constant",
+          "name": "Float",
+          "icon": "Hash",
+          "description": "A float constant value",
+          "inputs": [],
+          "outputs": [
+            {
+              "id": "value",
+              "name": "Value",
+              "data_type": "Float",
+              "pin_type": "Output"
+            }
+          ],
+          "properties": {
+            "value": "1.0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Object",
+      "color": "#ea580c",
+      "nodes": [
+        {
+          "id": "object_get_transform",
+          "name": "Get Transform",
+          "icon": "Move",
+          "description": "Get object's transform",
+          "inputs": [
+            {
+              "id": "object",
+              "name": "Object",
+              "data_type": "Object",
+              "pin_type": "Input"
+            }
+          ],
+          "outputs": [
+            {
+              "id": "position",
+              "name": "Position",
+              "data_type": "Vector",
+              "pin_type": "Output"
+            },
+            {
+              "id": "rotation",
+              "name": "Rotation",
+              "data_type": "Vector",
+              "pin_type": "Output"
+            },
+            {
+              "id": "scale",
+              "name": "Scale",
+              "data_type": "Vector",
+              "pin_type": "Output"
+            }
+          ],
+          "properties": {}
+        },
+        {
+          "id": "object_set_transform",
+          "name": "Set Transform",
+          "icon": "Move",
+          "description": "Set object's transform",
+          "inputs": [
+            {
+              "id": "exec_in",
+              "name": "",
+              "data_type": "Execution",
+              "pin_type": "Input"
+            },
+            {
+              "id": "object",
+              "name": "Object",
+              "data_type": "Object",
+              "pin_type": "Input"
+            },
+            {
+              "id": "position",
+              "name": "Position",
+              "data_type": "Vector",
+              "pin_type": "Input"
+            },
+            {
+              "id": "rotation",
+              "name": "Rotation",
+              "data_type": "Vector",
+              "pin_type": "Input"
+            },
+            {
+              "id": "scale",
+              "name": "Scale",
+              "data_type": "Vector",
+              "pin_type": "Input"
+            }
+          ],
+          "outputs": [
+            {
+              "id": "exec_out",
+              "name": "",
+              "data_type": "Execution",
+              "pin_type": "Output"
+            }
+          ],
+          "properties": {}
+        },
+        {
+          "id": "object_print",
+          "name": "Print",
+          "icon": "MessageSquare",
+          "description": "Print a message to console",
+          "inputs": [
+            {
+              "id": "exec_in",
+              "name": "",
+              "data_type": "Execution",
+              "pin_type": "Input"
+            },
+            {
+              "id": "message",
+              "name": "Message",
+              "data_type": "String",
+              "pin_type": "Input"
+            }
+          ],
+          "outputs": [
+            {
+              "id": "exec_out",
+              "name": "",
+              "data_type": "Execution",
+              "pin_type": "Output"
+            }
+          ],
+          "properties": {
+            "message": "Hello World"
+          }
+        }
+      ]
+    }
+  ]
+}

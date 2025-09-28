@@ -1,0 +1,66 @@
+{
+  "type": "column",
+  "props": {
+    "padding": 20,
+    "backgroundColor": "black"
+  },
+  "children": [
+    {
+      "type": "h1",
+      "props": {
+        "color": "blue"
+      },
+      "children": ["JSON UI Demo"]
+    },
+    {
+      "type": "text",
+      "props": {
+        "content": "This demonstrates a complex UI with multiple components and hot reload."
+      }
+    },
+    {
+      "$ref": "header_component.json",
+      "props": {
+        "title": "Dynamic Header",
+        "subtitle": "Loaded from external file"
+      }
+    },
+    {
+      "type": "row",
+      "props": {
+        "margin": 10
+      },
+      "children": [
+        {
+          "type": "button",
+          "children": ["Primary"]
+        },
+        {
+          "type": "button",
+          "children": ["Secondary"]
+        },
+        {
+          "type": "input",
+          "props": {
+            "placeholder": "Type here..."
+          }
+        }
+      ]
+    },
+    {
+      "$ref": "card_component.json",
+      "props": {
+        "title": "First Card",
+        "content": "This card is loaded from a separate JSON file"
+      }
+    },
+    {
+      "$ref": "card_component.json",
+      "props": {
+        "title": "Second Card",
+        "content": "Same component, different props - demonstrating reusability",
+        "backgroundColor": "blue"
+      }
+    }
+  ]
+}

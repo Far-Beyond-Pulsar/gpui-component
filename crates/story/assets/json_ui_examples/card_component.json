@@ -1,0 +1,27 @@
+{
+  "type": "div",
+  "props": {
+    "padding": 12,
+    "margin": 8,
+    "backgroundColor": "black"
+  },
+  "children": [
+    {
+      "type": "h3",
+      "props": {
+        "content": "${title}"
+      }
+    },
+    {
+      "type": "text",
+      "props": {
+        "content": "${content}",
+        "color": "gray"
+      }
+    },
+    {
+      "type": "button",
+      "children": ["Action Button"]
+    }
+  ]
+}

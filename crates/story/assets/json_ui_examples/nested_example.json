@@ -1,0 +1,25 @@
+{
+  "type": "div",
+  "props": {
+    "padding": 15,
+    "backgroundColor": "gray"
+  },
+  "children": [
+    {
+      "type": "h3",
+      "children": ["Nested Component Example"]
+    },
+    {
+      "type": "text",
+      "props": {
+        "content": "This component is referenced from interactive.json"
+      }
+    },
+    {
+      "$ref": "deeply_nested.json",
+      "props": {
+        "message": "Deep nesting works too!"
+      }
+    }
+  ]
+}
