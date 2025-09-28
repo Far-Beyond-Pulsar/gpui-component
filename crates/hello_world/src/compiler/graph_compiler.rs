@@ -105,6 +105,13 @@ impl GraphCompiler {
 
         // Render the template
         let mut template_clone = template.clone();
+        // Log the template variables and template content before rendering
+        println!(
+            "Rendering node template for '{}':\n  Template variables: {:?}\n  Template content: {}",
+            node_instance.node_type,
+            template_vars.keys().collect::<Vec<_>>(),
+            node_def.template_content
+        );
         for (key, value) in template_vars {
             template_clone.set(&key, &value);
         }

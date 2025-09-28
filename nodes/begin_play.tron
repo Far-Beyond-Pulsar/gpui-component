@@ -1,0 +1,6 @@
+//! Entry point node. All nodes connected to 'exec_out' will be placed in main().
+
+/// Main entry point for execution.
+fn main() {
+    @[pulsar_exec_exec_out]@
+}
