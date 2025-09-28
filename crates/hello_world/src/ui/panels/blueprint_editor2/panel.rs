@@ -96,10 +96,10 @@ impl BlueprintEditorPanel {
                     data_type: GraphDataType::from_type_str("execution"),
                 },
                 Pin {
-                    id: "text_in".to_string(),
-                    name: "In String".to_string(),
+                    id: "message".to_string(),
+                    name: "Message".to_string(),
                     pin_type: PinType::Input,
-                    data_type: GraphDataType::from_type_str("String"),
+                    data_type: GraphDataType::from_type_str("string"),
                 },
             ],
             outputs: vec![Pin {

@@ -1,18 +1,63 @@
 {
   "nodes": {
-    "e1f51ec8-0c99-4349-8d6c-487b7523f450": {
-      "id": "e1f51ec8-0c99-4349-8d6c-487b7523f450",
-      "node_type": "sqrt",
+    "4425ad48-9443-44d1-93e0-7ab260a6a281": {
+      "id": "4425ad48-9443-44d1-93e0-7ab260a6a281",
+      "node_type": "file_modified_time",
       "position": {
-        "x": 355.0,
-        "y": 251.0
+        "x": 331.59412,
+        "y": 99.060974
       },
       "properties": {},
       "inputs": {
-        "value": {
-          "name": "value",
+        "path": {
+          "name": "path",
           "pin_type": "Input",
-          "data_type": "Number",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {
+        "result": {
+          "name": "result",
+          "pin_type": "Output",
+          "data_type": {
+            "Typed": {
+              "base_type": "u64, String",
+              "wrappers": [
+                "Result"
+              ],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      }
+    },
+    "af10a246-e497-4e30-87ab-041a93e0044f": {
+      "id": "af10a246-e497-4e30-87ab-041a93e0044f",
+      "node_type": "string_uppercase",
+      "position": {
+        "x": 190.87878,
+        "y": 357.40546
+      },
+      "properties": {},
+      "inputs": {
+        "text": {
+          "name": "text",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
           "connected_to": []
         },
         "exec": {
@@ -24,12 +69,257 @@
       },
       "outputs": {}
     },
+    "print_string": {
+      "id": "print_string",
+      "node_type": "print_string",
+      "position": {
+        "x": 531.52234,
+        "y": -39.425064
+      },
+      "properties": {
+        "message": {
+          "String": "Hello World!"
+        },
+        "print_to_screen": {
+          "Boolean": true
+        }
+      },
+      "inputs": {
+        "message": {
+          "name": "message",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "exec_in": {
+          "name": "exec_in",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": [
+            "connection_1",
+            "975231d9-a403-442e-bb21-1a338be0f1ce"
+          ]
+        }
+      },
+      "outputs": {
+        "exec_out": {
+          "name": "exec_out",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": []
+        }
+      }
+    },
+    "6924913c-5f59-4b16-bfa0-e8fb0846e712": {
+      "id": "6924913c-5f59-4b16-bfa0-e8fb0846e712",
+      "node_type": "string_uppercase",
+      "position": {
+        "x": 15.891785,
+        "y": 317.89227
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "text": {
+          "name": "text",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "4cb9b389-f5a3-49cb-9d5c-2088378bed33": {
+      "id": "4cb9b389-f5a3-49cb-9d5c-2088378bed33",
+      "node_type": "string_contains_switch",
+      "position": {
+        "x": 62.178833,
+        "y": 30.575058
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "pattern3": {
+          "name": "pattern3",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "text": {
+          "name": "text",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "pattern2": {
+          "name": "pattern2",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "pattern1": {
+          "name": "pattern1",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {
+        "contains1": {
+          "name": "contains1",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": [
+            "975231d9-a403-442e-bb21-1a338be0f1ce"
+          ]
+        },
+        "contains2": {
+          "name": "contains2",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "none": {
+          "name": "none",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "contains3": {
+          "name": "contains3",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": []
+        }
+      }
+    },
+    "26addcff-8414-4dc8-a08d-8eaa6e16d4a3": {
+      "id": "26addcff-8414-4dc8-a08d-8eaa6e16d4a3",
+      "node_type": "array_set",
+      "position": {
+        "x": 779.5812,
+        "y": -40.274277
+      },
+      "properties": {},
+      "inputs": {
+        "index": {
+          "name": "index",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "item": {
+          "name": "item",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "type",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "value": {
+          "name": "value",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "any",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "array": {
+          "name": "array",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "vector",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {
+        "result": {
+          "name": "result",
+          "pin_type": "Output",
+          "data_type": {
+            "Typed": {
+              "base_type": "@[in_item_type]@",
+              "wrappers": [
+                "Vec"
+              ],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      }
+    },
     "begin_play": {
       "id": "begin_play",
       "node_type": "begin_play",
       "position": {
-        "x": 100.0,
-        "y": 100.0
+        "x": 54.27765,
+        "y": -65.39087
       },
       "properties": {},
       "inputs": {},
@@ -44,45 +334,110 @@
         }
       }
     },
-    "print_string": {
-      "id": "print_string",
-      "node_type": "print_string",
+    "d3b7abe8-8d58-49a6-9824-02d608eed33f": {
+      "id": "d3b7abe8-8d58-49a6-9824-02d608eed33f",
+      "node_type": "array_set",
       "position": {
-        "x": 400.0,
-        "y": 100.0
+        "x": 486.0985,
+        "y": 334.26202
       },
-      "properties": {
-        "message": {
-          "String": "Hello World!"
-        },
-        "print_to_screen": {
-          "Boolean": true
-        }
-      },
+      "properties": {},
       "inputs": {
-        "text_in": {
-          "name": "text_in",
+        "array": {
+          "name": "array",
           "pin_type": "Input",
-          "data_type": "String",
+          "data_type": {
+            "Typed": {
+              "base_type": "vector",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
           "connected_to": []
         },
-        "exec_in": {
-          "name": "exec_in",
+        "item": {
+          "name": "item",
           "pin_type": "Input",
-          "data_type": "Execution",
-          "connected_to": [
-            "connection_1"
-          ]
+          "data_type": {
+            "Typed": {
+              "base_type": "type",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "value": {
+          "name": "value",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "any",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "index": {
+          "name": "index",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
         }
       },
       "outputs": {
-        "exec_out": {
-          "name": "exec_out",
+        "result": {
+          "name": "result",
           "pin_type": "Output",
-          "data_type": "Execution",
+          "data_type": {
+            "Typed": {
+              "base_type": "@[in_item_type]@",
+              "wrappers": [
+                "Vec"
+              ],
+              "is_wildcard": false
+            }
+          },
           "connected_to": []
         }
       }
+    },
+    "2fd6a1b3-b763-4b9a-9937-a494cb9dd08a": {
+      "id": "2fd6a1b3-b763-4b9a-9937-a494cb9dd08a",
+      "node_type": "string_lowercase",
+      "position": {
+        "x": 235.47217,
+        "y": 215.15802
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "text": {
+          "name": "text",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {}
     }
   },
   "connections": [
@@ -93,13 +448,21 @@
       "target_node": "print_string",
       "target_pin": "exec_in",
       "connection_type": "Execution"
+    },
+    {
+      "id": "975231d9-a403-442e-bb21-1a338be0f1ce",
+      "source_node": "4cb9b389-f5a3-49cb-9d5c-2088378bed33",
+      "source_pin": "contains1",
+      "target_node": "print_string",
+      "target_pin": "exec_in",
+      "connection_type": "Execution"
     }
   ],
   "metadata": {
     "name": "Blueprint Graph",
     "description": "",
     "version": "1.0.0",
-    "created_at": "2025-09-28T18:50:35.650016100+00:00",
-    "modified_at": "2025-09-28T18:50:35.650045800+00:00"
+    "created_at": "2025-09-28T19:07:14.902816100+00:00",
+    "modified_at": "2025-09-28T19:07:14.902869500+00:00"
   }
 }
