@@ -1387,6 +1387,7 @@ dependencies = [
  "iana-time-zone",
  "js-sys",
  "num-traits",
+ "serde",
  "wasm-bindgen",
  "windows-link",
 ]
@@ -6485,10 +6486,12 @@ name = "pulsar_engine"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "dashmap",
  "flume",
  "gpui",
  "gpui-component",
+ "regex",
  "rust-embed",
  "schemars",
  "serde",

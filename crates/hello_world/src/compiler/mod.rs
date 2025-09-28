@@ -42,9 +42,15 @@
 //! and fix issues in their blueprints. Overall, the Pulsar Blueprint Compiler is designed to be a powerful
 //! and flexible tool for creating and executing complex workflows using a visual programming approach.
 
-use tron::{TronTemplate, TronRef};
+use tron::TronTemplate;
 use dashmap::DashMap;
 use std::path::PathBuf;
+
+pub mod node_parser;
+pub mod graph_compiler;
+
+pub use node_parser::{NodeDefinition, load_all_node_definitions};
+pub use graph_compiler::{GraphCompiler, create_graph_compiler};
 
 pub fn init() -> DashMap<String, TronTemplate> {
     let mut templates: DashMap<String, TronTemplate> = DashMap::new();

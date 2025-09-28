@@ -7,6 +7,7 @@ mod compiler;
 mod assets;
 mod engine;
 mod ui;
+mod graph;
 
 pub use assets::Assets;
 use serde::Deserialize;

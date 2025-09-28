@@ -4,11 +4,13 @@ use gpui_component::{
     dock::{Panel, PanelEvent},
     resizable::{h_resizable, resizable_panel, ResizableState},
     h_flex, v_flex,
-    ActiveTheme as _, StyledExt, Selectable,
+    ActiveTheme as _, StyledExt,
     IconName,
 };
+use std::collections::HashMap;
 
 use crate::ui::shared::{Toolbar, ToolbarButton, StatusBar};
+use crate::compiler::{NodeDefinition, load_all_node_definitions};
 
 pub struct BlueprintEditorPanel {
     focus_handle: FocusHandle,
@@ -16,11 +18,18 @@ pub struct BlueprintEditorPanel {
     zoom_level: f32,
     pan_offset: (f32, f32),
     resizable_state: Entity<ResizableState>,
+    node_definitions: HashMap<String, NodeDefinition>,
 }
 
 impl BlueprintEditorPanel {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let resizable_state = ResizableState::new(cx);
+
+        // Load node definitions
+        let node_definitions = load_all_node_definitions().unwrap_or_else(|e| {
+            eprintln!("Failed to load node definitions: {}", e);
+            HashMap::new()
+        });
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -28,6 +37,7 @@ impl BlueprintEditorPanel {
             zoom_level: 1.0,
             pan_offset: (0.0, 0.0),
             resizable_state,
+            node_definitions,
         }
     }
 
@@ -96,33 +106,31 @@ impl BlueprintEditorPanel {
     }
 
     fn render_node_categories(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .p_2()
-            .gap_3()
-            .child(self.render_node_category("Events", &[
-                ("On Begin Play", "▶️"),
-                ("On Tick", "⏱️"),
-                ("On Input", "🎮"),
-                ("On Collision", "💥"),
-            ], cx))
-            .child(self.render_node_category("Logic", &[
-                ("Branch", "🔀"),
-                ("Sequence", "📝"),
-                ("For Loop", "🔄"),
-                ("While Loop", "🔁"),
-            ], cx))
-            .child(self.render_node_category("Math", &[
-                ("Add", "➕"),
-                ("Multiply", "✖️"),
-                ("Vector Math", "📐"),
-                ("Random", "🎲"),
-            ], cx))
-            .child(self.render_node_category("Objects", &[
-                ("Spawn Actor", "🏗️"),
-                ("Destroy Actor", "💥"),
-                ("Get Transform", "📍"),
-                ("Set Transform", "🎯"),
-            ], cx))
+        // Group nodes by category
+        let mut categories: HashMap<String, Vec<&NodeDefinition>> = HashMap::new();
+
+        for node_def in self.node_definitions.values() {
+            categories
+                .entry(node_def.category.clone())
+                .or_insert_with(Vec::new)
+                .push(node_def);
+        }
+
+        let mut v_container = v_flex().p_2().gap_3();
+
+        // Render each category
+        for (category_name, nodes) in categories.iter() {
+            let node_items: Vec<(&str, &str)> = nodes
+                .iter()
+                .map(|node| (node.name.as_str(), node.icon.as_str()))
+                .collect();
+
+            v_container = v_container.child(
+                self.render_node_category(category_name, &node_items, cx)
+            );
+        }
+
+        v_container
     }
 
     fn render_node_category(&self, title: &str, nodes: &[(&str, &str)], cx: &mut Context<Self>) -> impl IntoElement {
@@ -190,97 +198,155 @@ impl BlueprintEditorPanel {
     }
 
     fn render_sample_nodes(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .absolute()
-            .inset_0()
-            .child(
-                // Event node
+        let mut container = div().absolute().inset_0();
+
+        // Show some sample nodes if they exist
+        if self.node_definitions.contains_key("println") {
+            container = container.child(
                 div()
                     .absolute()
                     .top_16()
                     .left_16()
-                    .child(self.render_blueprint_node("Begin Play", "▶️", true, cx))
-            )
-            .child(
-                // Logic node
+                    .child(self.render_blueprint_node("println", cx))
+            );
+        }
+
+        if self.node_definitions.contains_key("add") {
+            container = container.child(
                 div()
                     .absolute()
                     .top_32()
                     .left_80()
-                    .child(self.render_blueprint_node("Print String", "📝", false, cx))
-            )
-            .child(
-                // Connection lines would be drawn here
+                    .child(self.render_blueprint_node("add", cx))
+            );
+        }
+
+        if self.node_definitions.contains_key("branch") {
+            container = container.child(
                 div()
                     .absolute()
-                    .top_20()
-                    .left_56()
-                    .w_6()
-                    .h_px()
-                    .bg(cx.theme().primary)
-            )
+                    .top_48()
+                    .left(px(144.0))
+                    .child(self.render_blueprint_node("branch", cx))
+            );
+        }
+
+        // Connection lines would be drawn here based on actual graph data
+        container = container.child(
+            div()
+                .absolute()
+                .top_20()
+                .left_56()
+                .w_6()
+                .h_px()
+                .bg(cx.theme().primary)
+        );
+
+        container
     }
 
-    fn render_blueprint_node(&self, title: &str, icon: &str, is_event: bool, cx: &mut Context<Self>) -> impl IntoElement {
-        let node_color = if is_event {
-            cx.theme().danger
+    fn render_blueprint_node(&self, node_key: &str, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(node_def) = self.node_definitions.get(node_key) {
+            let node_color = if !node_def.is_pure {
+                cx.theme().danger // Impure nodes (with execution) are red
+            } else {
+                cx.theme().primary // Pure nodes are blue
+            };
+
+            v_flex()
+                .w_48()
+                .bg(cx.theme().background)
+                .border_2()
+                .border_color(node_color)
+                .rounded(px(8.0))
+                .shadow_lg()
+                .child(
+                    // Header
+                    h_flex()
+                        .w_full()
+                        .p_2()
+                        .bg(node_color.opacity(0.2))
+                        .items_center()
+                        .gap_2()
+                        .child(node_def.icon.clone())
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_semibold()
+                                .text_color(cx.theme().foreground)
+                                .child(node_def.name.clone())
+                        )
+                )
+                .child(
+                    // Pins
+                    v_flex()
+                        .p_2()
+                        .gap_1()
+                        .child(self.render_node_pins(node_def, cx))
+                )
         } else {
-            cx.theme().primary
+            // Fallback for missing node definition
+            div()
+                .p_4()
+                .bg(cx.theme().danger.opacity(0.2))
+                .border_1()
+                .border_color(cx.theme().danger)
+                .rounded(px(8.0))
+                .child(format!("Missing: {}", node_key))
+        }
+    }
+
+    fn render_node_pins(&self, node_def: &NodeDefinition, cx: &mut Context<Self>) -> impl IntoElement {
+        let max_pins = std::cmp::max(
+            node_def.inputs.len() + node_def.execution_inputs.len(),
+            node_def.outputs.len() + node_def.execution_outputs.len()
+        );
+
+        let mut pin_container = v_flex().gap_1();
+
+        for i in 0..max_pins {
+            let mut row = h_flex().w_full().justify_between().items_center();
+
+            // Left side (inputs)
+            if let Some(exec_input) = node_def.execution_inputs.get(i) {
+                row = row.child(self.render_pin(&exec_input.name, "execution", true, cx));
+            } else if let Some(input) = node_def.inputs.get(i.saturating_sub(node_def.execution_inputs.len())) {
+                row = row.child(self.render_pin(&input.name, &input.data_type, true, cx));
+            } else {
+                row = row.child(div().size_3()); // Empty space
+            }
+
+            // Right side (outputs)
+            if let Some(exec_output) = node_def.execution_outputs.get(i) {
+                row = row.child(self.render_pin(&exec_output.name, "execution", false, cx));
+            } else if let Some(output) = node_def.outputs.get(i.saturating_sub(node_def.execution_outputs.len())) {
+                row = row.child(self.render_pin(&output.name, &output.data_type, false, cx));
+            } else {
+                row = row.child(div().size_3()); // Empty space
+            }
+
+            pin_container = pin_container.child(row);
+        }
+
+        pin_container
+    }
+
+    fn render_pin(&self, name: &str, data_type: &str, is_input: bool, cx: &mut Context<Self>) -> impl IntoElement {
+        let pin_color = match data_type {
+            "execution" => cx.theme().danger,
+            "number" => cx.theme().primary,
+            "string" => cx.theme().success,
+            "boolean" => cx.theme().warning,
+            "vector2" | "vector3" => cx.theme().muted,
+            _ => cx.theme().foreground,
         };
 
-        v_flex()
-            .w_48()
-            .bg(cx.theme().background)
-            .border_2()
-            .border_color(node_color)
-            .rounded(px(8.0))
-            .shadow_lg()
-            .child(
-                // Header
-                h_flex()
-                    .w_full()
-                    .p_2()
-                    .bg(node_color.opacity(0.2))
-                    .items_center()
-                    .gap_2()
-                    .child(icon.to_string())
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_semibold()
-                            .text_color(cx.theme().foreground)
-                            .child(title.to_string())
-                    )
-            )
-            .child(
-                // Pins
-                v_flex()
-                    .p_2()
-                    .gap_1()
-                    .child(
-                        h_flex()
-                            .justify_between()
-                            .items_center()
-                            .child(
-                                // Input pin
-                                div()
-                                    .size_3()
-                                    .bg(cx.theme().muted)
-                                    .rounded_full()
-                                    .border_1()
-                                    .border_color(cx.theme().border)
-                            )
-                            .child(
-                                // Output pin
-                                div()
-                                    .size_3()
-                                    .bg(cx.theme().success)
-                                    .rounded_full()
-                                    .border_1()
-                                    .border_color(cx.theme().border)
-                            )
-                    )
-            )
+        div()
+            .size_3()
+            .bg(pin_color)
+            .rounded_full()
+            .border_1()
+            .border_color(cx.theme().border)
     }
 
     fn render_graph_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {

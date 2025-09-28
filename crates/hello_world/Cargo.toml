@@ -24,6 +24,8 @@ tokio = { version = "1", features = ["full"] }
 windows.workspace = true
 tron = "2.1.0"
 dashmap = "6.1.0"
+regex = "1.10"
+chrono = { version = "0.4", features = ["serde"] }
 
 [lints]
 workspace = true

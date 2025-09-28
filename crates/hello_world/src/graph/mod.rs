@@ -67,7 +67,7 @@ pub enum PinType {
     Output,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum DataType {
     Execution,
     String,
@@ -78,6 +78,39 @@ pub enum DataType {
     Color,
     Object,
     Array(Box<DataType>),
+}
+
+impl PartialEq<&str> for DataType {
+    fn eq(&self, other: &&str) -> bool {
+        match (self, *other) {
+            (DataType::Execution, "execution") => true,
+            (DataType::String, "string") => true,
+            (DataType::Number, "number") => true,
+            (DataType::Boolean, "boolean") => true,
+            (DataType::Vector2, "vector2") => true,
+            (DataType::Vector3, "vector3") => true,
+            (DataType::Color, "color") => true,
+            (DataType::Object, "object") => true,
+            _ => false,
+        }
+    }
+}
+
+impl std::fmt::Display for DataType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str_repr = match self {
+            DataType::Execution => "execution",
+            DataType::String => "string",
+            DataType::Number => "number",
+            DataType::Boolean => "boolean",
+            DataType::Vector2 => "vector2",
+            DataType::Vector3 => "vector3",
+            DataType::Color => "color",
+            DataType::Object => "object",
+            DataType::Array(inner) => return write!(f, "array<{}>", inner),
+        };
+        write!(f, "{}", str_repr)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
