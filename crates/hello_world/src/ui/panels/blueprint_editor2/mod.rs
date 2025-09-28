@@ -157,9 +157,118 @@ static NODE_DEFINITIONS: OnceLock<NodeDefinitions> = OnceLock::new();
 impl NodeDefinitions {
     pub fn load() -> &'static NodeDefinitions {
         NODE_DEFINITIONS.get_or_init(|| {
-            let json_data = include_str!("../../../../assets/node_definitions.json");
-            serde_json::from_str(json_data).expect("Failed to parse node definitions")
+            // Load dynamic node definitions from .tron templates
+            let dynamic_nodes = crate::compiler::load_all_node_definitions()
+                .unwrap_or_else(|e| {
+                    eprintln!("Failed to load dynamic node definitions: {}", e);
+                    std::collections::HashMap::new()
+                });
+
+            // Convert dynamic nodes to static format
+            Self::from_dynamic_nodes(dynamic_nodes)
         })
+    }
+
+    fn from_dynamic_nodes(dynamic_nodes: std::collections::HashMap<String, crate::compiler::NodeDefinition>) -> NodeDefinitions {
+        let mut categories_map: std::collections::HashMap<String, Vec<NodeDefinition>> = std::collections::HashMap::new();
+
+        // Group nodes by category
+        for (id, dynamic_def) in dynamic_nodes {
+            let mut inputs = Vec::new();
+            let mut outputs = Vec::new();
+
+            // Add execution inputs
+            for exec_pin in &dynamic_def.execution_inputs {
+                inputs.push(PinDefinition {
+                    id: exec_pin.name.clone(),
+                    name: exec_pin.name.clone(),
+                    data_type: DataType::Execution,
+                    pin_type: PinType::Input,
+                });
+            }
+
+            // Add regular inputs
+            for pin in &dynamic_def.inputs {
+                inputs.push(PinDefinition {
+                    id: pin.name.clone(),
+                    name: pin.name.clone(),
+                    data_type: Self::convert_data_type(&pin.data_type),
+                    pin_type: PinType::Input,
+                });
+            }
+
+            // Add execution outputs
+            for exec_pin in &dynamic_def.execution_outputs {
+                outputs.push(PinDefinition {
+                    id: exec_pin.name.clone(),
+                    name: exec_pin.name.clone(),
+                    data_type: DataType::Execution,
+                    pin_type: PinType::Output,
+                });
+            }
+
+            // Add regular outputs
+            for pin in &dynamic_def.outputs {
+                outputs.push(PinDefinition {
+                    id: pin.name.clone(),
+                    name: pin.name.clone(),
+                    data_type: Self::convert_data_type(&pin.data_type),
+                    pin_type: PinType::Output,
+                });
+            }
+
+            let static_def = NodeDefinition {
+                id: id.clone(),
+                name: dynamic_def.name,
+                icon: dynamic_def.icon,
+                description: dynamic_def.description,
+                inputs,
+                outputs,
+                properties: std::collections::HashMap::new(),
+            };
+
+            categories_map
+                .entry(dynamic_def.category)
+                .or_insert_with(Vec::new)
+                .push(static_def);
+        }
+
+        // Convert to categories
+        let categories = categories_map
+            .into_iter()
+            .map(|(name, nodes)| NodeCategory {
+                name: name.clone(),
+                color: Self::get_category_color(&name),
+                nodes,
+            })
+            .collect();
+
+        NodeDefinitions { categories }
+    }
+
+    fn convert_data_type(data_type: &str) -> DataType {
+        match data_type {
+            "execution" => DataType::Execution,
+            "boolean" => DataType::Boolean,
+            "number" => DataType::Float,
+            "string" => DataType::String,
+            "vector2" | "vector3" => DataType::Vector,
+            _ => DataType::Object,
+        }
+    }
+
+    fn get_category_color(category: &str) -> String {
+        match category {
+            "Math" | "Math/Vector" => "#4A90E2".to_string(),
+            "Logic" => "#E2A04A".to_string(),
+            "String" => "#7ED321".to_string(),
+            "Array" => "#BD10E0".to_string(),
+            "File I/O" => "#50E3C2".to_string(),
+            "Graphics" => "#F5A623".to_string(),
+            "Time" => "#9013FE".to_string(),
+            "Utility" => "#B8E986".to_string(),
+            _ => "#9B9B9B".to_string(),
+        }
     }
 
     pub fn get_node_definition(&self, node_id: &str) -> Option<&NodeDefinition> {

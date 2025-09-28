@@ -231,6 +231,7 @@ pub fn load_all_node_definitions() -> Result<HashMap<String, NodeDefinition>, St
     let mut definitions = HashMap::new();
 
     // Load from ./nodes directory
+    eprintln!("Attempting to load nodes from ./nodes directory...");
     if let Ok(entries) = std::fs::read_dir("./nodes") {
         for entry in entries {
             if let Ok(entry) = entry {

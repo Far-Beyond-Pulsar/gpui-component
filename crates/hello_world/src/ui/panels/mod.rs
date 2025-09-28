@@ -1,6 +1,5 @@
 pub mod level_editor;
 pub mod script_editor;
-pub mod blueprint_editor;
 pub mod blueprint_editor2;
 pub mod material_editor;
 
