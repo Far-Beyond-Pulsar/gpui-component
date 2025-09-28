@@ -322,13 +322,13 @@ impl BlueprintEditorPanel {
                     id: pin_id.clone(),
                     name: pin.name.clone(),
                     pin_type: PinType::Input,
-                    data_type: self.convert_from_graph_data_type(&pin.data_type),
+                    data_type: pin.data_type.clone(),
                 }).collect(),
                 outputs: node_instance.outputs.iter().map(|(pin_id, pin)| Pin {
                     id: pin_id.clone(),
                     name: pin.name.clone(),
                     pin_type: PinType::Output,
-                    data_type: self.convert_from_graph_data_type(&pin.data_type),
+                    data_type: pin.data_type.clone(),
                 }).collect(),
                 properties: node_instance.properties.iter().map(|(k, v)| {
                     let value_str = match v {
