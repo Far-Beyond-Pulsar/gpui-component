@@ -20,104 +20,47 @@ impl GraphCompiler {
     }
 
     pub fn compile_graph(&self, graph: &GraphDescription) -> Result<String, String> {
-        let execution_order = graph.get_execution_order()?;
-
-        // Generate calls for execution order
-        let mut exec_calls = String::new();
-        for node_id in &execution_order {
-            if let Some(node_instance) = graph.nodes.get(node_id) {
-                if node_instance.node_type == "begin_play" {
-                    continue; // begin_play is the main function itself
-                }
-                let args = self.get_instance_args(node_instance, graph)?;
-                exec_calls.push_str(&format!("{}({});\n", node_instance.node_type, args));
+        // Find entry points: nodes with exec outputs but no exec inputs
+        let mut entry_points = Vec::new();
+        for (node_id, node_instance) in &graph.nodes {
+            let has_exec_out = node_instance.outputs.values().any(|p| p.data_type == "execution");
+            let has_exec_in = graph.connections.iter().any(|c| c.target_node == *node_id && matches!(c.connection_type, ConnectionType::Execution));
+            if has_exec_out && !has_exec_in {
+                entry_points.push(node_id.clone());
             }
         }
 
         let mut function_defs = String::new();
-        let mut seen_types = std::collections::HashSet::new();
 
-        // Collect unique node types and generate function definitions
-        for node_id in &execution_order {
-            if let Some(node_instance) = graph.nodes.get(node_id) {
+        // Generate functions for entry points
+        for entry_point_id in &entry_points {
+            if let Some(node_instance) = graph.nodes.get(entry_point_id) {
                 let node_type = &node_instance.node_type;
-                if !seen_types.contains(node_type) {
-                    seen_types.insert(node_type.clone());
-                    let node_def = self.node_definitions
-                        .get(node_type)
-                        .ok_or_else(|| format!("Node definition not found: {}", node_type))?;
-                    let mut template_vars = std::collections::HashMap::new();
-                    let params = node_def.inputs.iter().map(|i| format!("{}: {}", i.name, Self::rust_type(&i.data_type))).collect::<Vec<_>>().join(", ");
-                    if node_type == "begin_play" {
-                        template_vars.insert("pulsar_node_fn_id".to_string(), "main".to_string());
-                        template_vars.insert("pulsar_exec_exec_out".to_string(), exec_calls.clone());
-                    } else {
-                        if params.is_empty() {
-                            template_vars.insert("pulsar_node_fn_id".to_string(), node_type.clone());
-                        } else {
-                            template_vars.insert("pulsar_node_fn_id".to_string(), format!("{}({})", node_type, params));
-                        }
-                        for input in &node_def.inputs {
-                            let var_name = format!("in_{}_{}", input.name, input.data_type);
-                            template_vars.insert(var_name, input.name.clone());
-                        }
-                    }
-                    let template = self.templates
-                        .get(node_type)
-                        .ok_or_else(|| format!("Node template not found: {}", node_type))?;
-                    let mut template_clone = template.clone();
-                    for (key, value) in &template_vars {
-                        template_clone.set(key, value);
-                    }
-                    let rendered = template_clone.render()
-                        .map_err(|e| format!("Template render error for node {}: {}", node_instance.id, e))?;
-                    function_defs.push_str(&format!("{}\n", rendered));
+                let node_def = self.node_definitions
+                    .get(node_type)
+                    .ok_or_else(|| format!("Node definition not found: {}", node_type))?;
+                let mut template_vars = std::collections::HashMap::new();
+                // Find the exec output pin
+                if let Some((exec_pin_name, _)) = node_instance.outputs.iter().find(|(_, p)| p.data_type == "execution") {
+                    let exec_chain = self.get_execution_chain(&node_instance.outputs[exec_pin_name].connected_to, graph)?;
+                    template_vars.insert("pulsar_exec_exec_out".to_string(), exec_chain);
                 }
-            }
-        }
-
-        // For pure nodes
-        for (node_id, node_instance) in &graph.nodes {
-            if !execution_order.contains(node_id) {
-                let node_type = &node_instance.node_type;
-                if let Some(node_def) = self.node_definitions.get(node_type) {
-                    if node_def.is_pure && !seen_types.contains(node_type) {
-                        seen_types.insert(node_type.clone());
-                        let mut template_vars = std::collections::HashMap::new();
-                        let params = node_def.inputs.iter().map(|i| format!("{}: {}", i.name, Self::rust_type(&i.data_type))).collect::<Vec<_>>().join(", ");
-                        if params.is_empty() {
-                            template_vars.insert("pulsar_node_fn_id".to_string(), node_type.clone());
-                        } else {
-                            template_vars.insert("pulsar_node_fn_id".to_string(), format!("{}({})", node_type, params));
-                        }
-                        for input in &node_def.inputs {
-                            let var_name = format!("in_{}_{}", input.name, input.data_type);
-                            template_vars.insert(var_name, input.name.clone());
-                        }
-                        let template = self.templates
-                            .get(node_type)
-                            .ok_or_else(|| format!("Node template not found: {}", node_type))?;
-                        let mut template_clone = template.clone();
-                        for (key, value) in &template_vars {
-                            template_clone.set(key, value);
-                        }
-                        let rendered = template_clone.render()
-                            .map_err(|e| format!("Template render error for node {}: {}", node_instance.id, e))?;
-                        function_defs.push_str(&format!("{}\n", rendered));
-                    }
+                // Set function name
+                if node_type == "begin_play" {
+                    template_vars.insert("pulsar_node_fn_id".to_string(), "main".to_string());
+                } else {
+                    template_vars.insert("pulsar_node_fn_id".to_string(), node_type.clone());
                 }
-            }
-        }
-
-        // For pure nodes, generate calls
-        for (node_id, node_instance) in &graph.nodes {
-            if !execution_order.contains(node_id) {
-                if let Some(node_def) = self.node_definitions.get(&node_instance.node_type) {
-                    if node_def.is_pure {
-                        let args = self.get_instance_args(node_instance, graph)?;
-                        exec_calls.push_str(&format!("{}({});\n", node_instance.node_type, args));
-                    }
+                let template = self.templates
+                    .get(node_type)
+                    .ok_or_else(|| format!("Node template not found: {}", node_type))?;
+                let mut template_clone = template.clone();
+                for (key, value) in &template_vars {
+                    template_clone.set(key, value);
                 }
+                let rendered = template_clone.render()
+                    .map_err(|e| format!("Template render error for node {}: {}", node_instance.id, e))?;
+                function_defs.push_str(&format!("{}\n", rendered));
             }
         }
 
@@ -257,9 +200,10 @@ impl GraphCompiler {
             if let Some(connection) = graph.connections.iter().find(|c| c.id == *connection_id) {
                 if matches!(connection.connection_type, ConnectionType::Execution) {
                     if let Some(target_node) = graph.nodes.get(&connection.target_node) {
-                        // Generate a call to the target node's function with args
-                        let args = self.get_instance_args(target_node, graph)?;
-                        exec_code.push_str(&format!("{}({});\n", target_node.node_type, args));
+                        // Generate inlined code for the target node
+                        let inlined = self.get_inlined_code(target_node, graph)?;
+                        exec_code.push_str(&inlined);
+                        exec_code.push_str("\n");
                     }
                 }
             }
@@ -299,18 +243,47 @@ impl GraphCompiler {
         Ok(args.join(", "))
     }
 
-    fn rust_type(data_type: &str) -> &'static str {
-        match data_type {
-            "string" => "String",
-            "number" => "f64",
-            "boolean" => "bool",
-            "vector2" => "(f64, f64)",
-            "vector3" => "(f64, f64, f64)",
-            "color" => "(f64, f64, f64, f64)",
-            "rect" => "Rect", // assume defined
-            "transform" => "Transform",
-            _ => "String",
+    fn get_inlined_code(&self, node_instance: &NodeInstance, graph: &GraphDescription) -> Result<String, String> {
+        let node_def = self.node_definitions
+            .get(&node_instance.node_type)
+            .ok_or_else(|| format!("Node definition not found: {}", node_instance.node_type))?;
+        let template = self.templates
+            .get(&node_instance.node_type)
+            .ok_or_else(|| format!("Node template not found: {}", node_instance.node_type))?;
+        let mut template_vars = std::collections::HashMap::new();
+        template_vars.insert("pulsar_node_fn_id".to_string(), "".to_string());
+        // Set input variables to actual values
+        for input_def in &node_def.inputs {
+            let pin_name = &input_def.name;
+            let var_name = format!("in_{}_{}", pin_name, input_def.data_type);
+            if let Some(pin) = node_instance.inputs.get(pin_name) {
+                if let Some(connected_value) = self.get_connected_value(&pin.connected_to, graph) {
+                    template_vars.insert(var_name, connected_value);
+                } else if let Some(property_value) = node_instance.properties.get(pin_name) {
+                    template_vars.insert(var_name, self.property_value_to_string(property_value));
+                } else {
+                    if let Some(default) = &input_def.default_value {
+                        template_vars.insert(var_name, default.clone());
+                    } else {
+                        return Err(format!("No value provided for input pin: {}", pin_name));
+                    }
+                }
+            }
         }
+        // For exec, not set since inlining
+        let mut template_clone = template.clone();
+        for (key, value) in &template_vars {
+            template_clone.set(key, value);
+        }
+        let rendered = template_clone.render()
+            .map_err(|e| format!("Template render error for node {}: {}", node_instance.id, e))?;
+        // Assume rendered is { body } or body, extract
+        let body = if rendered.starts_with('{') && rendered.ends_with('}') {
+            rendered[1..rendered.len() - 1].trim()
+        } else {
+            &rendered
+        };
+        Ok(body.to_string())
     }
 
     fn property_value_to_string(&self, value: &PropertyValue) -> String {

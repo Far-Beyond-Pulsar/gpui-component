@@ -1,9 +1,3 @@
-//! A simple node that prints a message to the console.
-
-/// Print a message to the console.
-fn println(message: String)() {
-    println!("message");
-}
 //! A debug node that prints a string to the console.
 
 /// Print a string to the console for debugging.
@@ -14,21 +8,15 @@ fn print_string(message: String)() {
 
 /// Main entry point for execution.
 fn main() {
-    println("");
+    print_string("");
+print_string("");
 print_string("Hello World!");
-println("");
-println("");
-println("");
-println("");
-println("");
-println("");
-println("");
-println("");
-println("");
-println("");
-println("");
-println("");
-println("");
-println("");
+print_string("");
+print_string("");
+print_string("");
+print_string("");
+print_string("");
+print_string("");
+print_string("");
 
 }
