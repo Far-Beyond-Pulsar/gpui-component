@@ -1,41 +1,142 @@
 {
   "nodes": {
-    "begin_play": {
-      "id": "begin_play",
-      "node_type": "begin_play",
+    "9f846d55-22d0-4104-8a45-6628508361c0": {
+      "id": "9f846d55-22d0-4104-8a45-6628508361c0",
+      "node_type": "try_parse_number",
       "position": {
-        "x": -265.0,
-        "y": 65.0
+        "x": 204.61462,
+        "y": 257.76553
       },
       "properties": {},
-      "inputs": {},
+      "inputs": {
+        "fallback": {
+          "name": "fallback",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "text": {
+          "name": "text",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
       "outputs": {
-        "exec_out": {
-          "name": "exec_out",
+        "result": {
+          "name": "result",
           "pin_type": "Output",
-          "data_type": "Execution",
-          "connected_to": [
-            "connection_1"
-          ]
+          "data_type": {
+            "Typed": {
+              "base_type": "f32",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
         }
       }
+    },
+    "1cb3b190-3e0b-4e66-8e5d-7533012f5db1": {
+      "id": "1cb3b190-3e0b-4e66-8e5d-7533012f5db1",
+      "node_type": "print_number",
+      "position": {
+        "x": 201.34908,
+        "y": 180.32532
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "value": {
+          "name": "value",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "d81b7024-a147-4327-a5f8-daf4b459717b": {
+      "id": "d81b7024-a147-4327-a5f8-daf4b459717b",
+      "node_type": "radians_to_degrees",
+      "position": {
+        "x": 208.34668,
+        "y": 280.15787
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "radians": {
+          "name": "radians",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {}
     },
     "print_string": {
       "id": "print_string",
       "node_type": "print_string",
       "position": {
-        "x": -41.25006,
-        "y": 71.61847
+        "x": 400.0,
+        "y": 100.0
       },
       "properties": {
-        "print_to_screen": {
-          "Boolean": true
-        },
         "message": {
           "String": "Hello World!"
+        },
+        "print_to_screen": {
+          "Boolean": true
         }
       },
       "inputs": {
+        "message": {
+          "name": "message",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
         "exec_in": {
           "name": "exec_in",
           "pin_type": "Input",
@@ -43,6 +144,31 @@
           "connected_to": [
             "connection_1"
           ]
+        }
+      },
+      "outputs": {
+        "exec_out": {
+          "name": "exec_out",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": []
+        }
+      }
+    },
+    "dfbe170f-bb37-4168-a0e1-16bc7512ea24": {
+      "id": "dfbe170f-bb37-4168-a0e1-16bc7512ea24",
+      "node_type": "breakpoint",
+      "position": {
+        "x": 200.41606,
+        "y": 216.71289
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
         },
         "message": {
           "name": "message",
@@ -57,11 +183,1420 @@
           "connected_to": []
         }
       },
+      "outputs": {}
+    },
+    "8743b800-fce9-4bde-898d-eebaba91c4c7": {
+      "id": "8743b800-fce9-4bde-898d-eebaba91c4c7",
+      "node_type": "is_null",
+      "position": {
+        "x": 206.48065,
+        "y": 248.90189
+      },
+      "properties": {},
+      "inputs": {
+        "value": {
+          "name": "value",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "option",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {
+        "result": {
+          "name": "result",
+          "pin_type": "Output",
+          "data_type": {
+            "Typed": {
+              "base_type": "bool",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      }
+    },
+    "599fc64e-84fa-4fca-8e3e-bf6fdfb688d0": {
+      "id": "599fc64e-84fa-4fca-8e3e-bf6fdfb688d0",
+      "node_type": "shell_which",
+      "position": {
+        "x": 200.88257,
+        "y": 193.85402
+      },
+      "properties": {},
+      "inputs": {
+        "command": {
+          "name": "command",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {
+        "result": {
+          "name": "result",
+          "pin_type": "Output",
+          "data_type": {
+            "Typed": {
+              "base_type": "String, String",
+              "wrappers": [
+                "Result"
+              ],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      }
+    },
+    "begin_play": {
+      "id": "begin_play",
+      "node_type": "begin_play",
+      "position": {
+        "x": 100.0,
+        "y": 100.0
+      },
+      "properties": {},
+      "inputs": {},
       "outputs": {
         "exec_out": {
           "name": "exec_out",
           "pin_type": "Output",
           "data_type": "Execution",
+          "connected_to": [
+            "connection_1"
+          ]
+        }
+      }
+    },
+    "7b836e7b-1955-4f1a-b504-96997ce424e9": {
+      "id": "7b836e7b-1955-4f1a-b504-96997ce424e9",
+      "node_type": "range_switch",
+      "position": {
+        "x": 211.14572,
+        "y": 212.98082
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "value": {
+          "name": "value",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {
+        "low": {
+          "name": "low",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "negative": {
+          "name": "negative",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "extreme": {
+          "name": "extreme",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "medium": {
+          "name": "medium",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "high": {
+          "name": "high",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": []
+        }
+      }
+    },
+    "2045d371-d458-41fc-8d04-3e9d60a51555": {
+      "id": "2045d371-d458-41fc-8d04-3e9d60a51555",
+      "node_type": "print_number",
+      "position": {
+        "x": 209.2797,
+        "y": 186.85641
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "value": {
+          "name": "value",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "604936d9-9c3c-4219-98af-e6b07d07bb9d": {
+      "id": "604936d9-9c3c-4219-98af-e6b07d07bb9d",
+      "node_type": "println",
+      "position": {
+        "x": 213.47827,
+        "y": 206.44972
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "message": {
+          "name": "message",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "51530422-d92f-4684-8174-9529fa909f60": {
+      "id": "51530422-d92f-4684-8174-9529fa909f60",
+      "node_type": "print_bool",
+      "position": {
+        "x": 237.73665,
+        "y": 251.23442
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "value": {
+          "name": "value",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "bool",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "f229b3e4-6d35-4c60-a23c-c40a95c60d54": {
+      "id": "f229b3e4-6d35-4c60-a23c-c40a95c60d54",
+      "node_type": "nearly_equal",
+      "position": {
+        "x": 210.67923,
+        "y": 196.65306
+      },
+      "properties": {},
+      "inputs": {
+        "tolerance": {
+          "name": "tolerance",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "b": {
+          "name": "b",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "a": {
+          "name": "a",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {
+        "result": {
+          "name": "result",
+          "pin_type": "Output",
+          "data_type": {
+            "Typed": {
+              "base_type": "bool",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      }
+    },
+    "c97abee2-c1e2-41c2-857d-a4d70d74ef0e": {
+      "id": "c97abee2-c1e2-41c2-857d-a4d70d74ef0e",
+      "node_type": "nearly_equal",
+      "position": {
+        "x": 210.67923,
+        "y": 192.921
+      },
+      "properties": {},
+      "inputs": {
+        "a": {
+          "name": "a",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "b": {
+          "name": "b",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "tolerance": {
+          "name": "tolerance",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {
+        "result": {
+          "name": "result",
+          "pin_type": "Output",
+          "data_type": {
+            "Typed": {
+              "base_type": "bool",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      }
+    },
+    "354f84e3-ff17-4836-b86b-4da935b3e0e9": {
+      "id": "354f84e3-ff17-4836-b86b-4da935b3e0e9",
+      "node_type": "debug_memory_usage",
+      "position": {
+        "x": 224.67444,
+        "y": 217.6459
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "6bc37de7-12f1-4ee5-9c5b-c95a6481e221": {
+      "id": "6bc37de7-12f1-4ee5-9c5b-c95a6481e221",
+      "node_type": "println",
+      "position": {
+        "x": 246.60028,
+        "y": 195.25354
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "message": {
+          "name": "message",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "f3d4afee-075a-43be-8275-3899f2f7a5d0": {
+      "id": "f3d4afee-075a-43be-8275-3899f2f7a5d0",
+      "node_type": "println",
+      "position": {
+        "x": 328.70557,
+        "y": 242.8373
+      },
+      "properties": {},
+      "inputs": {
+        "message": {
+          "name": "message",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "2e367cc3-f474-44f1-95ac-514f033e389e": {
+      "id": "2e367cc3-f474-44f1-95ac-514f033e389e",
+      "node_type": "assert_equals",
+      "position": {
+        "x": 189.21988,
+        "y": 196.18655
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "a": {
+          "name": "a",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "message": {
+          "name": "message",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "b": {
+          "name": "b",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "1757bee6-193e-456f-a95c-38ff201d9d5d": {
+      "id": "1757bee6-193e-456f-a95c-38ff201d9d5d",
+      "node_type": "path_extension",
+      "position": {
+        "x": 211.14572,
+        "y": 280.15787
+      },
+      "properties": {},
+      "inputs": {
+        "path": {
+          "name": "path",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {
+        "result": {
+          "name": "result",
+          "pin_type": "Output",
+          "data_type": {
+            "Typed": {
+              "base_type": "String",
+              "wrappers": [
+                "Option"
+              ],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      }
+    },
+    "ef44b1d1-fbec-4bc7-af68-966211328030": {
+      "id": "ef44b1d1-fbec-4bc7-af68-966211328030",
+      "node_type": "print_bool",
+      "position": {
+        "x": 236.33713,
+        "y": 244.70332
+      },
+      "properties": {},
+      "inputs": {
+        "value": {
+          "name": "value",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "bool",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "978924b6-6db7-4e5c-b583-39b4ce5306f3": {
+      "id": "978924b6-6db7-4e5c-b583-39b4ce5306f3",
+      "node_type": "print_formatted",
+      "position": {
+        "x": 225.14095,
+        "y": 251.70093
+      },
+      "properties": {},
+      "inputs": {
+        "format": {
+          "name": "format",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "value1": {
+          "name": "value1",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "value0": {
+          "name": "value0",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "value2": {
+          "name": "value2",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "8ffe521b-d042-4ac0-b703-08764e887ca0": {
+      "id": "8ffe521b-d042-4ac0-b703-08764e887ca0",
+      "node_type": "fps_counter",
+      "position": {
+        "x": 201.34908,
+        "y": 221.37796
+      },
+      "properties": {},
+      "inputs": {
+        "delta": {
+          "name": "delta",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "time_number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {
+        "result": {
+          "name": "result",
+          "pin_type": "Output",
+          "data_type": {
+            "Typed": {
+              "base_type": "f32",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      }
+    },
+    "332cd916-6a87-4e74-9a19-2b8d7beb4047": {
+      "id": "332cd916-6a87-4e74-9a19-2b8d7beb4047",
+      "node_type": "assert_equals",
+      "position": {
+        "x": 190.1529,
+        "y": 203.18417
+      },
+      "properties": {},
+      "inputs": {
+        "message": {
+          "name": "message",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "a": {
+          "name": "a",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "b": {
+          "name": "b",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "6236b408-91ea-4204-862a-7f5c4c4ca1ff": {
+      "id": "6236b408-91ea-4204-862a-7f5c4c4ca1ff",
+      "node_type": "conditional_print",
+      "position": {
+        "x": 236.80363,
+        "y": 269.8947
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "message": {
+          "name": "message",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "condition": {
+          "name": "condition",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "bool",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "f08cf5d9-5747-4b70-a26e-ca5daec1b957": {
+      "id": "f08cf5d9-5747-4b70-a26e-ca5daec1b957",
+      "node_type": "print_number",
+      "position": {
+        "x": 209.2797,
+        "y": 186.85641
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "value": {
+          "name": "value",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "ae76dc21-38e7-4a8f-96fd-db60dad591a0": {
+      "id": "ae76dc21-38e7-4a8f-96fd-db60dad591a0",
+      "node_type": "breakpoint",
+      "position": {
+        "x": 208.34668,
+        "y": 214.38034
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "message": {
+          "name": "message",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "4687fbbe-7178-42c5-abd8-974abf930245": {
+      "id": "4687fbbe-7178-42c5-abd8-974abf930245",
+      "node_type": "is_numeric",
+      "position": {
+        "x": 201.34908,
+        "y": 210.18178
+      },
+      "properties": {},
+      "inputs": {
+        "text": {
+          "name": "text",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {
+        "result": {
+          "name": "result",
+          "pin_type": "Output",
+          "data_type": {
+            "Typed": {
+              "base_type": "bool",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      }
+    },
+    "57c908e0-666c-447e-bb89-60e7add67099": {
+      "id": "57c908e0-666c-447e-bb89-60e7add67099",
+      "node_type": "channel_send",
+      "position": {
+        "x": 192.95193,
+        "y": 183.12436
+      },
+      "properties": {},
+      "inputs": {
+        "message": {
+          "name": "message",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "sender": {
+          "name": "sender",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "sender",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {
+        "result": {
+          "name": "result",
+          "pin_type": "Output",
+          "data_type": {
+            "Typed": {
+              "base_type": "(), String",
+              "wrappers": [
+                "Result"
+              ],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      }
+    },
+    "ccf5c76d-fc01-406b-96c7-376cfec70415": {
+      "id": "ccf5c76d-fc01-406b-96c7-376cfec70415",
+      "node_type": "println",
+      "position": {
+        "x": 207.88017,
+        "y": 200.38513
+      },
+      "properties": {},
+      "inputs": {
+        "message": {
+          "name": "message",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "219a93ce-efd2-43ed-ae0c-34b23420ac26": {
+      "id": "219a93ce-efd2-43ed-ae0c-34b23420ac26",
+      "node_type": "hashset_insert",
+      "position": {
+        "x": 203.68161,
+        "y": 212.0478
+      },
+      "properties": {},
+      "inputs": {
+        "set": {
+          "name": "set",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "hashset",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "value": {
+          "name": "value",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {
+        "result": {
+          "name": "result",
+          "pin_type": "Output",
+          "data_type": {
+            "Typed": {
+              "base_type": "std::collections::HashSet<String>",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      }
+    },
+    "2c2b0525-8d2f-45ab-bada-0bdef6a23f96": {
+      "id": "2c2b0525-8d2f-45ab-bada-0bdef6a23f96",
+      "node_type": "println",
+      "position": {
+        "x": 212.54526,
+        "y": 207.38274
+      },
+      "properties": {},
+      "inputs": {
+        "message": {
+          "name": "message",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "56727557-e794-441d-93d3-19b6324e9525": {
+      "id": "56727557-e794-441d-93d3-19b6324e9525",
+      "node_type": "breakpoint",
+      "position": {
+        "x": 206.94716,
+        "y": 220.91145
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "message": {
+          "name": "message",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "a47ad7bb-ab38-4a93-822b-2057daf33b49": {
+      "id": "a47ad7bb-ab38-4a93-822b-2057daf33b49",
+      "node_type": "bezier_cubic",
+      "position": {
+        "x": 203.2151,
+        "y": 217.6459
+      },
+      "properties": {},
+      "inputs": {
+        "start": {
+          "name": "start",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "end": {
+          "name": "end",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "control2": {
+          "name": "control2",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "t": {
+          "name": "t",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "control1": {
+          "name": "control1",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {
+        "result": {
+          "name": "result",
+          "pin_type": "Output",
+          "data_type": {
+            "Typed": {
+              "base_type": "f32",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      }
+    },
+    "09b7ee5e-9b5f-4be7-b88f-bd8ebb67b2e3": {
+      "id": "09b7ee5e-9b5f-4be7-b88f-bd8ebb67b2e3",
+      "node_type": "debug_memory_usage",
+      "position": {
+        "x": 224.67444,
+        "y": 217.6459
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "d7c61efd-b469-4d4f-a8bf-9f45f8054d82": {
+      "id": "d7c61efd-b469-4d4f-a8bf-9f45f8054d82",
+      "node_type": "hashmap_filter",
+      "position": {
+        "x": 203.2151,
+        "y": 267.5622
+      },
+      "properties": {},
+      "inputs": {
+        "map": {
+          "name": "map",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "hashmap",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "pattern": {
+          "name": "pattern",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {
+        "result": {
+          "name": "result",
+          "pin_type": "Output",
+          "data_type": {
+            "Typed": {
+              "base_type": "std::collections::HashMap<String, String>",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      }
+    },
+    "8c679c46-1f8b-4d2d-bd60-90c9a66759f1": {
+      "id": "8c679c46-1f8b-4d2d-bd60-90c9a66759f1",
+      "node_type": "hashset_new",
+      "position": {
+        "x": 199.01654,
+        "y": 220.44495
+      },
+      "properties": {},
+      "inputs": {},
+      "outputs": {
+        "result": {
+          "name": "result",
+          "pin_type": "Output",
+          "data_type": {
+            "Typed": {
+              "base_type": "std::collections::HashSet<String>",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      }
+    },
+    "844f9cf9-55f6-4c37-81f2-14ff5073b1ad": {
+      "id": "844f9cf9-55f6-4c37-81f2-14ff5073b1ad",
+      "node_type": "println",
+      "position": {
+        "x": 246.60028,
+        "y": 195.72005
+      },
+      "properties": {},
+      "inputs": {
+        "message": {
+          "name": "message",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "2447bfde-6a10-4c33-b7a0-cc2562781e5c": {
+      "id": "2447bfde-6a10-4c33-b7a0-cc2562781e5c",
+      "node_type": "env_list",
+      "position": {
+        "x": 534.4353,
+        "y": 250.3014
+      },
+      "properties": {},
+      "inputs": {},
+      "outputs": {
+        "result": {
+          "name": "result",
+          "pin_type": "Output",
+          "data_type": {
+            "Typed": {
+              "base_type": "std::collections::HashMap<String, String>",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      }
+    },
+    "bb07cd06-3312-49dc-99ab-118b80f79a24": {
+      "id": "bb07cd06-3312-49dc-99ab-118b80f79a24",
+      "node_type": "url_decode",
+      "position": {
+        "x": 202.28209,
+        "y": 247.96887
+      },
+      "properties": {},
+      "inputs": {
+        "text": {
+          "name": "text",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {
+        "result": {
+          "name": "result",
+          "pin_type": "Output",
+          "data_type": {
+            "Typed": {
+              "base_type": "String, String",
+              "wrappers": [
+                "Result"
+              ],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      }
+    },
+    "d326f70f-df0c-4d86-be8f-31dca3cac4f0": {
+      "id": "d326f70f-df0c-4d86-be8f-31dca3cac4f0",
+      "node_type": "bit_shift_right",
+      "position": {
+        "x": 204.61462,
+        "y": 169.12914
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": []
+        },
+        "shift": {
+          "name": "shift",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "value": {
+          "name": "value",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "number",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {}
+    },
+    "69958b45-ea95-46de-9e85-7a5d819cb6a0": {
+      "id": "69958b45-ea95-46de-9e85-7a5d819cb6a0",
+      "node_type": "hashset_insert",
+      "position": {
+        "x": 203.68161,
+        "y": 210.64828
+      },
+      "properties": {},
+      "inputs": {
+        "value": {
+          "name": "value",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "set": {
+          "name": "set",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "hashset",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {
+        "result": {
+          "name": "result",
+          "pin_type": "Output",
+          "data_type": {
+            "Typed": {
+              "base_type": "std::collections::HashSet<String>",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
           "connected_to": []
         }
       }
@@ -81,7 +1616,7 @@
     "name": "Blueprint Graph",
     "description": "",
     "version": "1.0.0",
-    "created_at": "2025-09-28T20:56:00.613172600+00:00",
-    "modified_at": "2025-09-28T20:56:00.613207500+00:00"
+    "created_at": "2025-09-28T21:39:41.502709300+00:00",
+    "modified_at": "2025-09-28T21:39:41.502826800+00:00"
   }
 }
