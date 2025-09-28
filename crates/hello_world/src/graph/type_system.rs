@@ -111,7 +111,7 @@ impl TypeInfo {
         }
     }
 
-    fn extract_wrapper(type_str: &str, prefix: &str, suffix: &str) -> Option<&str> {
+    fn extract_wrapper<'a>(type_str: &'a str, prefix: &str, suffix: &str) -> Option<&'a str> {
         if type_str.starts_with(prefix) {
             if suffix.is_empty() {
                 Some(&type_str[prefix.len()..])

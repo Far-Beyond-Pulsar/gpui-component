@@ -189,18 +189,19 @@ impl PartialEq<&str> for DataType {
 
 impl std::fmt::Display for DataType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str_repr = match self {
-            DataType::Execution => "execution",
-            DataType::String => "string",
-            DataType::Number => "number",
-            DataType::Boolean => "boolean",
-            DataType::Vector2 => "vector2",
-            DataType::Vector3 => "vector3",
-            DataType::Color => "color",
-            DataType::Object => "object",
-            DataType::Array(inner) => return write!(f, "array<{}>", inner),
-        };
-        write!(f, "{}", str_repr)
+        match self {
+            DataType::Execution => write!(f, "execution"),
+            DataType::Typed(type_info) => write!(f, "{}", type_info),
+            // Legacy types
+            DataType::String => write!(f, "string"),
+            DataType::Number => write!(f, "number"),
+            DataType::Boolean => write!(f, "boolean"),
+            DataType::Vector2 => write!(f, "vector2"),
+            DataType::Vector3 => write!(f, "vector3"),
+            DataType::Color => write!(f, "color"),
+            DataType::Object => write!(f, "object"),
+            DataType::Array(inner) => write!(f, "array<{}>", inner),
+        }
     }
 }
 
