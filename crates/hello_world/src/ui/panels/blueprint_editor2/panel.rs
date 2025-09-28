@@ -13,6 +13,7 @@ use super::toolbar::ToolbarRenderer;
 use super::node_library::NodeLibraryRenderer;
 use super::node_graph::NodeGraphRenderer;
 use super::properties::PropertiesRenderer;
+use crate::graph::{GraphDescription, DataType as GraphDataType};
 
 pub struct BlueprintEditorPanel {
     focus_handle: FocusHandle,
@@ -41,7 +42,7 @@ pub struct BlueprintEditorPanel {
 pub struct ConnectionDrag {
     pub from_node_id: String,
     pub from_pin_id: String,
-    pub from_pin_type: super::DataType,
+    pub from_pin_type: GraphDataType,
     pub current_mouse_pos: Point<f32>,
     pub target_pin: Option<(String, String)>, // (node_id, pin_id)
 }
@@ -69,7 +70,7 @@ impl BlueprintEditorPanel {
                 id: "exec_out".to_string(),
                 name: "".to_string(),
                 pin_type: PinType::Output,
-                data_type: DataType::Execution,
+                data_type: GraphDataType::from_type_str("execution"),
             }],
             properties: std::collections::HashMap::new(),
             is_selected: false,
@@ -92,20 +93,20 @@ impl BlueprintEditorPanel {
                     id: "exec_in".to_string(),
                     name: "".to_string(),
                     pin_type: PinType::Input,
-                    data_type: DataType::Execution,
+                    data_type: GraphDataType::from_type_str("execution"),
                 },
                 Pin {
                     id: "text_in".to_string(),
                     name: "In String".to_string(),
                     pin_type: PinType::Input,
-                    data_type: DataType::String,
+                    data_type: GraphDataType::from_type_str("String"),
                 },
             ],
             outputs: vec![Pin {
                 id: "exec_out".to_string(),
                 name: "".to_string(),
                 pin_type: PinType::Output,
-                data_type: DataType::Execution,
+                data_type: GraphDataType::from_type_str("execution"),
             }],
             properties: print_props,
             is_selected: false,
@@ -275,17 +276,7 @@ impl BlueprintEditorPanel {
         Ok(bp_node.title.replace(" ", "_").to_lowercase())
     }
 
-    fn convert_blueprint_data_type(&self, bp_type: &DataType) -> crate::graph::DataType {
-        match bp_type {
-            DataType::Execution => crate::graph::DataType::Execution,
-            DataType::Boolean => crate::graph::DataType::Boolean,
-            DataType::Integer => crate::graph::DataType::Number,
-            DataType::Float => crate::graph::DataType::Number,
-            DataType::String => crate::graph::DataType::String,
-            DataType::Vector => crate::graph::DataType::Vector3,
-            DataType::Object => crate::graph::DataType::Object,
-        }
-    }
+    // Conversion function no longer needed since we use the unified DataType system
 
     /// Save the current graph to a JSON file
     pub fn save_blueprint(&self, file_path: &str) -> Result<(), String> {
@@ -375,16 +366,7 @@ impl BlueprintEditorPanel {
         })
     }
 
-    fn convert_from_graph_data_type(&self, graph_type: &crate::graph::DataType) -> DataType {
-        match graph_type {
-            crate::graph::DataType::Execution => DataType::Execution,
-            crate::graph::DataType::Boolean => DataType::Boolean,
-            crate::graph::DataType::Number => DataType::Float,
-            crate::graph::DataType::String => DataType::String,
-            crate::graph::DataType::Vector2 | crate::graph::DataType::Vector3 => DataType::Vector,
-            _ => DataType::Object,
-        }
-    }
+    // Conversion function no longer needed since we use the unified DataType system
 
 
     pub fn start_drag(&mut self, node_id: String, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
@@ -510,7 +492,7 @@ impl BlueprintEditorPanel {
                     // Check if compatible and not same node
                     if drag.from_pin_type == pin.data_type && drag.from_node_id != node_id {
                         // Additional validation: only one connection per input pin (except execution pins)
-                        let can_connect = if pin.data_type == super::DataType::Execution {
+                        let can_connect = if pin.data_type == GraphDataType::from_type_str("execution") {
                             true // Execution pins can have multiple connections
                         } else {
                             // Non-execution pins can only have one input connection
