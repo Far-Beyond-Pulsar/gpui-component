@@ -301,7 +301,7 @@ impl NodeCreationMenu {
                 cx.emit(NodeCreationEvent::CreateNode(new_node));
             }))
             .id(ElementId::Name(element_id.into()))
-            .tooltip(create_markdown_tooltip(tooltip_description.clone()))
+            .tooltip(create_markdown_tooltip(tooltip_description))
             .child(
                 Icon::new(IconName::CircleX) // TODO: Use node type specific icon
                     .size(px(14.0))
