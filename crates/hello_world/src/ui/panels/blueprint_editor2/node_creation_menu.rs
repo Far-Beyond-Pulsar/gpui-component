@@ -17,10 +17,9 @@ use std::rc::Rc;
 use super::{NodeDefinitions, NodeCategory, NodeDefinition, BlueprintNode};
 use crate::graph::Position;
 
-/// Helper to create tooltip function that properly manages memory
-fn create_markdown_tooltip(description: Rc<str>) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+/// Helper to create tooltip function with static strings (using Box::leak)
+fn create_markdown_tooltip(description: &'static str) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
     move |window, cx| {
-        let desc_clone = description.clone();
         Tooltip::element(move |window, cx| {
             v_flex()
                 .w(px(400.0))  // Fixed width for better text wrapping
@@ -35,7 +34,7 @@ fn create_markdown_tooltip(description: Rc<str>) -> impl Fn(&mut Window, &mut Ap
                         .child(
                             TextView::markdown(
                                 "node-tooltip",
-                                desc_clone.as_ref(),
+                                description,
                                 window,
                                 cx
                             )
