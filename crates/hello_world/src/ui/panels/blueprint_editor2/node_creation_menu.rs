@@ -1,17 +1,21 @@
 use gpui::*;
+use gpui::ElementId;
 use gpui::Axis;
-use gpui::prelude::{FluentBuilder, InteractiveElement};
+use gpui::prelude::{FluentBuilder, InteractiveElement, StatefulInteractiveElement};
 use gpui_component::{
     h_flex, v_flex,
     ActiveTheme as _, StyledExt,
     Icon, IconName,
     input::{InputState, InputEvent, TextInput},
+    tooltip::Tooltip,
+    text::TextView,
 };
 use gpui::div;
 use std::collections::HashMap;
 
 use super::{NodeDefinitions, NodeCategory, NodeDefinition, BlueprintNode};
 use crate::graph::Position;
+
 
 /// Unreal-like node creation context menu
 pub struct NodeCreationMenu {
@@ -247,7 +251,10 @@ impl NodeCreationMenu {
 
         // Pre-compute highlighted text to avoid borrowing issues
         let highlighted_name_element = self.render_highlighted_text(&node.highlighted_name, cx);
-        let highlighted_description_element = self.render_highlighted_text(&node.highlighted_description, cx);
+
+        // Convert description to 'static by leaking memory for tooltip lifetime
+        let tooltip_description: &'static str = Box::leak(node.definition.description.clone().into_boxed_str());
+        let element_id = format!("node-item-{}", node.definition.id);
 
         h_flex()
             .w_full()
@@ -264,6 +271,12 @@ impl NodeCreationMenu {
                 // Emit the event and also close the menu
                 cx.emit(NodeCreationEvent::CreateNode(new_node));
             }))
+            .id(ElementId::Name(element_id.into()))
+            .tooltip(move |window, cx| {
+                // For now, use simple text tooltip with the markdown content
+                // TODO: Upgrade to rich markdown once we solve the closure lifetime issue
+                Tooltip::new(tooltip_description.clone()).build(window, cx)
+            })
             .child(
                 Icon::new(IconName::CircleX) // TODO: Use node type specific icon
                     .size(px(14.0))
@@ -280,20 +293,9 @@ impl NodeCreationMenu {
                             .text_color(cx.theme().foreground)
                             .child(highlighted_name_element)
                     )
-                    .when(!node.highlighted_description.is_empty(), {
-                        let muted_color = cx.theme().muted_foreground;
-                        let desc_element = highlighted_description_element;
-                        move |element| {
-                            element.child(
-                                div()
-                                    .text_sm()
-                                    .text_color(muted_color)
-                                    .child(desc_element)
-                            )
-                        }
-                    })
             )
     }
+
 
     fn render_highlighted_text(&self, text: &str, cx: &mut Context<Self>) -> impl IntoElement {
         if text.contains("**") {

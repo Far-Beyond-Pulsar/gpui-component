@@ -7,7 +7,10 @@
       "WebFetch(domain:github.com)",
       "Bash(cargo run:*)",
       "Bash(timeout 30 cargo check -p pulsar_engine)",
-      "Bash(cargo build:*)"
+      "Bash(cargo build:*)",
+      "Bash(find:*)",
+      "Bash(rg:*)",
+      "Read(//c/Users/redst/.cargo/git/checkouts/zed-a70e2ad075855582/53b2f37/**)"
     ],
     "deny": [],
     "ask": []
