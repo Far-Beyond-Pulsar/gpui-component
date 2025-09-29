@@ -1,6 +1,7 @@
 use gpui::{
     canvas, deferred, div, px, App, AppContext as _, Bounds, Context, Empty, Entity,
-    InteractiveElement, IntoElement, ParentElement, Pixels, Point, Render, Styled, Window,
+    InteractiveElement, IntoElement, ParentElement, Pixels, Point, Render,
+    StatefulInteractiveElement, Styled, Window,
 };
 
 use gpui_component::{v_flex, ActiveTheme as _, text::TextView, StyledExt};
@@ -79,8 +80,8 @@ impl Render for HoverableTooltip {
         let tooltip_max_height = px(300.0);
 
         let mut x = self.position.x;
-        // Position tooltip closer to mouse (only 40px down instead of previous offset)
-        let mut y = self.position.y - px(40.0);
+        // Use the position as provided (already offset by caller)
+        let mut y = self.position.y;
 
         // Keep tooltip within window bounds
         if x + tooltip_width > window_bounds.size.width {
@@ -112,7 +113,16 @@ impl Render for HoverableTooltip {
                         .border_color(cx.theme().border)
                         .rounded(cx.theme().radius)
                         .shadow_lg()
-                        .child(TextView::markdown("tooltip-content", &content, window, cx).selectable())
+                        .overflow_hidden()
+                        .child(
+                            div()
+                                .id("hoverable-tooltip-content")
+                                .w_full()
+                                .h_full()
+                                .overflow_y_scroll()
+                                .overflow_x_hidden()
+                                .child(TextView::markdown("tooltip-content", &content, window, cx).selectable())
+                        )
                         .child(
                             // Canvas to capture bounds for hit testing
                             canvas(

@@ -306,9 +306,12 @@ impl NodeGraphRenderer {
                             .on_mouse_move(cx.listener({
                                 let tooltip_content = tooltip_content.clone();
                                 move |panel, event: &MouseMoveEvent, window, cx| {
-                                    // Show hoverable tooltip on mouse move
-                                    let mouse_pos = Point::new(event.position.x.0, event.position.y.0);
-                                    panel.show_hoverable_tooltip(tooltip_content.clone(), mouse_pos, window, cx);
+                                    // Only show tooltip if it's not already visible
+                                    if panel.hoverable_tooltip.is_none() {
+                                        // Position tooltip near the node header, offset right and up from mouse
+                                        let tooltip_pos = Point::new(event.position.x.0 + 20.0, event.position.y.0 - 60.0);
+                                        panel.show_hoverable_tooltip(tooltip_content.clone(), tooltip_pos, window, cx);
+                                    }
                                 }
                             }))
                             .on_mouse_down(gpui::MouseButton::Left, {
