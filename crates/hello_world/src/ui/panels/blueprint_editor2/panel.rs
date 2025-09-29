@@ -68,6 +68,7 @@ impl BlueprintEditorPanel {
         // Begin Play event node
         nodes.push(BlueprintNode {
             id: "begin_play".to_string(),
+            definition_id: "begin_play".to_string(),
             title: "Begin Play".to_string(),
             icon: "▶️".to_string(),
             node_type: NodeType::Event,
@@ -92,6 +93,7 @@ impl BlueprintEditorPanel {
 
         nodes.push(BlueprintNode {
             id: "print_string".to_string(),
+            definition_id: "print_string".to_string(),
             title: "Print String".to_string(),
             icon: "📝".to_string(),
             node_type: NodeType::Logic,
@@ -248,20 +250,8 @@ impl BlueprintEditorPanel {
     }
 
     fn get_node_type_from_blueprint(&self, bp_node: &BlueprintNode) -> Result<String, String> {
-        // Try to find the original node type from definitions
-        let node_definitions = NodeDefinitions::load();
-
-        // Search through all categories for a matching node
-        for category in &node_definitions.categories {
-            for node_def in &category.nodes {
-                if node_def.name == bp_node.title {
-                    return Ok(node_def.id.clone());
-                }
-            }
-        }
-
-        // Fallback: use title as type
-        Ok(bp_node.title.replace(" ", "_").to_lowercase())
+        // Use the stored definition_id directly
+        Ok(bp_node.definition_id.clone())
     }
 
     // Conversion function no longer needed since we use the unified DataType system
@@ -297,13 +287,38 @@ impl BlueprintEditorPanel {
         let mut nodes = Vec::new();
         let mut connections = Vec::new();
 
+        // Load node definitions to populate descriptions and other metadata
+        let node_definitions = NodeDefinitions::load();
+
         // Convert nodes
         for (node_id, node_instance) in &graph_desc.nodes {
+            // Use node_type field as the definition_id to look up full node metadata
+            let definition_id = node_instance.node_type.clone();
+
+            // Look up node definition by ID to restore all metadata
+            let node_def = node_definitions.get_node_definition(&definition_id);
+
+            let (title, icon, description, node_type) = if let Some(def) = node_def {
+                let category = node_definitions.get_category_for_node(&def.id);
+                let node_type = match category.map(|c| c.name.as_str()) {
+                    Some("Events") => NodeType::Event,
+                    Some("Logic") => NodeType::Logic,
+                    Some("Math") => NodeType::Math,
+                    Some("Object") => NodeType::Object,
+                    _ => NodeType::Logic,
+                };
+                (def.name.clone(), def.icon.clone(), def.description.clone(), node_type)
+            } else {
+                // Fallback if definition not found
+                (definition_id.replace('_', " "), "⚙️".to_string(), String::new(), NodeType::Logic)
+            };
+
             let bp_node = BlueprintNode {
                 id: node_id.clone(),
-                title: node_instance.node_type.replace('_', " "),
-                icon: "⚙️".to_string(), // Default icon
-                node_type: NodeType::Logic, // Default type
+                definition_id,
+                title,
+                icon,
+                node_type,
                 position: Point::new(node_instance.position.x, node_instance.position.y),
                 size: Size::new(150.0, 100.0),
                 inputs: node_instance.inputs.iter().map(|(pin_id, pin)| Pin {
@@ -328,7 +343,7 @@ impl BlueprintEditorPanel {
                     (k.clone(), value_str)
                 }).collect(),
                 is_selected: false,
-                description: String::new(), // Empty description for loaded nodes
+                description,
             };
             nodes.push(bp_node);
         }

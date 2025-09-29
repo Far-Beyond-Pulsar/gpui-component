@@ -48,6 +48,7 @@ pub struct DisconnectPin {
 #[derive(Clone, Debug)]
 pub struct BlueprintNode {
     pub id: String,
+    pub definition_id: String, // ID from NodeDefinition to restore metadata
     pub title: String,
     pub icon: String,
     pub node_type: NodeType,
@@ -310,6 +311,7 @@ impl BlueprintNode {
 
         Self {
             id: uuid::Uuid::new_v4().to_string(),
+            definition_id: definition.id.clone(),
             title: definition.name.clone(),
             icon: definition.icon.clone(),
             node_type,
