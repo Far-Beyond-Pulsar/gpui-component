@@ -273,9 +273,24 @@ impl NodeCreationMenu {
             }))
             .id(ElementId::Name(element_id.into()))
             .tooltip(move |window, cx| {
-                // For now, use simple text tooltip with the markdown content
-                // TODO: Upgrade to rich markdown once we solve the closure lifetime issue
-                Tooltip::new(tooltip_description.clone()).build(window, cx)
+                Tooltip::element(move |window, cx| {
+                    v_flex()
+                        .max_w(px(350.0))
+                        .max_h(px(200.0))
+                        .p_2()
+                        .child(
+                            div()
+                                .scrollable(Axis::Vertical)
+                                .child(
+                                    TextView::markdown(
+                                        "node-tooltip",
+                                        tooltip_description,
+                                        window,
+                                        cx
+                                    )
+                                )
+                        )
+                }).build(window, cx)
             })
             .child(
                 Icon::new(IconName::CircleX) // TODO: Use node type specific icon
