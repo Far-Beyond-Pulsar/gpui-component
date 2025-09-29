@@ -1,48 +1,17 @@
 use gpui::*;
 use gpui::ElementId;
-use gpui::Axis;
 use gpui::prelude::{FluentBuilder, InteractiveElement, StatefulInteractiveElement, Styled};
 use gpui_component::{
     h_flex, v_flex,
     ActiveTheme as _, StyledExt,
     Icon, IconName,
     input::{InputState, InputEvent, TextInput},
-    tooltip::Tooltip,
-    text::TextView,
 };
 use gpui::div;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 use super::{NodeDefinitions, NodeCategory, NodeDefinition, BlueprintNode};
 use crate::graph::Position;
-
-/// Helper to create tooltip function with static strings (using Box::leak)
-fn create_markdown_tooltip(description: &'static str) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
-    move |window, cx| {
-        Tooltip::element(move |window, cx| {
-            v_flex()
-                .w(px(400.0))  // Fixed width for better text wrapping
-                .h(px(300.0))  // Increased height for more content
-                .p_2()
-                .overflow_hidden()  // Ensure content doesn't escape
-                .child(
-                    v_flex()
-                        .w_full()
-                        .h_full()
-                        .scrollable(Axis::Vertical)  // Enable vertical scrolling
-                        .child(
-                            TextView::markdown(
-                                "node-tooltip",
-                                description,
-                                window,
-                                cx
-                            )
-                        )
-                )
-        }).build(window, cx)
-    }
-}
 
 
 /// Unreal-like node creation context menu
@@ -53,6 +22,7 @@ pub struct NodeCreationMenu {
     expanded_categories: HashMap<String, bool>,
     target_position: Point<f32>,
     filtered_categories: Vec<FilteredCategory>,
+    panel: WeakEntity<super::panel::BlueprintEditorPanel>,
 }
 
 #[derive(Clone)]
@@ -72,7 +42,12 @@ struct FilteredNode {
 }
 
 impl NodeCreationMenu {
-    pub fn new(target_position: Point<f32>, search_input_state: Entity<InputState>, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        target_position: Point<f32>,
+        search_input_state: Entity<InputState>,
+        panel: WeakEntity<super::panel::BlueprintEditorPanel>,
+        cx: &mut Context<Self>
+    ) -> Self {
         let focus_handle = cx.focus_handle();
 
         let mut menu = Self {
@@ -82,6 +57,7 @@ impl NodeCreationMenu {
             expanded_categories: HashMap::new(),
             target_position,
             filtered_categories: Vec::new(),
+            panel,
         };
 
         // Subscribe to search input events for real-time filtering
@@ -280,10 +256,9 @@ impl NodeCreationMenu {
         // Pre-compute highlighted text to avoid borrowing issues
         let highlighted_name_element = self.render_highlighted_text(&node.highlighted_name, cx);
 
-        // Use Box::leak for now to get 'static lifetime
-        // Memory will be cleaned up when the process exits
-        let tooltip_description: &'static str = Box::leak(node.definition.description.clone().into_boxed_str());
         let element_id = format!("node-item-{}", node.definition.id);
+        let panel = self.panel.clone();
+        let tooltip_content = node.definition.description.clone();
 
         h_flex()
             .w_full()
@@ -294,14 +269,28 @@ impl NodeCreationMenu {
             .pl_6() // Indent under category
             .hover(|style| style.bg(cx.theme().accent.opacity(0.1)))
             .cursor_pointer()
+            .on_mouse_move(cx.listener(move |_, event: &MouseMoveEvent, window, cx| {
+                // Show hoverable tooltip via panel
+                if let Some(panel) = panel.upgrade() {
+                    let mouse_pos = Point::new(event.position.x.0, event.position.y.0);
+                    panel.update(cx, |panel, cx| {
+                        panel.show_hoverable_tooltip(tooltip_content.clone(), mouse_pos, window, cx);
+                    });
+                }
+            }))
             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                 cx.stop_propagation();
+                // Hide tooltip when clicking
+                if let Some(panel) = this.panel.upgrade() {
+                    panel.update(cx, |panel, cx| {
+                        panel.hide_hoverable_tooltip(cx);
+                    });
+                }
                 let new_node = this.create_node(&node_def);
                 // Emit the event and also close the menu
                 cx.emit(NodeCreationEvent::CreateNode(new_node));
             }))
             .id(ElementId::Name(element_id.into()))
-            .tooltip(create_markdown_tooltip(tooltip_description))
             .child(
                 Icon::new(IconName::CircleX) // TODO: Use node type specific icon
                     .size(px(14.0))

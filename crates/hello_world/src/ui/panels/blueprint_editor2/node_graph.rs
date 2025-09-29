@@ -1,6 +1,6 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use gpui_component::{button::Button, h_flex, v_flex, ActiveTheme as _, IconName, StyledExt, tooltip::Tooltip, text::TextView};
+use gpui_component::{button::Button, h_flex, v_flex, ActiveTheme as _, IconName, StyledExt, tooltip::Tooltip};
 
 use super::panel::BlueprintEditorPanel;
 use super::{BlueprintNode, BlueprintGraph, Pin, PinType, NodeType, Connection, VirtualizationStats};
@@ -8,34 +8,7 @@ use crate::graph::DataType;
 
 pub struct NodeGraphRenderer;
 
-/// Helper to create markdown tooltip function with static strings
-fn create_markdown_tooltip(description: &'static str) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
-    move |window, cx| {
-        Tooltip::element(move |window, cx| {
-            v_flex()
-                .w(px(400.0))
-                .max_h(px(300.0))
-                .p_2()
-                .overflow_hidden()
-                .child(
-                    v_flex()
-                        .w_full()
-                        .h_full()
-                        .scrollable(Axis::Vertical)
-                        .child(
-                            TextView::markdown(
-                                "node-tooltip",
-                                description,
-                                window,
-                                cx
-                            )
-                        )
-                )
-        }).build(window, cx)
-    }
-}
-
-/// Helper to create simple text tooltip
+/// Helper to create simple text tooltip for pins (still using gpui's built-in tooltip)
 fn create_text_tooltip(text: &'static str) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
     move |window, cx| {
         Tooltip::new(text).build(window, cx)
@@ -277,14 +250,12 @@ impl NodeGraphRenderer {
         // Look up the full description from NodeDefinitions by node title
         // This ensures we get the complete markdown documentation
         let node_definitions = super::NodeDefinitions::load();
-        let tooltip_description: &'static str = if let Some(def) = node_definitions.get_node_definition_by_name(&node.title) {
-            // Leak the description string to get 'static lifetime
-            Box::leak(def.description.clone().into_boxed_str())
+        let tooltip_content = if let Some(def) = node_definitions.get_node_definition_by_name(&node.title) {
+            def.description.clone()
         } else if !node.description.is_empty() {
-            // Fallback to stored description
-            Box::leak(node.description.clone().into_boxed_str())
+            node.description.clone()
         } else {
-            "No description available."
+            "No description available.".to_string()
         };
 
         div()
@@ -320,7 +291,6 @@ impl NodeGraphRenderer {
                             .items_center()
                             .gap(px(8.0 * panel.graph.zoom_level))
                             .id(ElementId::Name(format!("node-header-{}", node.id).into()))
-                            .tooltip(create_markdown_tooltip(tooltip_description))
                             .child(
                                 div()
                                     .text_size(px(16.0 * panel.graph.zoom_level))
@@ -333,11 +303,22 @@ impl NodeGraphRenderer {
                                     .text_color(cx.theme().foreground)
                                     .child(node.title.clone()),
                             )
+                            .on_mouse_move(cx.listener({
+                                let tooltip_content = tooltip_content.clone();
+                                move |panel, event: &MouseMoveEvent, window, cx| {
+                                    // Show hoverable tooltip on mouse move
+                                    let mouse_pos = Point::new(event.position.x.0, event.position.y.0);
+                                    panel.show_hoverable_tooltip(tooltip_content.clone(), mouse_pos, window, cx);
+                                }
+                            }))
                             .on_mouse_down(gpui::MouseButton::Left, {
                                 let node_id = node_id.clone();
                                 cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
                                     // Stop event propagation to prevent main graph handler from firing
                                     cx.stop_propagation();
+
+                                    // Hide tooltip when interacting
+                                    panel.hide_hoverable_tooltip(cx);
 
                                     // Select this node
                                     panel.select_node(Some(node_id.clone()), cx);

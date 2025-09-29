@@ -14,6 +14,7 @@ use super::toolbar::ToolbarRenderer;
 use super::node_graph::NodeGraphRenderer;
 use super::properties::PropertiesRenderer;
 use super::node_creation_menu::{NodeCreationMenu, NodeCreationEvent};
+use super::hoverable_tooltip::HoverableTooltip;
 use crate::graph::{GraphDescription, DataType as GraphDataType};
 
 // Constants for node creation menu dimensions
@@ -44,6 +45,8 @@ pub struct BlueprintEditorPanel {
     // Right-click state for gesture detection
     pub right_click_start: Option<Point<f32>>,
     pub right_click_threshold: f32,
+    // Hoverable tooltip
+    pub hoverable_tooltip: Option<Entity<HoverableTooltip>>,
 }
 
 #[derive(Clone, Debug)]
@@ -153,6 +156,7 @@ impl BlueprintEditorPanel {
             node_creation_menu_position: None,
             right_click_start: None,
             right_click_threshold: 5.0, // pixels
+            hoverable_tooltip: None,
         }
     }
 
@@ -545,7 +549,10 @@ impl BlueprintEditorPanel {
             InputState::new(window, cx).placeholder("Search nodes...")
         });
 
-        let menu = cx.new(|cx| NodeCreationMenu::new(adjusted_position, search_input_state.clone(), cx));
+        // Get weak reference to self for the menu
+        let panel_weak = cx.entity().downgrade();
+
+        let menu = cx.new(|cx| NodeCreationMenu::new(adjusted_position, search_input_state.clone(), panel_weak, cx));
         // Subscribe to the menu events
         cx.subscribe(&menu, Self::on_node_creation_event).detach();
         self.node_creation_menu = Some(menu);
@@ -610,6 +617,43 @@ impl BlueprintEditorPanel {
         self.node_creation_menu = None;
         self.node_creation_menu_position = None;
         cx.notify();
+    }
+
+    // Hoverable tooltip methods
+    pub fn show_hoverable_tooltip(&mut self, content: String, position: Point<f32>, window: &mut Window, cx: &mut Context<Self>) {
+        let pixel_pos = Point::new(px(position.x), px(position.y));
+        self.hoverable_tooltip = Some(HoverableTooltip::new(content, pixel_pos, cx));
+        cx.notify();
+    }
+
+    pub fn hide_hoverable_tooltip(&mut self, cx: &mut Context<Self>) {
+        self.hoverable_tooltip = None;
+        cx.notify();
+    }
+
+    pub fn update_tooltip_position(&mut self, position: Point<f32>, cx: &mut Context<Self>) {
+        if let Some(tooltip) = &self.hoverable_tooltip {
+            let pixel_pos = Point::new(px(position.x), px(position.y));
+            tooltip.update(cx, |tooltip, cx| {
+                tooltip.set_position(pixel_pos, cx);
+            });
+        }
+    }
+
+    pub fn check_tooltip_hover(&mut self, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
+        if let Some(tooltip) = &self.hoverable_tooltip {
+            let pixel_pos = Point::new(px(mouse_pos.x), px(mouse_pos.y));
+            tooltip.update(cx, |tooltip, cx| {
+                tooltip.check_to_hide(pixel_pos, cx);
+            });
+
+            // Remove tooltip if it's been hidden
+            let is_open = tooltip.read(cx).open;
+            if !is_open {
+                self.hoverable_tooltip = None;
+                cx.notify();
+            }
+        }
     }
 
     /// Check if a screen position is inside the node creation menu bounds
@@ -924,6 +968,22 @@ impl Render for BlueprintEditorPanel {
                                 .absolute()
                                 .child(menu_entity)
                         )
+                )
+            })
+            .when_some(self.hoverable_tooltip.clone(), |this, tooltip| {
+                // Render hoverable tooltip
+                this.child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .size_full()
+                        .on_mouse_move(cx.listener(|panel, event: &MouseMoveEvent, _window, cx| {
+                            // Check if mouse is outside tooltip and hide if so
+                            let mouse_pos = Point::new(event.position.x.0, event.position.y.0);
+                            panel.check_tooltip_hover(mouse_pos, cx);
+                        }))
+                        .child(tooltip)
                 )
             })
     }

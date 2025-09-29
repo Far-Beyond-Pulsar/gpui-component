@@ -3,6 +3,7 @@ pub mod node_graph;
 pub mod properties;
 pub mod panel;
 pub mod node_creation_menu;
+pub mod hoverable_tooltip;
 
 // Re-export the main panel
 pub use panel::BlueprintEditorPanel;
