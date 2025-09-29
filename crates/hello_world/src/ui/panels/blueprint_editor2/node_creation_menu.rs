@@ -1,7 +1,7 @@
 use gpui::*;
 use gpui::ElementId;
 use gpui::Axis;
-use gpui::prelude::{FluentBuilder, InteractiveElement, StatefulInteractiveElement};
+use gpui::prelude::{FluentBuilder, InteractiveElement, StatefulInteractiveElement, Styled};
 use gpui_component::{
     h_flex, v_flex,
     ActiveTheme as _, StyledExt,
@@ -252,7 +252,7 @@ impl NodeCreationMenu {
         // Pre-compute highlighted text to avoid borrowing issues
         let highlighted_name_element = self.render_highlighted_text(&node.highlighted_name, cx);
 
-        // Convert description to 'static by leaking memory for tooltip lifetime
+        // Use Box::leak for now to get 'static lifetime (TODO: fix memory leak)
         let tooltip_description: &'static str = Box::leak(node.definition.description.clone().into_boxed_str());
         let element_id = format!("node-item-{}", node.definition.id);
 
@@ -275,12 +275,15 @@ impl NodeCreationMenu {
             .tooltip(move |window, cx| {
                 Tooltip::element(move |window, cx| {
                     v_flex()
-                        .max_w(px(350.0))
-                        .max_h(px(200.0))
+                        .w(px(400.0))  // Fixed width for better text wrapping
+                        .h(px(300.0))  // Increased height for more content
                         .p_2()
+                        .overflow_hidden()  // Ensure content doesn't escape
                         .child(
-                            div()
-                                .scrollable(Axis::Vertical)
+                            v_flex()
+                                .w_full()
+                                .h_full()
+                                .scrollable(Axis::Vertical)  // Enable vertical scrolling
                                 .child(
                                     TextView::markdown(
                                         "node-tooltip",
