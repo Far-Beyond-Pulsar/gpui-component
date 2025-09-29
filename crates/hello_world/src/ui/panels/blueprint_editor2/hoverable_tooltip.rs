@@ -102,6 +102,10 @@ impl Render for HoverableTooltip {
                 .absolute()
                 .left(x)
                 .top(y)
+                .on_scroll_wheel(|_, _, cx| {
+                    // Stop scroll events from propagating to the graph
+                    cx.stop_propagation();
+                })
                 .child(
                     v_flex()
                         .w(tooltip_width)
