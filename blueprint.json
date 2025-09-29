@@ -1,69 +1,5 @@
 {
   "nodes": {
-    "f757b6d7-7713-4b3d-9acf-474b686dbc4f": {
-      "id": "f757b6d7-7713-4b3d-9acf-474b686dbc4f",
-      "node_type": "print_string",
-      "position": {
-        "x": 398.0,
-        "y": 208.0
-      },
-      "properties": {},
-      "inputs": {
-        "exec": {
-          "name": "exec",
-          "pin_type": "Input",
-          "data_type": "Execution",
-          "connected_to": [
-            "c7226fd4-0d9f-4ebf-a449-a2dbe5d3dab6"
-          ]
-        },
-        "message": {
-          "name": "message",
-          "pin_type": "Input",
-          "data_type": {
-            "Typed": {
-              "base_type": "string",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
-          "connected_to": []
-        }
-      },
-      "outputs": {}
-    },
-    "0117e589-fba2-4739-aac6-c18f1be5cd4a": {
-      "id": "0117e589-fba2-4739-aac6-c18f1be5cd4a",
-      "node_type": "print_string",
-      "position": {
-        "x": 627.0,
-        "y": 198.0
-      },
-      "properties": {},
-      "inputs": {
-        "exec": {
-          "name": "exec",
-          "pin_type": "Input",
-          "data_type": "Execution",
-          "connected_to": [
-            "cde60605-676b-4d77-a7ab-7290c4ef92d6"
-          ]
-        },
-        "message": {
-          "name": "message",
-          "pin_type": "Input",
-          "data_type": {
-            "Typed": {
-              "base_type": "string",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
-          "connected_to": []
-        }
-      },
-      "outputs": {}
-    },
     "begin_play": {
       "id": "begin_play",
       "node_type": "begin_play",
@@ -79,51 +15,17 @@
           "pin_type": "Output",
           "data_type": "Execution",
           "connected_to": [
-            "connection_1",
-            "c7226fd4-0d9f-4ebf-a449-a2dbe5d3dab6",
-            "ea6ff76a-db5b-43ec-92f0-fe7d49f25aad"
+            "connection_1"
           ]
         }
       }
-    },
-    "617eecdc-17b9-4aaa-95e6-d27a103b7063": {
-      "id": "617eecdc-17b9-4aaa-95e6-d27a103b7063",
-      "node_type": "print_string",
-      "position": {
-        "x": 623.0,
-        "y": 91.0
-      },
-      "properties": {},
-      "inputs": {
-        "message": {
-          "name": "message",
-          "pin_type": "Input",
-          "data_type": {
-            "Typed": {
-              "base_type": "string",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
-          "connected_to": []
-        },
-        "exec": {
-          "name": "exec",
-          "pin_type": "Input",
-          "data_type": "Execution",
-          "connected_to": [
-            "9a5e2b35-84b3-479b-8f6e-c1fd0830fff3"
-          ]
-        }
-      },
-      "outputs": {}
     },
     "print_string": {
       "id": "print_string",
       "node_type": "print_string",
       "position": {
-        "x": 400.0,
-        "y": 100.0
+        "x": 284.59644,
+        "y": 127.5965
       },
       "properties": {
         "message": {
@@ -160,170 +62,9 @@
           "name": "exec_out",
           "pin_type": "Output",
           "data_type": "Execution",
-          "connected_to": [
-            "9a5e2b35-84b3-479b-8f6e-c1fd0830fff3",
-            "706c4cae-e498-44d0-8ca1-27f7d965e649",
-            "cde60605-676b-4d77-a7ab-7290c4ef92d6",
-            "2138cedb-b40a-4016-8f99-92275fc311f8"
-          ]
+          "connected_to": []
         }
       }
-    },
-    "39a30617-2aca-43b3-afdf-c449b256ac01": {
-      "id": "39a30617-2aca-43b3-afdf-c449b256ac01",
-      "node_type": "print_string",
-      "position": {
-        "x": 628.0,
-        "y": 312.0
-      },
-      "properties": {},
-      "inputs": {
-        "exec": {
-          "name": "exec",
-          "pin_type": "Input",
-          "data_type": "Execution",
-          "connected_to": [
-            "706c4cae-e498-44d0-8ca1-27f7d965e649"
-          ]
-        },
-        "message": {
-          "name": "message",
-          "pin_type": "Input",
-          "data_type": {
-            "Typed": {
-              "base_type": "string",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
-          "connected_to": []
-        }
-      },
-      "outputs": {}
-    },
-    "b57d6f6a-2469-4e68-a15f-93ab945de20d": {
-      "id": "b57d6f6a-2469-4e68-a15f-93ab945de20d",
-      "node_type": "print_string",
-      "position": {
-        "x": 626.0,
-        "y": 425.0
-      },
-      "properties": {},
-      "inputs": {
-        "message": {
-          "name": "message",
-          "pin_type": "Input",
-          "data_type": {
-            "Typed": {
-              "base_type": "string",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
-          "connected_to": []
-        },
-        "exec": {
-          "name": "exec",
-          "pin_type": "Input",
-          "data_type": "Execution",
-          "connected_to": [
-            "2138cedb-b40a-4016-8f99-92275fc311f8"
-          ]
-        }
-      },
-      "outputs": {}
-    },
-    "f80fc9c7-8720-416b-b906-81c9b9a46ad0": {
-      "id": "f80fc9c7-8720-416b-b906-81c9b9a46ad0",
-      "node_type": "print_string",
-      "position": {
-        "x": 619.0,
-        "y": 553.0
-      },
-      "properties": {},
-      "inputs": {
-        "exec": {
-          "name": "exec",
-          "pin_type": "Input",
-          "data_type": "Execution",
-          "connected_to": []
-        },
-        "message": {
-          "name": "message",
-          "pin_type": "Input",
-          "data_type": {
-            "Typed": {
-              "base_type": "string",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
-          "connected_to": []
-        }
-      },
-      "outputs": {}
-    },
-    "2acd58b9-8d7b-44d9-a145-bfd23859b449": {
-      "id": "2acd58b9-8d7b-44d9-a145-bfd23859b449",
-      "node_type": "print_string",
-      "position": {
-        "x": 398.0,
-        "y": 321.0
-      },
-      "properties": {},
-      "inputs": {
-        "exec": {
-          "name": "exec",
-          "pin_type": "Input",
-          "data_type": "Execution",
-          "connected_to": [
-            "ea6ff76a-db5b-43ec-92f0-fe7d49f25aad"
-          ]
-        },
-        "message": {
-          "name": "message",
-          "pin_type": "Input",
-          "data_type": {
-            "Typed": {
-              "base_type": "string",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
-          "connected_to": []
-        }
-      },
-      "outputs": {}
-    },
-    "f6392a28-3c42-4ded-8faa-3cb86ac39d74": {
-      "id": "f6392a28-3c42-4ded-8faa-3cb86ac39d74",
-      "node_type": "print_string",
-      "position": {
-        "x": 416.0,
-        "y": 525.0
-      },
-      "properties": {},
-      "inputs": {
-        "exec": {
-          "name": "exec",
-          "pin_type": "Input",
-          "data_type": "Execution",
-          "connected_to": []
-        },
-        "message": {
-          "name": "message",
-          "pin_type": "Input",
-          "data_type": {
-            "Typed": {
-              "base_type": "string",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
-          "connected_to": []
-        }
-      },
-      "outputs": {}
     }
   },
   "connections": [
@@ -334,61 +75,13 @@
       "target_node": "print_string",
       "target_pin": "exec_in",
       "connection_type": "Execution"
-    },
-    {
-      "id": "c7226fd4-0d9f-4ebf-a449-a2dbe5d3dab6",
-      "source_node": "begin_play",
-      "source_pin": "exec_out",
-      "target_node": "f757b6d7-7713-4b3d-9acf-474b686dbc4f",
-      "target_pin": "exec",
-      "connection_type": "Execution"
-    },
-    {
-      "id": "ea6ff76a-db5b-43ec-92f0-fe7d49f25aad",
-      "source_node": "begin_play",
-      "source_pin": "exec_out",
-      "target_node": "2acd58b9-8d7b-44d9-a145-bfd23859b449",
-      "target_pin": "exec",
-      "connection_type": "Execution"
-    },
-    {
-      "id": "9a5e2b35-84b3-479b-8f6e-c1fd0830fff3",
-      "source_node": "print_string",
-      "source_pin": "exec_out",
-      "target_node": "617eecdc-17b9-4aaa-95e6-d27a103b7063",
-      "target_pin": "exec",
-      "connection_type": "Execution"
-    },
-    {
-      "id": "706c4cae-e498-44d0-8ca1-27f7d965e649",
-      "source_node": "print_string",
-      "source_pin": "exec_out",
-      "target_node": "39a30617-2aca-43b3-afdf-c449b256ac01",
-      "target_pin": "exec",
-      "connection_type": "Execution"
-    },
-    {
-      "id": "cde60605-676b-4d77-a7ab-7290c4ef92d6",
-      "source_node": "print_string",
-      "source_pin": "exec_out",
-      "target_node": "0117e589-fba2-4739-aac6-c18f1be5cd4a",
-      "target_pin": "exec",
-      "connection_type": "Execution"
-    },
-    {
-      "id": "2138cedb-b40a-4016-8f99-92275fc311f8",
-      "source_node": "print_string",
-      "source_pin": "exec_out",
-      "target_node": "b57d6f6a-2469-4e68-a15f-93ab945de20d",
-      "target_pin": "exec",
-      "connection_type": "Execution"
     }
   ],
   "metadata": {
     "name": "Blueprint Graph",
     "description": "",
     "version": "1.0.0",
-    "created_at": "2025-09-29T00:06:12.187148300+00:00",
-    "modified_at": "2025-09-29T00:06:12.187224200+00:00"
+    "created_at": "2025-09-29T00:45:45.062245800+00:00",
+    "modified_at": "2025-09-29T00:45:45.062272300+00:00"
   }
 }

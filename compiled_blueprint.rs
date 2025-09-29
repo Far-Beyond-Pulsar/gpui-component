@@ -7,7 +7,6 @@ fn print_string() {
 
 fn main() {
     print_string("Hello World!");
-    print_string("");
 
 }
 
