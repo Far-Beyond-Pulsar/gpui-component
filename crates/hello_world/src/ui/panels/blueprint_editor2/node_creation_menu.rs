@@ -12,9 +12,38 @@ use gpui_component::{
 };
 use gpui::div;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use super::{NodeDefinitions, NodeCategory, NodeDefinition, BlueprintNode};
 use crate::graph::Position;
+
+/// Helper to create tooltip function that properly manages memory
+fn create_markdown_tooltip(description: Rc<str>) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+    move |window, cx| {
+        let desc_clone = description.clone();
+        Tooltip::element(move |window, cx| {
+            v_flex()
+                .w(px(400.0))  // Fixed width for better text wrapping
+                .h(px(300.0))  // Increased height for more content
+                .p_2()
+                .overflow_hidden()  // Ensure content doesn't escape
+                .child(
+                    v_flex()
+                        .w_full()
+                        .h_full()
+                        .scrollable(Axis::Vertical)  // Enable vertical scrolling
+                        .child(
+                            TextView::markdown(
+                                "node-tooltip",
+                                desc_clone.as_ref(),
+                                window,
+                                cx
+                            )
+                        )
+                )
+        }).build(window, cx)
+    }
+}
 
 
 /// Unreal-like node creation context menu
@@ -252,8 +281,8 @@ impl NodeCreationMenu {
         // Pre-compute highlighted text to avoid borrowing issues
         let highlighted_name_element = self.render_highlighted_text(&node.highlighted_name, cx);
 
-        // Use Box::leak for now to get 'static lifetime (TODO: fix memory leak)
-        let tooltip_description: &'static str = Box::leak(node.definition.description.clone().into_boxed_str());
+        // Use Rc<str> for proper memory management
+        let tooltip_description = Rc::<str>::from(node.definition.description.as_str());
         let element_id = format!("node-item-{}", node.definition.id);
 
         h_flex()
@@ -272,29 +301,7 @@ impl NodeCreationMenu {
                 cx.emit(NodeCreationEvent::CreateNode(new_node));
             }))
             .id(ElementId::Name(element_id.into()))
-            .tooltip(move |window, cx| {
-                Tooltip::element(move |window, cx| {
-                    v_flex()
-                        .w(px(400.0))  // Fixed width for better text wrapping
-                        .h(px(300.0))  // Increased height for more content
-                        .p_2()
-                        .overflow_hidden()  // Ensure content doesn't escape
-                        .child(
-                            v_flex()
-                                .w_full()
-                                .h_full()
-                                .scrollable(Axis::Vertical)  // Enable vertical scrolling
-                                .child(
-                                    TextView::markdown(
-                                        "node-tooltip",
-                                        tooltip_description,
-                                        window,
-                                        cx
-                                    )
-                                )
-                        )
-                }).build(window, cx)
-            })
+            .tooltip(create_markdown_tooltip(tooltip_description.clone()))
             .child(
                 Icon::new(IconName::CircleX) // TODO: Use node type specific icon
                     .size(px(14.0))
