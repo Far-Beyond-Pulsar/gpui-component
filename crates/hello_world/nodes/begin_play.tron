@@ -1,6 +1,0 @@
-//! Entry point for execution
-
-fn @[pulsar_node_fn_id]@() {
-    // Game start logic here
-    @[pulsar_exec_exec_out]@
-}

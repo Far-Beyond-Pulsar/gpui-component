@@ -1,6 +1,0 @@
-//! Prints a string to the console
-
-fn @[pulsar_node_fn_id]@(message: String) {
-    println!("{}", @[in_message_string]@);
-    @[pulsar_exec_exec_out]@
-}

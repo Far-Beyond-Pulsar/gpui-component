@@ -1,10 +1,13 @@
 use gpui::*;
+use gpui::Axis;
 use gpui::prelude::{FluentBuilder, InteractiveElement};
 use gpui_component::{
     h_flex, v_flex,
     ActiveTheme as _, StyledExt,
     Icon, IconName,
+    input::{InputState, InputEvent, TextInput},
 };
+use gpui::div;
 use std::collections::HashMap;
 
 use super::{NodeDefinitions, NodeCategory, NodeDefinition, BlueprintNode};
@@ -14,7 +17,7 @@ use crate::graph::Position;
 pub struct NodeCreationMenu {
     focus_handle: FocusHandle,
     search_query: String,
-    search_input_focus: FocusHandle,
+    search_input_state: Entity<InputState>,
     expanded_categories: HashMap<String, bool>,
     target_position: Point<f32>,
     filtered_categories: Vec<FilteredCategory>,
@@ -37,22 +40,35 @@ struct FilteredNode {
 }
 
 impl NodeCreationMenu {
-    pub fn new(target_position: Point<f32>, cx: &mut App) -> Self {
+    pub fn new(target_position: Point<f32>, search_input_state: Entity<InputState>, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
-        let search_input_focus = cx.focus_handle();
 
         let mut menu = Self {
             focus_handle,
-            search_input_focus,
+            search_input_state: search_input_state.clone(),
             search_query: String::new(),
             expanded_categories: HashMap::new(),
             target_position,
             filtered_categories: Vec::new(),
         };
 
+        // Subscribe to search input events for real-time filtering
+        cx.subscribe(&search_input_state, |this, input_state, event: &InputEvent, cx| {
+            match event {
+                InputEvent::Change => {
+                    let text = input_state.read(cx).value().to_string();
+                    this.search_query = text;
+                    this.update_filtered_categories();
+                    cx.notify();
+                }
+                _ => {}
+            }
+        }).detach();
+
         menu.update_filtered_categories();
         menu
     }
+
 
     pub fn with_search_query(mut self, query: String) -> Self {
         self.search_query = query;
@@ -156,48 +172,30 @@ impl NodeCreationMenu {
     }
 
     fn render_search_box(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        h_flex()
+        div()
             .w_full()
-            .p_2()
+            .p_1p5()
             .border_b_1()
             .border_color(cx.theme().border)
             .child(
                 div()
                     .w_full()
+                    .relative()
+                    .child(
+                        TextInput::new(&self.search_input_state)
+                            .cleanable()
+                            .w_full()
+                            .text_xs()
+                    )
                     .child(
                         div()
-                            .w_full()
-                            .relative()
+                            .absolute()
+                            .right_1p5()
+                            .top_1_2()
                             .child(
-                                div()
-                                    .w_full()
-                                    .p_2()
-                                    .bg(cx.theme().input)
-                                    .border_1()
-                                    .border_color(cx.theme().border)
-                                    .rounded(cx.theme().radius)
-                                    .text_sm()
-                                    .text_color(cx.theme().foreground)
-                                    .child(
-                                        if self.search_query.is_empty() {
-                                            div()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child("Search nodes...")
-                                        } else {
-                                            div().child(self.search_query.clone())
-                                        }
-                                    )
-                            )
-                            .child(
-                                div()
-                                    .absolute()
-                                    .right_2()
-                                    .top_1_2()
-                                    .child(
-                                        Icon::new(IconName::Search)
-                                            .size(px(16.0))
-                                            .text_color(cx.theme().muted_foreground)
-                                    )
+                                Icon::new(IconName::Search)
+                                    .size(px(14.0))
+                                    .text_color(cx.theme().muted_foreground)
                             )
                     )
             )
@@ -211,11 +209,13 @@ impl NodeCreationMenu {
         h_flex()
             .w_full()
             .items_center()
-            .gap_2()
-            .p_2()
+            .gap_1p5()
+            .px_1p5()
+            .py_1()
             .hover(|style| style.bg(cx.theme().muted.opacity(0.5)))
             .cursor_pointer()
             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                cx.stop_propagation();
                 this.toggle_category(&category_name);
                 cx.notify();
             }))
@@ -225,13 +225,13 @@ impl NodeCreationMenu {
                 } else {
                     IconName::ChevronRight
                 })
-                .size(px(14.0))
+                .size(px(12.0))
                 .text_color(cx.theme().muted_foreground)
             )
             .child(
                 div()
                     .flex_1()
-                    .text_sm()
+                    .text_xs()
                     .font_semibold()
                     .text_color(cx.theme().foreground)
                     .child(format!("{} ({})", category.name, match_count))
@@ -241,40 +241,53 @@ impl NodeCreationMenu {
     fn render_node_item(&self, node: &FilteredNode, cx: &mut Context<Self>) -> impl IntoElement {
         let node_def = node.definition.clone();
 
+        // Pre-compute highlighted text to avoid borrowing issues
+        let highlighted_name_element = self.render_highlighted_text(&node.highlighted_name, cx);
+        let highlighted_description_element = self.render_highlighted_text(&node.highlighted_description, cx);
+
         h_flex()
             .w_full()
             .items_center()
-            .gap_2()
-            .p_2()
+            .gap_1p5()
+            .px_1p5()
+            .py_1()
             .pl_6() // Indent under category
             .hover(|style| style.bg(cx.theme().accent.opacity(0.1)))
             .cursor_pointer()
             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                cx.stop_propagation();
                 let new_node = this.create_node(&node_def);
+                // Emit the event and also close the menu
                 cx.emit(NodeCreationEvent::CreateNode(new_node));
             }))
             .child(
                 Icon::new(IconName::CircleX) // TODO: Use node type specific icon
-                    .size(px(16.0))
+                    .size(px(14.0))
                     .text_color(cx.theme().accent)
             )
             .child(
                 v_flex()
                     .flex_1()
-                    .gap_0p5()
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_medium()
-                            .text_color(cx.theme().foreground)
-                            .child(self.render_highlighted_text(&node.highlighted_name, cx))
-                    )
+                    .gap_0()
                     .child(
                         div()
                             .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(self.render_highlighted_text(&node.highlighted_description, cx))
+                            .font_medium()
+                            .text_color(cx.theme().foreground)
+                            .child(highlighted_name_element)
                     )
+                    .when(!node.highlighted_description.is_empty(), {
+                        let muted_color = cx.theme().muted_foreground;
+                        let desc_element = highlighted_description_element;
+                        move |element| {
+                            element.child(
+                                div()
+                                    .text_sm()
+                                    .text_color(muted_color)
+                                    .child(desc_element)
+                            )
+                        }
+                    })
             )
     }
 
@@ -285,10 +298,10 @@ impl NodeCreationMenu {
             h_flex().children(
                 parts.iter().enumerate().map(|(i, part)| {
                     if i % 2 == 1 {
-                        // Highlighted part
+                        // Highlighted part - bright yellow for visibility
                         div()
                             .font_bold()
-                            .text_color(cx.theme().accent)
+                            .text_color(rgb(0xFFFF00)) // Bright yellow
                             .child(part.to_string())
                             .into_any_element()
                     } else {
@@ -338,30 +351,43 @@ impl Focusable for NodeCreationMenu {
 
 impl Render for NodeCreationMenu {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .key_context("NodeCreationMenu")
-            .track_focus(&self.focus_handle)
-            .min_w(px(300.0))
-            .max_w(px(500.0))
-            .max_h(px(600.0))
-            .bg(cx.theme().popover)
-            .border_1()
-            .border_color(cx.theme().border)
-            .rounded(cx.theme().radius)
-            .shadow_lg()
-            .overflow_hidden()
-            .child(self.render_search_box(cx))
+        div()
+            .absolute()
+            .left(px(self.target_position.x))
+            .top(px(self.target_position.y))
             .child(
-                div()
-                    .flex_1()
-                    .overflow_y_hidden()
+                v_flex()
+                    .key_context("NodeCreationMenu")
+                    .track_focus(&self.focus_handle)
+                    .w(px(280.0))
+                    .max_h(px(350.0))
+                    .bg(cx.theme().popover)
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .rounded(cx.theme().radius)
+                    .shadow_lg()
+                    .overflow_hidden()
+                    .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| {
+                        cx.stop_propagation(); // Prevent clicks inside menu from bubbling up
+                    }))
+                    .on_scroll_wheel(cx.listener(|_, _, _, cx| {
+                        cx.stop_propagation(); // Prevent scroll events from reaching canvas
+                    }))
+                    .child(self.render_search_box(cx))
                     .child(
-                        v_flex()
-                            .w_full()
-                            .children(
-                                self.filtered_categories.iter().map(|category| {
-                                    self.render_category(category, cx)
-                                })
+                        div()
+                            .flex_1()
+                            .overflow_y_hidden()
+                            .child(
+                                v_flex()
+                                    .w_full()
+                                    .gap_0p5()
+                                    .scrollable(Axis::Vertical)
+                                    .children(
+                                        self.filtered_categories.iter().map(|category| {
+                                            self.render_category(category, cx)
+                                        })
+                                    )
                             )
                     )
             )

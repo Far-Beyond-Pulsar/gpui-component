@@ -35,6 +35,10 @@ pub struct BlueprintEditorPanel {
     pub last_mouse_pos: Option<Point<f32>>,
     // Node creation menu
     pub node_creation_menu: Option<Entity<NodeCreationMenu>>,
+    pub node_creation_menu_position: Option<Point<f32>>,
+    // Right-click state for gesture detection
+    pub right_click_start: Option<Point<f32>>,
+    pub right_click_threshold: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -139,6 +143,9 @@ impl BlueprintEditorPanel {
             selection_end: None,
             last_mouse_pos: None,
             node_creation_menu: None,
+            node_creation_menu_position: None,
+            right_click_start: None,
+            right_click_threshold: 5.0, // pixels
         }
     }
 
@@ -157,6 +164,7 @@ impl BlueprintEditorPanel {
 
 
     pub fn add_node(&mut self, node: BlueprintNode, cx: &mut Context<Self>) {
+        println!("Adding node: {} at position {:?}", node.title, node.position);
         self.graph.nodes.push(node);
         cx.notify();
     }
@@ -516,19 +524,106 @@ impl BlueprintEditorPanel {
     }
 
     // Node creation menu methods
-    pub fn show_node_creation_menu(&mut self, position: Point<f32>, cx: &mut Context<Self>) {
+    pub fn show_node_creation_menu(&mut self, position: Point<f32>, window: &mut Window, cx: &mut Context<Self>) {
         if self.node_creation_menu.is_some() {
             self.dismiss_node_creation_menu(cx);
         }
 
-        let menu = cx.new(|cx| NodeCreationMenu::new(position, cx));
+        // Calculate smart positioning to avoid going off-screen
+        let adjusted_position = self.calculate_menu_position(position, window);
+
+        // Create the search input state that the menu will use
+        let search_input_state = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("Search nodes...")
+        });
+
+        let menu = cx.new(|cx| NodeCreationMenu::new(adjusted_position, search_input_state.clone(), cx));
+        // Subscribe to the menu events
+        cx.subscribe(&menu, Self::on_node_creation_event).detach();
         self.node_creation_menu = Some(menu);
+        self.node_creation_menu_position = Some(adjusted_position);
         cx.notify();
+    }
+
+    /// Calculate smart menu positioning to prevent off-screen placement
+    fn calculate_menu_position(&self, requested_position: Point<f32>, window: &Window) -> Point<f32> {
+        // Menu dimensions - should match values in node_creation_menu.rs
+        let menu_width = 280.0;
+        let menu_height = 350.0;
+
+        // Get window dimensions (approximation - in a real app you'd get actual viewport size)
+        let window_width = 1920.0; // Default window width
+        let window_height = 1080.0; // Default window height
+
+        // Apply padding from edges
+        let edge_padding = 20.0;
+
+        let mut adjusted_x = requested_position.x;
+        let mut adjusted_y = requested_position.y;
+
+        // Check right edge
+        if adjusted_x + menu_width + edge_padding > window_width {
+            adjusted_x = window_width - menu_width - edge_padding;
+        }
+
+        // Check left edge
+        if adjusted_x < edge_padding {
+            adjusted_x = edge_padding;
+        }
+
+        // Check bottom edge
+        if adjusted_y + menu_height + edge_padding > window_height {
+            adjusted_y = window_height - menu_height - edge_padding;
+        }
+
+        // Check top edge
+        if adjusted_y < edge_padding {
+            adjusted_y = edge_padding;
+        }
+
+        Point::new(adjusted_x, adjusted_y)
+    }
+
+    fn on_node_creation_event(
+        &mut self,
+        _menu: Entity<NodeCreationMenu>,
+        event: &NodeCreationEvent,
+        cx: &mut Context<Self>,
+    ) {
+        match event {
+            NodeCreationEvent::CreateNode(node) => {
+                self.add_node(node.clone(), cx);
+                self.dismiss_node_creation_menu(cx);
+            }
+            NodeCreationEvent::Dismiss => {
+                self.dismiss_node_creation_menu(cx);
+            }
+        }
     }
 
     pub fn dismiss_node_creation_menu(&mut self, cx: &mut Context<Self>) {
         self.node_creation_menu = None;
+        self.node_creation_menu_position = None;
         cx.notify();
+    }
+
+    /// Check if a screen position is inside the node creation menu bounds
+    pub fn is_position_inside_menu(&self, screen_pos: Point<f32>) -> bool {
+        if let (Some(_), Some(position)) = (&self.node_creation_menu, &self.node_creation_menu_position) {
+            // Menu dimensions - these should match the values in node_creation_menu.rs
+            let menu_width = 280.0;
+            let menu_height = 350.0;
+
+            let menu_left = position.x;
+            let menu_top = position.y;
+            let menu_right = menu_left + menu_width;
+            let menu_bottom = menu_top + menu_height;
+
+            screen_pos.x >= menu_left && screen_pos.x <= menu_right &&
+            screen_pos.y >= menu_top && screen_pos.y <= menu_bottom
+        } else {
+            false
+        }
     }
 
 
@@ -815,13 +910,19 @@ impl Render for BlueprintEditorPanel {
                     )
             )
             .when_some(self.node_creation_menu.clone(), |this, menu| {
+                // Position the menu at the cursor location
+                let menu_entity = menu.clone();
                 this.child(
                     div()
                         .absolute()
                         .top_0()
                         .left_0()
                         .size_full()
-                        .child(menu)
+                        .child(
+                            div()
+                                .absolute()
+                                .child(menu_entity)
+                        )
                 )
             })
     }

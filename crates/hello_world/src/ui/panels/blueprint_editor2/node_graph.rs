@@ -31,11 +31,12 @@ impl NodeGraphRenderer {
             .on_mouse_down(
                 gpui::MouseButton::Right,
                 cx.listener(|panel, event: &MouseDownEvent, _window, cx| {
-                    // Show node creation context menu on right-click on empty space
+                    let mouse_pos = Point::new(event.position.x.0, event.position.y.0);
+
+                    // Store right-click start position for gesture detection
                     if panel.dragging_connection.is_none() && panel.dragging_node.is_none() {
-                        // Convert screen position to graph position for node placement
-                        let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
-                        panel.show_node_creation_menu(graph_pos, cx);
+                        panel.right_click_start = Some(mouse_pos);
+                        // Don't show menu immediately - wait for mouse up or movement
                     }
                 }),
             )
@@ -47,6 +48,11 @@ impl NodeGraphRenderer {
                         Point::new(px(mouse_pos.x), px(mouse_pos.y)),
                         &panel.graph,
                     );
+
+                    // Dismiss context menu if clicking outside of it
+                    if panel.node_creation_menu.is_some() && !panel.is_position_inside_menu(mouse_pos) {
+                        panel.dismiss_node_creation_menu(cx);
+                    }
 
                     // Check if clicking on a node (check ALL nodes, not just rendered ones)
                     let clicked_node = panel.graph.nodes.iter().find(|node| {
@@ -73,6 +79,20 @@ impl NodeGraphRenderer {
             .on_mouse_move(cx.listener(|panel, event: &MouseMoveEvent, _window, cx| {
                 let mouse_pos = Point::new(event.position.x.0, event.position.y.0);
 
+                // Check if right-click drag should start panning
+                if let Some(right_start) = panel.right_click_start {
+                    let distance = ((mouse_pos.x - right_start.x).powi(2) + (mouse_pos.y - right_start.y).powi(2)).sqrt();
+                    if distance > panel.right_click_threshold {
+                        // Start panning if we've moved beyond threshold
+                        panel.start_panning(right_start, cx);
+                        panel.right_click_start = None; // Clear the right-click state
+                        // Dismiss any context menu that might be showing
+                        if panel.node_creation_menu.is_some() {
+                            panel.dismiss_node_creation_menu(cx);
+                        }
+                    }
+                }
+
                 if panel.dragging_node.is_some() {
                     let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
                     panel.update_drag(graph_pos, cx);
@@ -96,7 +116,7 @@ impl NodeGraphRenderer {
                     } else if panel.dragging_connection.is_some() {
                         // Show node creation menu when dropping connection on empty space
                         let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
-                        panel.show_node_creation_menu(graph_pos, cx);
+                        panel.show_node_creation_menu(graph_pos, _window, cx);
                         panel.cancel_connection_drag(cx);
                     } else if panel.is_selecting() {
                         // End selection drag
@@ -108,9 +128,14 @@ impl NodeGraphRenderer {
             )
             .on_mouse_up(
                 gpui::MouseButton::Right,
-                cx.listener(|panel, _event: &MouseUpEvent, _window, cx| {
+                cx.listener(|panel, event: &MouseUpEvent, _window, cx| {
                     if panel.is_panning() {
                         panel.end_panning(cx);
+                    } else if panel.right_click_start.is_some() {
+                        // Right-click released without dragging - show context menu
+                        panel.right_click_start = None;
+                        let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
+                        panel.show_node_creation_menu(graph_pos, _window, cx);
                     }
                 }),
             )
