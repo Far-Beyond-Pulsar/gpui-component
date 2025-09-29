@@ -1,4 +1,11 @@
-//! A node that returns the current thread ID.
+//! A node that retrieves the unique identifier of the current thread.
+//!
+//! This node returns the thread ID as a formatted string representation.
+//! Thread IDs are unique within the process and can be used for debugging
+//! or logging purposes to identify which thread is executing code.
+//!
+//! # Outputs
+//! - `String`: The formatted thread ID (e.g., "ThreadId(1)")
 
 /// Get the current thread ID.
 fn @[pulsar_node_fn_id]@() -> String {

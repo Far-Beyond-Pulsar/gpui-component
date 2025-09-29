@@ -1,4 +1,18 @@
-//! A node that yields the current thread.
+//! A node that yields control of the current thread to allow other threads to run.
+//!
+//! This node voluntarily gives up the remaining time slice of the current
+//! thread, allowing the operating system scheduler to run other threads
+//! that are ready to execute. The current thread will be rescheduled to
+//! run again when the scheduler determines it's appropriate.
+//!
+//! # Behavior
+//! This is a cooperative scheduling mechanism. The thread may resume
+//! execution immediately if no other threads are ready to run, or it
+//! may wait for other threads to execute first.
+//!
+//! # Use Cases
+//! Useful in tight loops to prevent starving other threads, or in
+//! cooperative multitasking scenarios where threads need to share CPU time.
 
 /// Yield the current thread to allow other threads to run.
 fn @[pulsar_node_fn_id]@() {
