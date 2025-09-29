@@ -1,4 +1,5 @@
 use gpui::*;
+use gpui::prelude::FluentBuilder;
 use gpui_component::{
     dock::{Panel, PanelEvent},
     resizable::{h_resizable, resizable_panel, ResizableState},
@@ -10,9 +11,9 @@ use gpui_component::{
 
 use super::*;
 use super::toolbar::ToolbarRenderer;
-use super::node_library::NodeLibraryRenderer;
 use super::node_graph::NodeGraphRenderer;
 use super::properties::PropertiesRenderer;
+use super::node_creation_menu::{NodeCreationMenu, NodeCreationEvent};
 use crate::graph::{GraphDescription, DataType as GraphDataType};
 
 pub struct BlueprintEditorPanel {
@@ -32,10 +33,8 @@ pub struct BlueprintEditorPanel {
     pub selection_start: Option<Point<f32>>,
     pub selection_end: Option<Point<f32>>,
     pub last_mouse_pos: Option<Point<f32>>,
-    // Node library search
-    pub search_query: String,
-    pub search_input_state: Entity<InputState>,
-    _search_subscription: Subscription,
+    // Node creation menu
+    pub node_creation_menu: Option<Entity<NodeCreationMenu>>,
 }
 
 #[derive(Clone, Debug)]
@@ -50,9 +49,6 @@ pub struct ConnectionDrag {
 impl BlueprintEditorPanel {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let resizable_state = ResizableState::new(cx);
-        let search_input_state = cx.new(|cx| InputState::new(_window, cx));
-
-        let search_subscription = cx.subscribe_in(&search_input_state, _window, Self::on_search_input);
 
         // Create sample nodes
         let mut nodes = Vec::new();
@@ -142,9 +138,7 @@ impl BlueprintEditorPanel {
             selection_start: None,
             selection_end: None,
             last_mouse_pos: None,
-            search_query: String::new(),
-            search_input_state,
-            _search_subscription: search_subscription,
+            node_creation_menu: None,
         }
     }
 
@@ -160,32 +154,7 @@ impl BlueprintEditorPanel {
         &self.focus_handle
     }
 
-    pub fn update_search_query(&mut self, query: String, cx: &mut Context<Self>) {
-        self.search_query = query;
-        cx.notify();
-    }
 
-    pub fn get_search_query(&self) -> &str {
-        &self.search_query
-    }
-
-    pub fn get_search_input_state(&self) -> &Entity<InputState> {
-        &self.search_input_state
-    }
-
-    fn on_search_input(
-        &mut self,
-        _input_state: &Entity<InputState>,
-        event: &InputEvent,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if let InputEvent::Change = event {
-            let text = self.search_input_state.read(cx).value().to_string();
-            self.search_query = text;
-            cx.notify();
-        }
-    }
 
     pub fn add_node(&mut self, node: BlueprintNode, cx: &mut Context<Self>) {
         self.graph.nodes.push(node);
@@ -546,6 +515,23 @@ impl BlueprintEditorPanel {
         }
     }
 
+    // Node creation menu methods
+    pub fn show_node_creation_menu(&mut self, position: Point<f32>, cx: &mut Context<Self>) {
+        if self.node_creation_menu.is_some() {
+            self.dismiss_node_creation_menu(cx);
+        }
+
+        let menu = cx.new(|cx| NodeCreationMenu::new(position, cx));
+        self.node_creation_menu = Some(menu);
+        cx.notify();
+    }
+
+    pub fn dismiss_node_creation_menu(&mut self, cx: &mut Context<Self>) {
+        self.node_creation_menu = None;
+        cx.notify();
+    }
+
+
     // Panning methods
     pub fn start_panning(&mut self, start_pos: Point<f32>, cx: &mut Context<Self>) {
         self.is_panning = true;
@@ -804,22 +790,6 @@ impl Render for BlueprintEditorPanel {
                         h_resizable("blueprint-editor-panels", self.resizable_state.clone())
                             .child(
                                 resizable_panel()
-                                    .size(px(260.))
-                                    .size_range(px(200.)..px(400.))
-                                    .child(
-                                        div()
-                                            .w_full()
-                                            .h_full()
-                                            .bg(cx.theme().sidebar)
-                                            .border_1()
-                                            .border_color(cx.theme().border)
-                                            .rounded(cx.theme().radius)
-                                            .p_2()
-                                            .child(NodeLibraryRenderer::render(self, cx))
-                                    )
-                            )
-                            .child(
-                                resizable_panel()
                                     .child(
                                         div()
                                             .size_full()
@@ -844,5 +814,15 @@ impl Render for BlueprintEditorPanel {
                             )
                     )
             )
+            .when_some(self.node_creation_menu.clone(), |this, menu| {
+                this.child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .size_full()
+                        .child(menu)
+                )
+            })
     }
 }

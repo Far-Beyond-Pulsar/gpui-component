@@ -31,12 +31,11 @@ impl NodeGraphRenderer {
             .on_mouse_down(
                 gpui::MouseButton::Right,
                 cx.listener(|panel, event: &MouseDownEvent, _window, cx| {
-                    let mouse_pos = Point::new(event.position.x.0, event.position.y.0);
-
-                    // Only start panning if not connecting and not already dragging a node
+                    // Show node creation context menu on right-click on empty space
                     if panel.dragging_connection.is_none() && panel.dragging_node.is_none() {
-                        // Start panning if not connecting
-                        panel.start_panning(mouse_pos, cx);
+                        // Convert screen position to graph position for node placement
+                        let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
+                        panel.show_node_creation_menu(graph_pos, cx);
                     }
                 }),
             )
@@ -91,11 +90,13 @@ impl NodeGraphRenderer {
             }))
             .on_mouse_up(
                 gpui::MouseButton::Left,
-                cx.listener(|panel, _event: &MouseUpEvent, _window, cx| {
+                cx.listener(|panel, event: &MouseUpEvent, _window, cx| {
                     if panel.dragging_node.is_some() {
                         panel.end_drag(cx);
                     } else if panel.dragging_connection.is_some() {
-                        // Cancel connection if not dropped on a pin
+                        // Show node creation menu when dropping connection on empty space
+                        let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
+                        panel.show_node_creation_menu(graph_pos, cx);
                         panel.cancel_connection_drag(cx);
                     } else if panel.is_selecting() {
                         // End selection drag

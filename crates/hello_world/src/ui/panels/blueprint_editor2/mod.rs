@@ -1,8 +1,8 @@
 pub mod toolbar;
-pub mod node_library;
 pub mod node_graph;
 pub mod properties;
 pub mod panel;
+pub mod node_creation_menu;
 
 // Re-export the main panel
 pub use panel::BlueprintEditorPanel;
