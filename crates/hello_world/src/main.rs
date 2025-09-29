@@ -56,6 +56,7 @@ fn main() {
         );
     }
 
+
     let app = Application::new().with_assets(Assets);
 
     app.run(move |cx| {

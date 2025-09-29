@@ -491,30 +491,52 @@ impl BlueprintEditorPanel {
                 if let Some(pin) = node.inputs.iter().find(|p| p.id == pin_id) {
                     // Check if compatible and not same node
                     if drag.from_pin_type == pin.data_type && drag.from_node_id != node_id {
-                        // Additional validation: only one connection per input pin (except execution pins)
-                        let can_connect = if pin.data_type == GraphDataType::from_type_str("execution") {
-                            true // Execution pins can have multiple connections
-                        } else {
-                            // Non-execution pins can only have one input connection
-                            !self.graph.connections.iter().any(|conn|
-                                conn.to_node_id == node_id && conn.to_pin_id == pin_id
-                            )
-                        };
+                        let is_execution_pin = pin.data_type == GraphDataType::from_type_str("execution");
 
-                        if can_connect {
-                            println!("Creating connection from {} to {}", drag.from_pin_id, pin_id);
-                            let connection = super::Connection {
-                                id: uuid::Uuid::new_v4().to_string(),
-                                from_node_id: drag.from_node_id,
-                                from_pin_id: drag.from_pin_id,
-                                to_node_id: node_id,
-                                to_pin_id: pin_id,
-                            };
-                            self.graph.connections.push(connection);
-                            println!("Connection created successfully!");
+                        // Handle execution pin connection logic
+                        if is_execution_pin {
+                            // For execution pins, implement special connection moving logic
+
+                            // 1. Remove any existing connection from the same source exec output pin
+                            //    (only one exec out connection at a time)
+                            self.graph.connections.retain(|conn| {
+                                !(conn.from_node_id == drag.from_node_id && conn.from_pin_id == drag.from_pin_id)
+                            });
+
+                            // 2. For exec input pins: When reconnecting, move the connection
+                            //    (remove existing connections to this input pin)
+                            self.graph.connections.retain(|conn| {
+                                !(conn.to_node_id == node_id && conn.to_pin_id == pin_id)
+                            });
+
+                            println!("Creating exec connection from {}:{} to {}:{}",
+                                     drag.from_node_id, drag.from_pin_id, node_id, pin_id);
                         } else {
-                            println!("Input pin already has a connection");
+                            // For non-execution pins, only allow one input connection
+                            let already_connected = self.graph.connections.iter().any(|conn|
+                                conn.to_node_id == node_id && conn.to_pin_id == pin_id
+                            );
+
+                            if already_connected {
+                                println!("Input pin already has a connection");
+                                cx.notify();
+                                return;
+                            }
+
+                            println!("Creating data connection from {}:{} to {}:{}",
+                                     drag.from_node_id, drag.from_pin_id, node_id, pin_id);
                         }
+
+                        // Create the new connection
+                        let connection = super::Connection {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            from_node_id: drag.from_node_id,
+                            from_pin_id: drag.from_pin_id,
+                            to_node_id: node_id,
+                            to_pin_id: pin_id,
+                        };
+                        self.graph.connections.push(connection);
+                        println!("Connection created successfully!");
                     } else {
                         println!("Incompatible pin types or same node");
                     }
