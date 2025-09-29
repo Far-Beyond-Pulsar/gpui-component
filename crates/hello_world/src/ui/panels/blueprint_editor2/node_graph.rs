@@ -115,8 +115,9 @@ impl NodeGraphRenderer {
                         panel.end_drag(cx);
                     } else if panel.dragging_connection.is_some() {
                         // Show node creation menu when dropping connection on empty space
-                        let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
-                        panel.show_node_creation_menu(graph_pos, _window, cx);
+                        // Use screen coordinates directly (not graph coordinates)
+                        let screen_pos = Point::new(event.position.x.0, event.position.y.0);
+                        panel.show_node_creation_menu(screen_pos, _window, cx);
                         panel.cancel_connection_drag(cx);
                     } else if panel.is_selecting() {
                         // End selection drag
@@ -134,8 +135,9 @@ impl NodeGraphRenderer {
                     } else if panel.right_click_start.is_some() {
                         // Right-click released without dragging - show context menu
                         panel.right_click_start = None;
-                        let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
-                        panel.show_node_creation_menu(graph_pos, _window, cx);
+                        // Use screen coordinates directly (not graph coordinates)
+                        let screen_pos = Point::new(event.position.x.0, event.position.y.0);
+                        panel.show_node_creation_menu(screen_pos, _window, cx);
                     }
                 }),
             )

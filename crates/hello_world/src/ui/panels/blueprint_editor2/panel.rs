@@ -16,6 +16,11 @@ use super::properties::PropertiesRenderer;
 use super::node_creation_menu::{NodeCreationMenu, NodeCreationEvent};
 use crate::graph::{GraphDescription, DataType as GraphDataType};
 
+// Constants for node creation menu dimensions
+// These must match the values in node_creation_menu.rs
+const NODE_MENU_WIDTH: f32 = 280.0;
+const NODE_MENU_MAX_HEIGHT: f32 = 350.0;
+
 pub struct BlueprintEditorPanel {
     focus_handle: FocusHandle,
     pub graph: BlueprintGraph,
