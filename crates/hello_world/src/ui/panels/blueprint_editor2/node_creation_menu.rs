@@ -270,12 +270,9 @@ impl NodeCreationMenu {
             .hover(|style| style.bg(cx.theme().accent.opacity(0.1)))
             .cursor_pointer()
             .on_mouse_move(cx.listener(move |_, event: &MouseMoveEvent, window, cx| {
-                // Show hoverable tooltip via panel (only if not already showing or pending)
+                // Show hoverable tooltip via panel (only if not already showing)
                 if let Some(panel_entity) = panel.upgrade() {
-                    let panel_read = panel_entity.read(cx);
-                    let should_show = panel_read.hoverable_tooltip.is_none() && panel_read.pending_tooltip.is_none();
-                    drop(panel_read);
-
+                    let should_show = panel_entity.read(cx).hoverable_tooltip.is_none();
                     if should_show {
                         // Position tooltip to the right of the menu item
                         let tooltip_pos = Point::new(event.position.x.0 + 30.0, event.position.y.0 - 50.0);
