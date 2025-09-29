@@ -1,3 +1,21 @@
-//! A pure function that performs bitwise NOT operation.
-
+//! A node that performs a bitwise NOT operation on an integer.
+//!
+//! This node takes a numeric input, casts it to a 32-bit integer, and returns the bitwise NOT of the value.
+//!
+//! # Inputs
+//! - `in_value_number`: The input number to invert (will be cast to i32).
+//!
+//! # Outputs
+//! - The bitwise NOT of the input value (i32).
+//!
+//! # Example
+//! If `in_value_number` is 5 (binary 0000_0101), the output will be -6 (binary 1111_1010).
+//!
+//! # Notes
+//! Bitwise NOT flips all bits in the integer representation.
+//!
+//! # Behavior
+//! The result is always an i32 value.
+//
+//! Perform bitwise NOT operation.
 !(@[in_value_number]@ as i32)

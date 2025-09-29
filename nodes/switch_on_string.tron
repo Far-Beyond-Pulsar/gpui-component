@@ -1,4 +1,21 @@
 //! A node that executes different branches based on string value.
+//!
+//! This node matches the input string against several predefined options and executes
+//! the corresponding branch for the first match. If the input does not match any option,
+//! the default branch is executed.
+//!
+//! # Inputs
+//! - `in_value_string`: The string value to match against the options.
+//!
+//! # Outputs / Execution
+//! - Executes the branch corresponding to the matched string, or the default branch if no match.
+//!
+//! # Example
+//! If `in_value_string` is "option2", the node will execute the code connected to `pulsar_exec_option2`.
+//! If `in_value_string` is "unknown", the node will execute the code connected to `pulsar_exec_default`.
+//!
+//! # Notes
+//! You can customize the option strings and add more branches as needed.
 
 /// Execute different branches based on string value.
 fn @[pulsar_node_fn_id]@() {

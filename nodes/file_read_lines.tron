@@ -1,6 +1,28 @@
 //! A node that reads a file and returns its lines as a vector.
-
-/// Read a file and return its lines as a vector.
+//!
+//! This node reads the contents of the specified file and splits it into lines, returning each line as a string in a vector.
+//! Useful for processing text files, configuration files, or logs line-by-line.
+//!
+//! # Inputs
+//! - `in_path_string`: The path to the file to read.
+//!
+//! # Outputs
+//! - `Result<Vec<String>, String>`: A vector of lines from the file, or an error message if reading fails.
+//!
+//! # Example
+//! If the file contains:
+//! ```
+//! line1
+//! line2
+//! line3
+//! ```
+//! The output will be `Ok(vec!["line1", "line2", "line3"])`.
+//!
+//! # Notes
+//! Lines are split on newline characters. Empty files return an empty vector. Errors may occur if the file does not exist or cannot be read.
+//!
+//! # Behavior
+//! Reads the entire file as a string, splits by lines, and returns the result as a vector of strings.
 fn @[pulsar_node_fn_id]@() -> Result<Vec<String>, String> {
     match std::fs::read_to_string(@[in_path_string]@) {
         Ok(content) => Ok(content.lines().map(|s| s.to_string()).collect()),

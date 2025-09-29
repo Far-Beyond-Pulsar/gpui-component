@@ -1,3 +1,20 @@
-//! A simple node that returns the remainder of division.
+//! A node that returns the remainder of division (modulo operation).
+//!
+//! This node computes the remainder after dividing the first input by the second input.
+//! Useful for cyclic operations, wrapping indices, or checking divisibility.
+//!
+//! # Inputs
+//! - `in_a_number`: The dividend (number to be divided).
+//! - `in_b_number`: The divisor (number to divide by).
+//!
+//! # Outputs
+//! - The remainder of the division (`in_a_number` % `in_b_number`).
+//!
+//! # Example
+//! If `in_a_number` is 10 and `in_b_number` is 3, the output will be 1.
+//! If `in_a_number` is 7 and `in_b_number` is 2, the output will be 1.
+//!
+//! # Notes
+//! The result has the same sign as the dividend. Division by zero will panic or return NaN depending on the type.
 
 @[in_a_number]@ % @[in_b_number]@

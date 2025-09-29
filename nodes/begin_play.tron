@@ -1,4 +1,16 @@
-//! Entry point node. All nodes connected to 'exec_out' will be placed in main().
+//! Entry point node for execution.
+//!
+//! This node serves as the main entry point for your graph. All nodes connected to its `exec_out` output
+//! will be placed in the main function and executed when the program starts.
+//!
+//! # Outputs
+//! - `exec_out`: Triggers execution of connected nodes.
+//!
+//! # Behavior
+//! The execution begins here. Use this node to define the starting point of your logic.
+//!
+//! # Example
+//! Connect this node's `exec_out` to the first node you want to run in your graph.
 
 /// Main entry point for execution.
 fn main() {

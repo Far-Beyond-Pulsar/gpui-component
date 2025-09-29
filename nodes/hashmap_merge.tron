@@ -1,4 +1,24 @@
 //! A node that merges two HashMaps.
+//!
+//! This node combines two input HashMaps into a single HashMap. If both maps contain the same key,
+//! the value from the second map (`in_map2_hashmap`) will overwrite the value from the first map (`in_map1_hashmap`).
+//! Useful for combining configuration, merging data sources, or updating collections.
+//!
+//! # Inputs
+//! - `in_map1_hashmap`: The first input HashMap.
+//! - `in_map2_hashmap`: The second input HashMap. Values from this map take precedence on key conflicts.
+//!
+//! # Outputs
+//! - A new HashMap containing all entries from both input maps. On key conflicts, the value from the second map is used.
+//!
+//! # Example
+//! If `in_map1_hashmap` is {"a": "1", "b": "2"} and `in_map2_hashmap` is {"b": "3", "c": "4"}, the output will be {"a": "1", "b": "3", "c": "4"}.
+//!
+//! # Notes
+//! The original input maps are not modified. The result is a new HashMap containing merged entries.
+//!
+//! # Behavior
+//! The merge is performed by inserting all entries from the second map into the first, overwriting values for duplicate keys.
 
 /// Merge two HashMaps (second map overwrites first on key conflicts).
 fn @[pulsar_node_fn_id]@() -> std::collections::HashMap<String, String> {

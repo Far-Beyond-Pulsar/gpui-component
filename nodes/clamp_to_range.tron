@@ -1,4 +1,21 @@
-//! A pure function that clamps and converts a value to a specific numeric range.
+//! A node that clamps a value to a specific numeric range.
+//!
+//! This node takes a numeric input and restricts it to the specified minimum and maximum bounds.
+//! If the input value is less than the minimum, the output will be the minimum. If greater than the maximum, the output will be the maximum.
+//!
+//! # Inputs
+//! - `in_value_number`: The value to clamp.
+//! - `in_min_number`: The minimum bound.
+//! - `in_max_number`: The maximum bound.
+//!
+//! # Outputs
+//! - The clamped value (f32).
+//!
+//! # Example
+//! If `in_value_number` is 10, `in_min_number` is 0, and `in_max_number` is 5, the output will be 5.
+//!
+//! # Notes
+//! Useful for restricting values to a valid range, such as for UI sliders, physics, or normalization.
 
 /// Clamp a value to a range and optionally convert type.
 fn @[pulsar_node_fn_id]@() -> f32 {

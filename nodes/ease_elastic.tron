@@ -1,16 +1,33 @@
-//! A pure function that applies elastic ease-out interpolation.
-
+//! A node that applies elastic ease-out interpolation (rubber band effect).
+//!
+//! This node produces an elastic ease-out curve, which starts quickly and then overshoots and oscillates before settling.
+//! Useful for animations that need a springy or bouncy effect.
+//!
+//! # Inputs
+//! - `in_t_number`: The interpolation parameter (float, typically in [0, 1]).
+//!
+//! # Outputs
+//! - The eased value (float) in the range [0, 1], with overshoot and oscillation near the end.
+//!
+//! # Example
+//! If `in_t_number` is 0.5, the output will be a value between 0 and 1, showing elastic behavior.
+//! If `in_t_number` is 0.0, the output will be 0.0. If `in_t_number` is 1.0, the output will be 1.0.
+//!
+//! # Notes
+//! The formula uses exponential decay and a sine wave for oscillation. The effect is most pronounced near the end of the curve.
+//! Useful for UI transitions, physics-based animations, and effects that require a springy finish.
+//
 /// Apply elastic ease-out interpolation (rubber band effect).
 fn @[pulsar_node_fn_id]@() -> f32 {
     let t = @[in_t_number]@.clamp(0.0, 1.0);
-    
+
     if t == 0.0 {
         return 0.0;
     }
     if t == 1.0 {
         return 1.0;
     }
-    
+
     let c4 = (2.0 * std::f32::consts::PI) / 3.0;
     2.0_f32.powf(-10.0 * t) * ((t * 10.0 - 0.75) * c4).sin() + 1.0
 }

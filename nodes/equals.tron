@@ -1,3 +1,21 @@
-//! A simple node that checks if two values are equal.
-
+//! A node that checks if two values are equal.
+//!
+//! This node compares two input values and returns true if they are equal, false otherwise.
+//! Works for numbers, strings, booleans, and other comparable types.
+//!
+//! # Inputs
+//! - `in_a_any`: The first value to compare.
+//! - `in_b_any`: The second value to compare.
+//!
+//! # Outputs
+//! - Returns `true` if the values are equal, `false` otherwise.
+//!
+//! # Example
+//! If `in_a_any` is 5 and `in_b_any` is 5, the output will be true.
+//! If `in_a_any` is "foo" and `in_b_any` is "bar", the output will be false.
+//!
+//! # Notes
+//! Comparison uses the standard equality operator. For custom types, ensure they implement equality.
+//!
+//! Performs equality check.
 @[in_a_any]@ == @[in_b_any]@

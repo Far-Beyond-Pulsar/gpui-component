@@ -1,3 +1,21 @@
-//! A simple node that returns the minimum of two numbers.
-
+//! A node that returns the minimum of two numbers.
+//!
+//! This node takes two numeric inputs and returns the smaller of the two.
+//! Useful for clamping, comparisons, and enforcing lower bounds.
+//!
+//! # Inputs
+//! - `in_a_number`: The first number.
+//! - `in_b_number`: The second number.
+//!
+//! # Outputs
+//! - The minimum of the two input numbers.
+//!
+//! # Example
+//! If `in_a_number` is 5 and `in_b_number` is 3, the output will be 3.
+//! If both are equal, the output will be that value.
+//!
+//! # Notes
+//! Uses the standard min function for the numeric type.
+//
+//! Returns the minimum of two numbers.
 @[in_a_number]@.min(@[in_b_number]@)

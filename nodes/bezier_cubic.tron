@@ -1,4 +1,23 @@
-//! A pure function that calculates cubic Bezier curve interpolation.
+//! A node that calculates cubic Bezier curve interpolation.
+//!
+//! This node computes the position on a cubic Bezier curve given four control points and a parameter t.
+//! The curve is defined by start, two control points, and end.
+//!
+//! # Inputs
+//! - `in_start_number`: The starting point of the curve.
+//! - `in_control1_number`: The first control point.
+//! - `in_control2_number`: The second control point.
+//! - `in_end_number`: The ending point of the curve.
+//! - `in_t_number`: The interpolation parameter (0.0 to 1.0).
+//!
+//! # Outputs
+//! - The interpolated value on the cubic Bezier curve at t.
+//!
+//! # Example
+//! If t = 0.5, the output is the midpoint of the curve defined by the four points.
+//!
+//! # Notes
+//! The parameter t is clamped to [0.0, 1.0]. The result is a weighted sum of the control points.
 
 /// Calculate cubic Bezier curve interpolation with two control points.
 fn @[pulsar_node_fn_id]@() -> f32 {
@@ -7,13 +26,13 @@ fn @[pulsar_node_fn_id]@() -> f32 {
     let p2 = @[in_control2_number]@;
     let p3 = @[in_end_number]@;
     let t = @[in_t_number]@.clamp(0.0, 1.0);
-    
+
     let one_minus_t = 1.0 - t;
     let one_minus_t_cubed = one_minus_t * one_minus_t * one_minus_t;
     let t_cubed = t * t * t;
-    
-    one_minus_t_cubed * p0 + 
-    3.0 * one_minus_t * one_minus_t * t * p1 + 
-    3.0 * one_minus_t * t * t * p2 + 
+
+    one_minus_t_cubed * p0 +
+    3.0 * one_minus_t * one_minus_t * t * p1 +
+    3.0 * one_minus_t * t * t * p2 +
     t_cubed * p3
 }

@@ -1,5 +1,24 @@
-//! A pure function that applies bounce ease-out interpolation.
-
+//! A node that applies bounce ease-out interpolation.
+//!
+//! This node produces a "bouncy" easing effect, commonly used for animations where an object
+//! lands with a bounce. The output starts fast, decelerates, and then bounces several times before settling.
+//!
+//! # Inputs
+//! - `in_t_number`: The interpolation parameter (float, typically in [0, 1]).
+//!
+//! # Outputs
+//! - The eased value (float) representing the bounce effect.
+//!
+//! # Example
+//! If `in_t_number` is 0.5, the output will be a value between 0 and 1, following a bounce curve.
+//!
+//! # Notes
+//! Useful for UI, game, or animation effects where a bouncy landing is desired.
+//! The formula is based on Robert Penner's easing equations.
+//!
+//! # Behavior
+//! The output is always in [0, 1] for t in [0, 1]. Values outside this range will extrapolate.
+//
 /// Apply bounce ease-out interpolation (bouncy landing).
 fn @[pulsar_node_fn_id]@() -> f32 {
     let mut t = @[in_t_number]@.clamp(0.0, 1.0);

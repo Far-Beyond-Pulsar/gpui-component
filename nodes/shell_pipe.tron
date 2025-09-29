@@ -1,4 +1,25 @@
-//! A node that pipes the output of one command to another.
+//! A node that pipes the output of one shell command to another.
+//!
+//! This node executes two shell commands, piping the standard output of the first command as the standard input to the second command.
+//! Useful for chaining command-line utilities, filtering data, or building complex shell pipelines from your graph.
+//!
+//! # Inputs
+//! - `in_command1_string`: The first shell command to execute (string).
+//! - `in_command2_string`: The second shell command to execute, which receives the output of the first as input (string).
+//!
+//! # Outputs
+//! - `Result<String, String>`: The standard output of the second command if successful, or an error message if either command fails.
+//!
+//! # Example
+//! If `in_command1_string` is "echo hello" and `in_command2_string` is "tr a-z A-Z", the output will be "HELLO".
+//!
+//! # Notes
+//! This implementation uses the system shell (`cmd` on Windows, `sh` on Unix-like systems).
+//! The output of the first command is piped directly to the input of the second command.
+//! Use this node to build pipelines similar to "cat file.txt | grep foo".
+//!
+//! # Errors
+//! Returns an error if either command fails to execute or returns a non-zero exit code.
 
 /// Pipe the output of one command to another.
 fn @[pulsar_node_fn_id]@() -> Result<String, String> {

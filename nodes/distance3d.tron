@@ -1,4 +1,19 @@
-//! A node that calculates the distance between two 3D points.
+//! A node that calculates the Euclidean distance between two 3D points.
+//!
+//! This node computes the straight-line distance between two points in 3D space using the Pythagorean theorem.
+//!
+//! # Inputs
+//! - `in_a_vector3`: The first 3D point (tuple of three floats: x, y, z).
+//! - `in_b_vector3`: The second 3D point (tuple of three floats: x, y, z).
+//!
+//! # Outputs
+//! - The distance between the two points (float).
+//!
+//! # Example
+//! If `in_a_vector3` is (0.0, 0.0, 0.0) and `in_b_vector3` is (1.0, 2.0, 2.0), the output will be 3.0.
+//!
+//! # Notes
+//! Useful for geometry, physics, and spatial calculations.
 
 /// Calculate the distance between two 3D points.
 fn @[pulsar_node_fn_id]@() -> f32 {

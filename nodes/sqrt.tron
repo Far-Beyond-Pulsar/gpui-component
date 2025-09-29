@@ -1,3 +1,21 @@
-//! A simple node that calculates the square root of a number.
-
+//! A node that calculates the square root of a number.
+//!
+//! This node takes a numeric input and returns its square root using the standard sqrt function.
+//! Useful for mathematical calculations, geometry, physics, and any context where square roots are needed.
+//!
+//! # Inputs
+//! - `in_value_number`: The input number (float) to calculate the square root of.
+//!
+//! # Outputs
+//! - The square root of the input number (float).
+//!
+//! # Example
+//! If `in_value_number` is 9.0, the output will be 3.0.
+//! If `in_value_number` is 2.0, the output will be approximately 1.4142.
+//!
+//! # Notes
+//! The input must be non-negative. Negative inputs will return NaN (not a number).
+//! Use this node for root calculations, distance formulas, or normalization.
+//
+//! Calculate the square root of a number.
 @[in_value_number]@.sqrt()

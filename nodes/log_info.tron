@@ -1,4 +1,21 @@
-//! A logging node that outputs an info message.
+//! A node that logs an informational message with a timestamp.
+//!
+//! This node prints an info-level message to the console, prefixed with the current Unix timestamp.
+//! Useful for diagnostics, debugging, and tracking application events.
+//!
+//! # Inputs
+//! - `in_message_string`: The message to log (string).
+//!
+//! # Outputs
+//! - None. The message is printed to the console.
+//!
+//! # Example
+//! If `in_message_string` is "Initialization complete", the output will be:
+//! [INFO 1680000000] Initialization complete
+//!
+//! # Notes
+//! The timestamp is the number of seconds since the Unix epoch.
+//! Use this node for general-purpose logging and tracing.
 
 /// Log an info message with timestamp.
 fn @[pulsar_node_fn_id]@() {

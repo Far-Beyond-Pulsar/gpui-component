@@ -1,4 +1,20 @@
 //! A node that computes the union of two HashSets.
+//!
+//! This node takes two input HashSets and returns a new HashSet containing all unique elements from both sets.
+//! Useful for set operations, combining collections, or aggregating unique values.
+//!
+//! # Inputs
+//! - `in_set1_hashset`: The first input HashSet.
+//! - `in_set2_hashset`: The second input HashSet.
+//!
+//! # Outputs
+//! - A new HashSet containing all unique elements from both input sets.
+//!
+//! # Example
+//! If `in_set1_hashset` is {"apple", "banana"} and `in_set2_hashset` is {"banana", "carrot"}, the output will be {"apple", "banana", "carrot"}.
+//!
+//! # Notes
+//! The original input sets are not modified. The result is a new HashSet containing the union.
 
 /// Compute the union of two HashSets.
 fn @[pulsar_node_fn_id]@() -> std::collections::HashSet<String> {

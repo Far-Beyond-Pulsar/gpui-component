@@ -1,3 +1,18 @@
-//! A simple node that subtracts two numbers.
+//! A node that subtracts one number from another.
+//!
+//! This node takes two numeric inputs and returns the result of subtracting the second number from the first.
+//!
+//! # Inputs
+//! - `in_a_number`: The minuend (the number to subtract from).
+//! - `in_b_number`: The subtrahend (the number to subtract).
+//!
+//! # Outputs
+//! - The result of `in_a_number - in_b_number`.
+//!
+//! # Example
+//! If `in_a_number` is 10 and `in_b_number` is 3, the output will be 7.
+//!
+//! # Notes
+//! Works with both integers and floating-point numbers.
 
 @[in_a_number]@ - @[in_b_number]@

@@ -1,5 +1,22 @@
 //! A node that inserts a key-value pair into a HashMap.
-
+//!
+//! This node adds or updates a key-value pair in the provided HashMap. If the key already exists, its value is updated.
+//!
+//! # Inputs
+//! - `in_map_hashmap`: The input HashMap to insert into.
+//! - `in_key_string`: The key to insert or update.
+//! - `in_value_string`: The value to associate with the key.
+//!
+//! # Outputs
+//! - The updated HashMap with the new or updated key-value pair.
+//!
+//! # Example
+//! If `in_map_hashmap` is {"a": "1"}, `in_key_string` is "b", and `in_value_string` is "2", the output will be {"a": "1", "b": "2"}.
+//! If `in_key_string` is "a", the value for "a" will be updated.
+//!
+//! # Notes
+//! Use this node to add or update entries in a HashMap for fast key-based lookup and storage.
+//
 /// Insert a key-value pair into a HashMap.
 fn @[pulsar_node_fn_id]@() -> std::collections::HashMap<String, String> {
     let mut map = @[in_map_hashmap]@;

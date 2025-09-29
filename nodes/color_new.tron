@@ -1,4 +1,21 @@
 //! A node that creates a new color from RGBA components.
+//!
+//! This node constructs a color value using the provided red, green, blue, and alpha components.
+//!
+//! # Inputs
+//! - `in_r_number`: The red component (float, typically 0.0 to 1.0).
+//! - `in_g_number`: The green component (float, typically 0.0 to 1.0).
+//! - `in_b_number`: The blue component (float, typically 0.0 to 1.0).
+//! - `in_a_number`: The alpha (opacity) component (float, typically 0.0 to 1.0).
+//!
+//! # Outputs
+//! - A tuple representing the color: (r, g, b, a).
+//!
+//! # Example
+//! If r = 1.0, g = 0.5, b = 0.0, a = 1.0, the output will be (1.0, 0.5, 0.0, 1.0).
+//!
+//! # Notes
+//! Use this node to construct colors for rendering, UI, or data visualization.
 
 /// Create a new color from RGBA components.
 fn @[pulsar_node_fn_id]@() -> (f32, f32, f32, f32) {

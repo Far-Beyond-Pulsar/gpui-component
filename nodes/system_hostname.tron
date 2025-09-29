@@ -1,4 +1,17 @@
 //! A node that returns the system hostname.
+//!
+//! This node retrieves the hostname of the system as a string. The hostname is typically
+//! used to identify the machine on a network or for logging and diagnostic purposes.
+//!
+//! # Outputs
+//! - `Result<String, String>`: The system hostname if successful, or an error message if retrieval fails.
+//!
+//! # Example
+//! On most systems, the output will be the computer's network name (e.g., "DESKTOP-1234" or "my-macbook").
+//!
+//! # Notes
+//! This implementation uses the `hostname` command and works on both Windows and Unix-like systems.
+//! If the command fails, an error message is returned.
 
 /// Get the system hostname.
 fn @[pulsar_node_fn_id]@() -> Result<String, String> {

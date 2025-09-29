@@ -1,4 +1,20 @@
-//! A pure function that converts an integer to a float.
+//! A node that converts an integer to a floating-point number.
+//!
+//! This node takes an integer input and returns its floating-point (f32) representation.
+//! Useful for type conversion, calculations requiring floating-point precision, or interfacing with APIs that expect floats.
+//!
+//! # Inputs
+//! - `in_value_number`: The integer value to convert.
+//!
+//! # Outputs
+//! - The floating-point (f32) representation of the input integer.
+//!
+//! # Example
+//! If `in_value_number` is 7, the output will be 7.0.
+//! If `in_value_number` is -3, the output will be -3.0.
+//!
+//! # Notes
+//! This operation is a simple cast. No rounding or scaling is performed.
 
 /// Convert an integer to a float.
 fn @[pulsar_node_fn_id]@() -> f32 {

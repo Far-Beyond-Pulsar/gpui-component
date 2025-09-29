@@ -7,6 +7,22 @@
 //! # Inputs
 //! - `in_milliseconds_number`: The sleep duration in milliseconds (u64)
 //!
+//! # Outputs
+//! - None. The thread resumes after the specified duration.
+//!
+//! # Example
+//! If `in_milliseconds_number` is 1000, the thread will sleep for approximately 1 second.
+//!
+//! # Notes
+//! The thread may sleep longer than requested due to system scheduling delays.
+//!
+//! This node suspends execution of the current thread for the given number
+//! of milliseconds. During this time, the thread will not consume CPU resources
+//! and other threads can run.
+//!
+//! # Inputs
+//! - `in_milliseconds_number`: The sleep duration in milliseconds (u64)
+//!
 //! # Behavior
 //! The thread will sleep for at least the specified duration, but may sleep
 //! longer due to scheduling delays or system load.

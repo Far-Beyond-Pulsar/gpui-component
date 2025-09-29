@@ -1,4 +1,17 @@
 //! A node that returns the operating system family.
+//!
+//! This node retrieves the family of the operating system on which the code is running.
+//! Typical values include "unix", "windows", or "wasm".
+//!
+//! # Outputs
+//! - `String`: The operating system family as a string.
+//!
+//! # Example
+//! On Windows, the output will be `"windows"`.
+//! On Linux or macOS, the output will be `"unix"`.
+//!
+//! # Notes
+//! This is determined at compile time and is based on Rust's `std::env::consts::FAMILY`.
 
 /// Get the operating system family.
 fn @[pulsar_node_fn_id]@() -> String {

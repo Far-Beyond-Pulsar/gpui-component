@@ -1,4 +1,20 @@
-//! A node that converts a HashMap to JSON string representation.
+//! A node that converts a HashMap to a JSON string representation.
+//!
+//! This node takes a HashMap with String keys and values and returns a JSON-formatted string representing the map.
+//! Useful for serialization, logging, exporting data, or interfacing with APIs that require JSON.
+//!
+//! # Inputs
+//! - `in_map_hashmap`: The input HashMap to convert to JSON.
+//!
+//! # Outputs
+//! - A JSON string representing the HashMap.
+//!
+//! # Example
+//! If `in_map_hashmap` is {"a": "1", "b": "2"}, the output will be "{"a":"1","b":"2"}".
+//!
+//! # Notes
+//! This implementation escapes double quotes in keys and values. The output is a flat JSON object with string keys and values.
+//! For more complex or nested data, consider using a dedicated JSON serialization library.
 
 /// Convert a HashMap to JSON string representation.
 fn @[pulsar_node_fn_id]@() -> String {

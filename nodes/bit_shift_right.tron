@@ -1,3 +1,20 @@
-//! A pure function that performs right bit shift operation.
-
+//! A node that performs a right bit shift operation on an integer.
+//!
+//! This node shifts the bits of the input value to the right by the specified number of positions.
+//! Useful for low-level bit manipulation, encoding, or decoding operations.
+//!
+//! # Inputs
+//! - `in_value_number`: The integer value to shift (converted to i32).
+//! - `in_shift_number`: The number of positions to shift (converted to i32).
+//!
+//! # Outputs
+//! - The result of shifting `in_value_number` right by `in_shift_number` bits.
+//!
+//! # Example
+//! If `in_value_number` is 8 and `in_shift_number` is 2, the output will be 2.
+//!
+//! # Notes
+//! Right shifting discards bits shifted out and fills with zeros on the left. Negative shifts are not allowed.
+//
+//! Perform right bit shift operation.
 (@[in_value_number]@ as i32) >> (@[in_shift_number]@ as i32)

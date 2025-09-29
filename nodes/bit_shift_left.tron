@@ -1,3 +1,20 @@
-//! A pure function that performs left bit shift operation.
-
+//! A node that performs a left bitwise shift operation on an integer.
+//!
+//! This node shifts the bits of the input value to the left by the specified number of positions.
+//! Useful for low-level bit manipulation, encoding, or fast multiplication by powers of two.
+//!
+//! # Inputs
+//! - `in_value_number`: The integer value to shift.
+//! - `in_shift_number`: The number of positions to shift left.
+//!
+//! # Outputs
+//! - The result of shifting `in_value_number` left by `in_shift_number` bits.
+//!
+//! # Example
+//! If `in_value_number` is 3 (binary 11) and `in_shift_number` is 2, the output will be 12 (binary 1100).
+//!
+//! # Notes
+//! Shifting by a negative or excessively large value may yield unexpected results.
+//
+//! Performs left bit shift operation.
 (@[in_value_number]@ as i32) << (@[in_shift_number]@ as i32)

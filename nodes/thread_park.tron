@@ -1,15 +1,22 @@
 //! A node that parks (suspends) the current thread until it is unparked.
 //!
-//! Parking a thread puts it to sleep until another thread calls `unpark()`
-//! on its thread handle. This is useful for implementing custom synchronization
-//! primitives or waiting for external events.
+//! This node suspends the current thread, putting it to sleep until another thread
+//! explicitly unparks it. Useful for implementing custom synchronization primitives
+//! or waiting for external events.
 //!
-//! The thread will remain parked until explicitly unparked. If the thread
-//! is already unparked when `park()` is called, it will return immediately.
+//! # Inputs
+//! - None
 //!
-//! # Note
-//! This node blocks the current thread indefinitely until unparked.
-//! Use with caution to avoid deadlocks.
+//! # Outputs
+//! - None (the thread is parked and resumes only when unparked)
+//!
+//! # Example
+//! Use this node in conjunction with thread unpark logic to coordinate thread execution.
+//!
+//! # Notes
+//! - The thread will remain parked indefinitely until explicitly unparked.
+//! - If the thread is already unparked when `park()` is called, it will return immediately.
+//! - Use with caution to avoid deadlocks.
 
 /// Park the current thread until unparked.
 fn @[pulsar_node_fn_id]@() {

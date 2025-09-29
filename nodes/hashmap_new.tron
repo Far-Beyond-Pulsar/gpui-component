@@ -1,4 +1,16 @@
 //! A node that creates a new empty HashMap.
+//!
+//! This node constructs and returns a new, empty HashMap with String keys and String values.
+//! Useful for initializing a collection before inserting entries, resetting state, or preparing for batch operations.
+//!
+//! # Outputs
+//! - An empty HashMap<String, String>.
+//!
+//! # Example
+//! The output is an empty HashMap: {}
+//!
+//! # Notes
+//! Use this node to start building a key-value collection dynamically in your graph.
 
 /// Create a new empty HashMap.
 fn @[pulsar_node_fn_id]@() -> std::collections::HashMap<String, String> {

@@ -1,4 +1,19 @@
-//! A debug node that asserts two values are equal.
+//! A node that asserts two values are equal.
+//!
+//! This node checks if the two input values are equal. If they are not, it panics and prints a message.
+//! Useful for debugging and testing to ensure expected values match.
+//!
+//! # Inputs
+//! - `in_a_string`: The first value to compare (string).
+//! - `in_b_string`: The second value to compare (string).
+//! - `in_message_string`: Optional message to display on assertion failure.
+//!
+//! # Behavior
+//! If the values are not equal, the node panics and prints the provided message.
+//!
+//! # Example
+//! If `in_a_string` is "foo" and `in_b_string` is "bar", the node will panic with the message.
+//! If both are "foo", execution continues normally.
 
 /// Assert that two values are equal, panic with message if not.
 fn @[pulsar_node_fn_id]@() {

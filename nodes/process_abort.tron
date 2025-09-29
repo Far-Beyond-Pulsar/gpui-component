@@ -1,4 +1,20 @@
 //! A node that aborts the current process immediately.
+//!
+//! This node terminates the running process without cleanup, using the system's abort mechanism.
+//! Useful for debugging, testing crash handling, or forcibly stopping execution in critical failure scenarios.
+//!
+//! # Inputs
+//! - None.
+//!
+//! # Outputs
+//! - This node does not return; the process is terminated immediately.
+//!
+//! # Example
+//! When this node is executed, the process will exit with an abort signal (usually exit code 134 or similar).
+//!
+//! # Notes
+//! This is a hard abort: no destructors are run, files may not be flushed, and resources may be leaked.
+//! Use only for unrecoverable errors or debugging. For graceful shutdown, use a different node.
 
 /// Abort the current process immediately.
 fn @[pulsar_node_fn_id]@() -> ! {

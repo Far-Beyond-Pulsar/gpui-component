@@ -1,3 +1,17 @@
-//! A simple node that returns the largest integer less than or equal to a number.
+//! A node that returns the largest integer less than or equal to a number.
+//!
+//! This node takes a floating-point number and returns the largest integer value that is less than or equal to the input.
+//!
+//! # Inputs
+//! - `in_value_number`: The input number (float).
+//!
+//! # Outputs
+//! - The largest integer less than or equal to the input (float).
+//!
+//! # Example
+//! If `in_value_number` is 3.7, the output will be 3.0. If `in_value_number` is -2.3, the output will be -3.0.
+//!
+//! # Notes
+//! The output is a float, not an integer type.
 
 @[in_value_number]@.floor()

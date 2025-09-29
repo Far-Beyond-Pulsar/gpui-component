@@ -1,4 +1,16 @@
 //! A node that creates a new empty HashSet.
+//!
+//! This node constructs and returns a new, empty HashSet of Strings.
+//! Useful for initializing a collection before inserting unique items, resetting state, or preparing for set operations.
+//!
+//! # Outputs
+//! - An empty HashSet<String>.
+//!
+//! # Example
+//! The output is an empty HashSet: {}
+//!
+//! # Notes
+//! Use this node to start building a set of unique values dynamically in your graph.
 
 /// Create a new empty HashSet.
 fn @[pulsar_node_fn_id]@() -> std::collections::HashSet<String> {

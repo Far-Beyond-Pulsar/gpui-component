@@ -1,4 +1,19 @@
-//! A pure function that checks if an Option value is Some (valid/not null).
+//! A node that checks if an Option value is Some (valid/not null).
+//!
+//! This node takes an Option value as input and returns true if the value is Some (i.e., valid or not null), and false if it is None.
+//! Useful for validating optional data, handling present values, or controlling flow based on the presence of a value.
+//!
+//! # Inputs
+//! - `in_value_option`: The Option value to check.
+//!
+//! # Outputs
+//! - Returns `true` if the Option is Some, `false` otherwise.
+//!
+//! # Example
+//! If `in_value_option` is Some(42), the output will be true. If it is None, the output will be false.
+//!
+//! # Notes
+//! Use this node to detect valid or present data in optional fields.
 
 /// Check if an Option value is Some (valid/not null).
 fn @[pulsar_node_fn_id]@() -> bool {

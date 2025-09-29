@@ -1,4 +1,24 @@
-//! A node that makes an HTTP POST request.
+//! A node that makes an HTTP POST request and returns the response body.
+//!
+//! This node sends an HTTP POST request to the specified URL with the provided data and returns the response body as a string.
+//! Useful for interacting with APIs, submitting forms, or sending data to remote servers at runtime.
+//!
+//! # Inputs
+//! - `in_url_string`: The URL to send the POST request to (string).
+//! - `in_data_string`: The data to include in the POST request body (string).
+//!
+//! # Outputs
+//! - `Result<String, String>`: The response body as a string if the request succeeded, or an error message if it failed.
+//!
+//! # Example
+//! If `in_url_string` is "https://example.com/api" and `in_data_string` is "foo=bar", the output will be the response from the server.
+//!
+//! # Notes
+//! This implementation uses the `curl` command-line tool for HTTP requests. Ensure `curl` is available on the system.
+//! For production use, consider replacing with a native HTTP client for better portability and error handling.
+//!
+//! # Errors
+//! Returns an error if the request fails, the URL is invalid, or the response cannot be retrieved.
 
 // TODO: Implement actual HTTP POST request logic using an HTTP client library.
 /// Make an HTTP POST request with data and return the response body.

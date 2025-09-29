@@ -1,4 +1,19 @@
-//! A node that creates a new mutex.
+//! A node that creates a new mutex wrapping a value.
+//!
+//! This node constructs and returns a new `Mutex<String>` containing the provided value.
+//! Useful for thread-safe sharing and mutation of data between threads or tasks.
+//!
+//! # Inputs
+//! - `in_value_string`: The string value to wrap in the mutex.
+//!
+//! # Outputs
+//! - A new `Mutex<String>` containing the input value.
+//!
+//! # Example
+//! If `in_value_string` is "hello", the output will be a mutex containing "hello".
+//!
+//! # Notes
+//! Use this node to safely share and mutate data across threads. Lock the mutex before accessing the value.
 
 /// Create a new mutex wrapping a value.
 fn @[pulsar_node_fn_id]@() -> std::sync::Mutex<String> {

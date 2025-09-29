@@ -1,4 +1,24 @@
-//! A node that generates a random number between min and max.
+//! A node that generates a random number between a minimum and maximum value.
+//!
+//! This node produces a random floating-point number in the range [`in_min_number`, `in_max_number`] (inclusive).
+//! Useful for simulations, games, randomized behavior, or sampling.
+//!
+//! # Inputs
+//! - `in_min_number`: The minimum value (inclusive).
+//! - `in_max_number`: The maximum value (inclusive).
+//!
+//! # Outputs
+//! - A random floating-point number between the specified min and max.
+//!
+//! # Example
+//! If `in_min_number` is 1.0 and `in_max_number` is 10.0, the output will be a random value such as 7.23.
+//!
+//! # Notes
+//! Uses the `rand` crate for random number generation. The range is inclusive on both ends.
+//! If min > max, the function may panic or return unexpected results.
+//!
+//! # Behavior
+//! Each call produces a new random value in the specified range.
 
 /// Generate a random number between min and max.
 fn @[pulsar_node_fn_id]@() -> f32 {

@@ -1,3 +1,18 @@
-//! A simple node that checks if a directory exists.
+//! A node that checks if a directory exists.
+//!
+//! This node takes a path string as input and returns true if the path exists and is a directory, false otherwise.
+//!
+//! # Inputs
+//! - `in_path_string`: The path to check (string).
+//!
+//! # Outputs
+//! - Returns `true` if the path exists and is a directory, `false` otherwise.
+//!
+//! # Example
+//! If `in_path_string` is "C:/Users", and that directory exists, the output will be true.
+//! If the path does not exist or is not a directory, the output will be false.
+//!
+//! # Notes
+//! Useful for validating paths before performing file or directory operations.
 
 std::path::Path::new(@[in_path_string]@).is_dir()

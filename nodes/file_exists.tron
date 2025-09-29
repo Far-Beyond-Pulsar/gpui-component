@@ -1,3 +1,18 @@
-//! A simple node that checks if a file exists.
+//! A node that checks if a file exists.
+//!
+//! This node takes a path string as input and returns true if the file exists at that path, false otherwise.
+//!
+//! # Inputs
+//! - `in_path_string`: The path to check (string).
+//!
+//! # Outputs
+//! - Returns `true` if the file exists, `false` otherwise.
+//!
+//! # Example
+//! If `in_path_string` is "data.txt" and the file exists, the output will be true.
+//! If the file does not exist, the output will be false.
+//!
+//! # Notes
+//! Useful for validating file paths before performing file operations.
 
 std::path::Path::new(@[in_path_string]@).exists()

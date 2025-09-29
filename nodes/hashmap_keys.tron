@@ -1,4 +1,19 @@
 //! A node that returns all keys from a HashMap.
+//!
+//! This node extracts all the keys from the provided HashMap and returns them as a vector of strings.
+//! Useful for iterating over keys, displaying available entries, or performing batch operations.
+//!
+//! # Inputs
+//! - `in_map_hashmap`: The input HashMap to extract keys from.
+//!
+//! # Outputs
+//! - A vector of strings containing all the keys in the HashMap.
+//!
+//! # Example
+//! If `in_map_hashmap` is {"a": "1", "b": "2"}, the output will be ["a", "b"].
+//!
+//! # Notes
+//! The order of keys in the output vector is not guaranteed.
 
 /// Get all keys from a HashMap.
 fn @[pulsar_node_fn_id]@() -> Vec<String> {

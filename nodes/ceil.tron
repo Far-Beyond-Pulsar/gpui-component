@@ -1,3 +1,17 @@
-//! A simple node that returns the smallest integer greater than or equal to a number.
+//! A node that returns the smallest integer greater than or equal to a number.
+//!
+//! This node takes a floating-point number and returns the smallest integer value that is greater than or equal to the input.
+//!
+//! # Inputs
+//! - `in_value_number`: The input number (float).
+//!
+//! # Outputs
+//! - The smallest integer greater than or equal to the input (float).
+//!
+//! # Example
+//! If `in_value_number` is 3.2, the output will be 4.0. If `in_value_number` is -2.7, the output will be -2.0.
+//!
+//! # Notes
+//! The output is a float, not an integer type.
 
 @[in_value_number]@.ceil()

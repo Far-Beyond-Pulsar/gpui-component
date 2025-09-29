@@ -1,4 +1,19 @@
 //! A node that stores a value in an atomic i32.
+//!
+//! This node sets the value of an atomic i32 to the specified input value using relaxed memory ordering.
+//!
+//! # Inputs
+//! - `in_atomic_atomic_i32`: The atomic i32 to store the value in.
+//! - `in_value_number`: The value to store (converted to i32).
+//!
+//! # Outputs
+//! - None (the atomic is updated in place).
+//!
+//! # Example
+//! If `in_atomic_atomic_i32` contains 5 and `in_value_number` is 42, after execution the atomic will contain 42.
+//!
+//! # Notes
+//! Uses relaxed ordering. For stricter synchronization, use a different ordering if needed.
 
 /// Store a value in an atomic i32.
 fn @[pulsar_node_fn_id]@() {

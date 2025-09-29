@@ -1,4 +1,55 @@
 //! A node that calculates the cross product of two 3D vectors.
+//!
+//! This node computes the cross product of two input 3D vectors, returning a new 3D vector
+//! that is perpendicular to both input vectors. The cross product is commonly used in 3D graphics
+//! and physics for calculating normals, torque, and rotational effects.
+//!
+//! # Inputs
+//! - `in_a_vector3`: The first 3D vector (x, y, z).
+//! - `in_b_vector3`: The second 3D vector (x, y, z).
+//!
+//! # Outputs
+//! - `(f32, f32, f32)`: The resulting 3D vector from the cross product.
+//!
+//! # Example
+//! If `in_a_vector3` is (1.0, 0.0, 0.0) and `in_b_vector3` is (0.0, 1.0, 0.0), the output will be (0.0, 0.0, 1.0).
+//!
+//! # Notes
+//! The cross product is anti-commutative: swapping the inputs reverses the direction of the result.
+//!
+//! This node computes the cross product of two input 3D vectors, returning a new 3D vector
+//! that is perpendicular to both input vectors. The cross product is commonly used in 3D graphics
+//! and physics for calculating normals, torque, and rotational effects.
+//!
+//! # Inputs
+//! - `in_a_vector3`: The first 3D vector (x, y, z).
+//! - `in_b_vector3`: The second 3D vector (x, y, z).
+//!
+//! # Outputs
+//! - `(f32, f32, f32)`: The resulting 3D vector from the cross product.
+//!
+//! # Example
+//! If `in_a_vector3` is (1.0, 0.0, 0.0) and `in_b_vector3` is (0.0, 1.0, 0.0), the output will be (0.0, 0.0, 1.0).
+//!
+//! # Notes
+//! The cross product is anti-commutative: swapping the inputs reverses the direction of the result.
+//!
+//! This node computes the cross product of two input 3D vectors, returning a new 3D vector
+//! that is perpendicular to both input vectors. The cross product is commonly used in 3D graphics
+//! and physics for calculating normals, torque, and rotational effects.
+//!
+//! # Inputs
+//! - `in_a_vector3`: The first 3D vector (x, y, z).
+//! - `in_b_vector3`: The second 3D vector (x, y, z).
+//!
+//! # Outputs
+//! - `(f32, f32, f32)`: The resulting 3D vector from the cross product.
+//!
+//! # Example
+//! If `in_a_vector3` is (1.0, 0.0, 0.0) and `in_b_vector3` is (0.0, 1.0, 0.0), the output will be (0.0, 0.0, 1.0).
+//!
+//! # Notes
+//! The cross product is anti-commutative: swapping the inputs reverses the direction of the result.
 
 /// Calculate the cross product of two 3D vectors.
 fn @[pulsar_node_fn_id]@() -> (f32, f32, f32) {

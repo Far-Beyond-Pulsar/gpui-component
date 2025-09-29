@@ -4,9 +4,19 @@
 //! Thread IDs are unique within the process and can be used for debugging
 //! or logging purposes to identify which thread is executing code.
 //!
+//! # Inputs
+//! - _None_
+//!
 //! # Outputs
-//! - `String`: The formatted thread ID (e.g., "ThreadId(1)")
-
+//! - `String`: The formatted thread ID (e.g., "ThreadId(1)").
+//!
+//! # Example
+//! The output might be `"ThreadId(3)"`.
+//!
+//! # Notes
+//! Thread IDs are unique only within the current process and may be reused after a thread exits.
+//!
+//! Use this node for logging, debugging, or tracking which thread is executing a particular node.
 /// Get the current thread ID.
 fn @[pulsar_node_fn_id]@() -> String {
     format!("{:?}", std::thread::current().id())

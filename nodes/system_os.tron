@@ -1,4 +1,18 @@
 //! A node that returns the operating system name.
+//!
+//! This node retrieves the name of the operating system on which the program is running.
+//! The returned value is a string such as "windows", "macos", or "linux".
+//!
+//! # Outputs
+//! - `String`: The name of the operating system.
+//!
+//! # Example
+//! On Windows, the output will be "windows".
+//! On macOS, the output will be "macos".
+//! On Linux, the output will be "linux".
+//!
+//! # Notes
+//! The output values are determined by Rust's `std::env::consts::OS`.
 
 /// Get the operating system name.
 fn @[pulsar_node_fn_id]@() -> String {

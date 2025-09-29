@@ -1,4 +1,22 @@
-//! A debug node that prints only if a condition is true.
+//! A node that prints a message only if a condition is true.
+//!
+//! This node checks the provided boolean condition. If the condition is true, it prints the message to the console.
+//! Useful for debugging, logging, or conditional output in your graph.
+//!
+//! # Inputs
+//! - `in_condition_bool`: The condition to check (bool).
+//! - `in_message_string`: The message to print if the condition is true.
+//!
+//! # Behavior
+//! If the condition is true, the message is printed. If false, nothing happens.
+//!
+//! # Example
+//! If `in_condition_bool` is true and `in_message_string` is "Hello", the output will be:
+//! [CONDITIONAL] Hello
+//! If the condition is false, nothing is printed.
+//!
+//! # Notes
+//! Use this node to reduce log spam or print only relevant information during debugging.
 
 /// Print a message only if the condition is true.
 fn @[pulsar_node_fn_id]@() {

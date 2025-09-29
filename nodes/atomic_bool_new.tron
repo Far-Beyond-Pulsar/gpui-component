@@ -1,4 +1,18 @@
 //! A node that creates a new atomic boolean.
+//!
+//! This node constructs a new atomic boolean value, which can be safely shared and modified across threads.
+//!
+//! # Inputs
+//! - `in_value_bool`: The initial value for the atomic boolean.
+//!
+//! # Outputs
+//! - An `AtomicBool` initialized with the given value.
+//!
+//! # Example
+//! If `in_value_bool` is true, the output will be an atomic boolean set to true.
+//!
+//! # Notes
+//! Atomic booleans are useful for thread-safe flags and synchronization.
 
 /// Create a new atomic boolean.
 fn @[pulsar_node_fn_id]@() -> std::sync::atomic::AtomicBool {

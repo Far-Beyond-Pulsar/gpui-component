@@ -1,3 +1,19 @@
-//! A pure function that performs bitwise XOR operation.
+//! A node that performs a bitwise XOR operation between two numbers.
+//!
+//! This node takes two integer inputs and returns the result of their bitwise XOR operation.
+//! Bitwise XOR sets each bit to 1 if the corresponding bits of the operands are different, otherwise 0.
+//!
+//! # Inputs
+//! - `in_a_number`: The first integer operand.
+//! - `in_b_number`: The second integer operand.
+//!
+//! # Outputs
+//! - The result of `in_a_number ^ in_b_number` as an integer.
+//!
+//! # Example
+//! If `in_a_number` is 6 (0b0110) and `in_b_number` is 3 (0b0011), the output will be 5 (0b0101).
+//!
+//! # Notes
+//! Both inputs are cast to i32 before the operation.
 
 @[in_a_number]@ as i32 ^ @[in_b_number]@ as i32

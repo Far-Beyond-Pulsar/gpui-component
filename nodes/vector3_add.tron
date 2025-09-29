@@ -1,4 +1,52 @@
 //! A node that adds two 3D vectors component-wise.
+//!
+//! This node takes two 3D vectors as input and returns a new 3D vector where each component
+//! is the sum of the corresponding components of the input vectors.
+//!
+//! # Inputs
+//! - `in_a_vector3`: The first 3D vector (tuple of three numbers).
+//! - `in_b_vector3`: The second 3D vector (tuple of three numbers).
+//!
+//! # Outputs
+//! - `(f32, f32, f32)`: The resulting 3D vector after addition.
+//!
+//! # Example
+//! If `in_a_vector3` is (1.0, 2.0, 3.0) and `in_b_vector3` is (4.0, 5.0, 6.0), the output will be (5.0, 7.0, 9.0).
+//!
+//! # Notes
+//! This operation is performed component-wise: (x1 + x2, y1 + y2, z1 + z2).
+//!
+//! This node takes two 3D vectors as input and returns a new 3D vector where each component
+//! is the sum of the corresponding components of the input vectors.
+//!
+//! # Inputs
+//! - `in_a_vector3`: The first 3D vector (tuple of three numbers).
+//! - `in_b_vector3`: The second 3D vector (tuple of three numbers).
+//!
+//! # Outputs
+//! - `(f32, f32, f32)`: The resulting 3D vector after addition.
+//!
+//! # Example
+//! If `in_a_vector3` is (1.0, 2.0, 3.0) and `in_b_vector3` is (4.0, 5.0, 6.0), the output will be (5.0, 7.0, 9.0).
+//!
+//! # Notes
+//! This operation is performed component-wise: (x1 + x2, y1 + y2, z1 + z2).
+//!
+//! This node takes two 3D vectors as input and returns a new 3D vector where each component
+//! is the sum of the corresponding components of the input vectors.
+//!
+//! # Inputs
+//! - `in_a_vector3`: The first 3D vector (tuple of three numbers).
+//! - `in_b_vector3`: The second 3D vector (tuple of three numbers).
+//!
+//! # Outputs
+//! - `(f32, f32, f32)`: The resulting 3D vector after addition.
+//!
+//! # Example
+//! If `in_a_vector3` is (1.0, 2.0, 3.0) and `in_b_vector3` is (4.0, 5.0, 6.0), the output will be (5.0, 7.0, 9.0).
+//!
+//! # Notes
+//! This operation is performed component-wise: (x1 + x2, y1 + y2, z1 + z2).
 
 /// Add two 3D vectors.
 fn @[pulsar_node_fn_id]@() -> (f32, f32, f32) {

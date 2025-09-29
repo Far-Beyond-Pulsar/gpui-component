@@ -1,5 +1,21 @@
-//! A logging node that outputs a warning message.
-
+//! A node that logs a warning message with a timestamp.
+//!
+//! This node prints a warning message to the standard error output, prefixed with a timestamp (seconds since Unix epoch).
+//! Useful for diagnostics, debugging, and highlighting potential issues in your application.
+//!
+//! # Inputs
+//! - `in_message_string`: The warning message to log (string).
+//!
+//! # Outputs
+//! - None. The message is printed to standard error.
+//!
+//! # Example
+//! If `in_message_string` is "Low disk space", the output will be:
+//! [WARN 1700000000] Low disk space
+//!
+//! # Notes
+//! The timestamp is in seconds since the Unix epoch. Use this node to highlight non-fatal issues or potential problems.
+//
 /// Log a warning message with timestamp.
 fn @[pulsar_node_fn_id]@() {
     let now = std::time::SystemTime::now()

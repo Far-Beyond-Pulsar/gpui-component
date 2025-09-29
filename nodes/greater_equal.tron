@@ -1,3 +1,19 @@
-//! A simple node that checks if one number is greater than or equal to another.
-
+//! A node that checks if one number is greater than or equal to another.
+//!
+//! This node compares two numeric inputs and returns true if the first input is greater than or equal to the second, false otherwise.
+//!
+//! # Inputs
+//! - `in_a_number`: The first number to compare.
+//! - `in_b_number`: The second number to compare.
+//!
+//! # Outputs
+//! - Returns `true` if `in_a_number` is greater than or equal to `in_b_number`, `false` otherwise.
+//!
+//! # Example
+//! If `in_a_number` is 5 and `in_b_number` is 3, the output will be true.
+//! If `in_a_number` is 2 and `in_b_number` is 2, the output will be true.
+//! If `in_a_number` is 1 and `in_b_number` is 4, the output will be false.
+//!
+//! # Notes
+//! Useful for conditional logic, filtering, and comparisons in control flow.
 @[in_a_number]@ >= @[in_b_number]@

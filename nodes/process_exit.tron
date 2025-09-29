@@ -1,5 +1,22 @@
-//! A node that exits the current process with a code.
-
+//! A node that exits the current process with a specified exit code.
+//!
+//! This node terminates the running process immediately, returning the provided exit code to the operating system.
+//! Useful for signaling completion, error states, or controlled shutdowns from within a graph.
+//!
+//! # Inputs
+//! - `in_code_number`: The exit code to return (integer).
+//!
+//! # Outputs
+//! - This node does not return; it terminates the process.
+//!
+//! # Example
+//! If `in_code_number` is 0, the process exits with code 0 (success).
+//! If `in_code_number` is 1, the process exits with code 1 (error).
+//!
+//! # Notes
+//! Use with caution: this will immediately terminate the process and no further nodes will execute.
+//! The exit code is typically used by scripts or parent processes to determine success or failure.
+//
 /// Exit the current process with the specified exit code.
 fn @[pulsar_node_fn_id]@() -> ! {
     std::process::exit(@[in_code_number]@ as i32)

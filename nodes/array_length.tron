@@ -1,3 +1,14 @@
-//! A simple node that returns the length of a vector.
+//! A node that returns the length of a vector.
+//!
+//! This node takes a vector as input and returns the number of elements it contains.
+//!
+//! # Inputs
+//! - `in_array_vector`: The input vector.
+//!
+//! # Outputs
+//! - The length of the vector (number of elements).
+//!
+//! # Example
+//! If `in_array_vector` is `[1, 2, 3]`, the output will be `3`.
 
 @[in_array_vector]@.len()

@@ -1,4 +1,20 @@
-//! A debug node that inspects and prints a value with its type info.
+//! A node that inspects and prints a value with its type information.
+//!
+//! This node prints the provided value to the console along with its type and length information.
+//! Useful for debugging, inspecting variables, and understanding runtime state.
+//!
+//! # Inputs
+//! - `in_value_string`: The value to inspect (string).
+//!
+//! # Behavior
+//! Prints the value, its length, and its type to the console.
+//!
+//! # Example
+//! If `in_value_string` is "hello", the output will be:
+//! [INSPECT] Value: 'hello', Length: 5, Type: String
+//!
+//! # Notes
+//! Extend this node for more complex types or richer inspection as needed.
 
 /// Inspect and print a value with detailed information.
 fn @[pulsar_node_fn_id]@() {

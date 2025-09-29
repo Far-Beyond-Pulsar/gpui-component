@@ -1,4 +1,23 @@
 //! A node that linearly interpolates between two colors.
+//!
+//! This node takes two color inputs (each as RGBA tuples) and a parameter t, and returns a new color
+//! that is the linear interpolation between the two colors. The interpolation is performed component-wise.
+//!
+//! # Inputs
+//! - `in_a_color`: The first color (tuple of four floats: r, g, b, a).
+//! - `in_b_color`: The second color (tuple of four floats: r, g, b, a).
+//! - `in_t_number`: The interpolation parameter (float, typically in [0, 1]).
+//!
+//! # Outputs
+//! - A new color (tuple of four floats) representing the interpolated RGBA value.
+//!
+//! # Example
+//! If `in_a_color` is (1.0, 0.0, 0.0, 1.0) and `in_b_color` is (0.0, 0.0, 1.0, 1.0) and `in_t_number` is 0.5,
+//! the output will be (0.5, 0.0, 0.5, 1.0).
+//!
+//! # Notes
+//! The parameter t is not clamped; values outside [0, 1] will extrapolate.
+//! Useful for color blending, gradients, and transitions.
 
 /// Linearly interpolate between two colors.
 fn @[pulsar_node_fn_id]@() -> (f32, f32, f32, f32) {

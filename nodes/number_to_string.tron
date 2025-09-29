@@ -1,4 +1,20 @@
-//! A pure function that converts a number to a string.
+//! A node that converts a number to its string representation.
+//!
+//! This node takes a numeric input and returns its string representation using Rust's `to_string()` method.
+//! Useful for formatting, logging, serialization, or preparing numbers for display in a UI.
+//!
+//! # Inputs
+//! - `in_number_number`: The number to convert.
+//!
+//! # Outputs
+//! - The string representation of the input number.
+//!
+//! # Example
+//! If `in_number_number` is 42, the output will be "42".
+//! If `in_number_number` is 3.14, the output will be "3.14".
+//!
+//! # Notes
+//! The output uses the default formatting for the numeric type.
 
 /// Convert a number to a string.
 fn @[pulsar_node_fn_id]@() -> String {

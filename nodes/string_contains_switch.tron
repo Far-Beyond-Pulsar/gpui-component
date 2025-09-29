@@ -1,4 +1,28 @@
-//! A node that executes branches based on string contains patterns.
+//! A node that executes different branches based on whether a string contains specific patterns.
+//!
+//! This node checks the input string for the presence of up to three patterns, executing the corresponding branch for the first pattern found.
+//! If none of the patterns are found, the "none" branch is executed.
+//! Useful for conditional logic, routing, or handling different cases based on string content.
+//!
+//! # Inputs
+//! - `in_text_string`: The input string to check.
+//! - `in_pattern1_string`: The first pattern to search for.
+//! - `in_pattern2_string`: The second pattern to search for.
+//! - `in_pattern3_string`: The third pattern to search for.
+//!
+//! # Outputs
+//! - Executes `pulsar_exec_contains1` if the first pattern is found.
+//! - Executes `pulsar_exec_contains2` if the second pattern is found.
+//! - Executes `pulsar_exec_contains3` if the third pattern is found.
+//! - Executes `pulsar_exec_none` if none of the patterns are found.
+//!
+//! # Example
+//! If `in_text_string` is "hello world", `in_pattern1_string` is "hello", and `in_pattern2_string` is "foo", the node will execute `pulsar_exec_contains1`.
+//! If none of the patterns are present, the node will execute `pulsar_exec_none`.
+//!
+//! # Notes
+//! Patterns are checked in order. Only the first matching branch is executed. Use this node for simple string-based routing or filtering.
+//
 
 /// Execute different branches based on what the string contains.
 fn @[pulsar_node_fn_id]@() {

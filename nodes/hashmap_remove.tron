@@ -1,4 +1,21 @@
 //! A node that removes a key-value pair from a HashMap.
+//!
+//! This node takes a HashMap and a key, removes the entry for that key if it exists, and returns the updated HashMap along with the removed value (if any).
+//! Useful for dynamic data management, cache eviction, or cleaning up collections.
+//!
+//! # Inputs
+//! - `in_map_hashmap`: The input HashMap to remove from.
+//! - `in_key_string`: The key to remove.
+//!
+//! # Outputs
+//! - A tuple: (the updated HashMap, and the removed value as Option<String>).
+//!
+//! # Example
+//! If `in_map_hashmap` is {"a": "1", "b": "2"} and `in_key_string` is "a", the output will be ({"b": "2"}, Some("1")).
+//! If the key does not exist, the output will be (original map, None).
+//!
+//! # Notes
+//! The original HashMap is consumed and a new one is returned with the entry removed if present.
 
 /// Remove a key-value pair from a HashMap.
 fn @[pulsar_node_fn_id]@() -> (std::collections::HashMap<String, String>, Option<String>) {

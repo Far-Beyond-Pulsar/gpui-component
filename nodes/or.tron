@@ -1,3 +1,20 @@
-//! A simple node that performs a logical OR operation.
+//! A node that performs a logical OR operation between two boolean values.
+//!
+//! This node takes two boolean inputs and returns true if either input is true, or both are true.
+//! Useful for conditional logic, branching, and combining multiple conditions.
+//!
+//! # Inputs
+//! - `in_a_bool`: The first boolean value.
+//! - `in_b_bool`: The second boolean value.
+//!
+//! # Outputs
+//! - Returns `true` if either input is true, `false` otherwise.
+//!
+//! # Example
+//! If `in_a_bool` is true and `in_b_bool` is false, the output will be true.
+//! If both are false, the output will be false.
+//!
+//! # Notes
+//! Logical OR returns true if at least one input is true. Use for combining conditions in control flow.
 
 @[in_a_bool]@ || @[in_b_bool]@

@@ -1,3 +1,20 @@
-//! A simple node that checks if one number is less than another.
+//! A node that checks if one number is less than another.
+//!
+//! This node compares two numeric inputs and returns true if the first input is less than the second, false otherwise.
+//! Useful for conditional logic, filtering, and comparisons in your graph.
+//!
+//! # Inputs
+//! - `in_a_number`: The first number to compare.
+//! - `in_b_number`: The second number to compare.
+//!
+//! # Outputs
+//! - Returns `true` if `in_a_number` is less than `in_b_number`, `false` otherwise.
+//!
+//! # Example
+//! If `in_a_number` is 3 and `in_b_number` is 7, the output will be true.
+//! If `in_a_number` is 5 and `in_b_number` is 2, the output will be false.
+//!
+//! # Notes
+//! Useful for branching, validation, and enforcing numeric constraints.
 
 @[in_a_number]@ < @[in_b_number]@

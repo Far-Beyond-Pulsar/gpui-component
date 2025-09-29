@@ -1,4 +1,16 @@
 //! A node that returns the current working directory.
+//!
+//! This node retrieves the current working directory of the process as a string.
+//! Useful for file operations, diagnostics, or displaying the current location in the filesystem.
+//!
+//! # Outputs
+//! - `Result<String, String>`: The current working directory as a string, or an error message if retrieval fails.
+//!
+//! # Example
+//! If the current directory is "C:/Users/username/project", the output will be "C:/Users/username/project".
+//!
+//! # Notes
+//! The result is wrapped in a Result type. If the directory cannot be retrieved, an error message is returned.
 
 /// Get the current working directory.
 fn @[pulsar_node_fn_id]@() -> Result<String, String> {

@@ -1,4 +1,24 @@
-//! A node that provides a delay that can be restarted/retriggered.
+//! A node that provides a retriggerable delay (restartable timer).
+//!
+//! This node introduces a delay before executing the connected branch, but if triggered again during the delay, the timer is reset.
+//! Useful for debouncing, throttling, or ensuring an action only occurs after a period of inactivity.
+//!
+//! # Inputs
+//! - `in_delay_ms_number`: The delay duration in milliseconds (u64).
+//!
+//! # Outputs
+//! - Executes `pulsar_exec_completed` after the delay, unless retriggered.
+//!
+//! # Behavior
+//! - When triggered, starts a timer for the specified delay.
+//! - If triggered again before the delay elapses, the timer is reset.
+//! - Only after the timer completes without retriggering does the node execute the connected branch.
+//!
+//! # Example
+//! If `in_delay_ms_number` is 1000, and the node is triggered every 500ms, the output will not fire until 1 second passes with no triggers.
+//!
+//! # Notes
+//! Useful for debouncing user input, delaying actions until a pause, or implementing restartable timers.
 
 /// Delay execution but allow retriggering to reset the timer.
 fn @[pulsar_node_fn_id]@() {

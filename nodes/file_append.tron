@@ -1,4 +1,20 @@
 //! A node that appends content to a file.
+//!
+//! This node opens the specified file and appends the provided content to the end.
+//! If the file does not exist, it will be created.
+//!
+//! # Inputs
+//! - `in_path_string`: The path to the file to append to.
+//! - `in_content_string`: The content to append.
+//!
+//! # Outputs
+//! - `Result<(), String>`: Ok(()) if the content was appended successfully, or an error message if the operation failed.
+//!
+//! # Example
+//! If `in_path_string` is "log.txt" and `in_content_string` is "Hello\n", the string "Hello\n" will be added to the end of "log.txt".
+//!
+//! # Notes
+//! Use this node for logging, accumulating output, or adding data to files without overwriting existing content.
 
 /// Append content to a file.
 fn @[pulsar_node_fn_id]@() -> Result<(), String> {

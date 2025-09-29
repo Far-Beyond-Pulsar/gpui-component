@@ -1,5 +1,23 @@
 //! A node that returns the current system time as milliseconds since Unix epoch.
-
+//!
+//! This node retrieves the current system time and returns the number of milliseconds
+//! elapsed since the Unix epoch (January 1, 1970). Useful for timestamping, profiling,
+//! or measuring elapsed time in your application.
+//!
+//! # Outputs
+//! - The current time in milliseconds since Unix epoch (u64).
+//!
+//! # Example
+//! If the current time is January 1, 1970, the output will be 0. If it is January 2, 1970,
+//! the output will be 86,400,000 (number of milliseconds in one day).
+//!
+//! # Notes
+//! The output is always a non-negative integer representing the elapsed time.
+//! If the system clock is set before the epoch, this node will panic.
+//!
+//! # Behavior
+//! Uses the system clock and returns the result as a u64.
+//
 /// Get current time as milliseconds since Unix epoch.
 fn @[pulsar_node_fn_id]@() -> u64 {
     std::time::SystemTime::now()

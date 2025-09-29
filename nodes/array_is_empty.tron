@@ -1,3 +1,12 @@
-//! A simple node that checks if a vector is empty.
+//! A node that checks if a vector is empty.
+//!
+//! # Inputs
+//! - `in_array_vector`: The input vector.
+//!
+//! # Outputs
+//! - True if the vector is empty, false otherwise.
+//!
+//! # Example
+//! If `in_array_vector` is [], the output will be true. If it contains elements, the output will be false.
 
 @[in_array_vector]@.is_empty()

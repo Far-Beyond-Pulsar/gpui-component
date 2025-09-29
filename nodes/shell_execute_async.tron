@@ -1,4 +1,25 @@
-//! A node that executes a shell command asynchronously.
+//! A node that executes a shell command asynchronously and returns the process ID.
+//!
+//! This node spawns a new process to execute the specified shell command in the background (asynchronously).
+//! It returns the process ID (PID) of the spawned process if successful, or an error message if spawning fails.
+//! Useful for launching background tasks, running external programs, or performing asynchronous operations.
+//!
+//! # Inputs
+//! - `in_command_string`: The shell command to execute (string).
+//!
+//! # Outputs
+//! - `Result<u32, String>`: The process ID of the spawned process if successful, or an error message if spawning fails.
+//!
+//! # Example
+//! If `in_command_string` is "sleep 10", the node will start the sleep command in the background and return its PID.
+//!
+//! # Notes
+//! This implementation uses the system shell (`cmd` on Windows, `sh` on Unix-like systems).
+//! The command runs asynchronously; you are responsible for managing the process lifecycle.
+//! Use this node for launching background jobs, daemons, or external tools.
+//!
+//! # Errors
+//! Returns an error if the process cannot be spawned (e.g., invalid command, permissions, or missing shell).
 
 /// Execute a shell command asynchronously and return the process ID.
 fn @[pulsar_node_fn_id]@() -> Result<u32, String> {

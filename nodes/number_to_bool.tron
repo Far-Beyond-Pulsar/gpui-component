@@ -1,4 +1,20 @@
-//! A pure function that converts a number to a boolean (0 = false, non-zero = true).
+//! A node that converts a number to a boolean (0 = false, non-zero = true).
+//!
+//! This node takes a numeric input and returns `false` if the value is zero, or `true` if the value is non-zero.
+//! Useful for conditional logic, filtering, and converting numeric results to boolean flags.
+//!
+//! # Inputs
+//! - `in_value_number`: The input number to convert.
+//!
+//! # Outputs
+//! - Returns `true` if the input is non-zero, `false` if it is zero.
+//!
+//! # Example
+//! If `in_value_number` is 0.0, the output will be false.
+//! If `in_value_number` is 3.14 or -1.0, the output will be true.
+//!
+//! # Notes
+//! This is a simple zero-check. Any non-zero value (positive or negative) returns true.
 
 /// Convert a number to a boolean (0 = false, non-zero = true).
 fn @[pulsar_node_fn_id]@() -> bool {

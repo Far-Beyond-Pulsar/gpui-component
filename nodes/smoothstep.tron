@@ -1,5 +1,25 @@
-//! A node that performs smooth interpolation between edge0 and edge1.
-
+//! A node that performs smooth interpolation between two edges (smoothstep).
+//!
+//! This node computes a smooth Hermite interpolation between 0 and 1 when the input x is between edge0 and edge1.
+//! The result is 0 if x <= edge0 and 1 if x >= edge1, with a smooth transition in between.
+//! Useful for easing, blending, transitions, and soft thresholding.
+//!
+//! # Inputs
+//! - `in_edge0_number`: The lower edge of the transition (float).
+//! - `in_edge1_number`: The upper edge of the transition (float).
+//! - `in_x_number`: The input value to interpolate (float).
+//!
+//! # Outputs
+//! - A float in the range [0, 1] representing the smooth interpolation between the edges.
+//!
+//! # Example
+//! If `in_edge0_number` is 0.0, `in_edge1_number` is 1.0, and `in_x_number` is 0.5, the output will be 0.5.
+//! If `in_x_number` is less than 0.0, the output will be 0.0. If greater than 1.0, the output will be 1.0.
+//!
+//! # Notes
+//! The formula used is: t * t * (3 - 2 * t), where t = ((x - edge0) / (edge1 - edge0)) clamped to [0, 1].
+//! Use this node for smooth transitions, anti-aliasing, or soft step functions.
+//
 /// Perform smooth interpolation between edge0 and edge1.
 fn @[pulsar_node_fn_id]@() -> f32 {
     let edge0 = @[in_edge0_number]@;

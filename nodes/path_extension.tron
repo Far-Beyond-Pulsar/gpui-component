@@ -1,4 +1,21 @@
 //! A node that extracts the file extension from a path.
+//!
+//! This node takes a file path as input and returns the file extension as an Option<String>.
+//! Useful for file management, filtering, or determining file types.
+//!
+//! # Inputs
+//! - `in_path_string`: The input file path (string).
+//!
+//! # Outputs
+//! - `Option<String>`: The file extension if present, or None if the path has no extension.
+//!
+//! # Example
+//! If `in_path_string` is "foo.txt", the output will be Some("txt").
+//! If `in_path_string` is "archive.tar.gz", the output will be Some("gz").
+//! If the path has no extension, the output will be None.
+//!
+//! # Notes
+//! The extension is returned without the leading dot. The result is case-sensitive and depends on the file name.
 
 /// Extract the file extension from a path.
 fn @[pulsar_node_fn_id]@() -> Option<String> {

@@ -1,4 +1,21 @@
-//! A pure function that selects between two booleans based on a condition (ternary operator).
+//! A node that selects between two boolean values based on a condition (ternary operator).
+//!
+//! This node takes a boolean condition and two boolean values, returning `in_a_bool` if the condition is true, or `in_b_bool` if the condition is false.
+//! Useful for conditional logic, branching, and simplifying if-else expressions in your graph.
+//!
+//! # Inputs
+//! - `in_condition_bool`: The condition to evaluate (bool).
+//! - `in_a_bool`: The value to return if the condition is true (bool).
+//! - `in_b_bool`: The value to return if the condition is false (bool).
+//!
+//! # Outputs
+//! - The selected boolean value based on the condition.
+//!
+//! # Example
+//! If `in_condition_bool` is true, the output will be `in_a_bool`. If false, the output will be `in_b_bool`.
+//!
+//! # Notes
+//! This is equivalent to the ternary operator: `condition ? a : b`. Use for concise conditional selection.
 
 /// Select between two booleans based on a boolean condition.
 fn @[pulsar_node_fn_id]@() -> bool {

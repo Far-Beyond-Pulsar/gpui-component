@@ -1,4 +1,21 @@
 //! A node that returns the size of a file in bytes.
+//!
+//! This node retrieves the size of the specified file in bytes. Useful for diagnostics, file management, or validating file uploads.
+//!
+//! # Inputs
+//! - `in_path_string`: The path to the file whose size is to be determined.
+//!
+//! # Outputs
+//! - `Result<u64, String>`: The size of the file in bytes, or an error message if the file cannot be accessed.
+//!
+//! # Example
+//! If `in_path_string` is "data.txt" and the file is 1024 bytes, the output will be Ok(1024).
+//!
+//! # Notes
+//! Returns an error if the file does not exist or cannot be accessed due to permissions.
+//!
+//! # Behavior
+//! Uses the standard library to retrieve file metadata and returns the file size as a u64.
 
 /// Get the size of a file in bytes.
 fn @[pulsar_node_fn_id]@() -> Result<u64, String> {

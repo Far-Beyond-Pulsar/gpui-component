@@ -1,4 +1,22 @@
-//! A pure function that checks if a value is between two values (exclusive).
+//! A node that checks if a value is strictly between two other values (exclusive).
+//!
+//! This node returns true if the input value is greater than the first bound and less than the second bound (exclusive).
+//! Useful for range validation, filtering, and enforcing exclusive constraints.
+//!
+//! # Inputs
+//! - `in_value_number`: The value to check.
+//! - `in_a_number`: The lower bound (exclusive).
+//! - `in_b_number`: The upper bound (exclusive).
+//!
+//! # Outputs
+//! - Returns `true` if the value is strictly between a and b (a < value < b), `false` otherwise.
+//!
+//! # Example
+//! If `in_value_number` is 5, `in_a_number` is 3, and `in_b_number` is 7, the output will be true.
+//! If `in_value_number` is 3 or 7, the output will be false.
+//!
+//! # Notes
+//! The check is exclusive: value > a && value < b.
 
 /// Check if a value is between two values (exclusive).
 fn @[pulsar_node_fn_id]@() -> bool {

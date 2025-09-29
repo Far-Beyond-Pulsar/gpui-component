@@ -1,4 +1,21 @@
-//! A pure function that creates a 3D vector from X, Y, and Z components.
+//! A node that creates a 3D vector from X, Y, and Z components.
+//!
+//! This node constructs a 3D vector (tuple of three floats) from the provided X, Y, and Z components.
+//! Useful for geometry, physics, graphics, and any context where 3D positions or directions are needed.
+//!
+//! # Inputs
+//! - `in_x_number`: The X component (float).
+//! - `in_y_number`: The Y component (float).
+//! - `in_z_number`: The Z component (float).
+//!
+//! # Outputs
+//! - A tuple (f32, f32, f32) representing the 3D vector.
+//!
+//! # Example
+//! If `in_x_number` is 1.0, `in_y_number` is 2.0, and `in_z_number` is 3.0, the output will be (1.0, 2.0, 3.0).
+//!
+//! # Notes
+//! Use this node to construct 3D points, directions, or colors (if using RGB).
 
 /// Create a 3D vector from X, Y, and Z components.
 fn @[pulsar_node_fn_id]@() -> (f32, f32, f32) {

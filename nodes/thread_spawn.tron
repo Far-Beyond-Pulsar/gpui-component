@@ -13,6 +13,28 @@
 //! terminate when that code completes. The main thread continues execution
 //! immediately after spawning.
 //!
+//! # Example
+//! Use this node to perform background work, such as file I/O or computation,
+//! without blocking the main thread. You can join the thread later if you
+//! need to wait for its completion.
+//!
+//! # Notes
+//! Thread spawning has overhead. Use for tasks that benefit from parallelism.
+//! Remember to join threads if you need to wait for their completion.
+//!
+//! This node creates a new operating system thread and executes the code
+//! connected to its body in that thread. The new thread runs concurrently
+//! with the current thread, allowing for parallel execution.
+//!
+//! # Outputs
+//! - `std::thread::JoinHandle<()>`: A handle to the spawned thread that can
+//!   be used to wait for the thread to complete or check its status
+//!
+//! # Behavior
+//! The spawned thread will execute the code in `pulsar_exec_body` and
+//! terminate when that code completes. The main thread continues execution
+//! immediately after spawning.
+//!
 //! # Note
 //! Thread spawning has overhead. Use for tasks that benefit from parallelism.
 //! Remember to join threads if you need to wait for their completion.

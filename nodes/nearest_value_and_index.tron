@@ -1,4 +1,22 @@
-//! A pure function that finds both the nearest value and its index in an array.
+//! A node that finds both the nearest value and its index in an array to a target number.
+//!
+//! This node takes a target number and an array of numbers, and returns a tuple containing the value in the array that is closest to the target and its index.
+//! Useful for quantization, snapping, searching, or finding the best match and its location in a dataset.
+//!
+//! # Inputs
+//! - `in_target_number`: The target number to compare against.
+//! - `in_array_vector`: The array of numbers to search.
+//!
+//! # Outputs
+//! - `Option<(f32, usize)>`: A tuple of the nearest value and its index, or None if the array is empty.
+//!
+//! # Example
+//! If `in_target_number` is 5.2 and `in_array_vector` is [1.0, 4.9, 8.0], the output will be Some((4.9, 1)).
+//! If the array is empty, the output will be None.
+//!
+//! # Notes
+//! If multiple values are equally close, the first one found is returned.
+//! The search uses absolute difference for comparison.
 
 /// Find both the nearest value and its index in an array to a target number.
 fn @[pulsar_node_fn_id]@() -> Option<(f32, usize)> {

@@ -1,3 +1,21 @@
-//! A simple node that linearly interpolates between two values.
+//! A node that linearly interpolates between two values (lerp).
+//!
+//! This node computes the linear interpolation between two numeric values a and b, using the parameter t.
+//! The formula is: a + (b - a) * t. Useful for blending, animation, transitions, and smooth value changes.
+//!
+//! # Inputs
+//! - `in_a_number`: The start value (a).
+//! - `in_b_number`: The end value (b).
+//! - `in_t_number`: The interpolation parameter (float, typically in [0, 1]).
+//!
+//! # Outputs
+//! - The interpolated value between a and b.
+//!
+//! # Example
+//! If `in_a_number` is 0, `in_b_number` is 10, and `in_t_number` is 0.5, the output will be 5.0.
+//! If `in_t_number` is 0, the output is a. If `in_t_number` is 1, the output is b.
+//!
+//! # Notes
+//! The parameter t is not clamped; values outside [0, 1] will extrapolate beyond a and b.
 
 @[in_a_number]@ + (@[in_b_number]@ - @[in_a_number]@) * @[in_t_number]@

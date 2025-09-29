@@ -1,4 +1,19 @@
-//! A node that gets an environment variable value.
+//! A node that retrieves the value of an environment variable.
+//!
+//! This node attempts to get the value of the specified environment variable from the system.
+//! If the variable exists, its value is returned as a string. If it does not exist, None is returned.
+//!
+//! # Inputs
+//! - `in_name_string`: The name of the environment variable to retrieve.
+//!
+//! # Outputs
+//! - `Option<String>`: The value of the environment variable, or None if it is not set.
+//!
+//! # Example
+//! If `in_name_string` is "PATH", the output will be the value of the PATH variable, or None if not set.
+//!
+//! # Notes
+//! Use this node to access configuration, system paths, or other environment-dependent values.
 
 /// Get an environment variable value.
 fn @[pulsar_node_fn_id]@() -> Option<String> {

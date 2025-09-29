@@ -1,3 +1,17 @@
-//! A simple node that removes whitespace from both ends of a string.
+//! A node that removes whitespace from both ends of a string.
+//!
+//! This node trims leading and trailing whitespace from the input string and returns the result.
+//!
+//! # Inputs
+//! - `in_text_string`: The string to trim.
+//!
+//! # Outputs
+//! - `String`: The trimmed string with no leading or trailing whitespace.
+//!
+//! # Example
+//! If `in_text_string` is "  hello world  ", the output will be "hello world".
+//!
+//! # Notes
+//! Whitespace includes spaces, tabs, and newlines.
 
 @[in_text_string]@.trim().to_string()

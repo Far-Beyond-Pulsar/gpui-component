@@ -1,4 +1,19 @@
 //! A node that returns all values from a HashMap.
+//!
+//! This node extracts all the values from the provided HashMap and returns them as a vector of strings.
+//! Useful for iterating over values, aggregating data, or performing batch operations.
+//!
+//! # Inputs
+//! - `in_map_hashmap`: The input HashMap to extract values from.
+//!
+//! # Outputs
+//! - A vector of strings containing all the values in the HashMap.
+//!
+//! # Example
+//! If `in_map_hashmap` is {"a": "1", "b": "2"}, the output will be ["1", "2"].
+//!
+//! # Notes
+//! The order of values in the output vector is not guaranteed.
 
 /// Get all values from a HashMap.
 fn @[pulsar_node_fn_id]@() -> Vec<String> {

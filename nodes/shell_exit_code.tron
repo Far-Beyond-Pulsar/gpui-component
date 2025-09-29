@@ -1,6 +1,27 @@
-//! A node that executes a command and returns just the exit code.
-
-/// Execute a command and return just the exit code.
+//! A node that executes a shell command and returns just the exit code.
+//!
+//! This node runs the specified shell command using the system shell and returns only the command's exit code as an integer.
+//! Useful for automation, scripting, checking command success/failure, or integrating with the operating system.
+//!
+//! # Inputs
+//! - `in_command_string`: The shell command to execute (string).
+//!
+//! # Outputs
+//! - `Result<i32, String>`: The exit code of the command if successful, or an error message if the command fails to execute.
+//!
+//! # Example
+//! If `in_command_string` is "exit 42", the output will be Ok(42).
+//! If the command fails to execute, the output will be Err with the error message.
+//!
+//! # Notes
+//! On Windows, the command is executed using `cmd /C`. On Unix-like systems, it uses `sh -c`.
+//! The exit code is returned as an integer. If the command does not return an exit code, -1 is used.
+//! Use this node to check the result of shell commands, scripts, or external tools.
+//!
+//! # Errors
+//! Returns an error if the command fails to execute or cannot be started.
+//
+ /// Execute a command and return just the exit code.
 fn @[pulsar_node_fn_id]@() -> Result<i32, String> {
     use std::process::Command;
     

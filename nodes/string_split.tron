@@ -1,4 +1,22 @@
 //! A node that splits a string by a delimiter.
+//!
+//! This node takes an input string and a delimiter string, and splits the input string
+//! into a vector of substrings wherever the delimiter occurs.
+//!
+//! # Inputs
+//! - `in_text_string`: The string to split.
+//! - `in_delimiter_string`: The delimiter string to split by.
+//!
+//! # Outputs
+//! - `Vec<String>`: A vector of substrings resulting from the split.
+//!
+//! # Example
+//! If `in_text_string` is "a,b,c" and `in_delimiter_string` is ",", the output will be
+//! `["a", "b", "c"]`.
+//!
+//! # Notes
+//! If the delimiter is not found, the output will be a single-element vector containing the original string.
+//! If the delimiter is an empty string, the output will be a vector of single-character strings.
 
 /// Split a string by a delimiter.
 fn @[pulsar_node_fn_id]@() -> Vec<String> {

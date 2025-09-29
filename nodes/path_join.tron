@@ -1,4 +1,20 @@
-//! A node that joins two path components.
+//! A node that joins two path components into a single path.
+//!
+//! This node takes a base path and a component (file or directory name) and joins them using the platform's path separator.
+//! Useful for constructing file paths, navigating directories, or building paths dynamically.
+//!
+//! # Inputs
+//! - `in_base_string`: The base path (string).
+//! - `in_component_string`: The path component to join (string).
+//!
+//! # Outputs
+//! - A string representing the joined path.
+//!
+//! # Example
+//! If `in_base_string` is "folder" and `in_component_string` is "file.txt", the output will be "folder/file.txt" (on Unix) or "folder\file.txt" (on Windows).
+//!
+//! # Notes
+//! Uses the standard library's path joining, which handles separators and normalization.
 
 /// Join two path components.
 fn @[pulsar_node_fn_id]@() -> String {

@@ -1,5 +1,21 @@
-//! A node that atomically adds to an i32 value.
-
+//! A node that atomically adds a value to an atomic i32 and returns the previous value.
+//!
+//! This node performs an atomic addition on the provided `AtomicI32` instance.
+//! The operation is thread-safe and returns the value before the addition.
+//!
+//! # Inputs
+//! - `in_atomic_atomic_i32`: The atomic i32 to modify.
+//! - `in_value_number`: The value to add (i32).
+//!
+//! # Outputs
+//! - The previous value of the atomic i32 before the addition.
+//!
+//! # Example
+//! If the atomic value is 5 and you add 3, the output will be 5 and the atomic value will become 8.
+//!
+//! # Notes
+//! Uses `Relaxed` ordering for performance. For stricter memory guarantees, use other orderings as needed.
+//
 /// Atomically add to an i32 value and return the previous value.
 fn @[pulsar_node_fn_id]@() -> i32 {
     @[in_atomic_atomic_i32]@.fetch_add(@[in_value_number]@ as i32, std::sync::atomic::Ordering::Relaxed)

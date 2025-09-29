@@ -1,4 +1,18 @@
-//! A pure function that breaks a 2D vector into X and Y components.
+//! A node that breaks a 2D vector into its X and Y components.
+//!
+//! This node takes a 2D vector as input and returns its X and Y components as a tuple.
+//!
+//! # Inputs
+//! - `in_vector_vector2`: The input 2D vector (tuple of two numbers).
+//!
+//! # Outputs
+//! - A tuple containing the X and Y components (f32, f32).
+//!
+//! # Example
+//! If `in_vector_vector2` is (3.0, 4.0), the output will be (3.0, 4.0).
+//!
+//! # Notes
+//! Useful for extracting individual coordinates from a vector.
 
 /// Break a 2D vector into X and Y components.
 fn @[pulsar_node_fn_id]@() -> (f32, f32) {

@@ -1,4 +1,18 @@
-//! A pure function that gets the Z component from a 3D vector.
+//! A node that gets the Z component from a 3D vector.
+//!
+//! This node extracts the Z component from a 3D vector input.
+//!
+//! # Inputs
+//! - `in_vector_vector3`: The input 3D vector (tuple of three numbers: x, y, z).
+//!
+//! # Outputs
+//! - The Z component (float) of the input vector.
+//!
+//! # Example
+//! If `in_vector_vector3` is (1.0, 2.0, 3.0), the output will be 3.0.
+//!
+//! # Notes
+//! Useful for extracting the Z coordinate for spatial calculations, rendering, or physics.
 
 /// Get the Z component from a 3D vector.
 fn @[pulsar_node_fn_id]@() -> f32 {

@@ -1,4 +1,22 @@
 //! A node that calculates the shortest angular difference between two angles.
+//!
+//! This node computes the minimal signed difference between two angles,
+//! ensuring the result is within the range [-π, π]. Useful for determining
+//! the direction and magnitude of rotation needed to align one angle with another.
+//!
+//! # Inputs
+//! - `in_angle1_number`: The first angle (in radians).
+//! - `in_angle2_number`: The second angle (in radians).
+//!
+//! # Outputs
+//! - The shortest angular difference (in radians), signed.
+//!
+//! # Example
+//! If angle1 = 0.0 and angle2 = π, the output will be π.
+//! If angle1 = π and angle2 = 0.0, the output will be -π.
+//!
+//! # Notes
+//! The result is always the minimal difference, taking wrap-around into account.
 
 /// Calculate the shortest angular difference between two angles.
 fn @[pulsar_node_fn_id]@() -> f32 {

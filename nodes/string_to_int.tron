@@ -1,4 +1,21 @@
-//! A function that safely converts a string to an integer.
+//! A node that safely converts a string to an integer.
+//!
+//! This node attempts to parse the input string as an integer (`i32`).
+//! If parsing succeeds, it returns the integer value. If parsing fails,
+//! it returns an error message describing the failure.
+//!
+//! # Inputs
+//! - `in_text_string`: The string to convert to an integer.
+//!
+//! # Outputs
+//! - `Result<i32, String>`: The parsed integer, or an error message if parsing fails.
+//!
+//! # Example
+//! If `in_text_string` is "42", the output will be `Ok(42)`.
+//! If `in_text_string` is "abc", the output will be `Err("Cannot convert 'abc' to integer")`.
+//!
+//! # Notes
+//! Leading and trailing whitespace is ignored. Only base-10 integers are supported.
 
 /// Safely convert a string to an integer with error handling.
 fn @[pulsar_node_fn_id]@() -> Result<i32, String> {

@@ -1,5 +1,20 @@
-//! A pure function that applies quadratic ease-in-out interpolation.
-
+//! A node that applies quadratic ease-in-out interpolation.
+//!
+//! This node computes a smooth transition using a quadratic function, starting slow, accelerating in the middle, and ending slow.
+//! Useful for animations, transitions, and UI effects where a non-linear timing curve is desired.
+//!
+//! # Inputs
+//! - `in_t_number`: The interpolation parameter (float, typically in [0, 1]).
+//!
+//! # Outputs
+//! - The eased value (float), smoothly interpolated from 0 to 1.
+//!
+//! # Example
+//! If `in_t_number` is 0.0, the output is 0.0. If `in_t_number` is 0.5, the output is 0.5. If `in_t_number` is 1.0, the output is 1.0.
+//!
+//! # Notes
+//! The input is clamped to [0, 1]. The output curve is symmetric and smooth, ideal for ease-in-out transitions.
+//
 /// Apply quadratic ease-in-out interpolation (slow start and end).
 fn @[pulsar_node_fn_id]@() -> f32 {
     let t = @[in_t_number]@.clamp(0.0, 1.0);

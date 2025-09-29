@@ -1,4 +1,22 @@
-//! A pure function that breaks a transform into position, rotation, and scale.
+//! A node that breaks a transform into position, rotation, and scale components.
+//!
+//! This node takes a transform input and returns its position, rotation, and scale as separate components.
+//!
+//! # Inputs
+//! - `in_transform_transform`: The input transform, typically a tuple of (position, rotation, scale).
+//!
+//! # Outputs
+//! - A tuple containing:
+//!   - Position (tuple of three numbers)
+//!   - Rotation (tuple of three numbers)
+//!   - Scale (tuple of three numbers)
+//!
+//! # Example
+//! If the input transform is ((1.0, 2.0, 3.0), (0.0, 0.0, 0.0), (1.0, 1.0, 1.0)),
+//! the output will be (position: (1.0, 2.0, 3.0), rotation: (0.0, 0.0, 0.0), scale: (1.0, 1.0, 1.0)).
+//!
+//! # Notes
+//! Use this node to extract individual transform components for further manipulation.
 
 /// Break a transform into position, rotation, and scale components.
 fn @[pulsar_node_fn_id]@() -> ((f32, f32, f32), (f32, f32, f32), (f32, f32, f32)) {

@@ -1,4 +1,16 @@
 //! A node that concatenates two vectors.
+//!
+//! This node takes two input vectors and returns a new vector containing all elements of the first vector followed by all elements of the second vector.
+//!
+//! # Inputs
+//! - `in_a_vector`: The first input vector.
+//! - `in_b_vector`: The second input vector.
+//!
+//! # Outputs
+//! - A new vector containing all elements of `in_a_vector` followed by all elements of `in_b_vector`.
+//!
+//! # Example
+//! If `in_a_vector` is [1, 2] and `in_b_vector` is [3, 4], the output will be [1, 2, 3, 4].
 
 /// Concatenate two vectors.
 fn @[pulsar_node_fn_id]@() -> Vec<@[in_item_type]@> {

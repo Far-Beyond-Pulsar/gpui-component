@@ -1,5 +1,24 @@
 //! A node that encodes a string to base64.
-
+//!
+//! This node takes a string input and returns its base64-encoded representation.
+//! The encoding uses the standard base64 alphabet and pads the output with '=' as needed.
+//!
+//! # Inputs
+//! - `in_text_string`: The input string to encode.
+//!
+//! # Outputs
+//! - The base64-encoded string.
+//!
+//! # Example
+//! If `in_text_string` is "hello", the output will be "aGVsbG8=".
+//!
+//! # Notes
+//! This implementation is basic and does not support URL-safe or MIME variants.
+//! Padding is added as required for input lengths not divisible by 3.
+//!
+//! # Behavior
+//! The output is always a valid base64 string, suitable for transmission or storage.
+//
 /// Encode a string to base64 (basic implementation).
 fn @[pulsar_node_fn_id]@() -> String {
     let input = @[in_text_string]@;

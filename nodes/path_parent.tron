@@ -1,4 +1,21 @@
 //! A node that returns the parent directory of a path.
+//!
+//! This node takes a file or directory path as input and returns the parent directory as a string, if it exists.
+//! Useful for navigating file systems, resolving relative paths, or manipulating directory structures.
+//!
+//! # Inputs
+//! - `in_path_string`: The input file or directory path (string).
+//!
+//! # Outputs
+//! - `Option<String>`: The parent directory as a string, or None if the path has no parent.
+//!
+//! # Example
+//! If `in_path_string` is "/home/user/file.txt", the output will be Some("/home/user").
+//! If the path is a root directory or has no parent, the output will be None.
+//!
+//! # Notes
+//! The output is always an absolute or relative path as a string, depending on the input.
+//! Use this node to traverse up directory trees or to manipulate file paths programmatically.
 
 /// Get the parent directory of a path.
 fn @[pulsar_node_fn_id]@() -> Option<String> {

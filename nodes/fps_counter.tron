@@ -1,5 +1,24 @@
-//! A node that calculates frames per second from delta time.
-
+//! A node that calculates frames per second (FPS) from delta time.
+//!
+//! This node computes the frames per second based on the provided delta time (the time between frames).
+//! Useful for performance monitoring, diagnostics, and real-time applications.
+//!
+//! # Inputs
+//! - `in_delta_time_number`: The time between frames in seconds (float).
+//!
+//! # Outputs
+//! - The calculated frames per second (float). Returns 0.0 if delta time is zero or negative.
+//!
+//! # Example
+//! If `in_delta_time_number` is 0.016 (typical for 60 FPS), the output will be 62.5.
+//! If `in_delta_time_number` is 0.0, the output will be 0.0.
+//!
+//! # Notes
+//! Use this node to monitor rendering or simulation performance. Delta time should be in seconds.
+//!
+//! # Behavior
+//! FPS is calculated as 1.0 / delta_time. If delta_time is zero or negative, returns 0.0.
+//
 /// Calculate frames per second from delta time.
 fn @[pulsar_node_fn_id]@() -> f32 {
     let delta_time = @[in_delta_time_number]@;

@@ -1,4 +1,23 @@
-//! A node that parses a JSON string (very basic implementation).
+//! A node that parses a JSON string and extracts a value by key (very basic implementation).
+//!
+//! This node takes a JSON string and a key, and attempts to extract the value associated with that key.
+//! The implementation is very basic and only supports flat JSON objects with string, number, or boolean values.
+//! Useful for simple configuration, quick lookups, or prototyping with basic JSON data.
+//!
+//! # Inputs
+//! - `in_json_string`: The JSON string to parse.
+//! - `in_key_string`: The key to extract the value for.
+//!
+//! # Outputs
+//! - `Option<String>`: The value associated with the key, or None if the key is not found or parsing fails.
+//!
+//! # Example
+//! If `in_json_string` is "{\"foo\":\"bar\",\"baz\":42}" and `in_key_string` is "foo", the output will be Some("bar").
+//! If `in_key_string` is "baz", the output will be Some("42").
+//! If the key does not exist, the output will be None.
+//!
+//! # Notes
+//! This implementation does not support nested objects, arrays, or escaping. For robust JSON parsing, use a dedicated JSON library.
 
 /// Parse a simple JSON string to extract a value by key (basic implementation).
 fn @[pulsar_node_fn_id]@() -> Option<String> {

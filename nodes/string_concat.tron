@@ -1,3 +1,19 @@
-//! A simple node that concatenates two strings.
+//! A node that concatenates two strings.
+//!
+//! This node takes two input strings and returns a new string that is the result of appending the second string to the first.
+//! Useful for building messages, formatting output, or combining values for display or storage.
+//!
+//! # Inputs
+//! - `in_a_string`: The first string.
+//! - `in_b_string`: The second string to append.
+//!
+//! # Outputs
+//! - A new string containing the contents of `in_a_string` followed by `in_b_string`.
+//!
+//! # Example
+//! If `in_a_string` is "Hello, " and `in_b_string` is "world!", the output will be "Hello, world!".
+//!
+//! # Notes
+//! The output is a simple concatenation. For more complex formatting, use a formatting node or function.
 
 format!("{}{}", @[in_a_string]@, @[in_b_string]@)

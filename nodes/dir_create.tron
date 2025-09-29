@@ -1,5 +1,20 @@
 //! A node that creates a directory.
-
+//!
+//! This node attempts to create a directory at the specified path, including any necessary parent directories.
+//! Useful for preparing the filesystem for file operations, organizing output, or ensuring a directory exists before writing files.
+//!
+//! # Inputs
+//! - `in_path_string`: The path of the directory to create (string).
+//!
+//! # Outputs
+//! - `Result<(), String>`: Ok(()) if the directory was created successfully, or an error message if creation failed.
+//!
+//! # Example
+//! If `in_path_string` is "output/logs", the node will create the "output" and "logs" directories if they do not exist.
+//!
+//! # Notes
+//! If the directory already exists, this node will succeed without error. Errors may occur due to permissions or invalid paths.
+//
 /// Create a directory (including parent directories).
 fn @[pulsar_node_fn_id]@() -> Result<(), String> {
     match std::fs::create_dir_all(@[in_path_string]@) {

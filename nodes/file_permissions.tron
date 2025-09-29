@@ -1,5 +1,26 @@
 //! A node that checks file permissions (read/write/execute).
-
+//!
+//! This node inspects the permissions of the specified file or directory path and returns a tuple
+//! indicating whether the path is writable, readable, and executable. The executable flag is always
+//! false in this implementation (platform dependent).
+//!
+//! # Inputs
+//! - `in_path_string`: The path to the file or directory to check.
+//!
+//! # Outputs
+//! - `Result<(bool, bool, bool), String>`: A tuple containing:
+//!     - writable: true if the file is writable
+//!     - readable: true if the file is readable
+//!     - executable: false (not implemented, platform dependent)
+//!   or an error message if the permissions cannot be determined.
+//!
+//! # Example
+//! If `in_path_string` is "output.txt" and the file is writable and readable, the output will be (true, true, false).
+//!
+//! # Notes
+//! The executable flag is not implemented and always returns false. For more accurate executable checks, use platform-specific APIs.
+//! Use this node to validate file access before performing read/write operations.
+//
 /// Check file permissions.
 fn @[pulsar_node_fn_id]@() -> Result<(bool, bool, bool), String> {
     match std::fs::metadata(@[in_path_string]@) {

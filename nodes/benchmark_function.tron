@@ -1,5 +1,25 @@
-//! A debug node that measures execution time of a code block.
-
+//! A node that measures the execution time of a code block in milliseconds.
+//!
+//! This node executes the code connected to its body and returns the elapsed time in milliseconds.
+//! It is useful for profiling and benchmarking sections of code to identify performance bottlenecks.
+//!
+//! # Inputs
+//! - `in_name_string`: A name or label for the benchmark (used in logging).
+//! - Code block: The code to execute and measure (connected via `pulsar_exec_code`).
+//!
+//! # Outputs
+//! - The elapsed time in milliseconds (u64).
+//!
+//! # Behavior
+//! The code block is executed, and the time taken is measured using a high-resolution timer.
+//! The result is printed to the log with the provided name and returned as the output.
+//!
+//! # Example
+//! If the code block takes 50 ms to execute, the output will be 50.
+//!
+//! # Notes
+//! Use this node to profile expensive operations or compare alternative implementations.
+//
 /// Measure execution time of a code block in milliseconds.
 fn @[pulsar_node_fn_id]@() -> u64 {
     let start = std::time::Instant::now();

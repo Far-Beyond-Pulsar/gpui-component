@@ -1,4 +1,38 @@
 //! A node that parses a URL into components.
+//!
+//! This node splits a URL string into its main components: scheme, host, path, and query string.
+//! It returns a tuple containing each part as a string. If the URL is invalid or missing a scheme,
+//! an error is returned.
+//!
+//! # Inputs
+//! - `in_url_string`: The URL string to parse.
+//!
+//! # Outputs
+//! - `Result<(String, String, String, String), String>`: A tuple of (scheme, host, path, query) or an error message.
+//!
+//! # Example
+//! If `in_url_string` is "https://example.com/path/to/page?foo=bar", the output will be
+//! `Ok(("https", "example.com", "/path/to/page", "foo=bar"))`.
+//!
+//! # Notes
+//! This is a basic parser and may not handle all edge cases or exotic URLs. The scheme must be present and separated by "://".
+//!
+//! This node splits a URL string into its main components: scheme, host, path, and query string.
+//! It returns a tuple containing each part as a string. If the URL is invalid or missing a scheme,
+//! an error is returned.
+//!
+//! # Inputs
+//! - `in_url_string`: The URL string to parse.
+//!
+//! # Outputs
+//! - `Result<(String, String, String, String), String>`: A tuple of (scheme, host, path, query) or an error message.
+//!
+//! # Example
+//! If `in_url_string` is "https://example.com/path/to/page?foo=bar", the output will be
+//! `Ok(("https", "example.com", "/path/to/page", "foo=bar"))`.
+//!
+//! # Notes
+//! This is a basic parser and may not handle all edge cases or exotic URLs. The scheme must be present and separated by "://".
 
 /// Parse a URL into its components (basic implementation).
 fn @[pulsar_node_fn_id]@() -> Result<(String, String, String, String), String> {

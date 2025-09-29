@@ -1,3 +1,19 @@
-//! A pure function that performs bitwise AND operation.
-
+//! A node that performs a bitwise AND operation between two numbers.
+//!
+//! This node takes two numeric inputs, converts them to 32-bit integers, and returns the result of a bitwise AND operation.
+//!
+//! # Inputs
+//! - `in_a_number`: The first number (will be cast to i32).
+//! - `in_b_number`: The second number (will be cast to i32).
+//!
+//! # Outputs
+//! - The result of `in_a_number & in_b_number` as an i32.
+//!
+//! # Example
+//! If `in_a_number` is 6 and `in_b_number` is 3, the output will be 2 (since 6 & 3 = 2).
+//!
+//! # Notes
+//! Bitwise operations are performed after casting inputs to i32. Non-integer inputs will be truncated.
+//
+//! Performs bitwise AND operation.
 @[in_a_number]@ as i32 & @[in_b_number]@ as i32

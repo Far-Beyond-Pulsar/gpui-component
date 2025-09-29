@@ -1,3 +1,20 @@
-//! A simple node that returns the length of a string.
+//! A node that returns the length of a string.
+//!
+//! This node takes a string input and returns the number of characters in the string.
+//! Useful for validation, formatting, UI display, or processing text data.
+//!
+//! # Inputs
+//! - `in_text_string`: The input string to measure.
+//!
+//! # Outputs
+//! - The length of the string (number of characters).
+//!
+//! # Example
+//! If `in_text_string` is "hello", the output will be 5.
+//! If `in_text_string` is "", the output will be 0.
+//!
+//! # Notes
+//! The length is the number of Unicode scalar values (not necessarily bytes).
+//! Use this node to check if a string is empty, limit input, or display character counts.
 
 @[in_text_string]@.len()

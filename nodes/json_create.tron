@@ -1,4 +1,20 @@
 //! A node that creates a simple JSON object from key-value pairs.
+//!
+//! This node takes a key and a value as input strings and returns a JSON-formatted string representing an object with that key-value pair.
+//! Useful for constructing simple JSON payloads, configuration, or serializing data for APIs.
+//!
+//! # Inputs
+//! - `in_key_string`: The key for the JSON object (string).
+//! - `in_value_string`: The value for the JSON object (string).
+//!
+//! # Outputs
+//! - A JSON string representing the object with the given key and value.
+//!
+//! # Example
+//! If `in_key_string` is "foo" and `in_value_string` is "bar", the output will be "{"foo":"bar"}".
+//!
+//! # Notes
+//! This implementation escapes double quotes in the value. For more complex or nested data, use a dedicated JSON library.
 
 /// Create a simple JSON object from key-value pairs.
 fn @[pulsar_node_fn_id]@() -> String {

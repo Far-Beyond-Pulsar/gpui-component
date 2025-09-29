@@ -1,4 +1,21 @@
 //! A node that inserts a value into a HashSet.
+//!
+//! This node adds the specified value to the provided HashSet. If the value already exists, the set is unchanged.
+//! Useful for building collections of unique items, tracking membership, or performing set operations.
+//!
+//! # Inputs
+//! - `in_set_hashset`: The input HashSet to insert into.
+//! - `in_value_string`: The value to insert.
+//!
+//! # Outputs
+//! - The updated HashSet containing the value (if not already present).
+//!
+//! # Example
+//! If `in_set_hashset` is {"apple"} and `in_value_string` is "banana", the output will be {"apple", "banana"}.
+//! If `in_value_string` is "apple", the output will remain {"apple"}.
+//!
+//! # Notes
+//! The original HashSet is consumed and a new one is returned with the value inserted if not already present.
 
 /// Insert a value into a HashSet.
 fn @[pulsar_node_fn_id]@() -> std::collections::HashSet<String> {

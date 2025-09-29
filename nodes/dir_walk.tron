@@ -1,5 +1,25 @@
-//! A node that recursively walks through a directory tree.
-
+//! A node that recursively walks through a directory tree and returns all file paths.
+//!
+//! This node traverses the specified directory and all its subdirectories, collecting the paths of all files found.
+//! Useful for batch processing, searching, or indexing files in a directory tree.
+//!
+//! # Inputs
+//! - `in_path_string`: The root directory path to start walking from.
+//!
+//! # Outputs
+//! - `Result<Vec<String>, String>`: A vector of file paths found, or an error message if traversal fails.
+//!
+//! # Behavior
+//! The node performs a depth-first traversal, visiting every subdirectory and collecting file paths.
+//! If any error occurs (e.g., permission denied), an error message is returned.
+//!
+//! # Example
+//! If `in_path_string` is "assets", the output will be a list of all files under "assets" and its subdirectories.
+//!
+//! # Notes
+//! Use this node for file discovery, batch operations, or recursive search tasks.
+//!
+//! # Implementation
 /// Recursively walk through a directory tree and return all file paths.
 fn @[pulsar_node_fn_id]@() -> Result<Vec<String>, String> {
     use std::fs;

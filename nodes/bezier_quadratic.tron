@@ -1,4 +1,21 @@
-//! A pure function that calculates quadratic Bezier curve interpolation.
+//! A node that calculates quadratic Bezier curve interpolation.
+//!
+//! This node computes the position on a quadratic Bezier curve defined by a start point, a control point, and an end point, for a given parameter t in [0, 1].
+//!
+//! # Inputs
+//! - `in_start_number`: The start value (p0).
+//! - `in_control_number`: The control value (p1).
+//! - `in_end_number`: The end value (p2).
+//! - `in_t_number`: The interpolation parameter t (clamped to [0, 1]).
+//!
+//! # Outputs
+//! - The interpolated value on the curve at parameter t.
+//!
+//! # Example
+//! For p0 = 0, p1 = 1, p2 = 2, t = 0.5, the output will be 1.0.
+//!
+//! # Notes
+//! The formula used is: (1-t)^2 * p0 + 2*(1-t)*t*p1 + t^2*p2
 
 /// Calculate quadratic Bezier curve interpolation with control point.
 fn @[pulsar_node_fn_id]@() -> f32 {
@@ -6,7 +23,7 @@ fn @[pulsar_node_fn_id]@() -> f32 {
     let p1 = @[in_control_number]@;
     let p2 = @[in_end_number]@;
     let t = @[in_t_number]@.clamp(0.0, 1.0);
-    
+
     let one_minus_t = 1.0 - t;
     one_minus_t * one_minus_t * p0 + 2.0 * one_minus_t * t * p1 + t * t * p2
 }

@@ -1,3 +1,20 @@
-//! A simple node that repeats a string n times.
+//! A node that repeats a string a specified number of times.
+//!
+//! This node takes a string and an integer count, and returns a new string consisting of the input string repeated count times.
+//! Useful for generating repeated patterns, padding, or constructing test data.
+//!
+//! # Inputs
+//! - `in_text_string`: The string to repeat.
+//! - `in_count_number`: The number of times to repeat the string (integer).
+//!
+//! # Outputs
+//! - A new string consisting of the input string repeated count times.
+//!
+//! # Example
+//! If `in_text_string` is "abc" and `in_count_number` is 3, the output will be "abcabcabc".
+//! If `in_count_number` is 0, the output will be an empty string.
+//!
+//! # Notes
+//! If count is negative, it is treated as zero. Use this node for string multiplication or pattern generation.
 
 @[in_text_string]@.repeat(@[in_count_number]@ as usize)

@@ -1,5 +1,22 @@
-//! A node that wraps an angle to be within 0 to 2π range.
-
+//! A node that wraps an angle to be within the 0 to 2π range.
+//!
+//! This node takes an input angle (in radians) and returns an equivalent angle
+//! in the range [0, 2π). This is useful for normalizing angles for trigonometric
+//! functions, graphics, or periodic calculations.
+//!
+//! # Inputs
+//! - `in_angle_number`: The angle in radians (floating point number).
+//!
+//! # Outputs
+//! - The wrapped angle in the range [0, 2π) (floating point number).
+//!
+//! # Example
+//! If `in_angle_number` is `7.0`, the output will be approximately `0.7168` (since 7.0 mod 2π).
+//! If `in_angle_number` is `-1.0`, the output will be approximately `5.2832`.
+//!
+//! # Notes
+//! The result is always non-negative and less than 2π. Useful for periodic angle calculations.
+//
 // TODO: Remove allocation in the future.
 /// Wrap an angle to be within 0 to 2π range.
 fn @[pulsar_node_fn_id]@() -> f32 {

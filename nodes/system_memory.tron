@@ -1,4 +1,19 @@
 //! A node that returns system memory information.
+//!
+//! This node retrieves information about the system's physical memory (RAM).
+//! The output is a string containing details about total and available memory,
+//! formatted according to the underlying operating system.
+//!
+//! # Outputs
+//! - `String`: A string describing the system's memory status.
+//!
+//! # Example
+//! On Linux, the output may look like the result of the `free -h` command.
+//! On Windows, it may include lines like "Total Physical Memory" and "Available Physical Memory".
+//!
+//! # Notes
+//! The format and detail of the output depend on the OS and available system commands.
+//! If memory information cannot be retrieved, an error message is returned.
 
 /// Get system memory information (simplified).
 fn @[pulsar_node_fn_id]@() -> Result<String, String> {

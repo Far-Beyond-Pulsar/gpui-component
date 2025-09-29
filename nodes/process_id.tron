@@ -1,4 +1,17 @@
 //! A node that returns the current process ID.
+//!
+//! This node retrieves the process ID (PID) of the currently running process.
+//! Useful for diagnostics, logging, spawning child processes, or interacting with system APIs.
+//!
+//! # Outputs
+//! - The process ID as a u32.
+//!
+//! # Example
+//! If the current process ID is 12345, the output will be 12345.
+//!
+//! # Notes
+//! The process ID is assigned by the operating system and is unique among running processes.
+//! Use this node to identify or manage the current process in system-level operations.
 
 /// Get the current process ID.
 fn @[pulsar_node_fn_id]@() -> u32 {
