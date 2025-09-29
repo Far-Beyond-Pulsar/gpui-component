@@ -552,37 +552,36 @@ impl BlueprintEditorPanel {
 
     /// Calculate smart menu positioning to prevent off-screen placement
     fn calculate_menu_position(&self, requested_position: Point<f32>, window: &Window) -> Point<f32> {
-        // Menu dimensions - should match values in node_creation_menu.rs
-        let menu_width = 280.0;
-        let menu_height = 350.0;
-
         // Get actual window viewport size
         let window_bounds = window.bounds();
         let viewport_width = window_bounds.size.width.0;
         let viewport_height = window_bounds.size.height.0;
 
-        // Account for UI elements (toolbar, sidebars, etc.)
-        let ui_padding_x = 60.0; // Account for potential sidebars
-        let ui_padding_y = 120.0; // Account for toolbar and title bar
+        // Simple edge padding to keep menu away from window edges
         let edge_padding = 10.0;
 
-        // Calculate usable area
-        let usable_width = viewport_width - (ui_padding_x * 2.0);
-        let usable_height = viewport_height - ui_padding_y - edge_padding;
-
-        // Start with requested position (top-left corner under mouse)
+        // Start with requested position (where mouse clicked)
         let mut adjusted_x = requested_position.x;
         let mut adjusted_y = requested_position.y;
 
-        // Define the usable area bounds
-        let min_x = ui_padding_x + edge_padding;
-        let max_x = ui_padding_x + usable_width - menu_width - edge_padding;
-        let min_y = ui_padding_y + edge_padding;
-        let max_y = ui_padding_y + usable_height - menu_height - edge_padding;
+        // Clamp to window bounds with padding
+        // Ensure menu doesn't go off right edge
+        if adjusted_x + NODE_MENU_WIDTH + edge_padding > viewport_width {
+            adjusted_x = viewport_width - NODE_MENU_WIDTH - edge_padding;
+        }
+        // Ensure menu doesn't go off left edge
+        if adjusted_x < edge_padding {
+            adjusted_x = edge_padding;
+        }
 
-        // Clamp to bounds
-        adjusted_x = adjusted_x.clamp(min_x, max_x);
-        adjusted_y = adjusted_y.clamp(min_y, max_y);
+        // Ensure menu doesn't go off bottom edge
+        if adjusted_y + NODE_MENU_MAX_HEIGHT + edge_padding > viewport_height {
+            adjusted_y = viewport_height - NODE_MENU_MAX_HEIGHT - edge_padding;
+        }
+        // Ensure menu doesn't go off top edge
+        if adjusted_y < edge_padding {
+            adjusted_y = edge_padding;
+        }
 
         Point::new(adjusted_x, adjusted_y)
     }
@@ -613,14 +612,10 @@ impl BlueprintEditorPanel {
     /// Check if a screen position is inside the node creation menu bounds
     pub fn is_position_inside_menu(&self, screen_pos: Point<f32>) -> bool {
         if let (Some(_), Some(position)) = (&self.node_creation_menu, &self.node_creation_menu_position) {
-            // Menu dimensions - these should match the values in node_creation_menu.rs
-            let menu_width = 280.0;
-            let menu_height = 350.0;
-
             let menu_left = position.x;
             let menu_top = position.y;
-            let menu_right = menu_left + menu_width;
-            let menu_bottom = menu_top + menu_height;
+            let menu_right = menu_left + NODE_MENU_WIDTH;
+            let menu_bottom = menu_top + NODE_MENU_MAX_HEIGHT;
 
             screen_pos.x >= menu_left && screen_pos.x <= menu_right &&
             screen_pos.y >= menu_top && screen_pos.y <= menu_bottom
