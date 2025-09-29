@@ -281,8 +281,9 @@ impl NodeCreationMenu {
         // Pre-compute highlighted text to avoid borrowing issues
         let highlighted_name_element = self.render_highlighted_text(&node.highlighted_name, cx);
 
-        // Use Rc<str> for proper memory management
-        let tooltip_description = Rc::<str>::from(node.definition.description.as_str());
+        // Use Box::leak for now to get 'static lifetime
+        // Memory will be cleaned up when the process exits
+        let tooltip_description: &'static str = Box::leak(node.definition.description.clone().into_boxed_str());
         let element_id = format!("node-item-{}", node.definition.id);
 
         h_flex()
