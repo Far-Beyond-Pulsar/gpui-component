@@ -1,12 +1,46 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use gpui_component::{button::Button, h_flex, v_flex, ActiveTheme as _, IconName, StyledExt};
+use gpui_component::{button::Button, h_flex, v_flex, ActiveTheme as _, IconName, StyledExt, tooltip::Tooltip, text::TextView};
 
 use super::panel::BlueprintEditorPanel;
 use super::{BlueprintNode, BlueprintGraph, Pin, PinType, NodeType, Connection, VirtualizationStats};
 use crate::graph::DataType;
 
 pub struct NodeGraphRenderer;
+
+/// Helper to create markdown tooltip function with static strings
+fn create_markdown_tooltip(description: &'static str) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+    move |window, cx| {
+        Tooltip::element(move |window, cx| {
+            v_flex()
+                .w(px(400.0))
+                .max_h(px(300.0))
+                .p_2()
+                .overflow_hidden()
+                .child(
+                    v_flex()
+                        .w_full()
+                        .h_full()
+                        .scrollable(Axis::Vertical)
+                        .child(
+                            TextView::markdown(
+                                "node-tooltip",
+                                description,
+                                window,
+                                cx
+                            )
+                        )
+                )
+        }).build(window, cx)
+    }
+}
+
+/// Helper to create simple text tooltip
+fn create_text_tooltip(text: &'static str) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+    move |window, cx| {
+        Tooltip::new(text).build(window, cx)
+    }
+}
 
 impl NodeGraphRenderer {
     pub fn render(
@@ -240,6 +274,19 @@ impl NodeGraphRenderer {
         let scaled_width = node.size.width * panel.graph.zoom_level;
         let scaled_height = node.size.height * panel.graph.zoom_level;
 
+        // Look up the full description from NodeDefinitions by node title
+        // This ensures we get the complete markdown documentation
+        let node_definitions = super::NodeDefinitions::load();
+        let tooltip_description: &'static str = if let Some(def) = node_definitions.get_node_definition_by_name(&node.title) {
+            // Leak the description string to get 'static lifetime
+            Box::leak(def.description.clone().into_boxed_str())
+        } else if !node.description.is_empty() {
+            // Fallback to stored description
+            Box::leak(node.description.clone().into_boxed_str())
+        } else {
+            "No description available."
+        };
+
         div()
             .absolute()
             .left(px(graph_pos.x))
@@ -272,6 +319,8 @@ impl NodeGraphRenderer {
                             .bg(node_color.opacity(0.2))
                             .items_center()
                             .gap(px(8.0 * panel.graph.zoom_level))
+                            .id(ElementId::Name(format!("node-header-{}", node.id).into()))
+                            .tooltip(create_markdown_tooltip(tooltip_description))
                             .child(
                                 div()
                                     .text_size(px(16.0 * panel.graph.zoom_level))
@@ -409,7 +458,14 @@ impl NodeGraphRenderer {
 
         let pin_size = 12.0 * panel.graph.zoom_level;
 
+        // Create tooltip showing the Rust type
+        let type_string = pin.data_type.rust_type_string();
+        let tooltip_text: &'static str = Box::leak(type_string.into_boxed_str());
+        let element_id = format!("pin-{}-{}", node_id, pin.id);
+
         div()
+            .id(ElementId::Name(element_id.into()))
+            .tooltip(create_text_tooltip(tooltip_text))
             .size(px(pin_size))
             .bg(pin_color)
             .rounded_full()

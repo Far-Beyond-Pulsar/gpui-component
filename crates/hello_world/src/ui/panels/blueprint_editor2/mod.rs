@@ -56,6 +56,7 @@ pub struct BlueprintNode {
     pub outputs: Vec<Pin>,
     pub properties: HashMap<String, String>,
     pub is_selected: bool,
+    pub description: String, // Markdown documentation for the node
 }
 
 #[derive(Clone, Debug)]
@@ -265,6 +266,13 @@ impl NodeDefinitions {
             .find(|node| node.id == node_id)
     }
 
+    pub fn get_node_definition_by_name(&self, node_name: &str) -> Option<&NodeDefinition> {
+        self.categories
+            .iter()
+            .flat_map(|category| &category.nodes)
+            .find(|node| node.name == node_name)
+    }
+
     pub fn get_category_for_node(&self, node_id: &str) -> Option<&NodeCategory> {
         self.categories
             .iter()
@@ -310,6 +318,7 @@ impl BlueprintNode {
             outputs,
             properties: definition.properties.clone(),
             is_selected: false,
+            description: definition.description.clone(),
         }
     }
 }

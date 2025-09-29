@@ -79,6 +79,7 @@ impl BlueprintEditorPanel {
             }],
             properties: std::collections::HashMap::new(),
             is_selected: false,
+            description: "Event that triggers when gameplay begins.".to_string(),
         });
 
         // Print String node
@@ -115,6 +116,7 @@ impl BlueprintEditorPanel {
             }],
             properties: print_props,
             is_selected: false,
+            description: "Prints a string message to the console or screen.".to_string(),
         });
 
         let connections = vec![Connection {
@@ -322,6 +324,7 @@ impl BlueprintEditorPanel {
                     (k.clone(), value_str)
                 }).collect(),
                 is_selected: false,
+                description: String::new(), // Empty description for loaded nodes
             };
             nodes.push(bp_node);
         }

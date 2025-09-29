@@ -103,6 +103,22 @@ impl DataType {
         }
     }
 
+    /// Get the Rust type string representation for tooltip display
+    pub fn rust_type_string(&self) -> String {
+        match self {
+            DataType::Execution => "()".to_string(), // Execution flow has no data type
+            DataType::Typed(type_info) => type_info.to_string(),
+            DataType::String => "String".to_string(),
+            DataType::Number => "f64".to_string(),
+            DataType::Boolean => "bool".to_string(),
+            DataType::Vector2 => "(f32, f32)".to_string(),
+            DataType::Vector3 => "(f32, f32, f32)".to_string(),
+            DataType::Color => "(f32, f32, f32, f32)".to_string(),
+            DataType::Object => "dyn Any".to_string(),
+            DataType::Array(inner) => format!("Vec<{}>", inner.rust_type_string()),
+        }
+    }
+
     /// Check if this DataType is compatible with another
     pub fn is_compatible_with(&self, other: &DataType) -> bool {
         match (self, other) {
