@@ -8,6 +8,8 @@ use gpui_component::{
     context_menu::ContextMenuExt,
     input::{InputState, InputEvent},
 };
+use smol::Timer;
+use std::time::Duration;
 
 use super::*;
 use super::toolbar::ToolbarRenderer;
@@ -47,6 +49,7 @@ pub struct BlueprintEditorPanel {
     pub right_click_threshold: f32,
     // Hoverable tooltip
     pub hoverable_tooltip: Option<Entity<HoverableTooltip>>,
+    pub pending_tooltip: Option<(String, Point<f32>)>, // (content, position) waiting to show
 }
 
 #[derive(Clone, Debug)]
@@ -157,6 +160,7 @@ impl BlueprintEditorPanel {
             right_click_start: None,
             right_click_threshold: 5.0, // pixels
             hoverable_tooltip: None,
+            pending_tooltip: None,
         }
     }
 
@@ -620,14 +624,31 @@ impl BlueprintEditorPanel {
     }
 
     // Hoverable tooltip methods
-    pub fn show_hoverable_tooltip(&mut self, content: String, position: Point<f32>, window: &mut Window, cx: &mut Context<Self>) {
-        let pixel_pos = Point::new(px(position.x), px(position.y));
-        self.hoverable_tooltip = Some(HoverableTooltip::new(content, pixel_pos, cx));
-        cx.notify();
+    pub fn show_hoverable_tooltip(&mut self, content: String, position: Point<f32>, _window: &mut Window, cx: &mut Context<Self>) {
+        // Store pending tooltip and start timer
+        self.pending_tooltip = Some((content.clone(), position));
+
+        cx.spawn(async move |view, mut cx| {
+            // Wait 2 seconds
+            Timer::after(Duration::from_secs(2)).await;
+
+            // Show tooltip if still pending
+            cx.update(|cx| {
+                view.update(cx, |panel, cx| {
+                    // Only show if we still have a pending tooltip (user hasn't moved away)
+                    if let Some((pending_content, pending_pos)) = panel.pending_tooltip.take() {
+                        let pixel_pos = Point::new(px(pending_pos.x), px(pending_pos.y));
+                        panel.hoverable_tooltip = Some(HoverableTooltip::new(pending_content, pixel_pos, cx));
+                        cx.notify();
+                    }
+                });
+            }).ok();
+        }).detach();
     }
 
     pub fn hide_hoverable_tooltip(&mut self, cx: &mut Context<Self>) {
         self.hoverable_tooltip = None;
+        self.pending_tooltip = None; // Cancel pending tooltip
         cx.notify();
     }
 
