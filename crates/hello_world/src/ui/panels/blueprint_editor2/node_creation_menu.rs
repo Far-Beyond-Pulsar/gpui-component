@@ -66,6 +66,10 @@ impl NodeCreationMenu {
         }).detach();
 
         menu.update_filtered_categories();
+
+        // Auto-focus the search input when menu opens
+        // The focus will be handled when the menu is rendered
+
         menu
     }
 
@@ -351,6 +355,7 @@ impl Focusable for NodeCreationMenu {
 
 impl Render for NodeCreationMenu {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+
         div()
             .absolute()
             .left(px(self.target_position.x))

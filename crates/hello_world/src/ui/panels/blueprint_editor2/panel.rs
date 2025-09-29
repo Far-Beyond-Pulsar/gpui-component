@@ -551,35 +551,33 @@ impl BlueprintEditorPanel {
         let menu_width = 280.0;
         let menu_height = 350.0;
 
-        // Get window dimensions (approximation - in a real app you'd get actual viewport size)
-        let window_width = 1920.0; // Default window width
-        let window_height = 1080.0; // Default window height
+        // Get actual window viewport size
+        let window_bounds = window.bounds();
+        let viewport_width = window_bounds.size.width.0;
+        let viewport_height = window_bounds.size.height.0;
 
-        // Apply padding from edges
-        let edge_padding = 20.0;
+        // Account for UI elements (toolbar, sidebars, etc.)
+        let ui_padding_x = 60.0; // Account for potential sidebars
+        let ui_padding_y = 120.0; // Account for toolbar and title bar
+        let edge_padding = 10.0;
 
+        // Calculate usable area
+        let usable_width = viewport_width - (ui_padding_x * 2.0);
+        let usable_height = viewport_height - ui_padding_y - edge_padding;
+
+        // Start with requested position (top-left corner under mouse)
         let mut adjusted_x = requested_position.x;
         let mut adjusted_y = requested_position.y;
 
-        // Check right edge
-        if adjusted_x + menu_width + edge_padding > window_width {
-            adjusted_x = window_width - menu_width - edge_padding;
-        }
+        // Define the usable area bounds
+        let min_x = ui_padding_x + edge_padding;
+        let max_x = ui_padding_x + usable_width - menu_width - edge_padding;
+        let min_y = ui_padding_y + edge_padding;
+        let max_y = ui_padding_y + usable_height - menu_height - edge_padding;
 
-        // Check left edge
-        if adjusted_x < edge_padding {
-            adjusted_x = edge_padding;
-        }
-
-        // Check bottom edge
-        if adjusted_y + menu_height + edge_padding > window_height {
-            adjusted_y = window_height - menu_height - edge_padding;
-        }
-
-        // Check top edge
-        if adjusted_y < edge_padding {
-            adjusted_y = edge_padding;
-        }
+        // Clamp to bounds
+        adjusted_x = adjusted_x.clamp(min_x, max_x);
+        adjusted_y = adjusted_y.clamp(min_y, max_y);
 
         Point::new(adjusted_x, adjusted_y)
     }
