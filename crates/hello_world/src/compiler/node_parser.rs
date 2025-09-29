@@ -64,14 +64,27 @@ impl NodeTemplateParser {
     }
 
     fn extract_description(content: &str) -> String {
-        // Extract from first comment line
+        // Extract all consecutive comment lines starting with //!
+        let mut description_lines = Vec::new();
+        let mut found_non_comment = false;
+
         for line in content.lines() {
-            let line = line.trim();
-            if line.starts_with("//!") {
-                return line.trim_start_matches("//!").trim().to_string();
+            let trimmed = line.trim();
+            if trimmed.starts_with("//!") {
+                if !found_non_comment {
+                    description_lines.push(trimmed.trim_start_matches("//!").trim().to_string());
+                }
+            } else if !trimmed.is_empty() && !trimmed.starts_with("//") {
+                // Stop collecting when we hit a non-comment, non-empty line
+                found_non_comment = true;
             }
         }
-        "No description".to_string()
+
+        if description_lines.is_empty() {
+            "No description".to_string()
+        } else {
+            description_lines.join("\n")
+        }
     }
 
     fn format_node_name(name: &str) -> String {
