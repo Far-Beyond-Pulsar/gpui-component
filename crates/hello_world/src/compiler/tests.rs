@@ -65,6 +65,8 @@ mod tests {
         let mut graph = create_test_graph();
 
         let mut add_node = NodeInstance::new("add_1", "add", Position { x: 0.0, y: 0.0 });
+        add_node.add_input_pin("a", DataType::Typed(TypeInfo::parse("i64")));
+        add_node.add_input_pin("b", DataType::Typed(TypeInfo::parse("i64")));
         add_node.set_property("a", PropertyValue::Number(5.0));
         add_node.set_property("b", PropertyValue::Number(3.0));
         add_node.add_output_pin("result", DataType::Typed(TypeInfo::parse("i64")));
@@ -72,15 +74,16 @@ mod tests {
         graph.add_node(add_node);
 
         // Test data resolver
-        let data_resolver = data_resolver::DataResolver::build(&graph);
+        let metadata = node_metadata::extract_node_metadata().unwrap();
+        let data_resolver = data_resolver::DataResolver::build(&graph, &metadata);
         assert!(data_resolver.is_ok(), "Failed to build data resolver: {:?}", data_resolver.err());
 
         let resolver = data_resolver.unwrap();
         let a_expr = resolver.generate_input_expression("add_1", "a", &graph);
         let b_expr = resolver.generate_input_expression("add_1", "b", &graph);
 
-        assert!(a_expr.is_ok());
-        assert!(b_expr.is_ok());
+        assert!(a_expr.is_ok(), "Failed to generate a expression: {:?}", a_expr.err());
+        assert!(b_expr.is_ok(), "Failed to generate b expression: {:?}", b_expr.err());
     }
 
     #[test]
@@ -164,11 +167,12 @@ mod tests {
 
     #[test]
     fn test_full_compilation_simple() {
-        // Create complete graph: begin_play -> print_string("Hello World")
+        // Create complete graph: main event -> print_string("Hello World")
         let mut graph = create_test_graph();
 
-        let mut begin_node = NodeInstance::new("begin_1", "begin_play", Position { x: 0.0, y: 0.0 });
-        begin_node.add_output_pin("exec", DataType::Execution);
+        // Create main event node (defines fn main())
+        let mut main_node = NodeInstance::new("main_1", "main", Position { x: 0.0, y: 0.0 });
+        main_node.add_output_pin("Body", DataType::Execution);
 
         let mut print_node = NodeInstance::new("print_1", "print_string", Position { x: 100.0, y: 0.0 });
         print_node.add_input_pin("exec", DataType::Execution);
@@ -176,13 +180,14 @@ mod tests {
         print_node.set_property("message", PropertyValue::String("Hello World".to_string()));
         print_node.add_output_pin("exec_out", DataType::Execution);
 
-        graph.add_node(begin_node);
+        graph.add_node(main_node);
         graph.add_node(print_node);
 
+        // Connect main's Body output to print_string's exec input
         graph.add_connection(Connection::new(
             "c1",
-            "begin_1",
-            "exec",
+            "main_1",
+            "Body",
             "print_1",
             "exec",
             ConnectionType::Execution,
@@ -194,7 +199,7 @@ mod tests {
         match result {
             Ok(code) => {
                 println!("Generated code:\n{}", code);
-                assert!(code.contains("fn main"), "Should generate main function");
+                assert!(code.contains("pub fn main"), "Should generate main function");
                 assert!(code.contains("print_string"), "Should call print_string");
                 assert!(code.contains("Hello World"), "Should include the message");
             }
@@ -244,6 +249,8 @@ mod tests {
 
         // Add node
         let mut add_node = NodeInstance::new("add_1", "add", Position { x: 0.0, y: 0.0 });
+        add_node.add_input_pin("a", DataType::Typed(TypeInfo::parse("i64")));
+        add_node.add_input_pin("b", DataType::Typed(TypeInfo::parse("i64")));
         add_node.set_property("a", PropertyValue::Number(2.0));
         add_node.set_property("b", PropertyValue::Number(3.0));
         add_node.add_output_pin("result", DataType::Typed(TypeInfo::parse("i64")));
@@ -269,7 +276,8 @@ mod tests {
         ));
 
         // Build data resolver
-        let resolver = data_resolver::DataResolver::build(&graph);
+        let metadata = node_metadata::extract_node_metadata().unwrap();
+        let resolver = data_resolver::DataResolver::build(&graph, &metadata);
         assert!(resolver.is_ok(), "Failed to build resolver: {:?}", resolver.err());
 
         let resolver = resolver.unwrap();

@@ -10,6 +10,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use crate::graph::{GraphDescription, NodeInstance, ConnectionType};
+use super::node_metadata::{NodeMetadata, NodeType};
 
 /// Resolves data flow for a graph
 pub struct DataResolver {
@@ -41,7 +42,7 @@ pub enum DataSource {
 
 impl DataResolver {
     /// Build a data resolver from a graph
-    pub fn build(graph: &GraphDescription) -> Result<Self, String> {
+    pub fn build(graph: &GraphDescription, metadata: &HashMap<String, NodeMetadata>) -> Result<Self, String> {
         let mut resolver = DataResolver {
             input_sources: HashMap::new(),
             result_variables: HashMap::new(),
@@ -55,7 +56,7 @@ impl DataResolver {
         resolver.generate_variable_names(graph);
 
         // Phase 3: Determine evaluation order for pure nodes
-        resolver.compute_pure_evaluation_order(graph)?;
+        resolver.compute_pure_evaluation_order(graph, metadata)?;
 
         Ok(resolver)
     }
@@ -106,21 +107,19 @@ impl DataResolver {
     }
 
     /// Compute evaluation order for pure nodes using topological sort
-    fn compute_pure_evaluation_order(&mut self, graph: &GraphDescription) -> Result<(), String> {
+    fn compute_pure_evaluation_order(&mut self, graph: &GraphDescription, metadata: &HashMap<String, NodeMetadata>) -> Result<(), String> {
         // Build dependency graph for pure nodes
         let mut dependencies: HashMap<String, Vec<String>> = HashMap::new();
         let mut pure_nodes: HashSet<String> = HashSet::new();
 
-        // Identify pure nodes (those with outputs but no exec pins)
+        // Identify pure nodes using metadata
         for (node_id, node) in &graph.nodes {
-            // A node is pure if it has no execution inputs
-            let has_exec_input = node.inputs.iter().any(|(_, pin)| {
-                matches!(pin.data_type, crate::graph::DataType::Execution)
-            });
-
-            if !has_exec_input && !node.outputs.is_empty() {
-                pure_nodes.insert(node_id.clone());
-                dependencies.insert(node_id.clone(), Vec::new());
+            // Check if this node is pure according to its metadata
+            if let Some(node_meta) = metadata.get(&node.node_type) {
+                if node_meta.node_type == NodeType::Pure && !node.outputs.is_empty() {
+                    pure_nodes.insert(node_id.clone());
+                    dependencies.insert(node_id.clone(), Vec::new());
+                }
             }
         }
 
@@ -342,7 +341,8 @@ mod tests {
     #[test]
     fn test_data_resolver_with_constants() {
         let graph = create_test_graph();
-        let resolver = DataResolver::build(&graph).unwrap();
+        let metadata = HashMap::new(); // Empty metadata for this test
+        let resolver = DataResolver::build(&graph, &metadata).unwrap();
 
         let a_source = resolver.get_input_source("add_1", "a").unwrap();
         let b_source = resolver.get_input_source("add_1", "b").unwrap();
@@ -360,7 +360,8 @@ mod tests {
     #[test]
     fn test_variable_name_generation() {
         let graph = create_test_graph();
-        let resolver = DataResolver::build(&graph).unwrap();
+        let metadata = HashMap::new(); // Empty metadata for this test
+        let resolver = DataResolver::build(&graph, &metadata).unwrap();
 
         let var_name = resolver.get_result_variable("add_1").unwrap();
         assert_eq!(var_name, "node_add_1_result");

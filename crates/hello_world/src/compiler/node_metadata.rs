@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 use syn::{
     parse_str, Attribute, File, FnArg, Item, ItemFn, Pat, ReturnType, Type,
-    visit::Visit, Expr, ExprMacro,
+    visit::Visit, Expr, ExprMacro, Stmt, StmtMacro,
 };
 use quote::ToTokens;
 
@@ -57,6 +57,11 @@ pub enum NodeType {
 
     /// Control flow: one exec in, multiple exec outs via exec_output!()
     ControlFlow,
+
+    /// Event: defines an entry point function (e.g., main, begin_play)
+    /// Events have no exec input - they ARE the entry point
+    /// They have exec_output!("Body") to mark where execution begins
+    Event,
 }
 
 #[derive(Debug, Clone)]
@@ -71,32 +76,30 @@ struct ExecOutputVisitor {
 }
 
 impl<'ast> Visit<'ast> for ExecOutputVisitor {
-    fn visit_block(&mut self, block: &'ast syn::Block) {
-        eprintln!("[DEBUG] Visiting block with {} statements", block.stmts.len());
-        syn::visit::visit_block(self, block);
-    }
-
-    fn visit_stmt(&mut self, stmt: &'ast syn::Stmt) {
-        eprintln!("[DEBUG] Visiting statement");
+    fn visit_stmt(&mut self, stmt: &'ast Stmt) {
+        // Manually visit expressions in statements to ensure we catch macro calls
+        match stmt {
+            Stmt::Expr(expr, _) => {
+                self.visit_expr(expr);
+            }
+            Stmt::Macro(stmt_macro) => {
+                // Check if this is an exec_output! statement-level macro
+                if stmt_macro.mac.path.is_ident("exec_output") {
+                    if let Ok(label) = syn::parse2::<syn::LitStr>(stmt_macro.mac.tokens.clone()) {
+                        self.exec_outputs.push(label.value());
+                    }
+                }
+            }
+            _ => {}
+        }
         syn::visit::visit_stmt(self, stmt);
     }
 
-    fn visit_expr(&mut self, expr: &'ast Expr) {
-        eprintln!("[DEBUG] Visiting expr: {}", quote::quote!(#expr).to_string().chars().take(50).collect::<String>());
-        syn::visit::visit_expr(self, expr);
-    }
-
     fn visit_expr_macro(&mut self, mac: &'ast ExprMacro) {
-        eprintln!("[DEBUG] visit_expr_macro called! Path: {:?}", mac.mac.path.get_ident().map(|i| i.to_string()));
-
         if mac.mac.path.is_ident("exec_output") {
-            eprintln!("[DEBUG] Found exec_output! Tokens: {}", mac.mac.tokens);
             // Parse the label: exec_output!("True")
             if let Ok(label) = syn::parse2::<syn::LitStr>(mac.mac.tokens.clone()) {
-                eprintln!("[DEBUG] Parsed label: {}", label.value());
                 self.exec_outputs.push(label.value());
-            } else {
-                eprintln!("[DEBUG] Failed to parse label");
             }
         }
         // Continue visiting nested expressions
@@ -160,24 +163,26 @@ fn extract_function_metadata(func: ItemFn) -> Result<Option<NodeMetadata>, Strin
     let exec_outputs = find_exec_outputs(&func);
 
     // Determine exec inputs based on node type
-    let exec_inputs = if node_type == NodeType::Pure {
+    let exec_inputs = if node_type == NodeType::Pure || node_type == NodeType::Event {
+        // Pure nodes and event nodes have no exec inputs
         vec![]
     } else {
         vec!["exec".to_string()]
     };
 
-    // If node has exec_output calls, it's control flow
-    let final_node_type = if !exec_outputs.is_empty() {
-        NodeType::ControlFlow
+    // Determine final node type and exec outputs
+    let (final_node_type, final_exec_outputs) = if node_type == NodeType::Event {
+        // Event nodes keep their type and their exec outputs (should be just "Body")
+        (NodeType::Event, exec_outputs)
+    } else if !exec_outputs.is_empty() && node_type != NodeType::Pure {
+        // If node has exec_output calls and is not pure, it's control flow
+        (NodeType::ControlFlow, exec_outputs)
+    } else if node_type == NodeType::Function {
+        // Simple function nodes get an implicit exec_out
+        (NodeType::Function, vec!["exec_out".to_string()])
     } else {
-        node_type
-    };
-
-    // Add implicit exec_out for simple function nodes
-    let final_exec_outputs = if final_node_type == NodeType::Function && exec_outputs.is_empty() {
-        vec!["exec_out".to_string()]
-    } else {
-        exec_outputs
+        // Pure nodes have no exec outputs
+        (node_type, vec![])
     };
 
     // Convert function to source string
@@ -213,6 +218,8 @@ fn parse_blueprint_attribute(attr: &Attribute) -> Result<(NodeType, Option<Strin
         node_type = NodeType::Pure;
     } else if tokens_str.contains("NodeTypes :: control_flow") || tokens_str.contains("NodeTypes::control_flow") {
         node_type = NodeType::ControlFlow;
+    } else if tokens_str.contains("NodeTypes :: event") || tokens_str.contains("NodeTypes::event") {
+        node_type = NodeType::Event;
     }
 
     // Extract category and color using simple pattern matching
@@ -288,13 +295,7 @@ fn find_exec_outputs(func: &ItemFn) -> Vec<String> {
         exec_outputs: Vec::new(),
     };
 
-    // DEBUG: Print the function to see what we're parsing
-    eprintln!("[DEBUG] Finding exec_outputs in function: {}", func.sig.ident);
-    eprintln!("[DEBUG] Function body: {}", quote::quote!(#func));
-
     visitor.visit_item_fn(func);
-
-    eprintln!("[DEBUG] Found {} exec_outputs: {:?}", visitor.exec_outputs.len(), visitor.exec_outputs);
 
     // Remove duplicates while preserving order
     let mut seen = std::collections::HashSet::new();

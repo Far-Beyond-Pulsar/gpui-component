@@ -70,7 +70,7 @@ pub fn compile_graph(graph: &GraphDescription) -> Result<String, String> {
     }
 
     // Phase 2: Build data flow resolver
-    let data_resolver = data_resolver::DataResolver::build(graph)?;
+    let data_resolver = data_resolver::DataResolver::build(graph, metadata)?;
     println!("[COMPILER] Built data flow resolver");
 
     // Phase 3: Build execution routing

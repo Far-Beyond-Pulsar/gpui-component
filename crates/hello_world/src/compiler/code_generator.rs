@@ -50,13 +50,19 @@ impl<'a> CodeGenerator<'a> {
         }
     }
 
-    /// Generate code for an entry point node
-    pub fn generate_entry_point(&mut self, entry_node: &NodeInstance) -> Result<String, String> {
-        let fn_name = match entry_node.node_type.as_str() {
-            "begin_play" => "main",
-            "on_tick" => "on_tick",
-            _ => &entry_node.node_type,
-        };
+    /// Generate code for an event entry point
+    pub fn generate_event_function(&mut self, event_node: &NodeInstance) -> Result<String, String> {
+        // Get event node metadata
+        let node_meta = self.metadata
+            .get(&event_node.node_type)
+            .ok_or_else(|| format!("Unknown event node type: {}", event_node.node_type))?;
+
+        if node_meta.node_type != NodeType::Event {
+            return Err(format!("Node {} is not an event node", event_node.id));
+        }
+
+        // Use the function name from the event definition
+        let fn_name = &node_meta.name;
 
         let mut body = String::new();
 
@@ -73,10 +79,15 @@ impl<'a> CodeGenerator<'a> {
 
         body.push_str("\n    // Execution chain\n");
 
-        // Follow execution chain from entry point
-        self.generate_exec_chain(entry_node, &mut body, 1)?;
+        // Follow execution chain from event's "Body" output
+        let connected_nodes = self.exec_routing.get_connected_nodes(&event_node.id, "Body");
+        for target_id in connected_nodes {
+            if let Some(target_node) = self.graph.nodes.get(target_id) {
+                self.generate_exec_chain(target_node, &mut body, 1)?;
+            }
+        }
 
-        Ok(format!("fn {}() {{\n{}}}\n", fn_name, body))
+        Ok(format!("pub fn {}() {{\n{}}}\n", fn_name, body))
     }
 
     /// Generate execution chain starting from a node
@@ -108,6 +119,12 @@ impl<'a> CodeGenerator<'a> {
 
             NodeType::ControlFlow => {
                 self.generate_control_flow_node(node, node_meta, output, indent_level)
+            }
+
+            NodeType::Event => {
+                // Event nodes define the outer function, skip in exec chain
+                // Their "Body" output defines where execution starts
+                Ok(())
             }
         }
     }
@@ -281,27 +298,28 @@ pub fn generate_program(
     code.push_str("// DO NOT EDIT - Changes will be overwritten\n\n");
     code.push_str("use pulsar_std::*;\n\n");
 
-    // Find entry points
-    let entry_points: Vec<_> = graph
+    // Find event nodes using metadata
+    let event_nodes: Vec<_> = graph
         .nodes
         .values()
         .filter(|node| {
-            matches!(
-                node.node_type.as_str(),
-                "begin_play" | "on_tick" | "on_event"
-            )
+            // Check if this node's type is an event in metadata
+            metadata
+                .get(&node.node_type)
+                .map(|meta| meta.node_type == NodeType::Event)
+                .unwrap_or(false)
         })
         .collect();
 
-    if entry_points.is_empty() {
-        return Err("No entry points found in graph".to_string());
+    if event_nodes.is_empty() {
+        return Err("No event nodes found in graph - add a 'main' or 'begin_play' event".to_string());
     }
 
-    // Generate each entry point
-    for entry_node in entry_points {
+    // Generate each event function
+    for event_node in event_nodes {
         let mut generator = CodeGenerator::new(metadata, data_resolver, exec_routing, graph);
-        let entry_code = generator.generate_entry_point(entry_node)?;
-        code.push_str(&entry_code);
+        let event_code = generator.generate_event_function(event_node)?;
+        code.push_str(&event_code);
         code.push_str("\n");
     }
 

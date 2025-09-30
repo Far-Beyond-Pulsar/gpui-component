@@ -30,21 +30,35 @@ pub enum NodeTypes {
 
     /// Control flow: one exec in, multiple exec outs via exec_output!()
     control_flow,
+
+    /// Event: defines an entry point function (e.g., main, begin_play)
+    /// Events define the outer function signature and have exec_output!("Body")
+    event,
 }
 
 // =============================================================================
-// Entry Points
+// Entry Points / Event Definitions
 // =============================================================================
 
-/// Entry point that runs when the program starts.
+/// Main entry point - defines the standard Rust main() function.
 ///
-/// This is the main entry point for blueprint execution, equivalent to `main()` in Rust.
+/// This event node defines the outer main() function. The execution chain
+/// connected to the "Body" output pin will become the function body.
+#[bp_doc("# Main")]
+#[bp_doc("Defines the default Rust entry point `fn main()`.")]
+#[blueprint(type: NodeTypes::event, category: "Events")]
+pub fn main() {
+    exec_output!("Body");
+}
+
+/// Begin Play event - runs when the program/engine starts.
+///
+/// This is typically used in game/engine contexts as an initialization point.
 #[bp_doc("# Begin Play")]
-#[bp_doc("Entry point that executes when the program starts.")]
-#[blueprint(type: NodeTypes::fn_, category: "Events")]
+#[bp_doc("Entry point that executes when the engine starts.")]
+#[blueprint(type: NodeTypes::event, category: "Events")]
 pub fn begin_play() {
-    // This node has no body - it's just an execution marker
-    // The compiler will generate the main() function from this
+    exec_output!("Body");
 }
 
 // =============================================================================

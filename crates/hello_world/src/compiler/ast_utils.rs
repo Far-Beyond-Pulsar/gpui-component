@@ -8,7 +8,7 @@
 
 use syn::{
     visit_mut::{self, VisitMut},
-    Block, Expr, ExprMacro, ItemFn, Stmt,
+    Block, Expr, ExprMacro, ItemFn, Stmt, StmtMacro,
 };
 use std::collections::HashMap;
 
@@ -39,6 +39,39 @@ impl ExecOutputReplacer {
 }
 
 impl VisitMut for ExecOutputReplacer {
+    fn visit_stmt_mut(&mut self, stmt: &mut Stmt) {
+        // Handle statement-level macros and expressions
+        match stmt {
+            Stmt::Expr(expr, _) => {
+                self.visit_expr_mut(expr);
+            }
+            Stmt::Macro(stmt_macro) => {
+                // Check if this is an exec_output! statement
+                if stmt_macro.mac.path.is_ident("exec_output") {
+                    if let Ok(label) = syn::parse2::<syn::LitStr>(stmt_macro.mac.tokens.clone()) {
+                        let label_value = label.value();
+
+                        // Get replacement code for this label
+                        if let Some(replacement_code) = self.replacements.get(&label_value) {
+                            // Parse replacement code as statements
+                            if let Ok(parsed_stmts) = syn::parse_str::<syn::File>(&format!("fn dummy() {{{}}}", replacement_code)) {
+                                // Extract statements from the parsed function
+                                if let Some(syn::Item::Fn(item_fn)) = parsed_stmts.items.first() {
+                                    // Replace the macro statement with the first replacement statement
+                                    if let Some(first_stmt) = item_fn.block.stmts.first() {
+                                        *stmt = first_stmt.clone();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        visit_mut::visit_stmt_mut(self, stmt);
+    }
+
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
         // First recurse into children
         visit_mut::visit_expr_mut(self, expr);
