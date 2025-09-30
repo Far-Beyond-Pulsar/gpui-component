@@ -384,6 +384,8 @@ impl BlueprintEditorPanel {
                 mouse_pos.x - node.position.x,
                 mouse_pos.y - node.position.y,
             );
+            // Close any open tooltips when starting drag
+            self.hide_hoverable_tooltip(cx);
             cx.notify();
         }
     }
@@ -467,6 +469,8 @@ impl BlueprintEditorPanel {
                     current_mouse_pos: Point::new(0.0, 0.0), // Will be updated by mouse move
                     target_pin: None,
                 });
+                // Close any open tooltips when starting connection drag
+                self.hide_hoverable_tooltip(cx);
                 cx.notify();
             }
         }

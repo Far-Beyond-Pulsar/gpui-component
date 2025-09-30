@@ -140,9 +140,11 @@ impl NodeTemplateParser {
     }
 
     fn is_pure_function(content: &str) -> bool {
-        // Check if function has a return type
-        let return_type_regex = Regex::new(r"fn\s+@\[pulsar_node_fn_id\]@\s*\([^)]*\)\s*->\s*[^{]+").unwrap();
-        return_type_regex.is_match(content)
+        // A function is pure if it has a return type AND no execution outputs
+        let has_return_type = Regex::new(r"fn\s+@\[pulsar_node_fn_id\]@\s*\([^)]*\)\s*->\s*[^{]+").unwrap().is_match(content);
+        let has_exec_outputs = Regex::new(r"@\[pulsar_exec_[^]]+\]@").unwrap().is_match(content);
+        
+        has_return_type && !has_exec_outputs
     }
 
     fn extract_input_pins(content: &str) -> Result<Vec<PinDefinition>, String> {

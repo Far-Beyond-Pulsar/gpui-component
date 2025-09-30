@@ -475,15 +475,19 @@ impl NodeGraphRenderer {
             .size(px(pin_size))
             .bg(pin_color)
             .rounded_full()
-            .border_1()
+            // Enhanced pin border with better depth
+            .border_2()
             .border_color(if is_compatible {
                 cx.theme().accent
             } else {
-                cx.theme().border
+                cx.theme().border.opacity(0.6) // Subtle border for depth
             })
-            .when(is_compatible, |style| style.border_2().shadow_md())
+            .when(is_compatible, |style| style.border_3().shadow_lg())
             .cursor_pointer()
-            .hover(|style| style.opacity(0.8))
+            // Enhanced hover with glow effect
+            .hover(|style| style.shadow_md())
+            // Add subtle inner highlight for 3D effect
+            .shadow_sm()
             .when(!is_input, |div| {
                 // Only output pins can start connections
                 let pin_id = pin.id.clone();

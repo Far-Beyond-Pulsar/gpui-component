@@ -147,11 +147,9 @@ impl GraphCompiler {
         }
 
         // Set execution placeholders to empty (no chaining in function definitions)
-        for output in &node_def.outputs {
-            if output.data_type == "execution" {
-                let exec_var = format!("pulsar_exec_{}", output.name);
-                template_vars.insert(exec_var, "".to_string());
-            }
+        for exec_output in &node_def.execution_outputs {
+            let exec_var = format!("pulsar_exec_{}", exec_output.name);
+            template_vars.insert(exec_var, "".to_string());
         }
 
         // Render template
@@ -450,6 +448,13 @@ impl GraphCompiler {
         }
 
         // Process execution connections
+        // First, set ALL execution outputs from the node definition to empty strings
+        for exec_output in &node_def.execution_outputs {
+            let exec_var = format!("pulsar_exec_{}", exec_output.name);
+            template_vars.insert(exec_var, "".to_string());
+        }
+
+        // Then override with actual execution chains if pins are connected
         for (pin_name, pin) in &node_instance.outputs {
             if pin.data_type == "execution" {
                 let exec_var = format!("pulsar_exec_{}", pin_name);
@@ -503,6 +508,13 @@ impl GraphCompiler {
             }
         }
         // Set execution pins
+        // First, set ALL execution outputs from the node definition to empty strings
+        for exec_output in &node_def.execution_outputs {
+            let exec_var = format!("pulsar_exec_{}", exec_output.name);
+            vars.insert(exec_var, "".to_string());
+        }
+
+        // Then override with actual execution chains if pins are connected
         for (pin_name, pin) in &node_instance.outputs {
             if pin.data_type == "execution" {
                 let exec_var = format!("pulsar_exec_{}", pin_name);

@@ -10,6 +10,10 @@
 //! - `std::thread::JoinHandle<()>`: A handle to the spawned thread that can
 //!   be used to wait for the thread to complete or check its status
 //!
+//! # Execution Outputs
+//! - `continue`: Executes immediately after spawning the thread
+//! - `body`: Executes in the spawned thread
+//!
 //! # Behavior
 //! The spawned thread will execute the code in `pulsar_exec_body` and
 //! terminate when that code completes. The main thread continues execution
@@ -29,7 +33,9 @@
 
 /// Spawn a new thread to execute code.
 fn @[pulsar_node_fn_id]@() -> std::thread::JoinHandle<()> {
-    std::thread::spawn(|| {
+    let handle = std::thread::spawn(|| {
         @[pulsar_exec_body]@
-    })
+    });
+    @[pulsar_exec_continue]@
+    handle
 }
