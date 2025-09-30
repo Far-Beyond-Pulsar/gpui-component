@@ -65,46 +65,124 @@ impl BlueprintEditorPanel {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let resizable_state = ResizableState::new(cx);
 
-        // Create sample nodes
+        // Create sample nodes - demonstrates all compiler features
         let mut nodes = Vec::new();
 
-        // Begin Play event node
+        // Main event node (defines pub fn main())
         nodes.push(BlueprintNode {
-            id: "begin_play".to_string(),
-            definition_id: "begin_play".to_string(),
-            title: "Begin Play".to_string(),
+            id: "main_event".to_string(),
+            definition_id: "main".to_string(),
+            title: "Main".to_string(),
             icon: "▶️".to_string(),
             node_type: NodeType::Event,
-            position: Point::new(100.0, 100.0),
-            size: Size::new(192.0, 80.0),
+            position: Point::new(100.0, 200.0),
+            size: Size::new(180.0, 80.0),
             inputs: vec![],
             outputs: vec![Pin {
-                id: "exec_out".to_string(),
-                name: "".to_string(),
+                id: "Body".to_string(),
+                name: "Body".to_string(),
                 pin_type: PinType::Output,
                 data_type: GraphDataType::from_type_str("execution"),
             }],
             properties: std::collections::HashMap::new(),
             is_selected: false,
-            description: "Event that triggers when gameplay begins.".to_string(),
+            description: "Defines the main() entry point function.".to_string(),
         });
 
-        // Print String node
-        let mut print_props = std::collections::HashMap::new();
-        print_props.insert("message".to_string(), "Hello World!".to_string());
-        print_props.insert("print_to_screen".to_string(), "true".to_string());
+        // Pure node: add(2, 3)
+        let mut add_props = std::collections::HashMap::new();
+        add_props.insert("a".to_string(), "2".to_string());
+        add_props.insert("b".to_string(), "3".to_string());
 
         nodes.push(BlueprintNode {
-            id: "print_string".to_string(),
+            definition_id: "add".to_string(),
+            title: "Add".to_string(),
+            icon: "➕".to_string(),
+            node_type: NodeType::Math,
+            position: Point::new(400.0, 80.0),
+            size: Size::new(150.0, 100.0),
+            inputs: vec![
+                Pin {
+                    id: "a".to_string(),
+                    name: "A".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str("i64"),
+                },
+                Pin {
+                    id: "b".to_string(),
+                    name: "B".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str("i64"),
+                },
+            ],
+            outputs: vec![Pin {
+                id: "result".to_string(),
+                name: "Result".to_string(),
+                pin_type: PinType::Output,
+                data_type: GraphDataType::from_type_str("i64"),
+            }],
+            properties: add_props,
+            is_selected: false,
+            description: "Adds two numbers: (2 + 3) = 5".to_string(),
+        });
+
+        // Control flow: branch
+        nodes.push(BlueprintNode {
+            id: "branch_node".to_string(),
+            definition_id: "branch".to_string(),
+            title: "Branch".to_string(),
+            icon: "🔀".to_string(),
+            node_type: NodeType::Logic,
+            position: Point::new(400.0, 280.0),
+            size: Size::new(180.0, 120.0),
+            inputs: vec![
+                Pin {
+                    id: "exec".to_string(),
+                    name: "".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str("execution"),
+                },
+                Pin {
+                    id: "condition".to_string(),
+                    name: "Condition".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str("bool"),
+                },
+            ],
+            outputs: vec![
+                Pin {
+                    id: "True".to_string(),
+                    name: "True".to_string(),
+                    pin_type: PinType::Output,
+                    data_type: GraphDataType::from_type_str("execution"),
+                },
+                Pin {
+                    id: "False".to_string(),
+                    name: "False".to_string(),
+                    pin_type: PinType::Output,
+                    data_type: GraphDataType::from_type_str("execution"),
+                },
+            ],
+            properties: std::collections::HashMap::new(),
+            is_selected: false,
+            description: "Branches execution based on a condition.".to_string(),
+        });
+
+        // Function node: print (true path)
+        let mut print_true_props = std::collections::HashMap::new();
+        print_true_props.insert("message".to_string(), "Result is greater than 3! ✓".to_string());
+
+        nodes.push(BlueprintNode {
+            id: "print_true".to_string(),
             definition_id: "print_string".to_string(),
             title: "Print String".to_string(),
             icon: "📝".to_string(),
             node_type: NodeType::Logic,
-            position: Point::new(400.0, 100.0),
-            size: Size::new(192.0, 120.0),
+            position: Point::new(680.0, 220.0),
+            size: Size::new(200.0, 100.0),
             inputs: vec![
                 Pin {
-                    id: "exec_in".to_string(),
+                    id: "exec".to_string(),
                     name: "".to_string(),
                     pin_type: PinType::Input,
                     data_type: GraphDataType::from_type_str("execution"),
@@ -122,18 +200,127 @@ impl BlueprintEditorPanel {
                 pin_type: PinType::Output,
                 data_type: GraphDataType::from_type_str("execution"),
             }],
-            properties: print_props,
+            properties: print_true_props,
             is_selected: false,
-            description: "Prints a string message to the console or screen.".to_string(),
+            description: "Prints success message.".to_string(),
         });
 
-        let connections = vec![Connection {
-            id: "connection_1".to_string(),
-            from_node_id: "begin_play".to_string(),
-            from_pin_id: "exec_out".to_string(),
-            to_node_id: "print_string".to_string(),
-            to_pin_id: "exec_in".to_string(),
-        }];
+        // Function node: print (false path)
+        let mut print_false_props = std::collections::HashMap::new();
+        print_false_props.insert("message".to_string(), "Result is 3 or less. ✗".to_string());
+
+        nodes.push(BlueprintNode {
+            id: "print_false".to_string(),
+            definition_id: "print_string".to_string(),
+            title: "Print String".to_string(),
+            icon: "📝".to_string(),
+            node_type: NodeType::Logic,
+            position: Point::new(680.0, 360.0),
+            size: Size::new(200.0, 100.0),
+            inputs: vec![
+                Pin {
+                    id: "exec".to_string(),
+                    name: "".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str("execution"),
+                },
+                Pin {
+                    id: "message".to_string(),
+                    name: "Message".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str("string"),
+                },
+            ],
+            outputs: vec![Pin {
+                id: "exec_out".to_string(),
+                name: "".to_string(),
+                pin_type: PinType::Output,
+                data_type: GraphDataType::from_type_str("execution"),
+            }],
+            properties: print_false_props,
+            is_selected: false,
+            description: "Prints alternative message.".to_string(),
+        });
+
+        // Pure node: greater than
+        let mut gt_props = std::collections::HashMap::new();
+        gt_props.insert("b".to_string(), "3".to_string());
+
+        nodes.push(BlueprintNode {
+            id: "greater_node".to_string(),
+            definition_id: "greater_than".to_string(),
+            title: "Greater Than".to_string(),
+            icon: "▶".to_string(),
+            node_type: NodeType::Logic,
+            position: Point::new(620.0, 80.0),
+            size: Size::new(160.0, 100.0),
+            inputs: vec![
+                Pin {
+                    id: "a".to_string(),
+                    name: "A".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str("i64"),
+                },
+                Pin {
+                    id: "b".to_string(),
+                    name: "B".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str("i64"),
+                },
+            ],
+            outputs: vec![Pin {
+                id: "result".to_string(),
+                name: "Result".to_string(),
+                pin_type: PinType::Output,
+                data_type: GraphDataType::from_type_str("bool"),
+            }],
+            properties: gt_props,
+            is_selected: false,
+            description: "Checks if A > B: result > 3?".to_string(),
+        });
+
+        let connections = vec![
+            // Execution: main -> branch
+            Connection {
+                id: "conn_main_branch".to_string(),
+                from_node_id: "main_event".to_string(),
+                from_pin_id: "Body".to_string(),
+                to_node_id: "branch_node".to_string(),
+                to_pin_id: "exec".to_string(),
+            },
+            // Data: add -> greater_than
+            Connection {
+                id: "conn_add_gt".to_string(),
+                from_node_id: "add_node".to_string(),
+                from_pin_id: "result".to_string(),
+                to_node_id: "greater_node".to_string(),
+                to_pin_id: "a".to_string(),
+            },
+            // Data: greater_than -> branch
+            Connection {
+                id: "conn_gt_branch".to_string(),
+                from_node_id: "greater_node".to_string(),
+                from_pin_id: "result".to_string(),
+                to_node_id: "branch_node".to_string(),
+                to_pin_id: "condition".to_string(),
+            },
+            // Execution: branch(True) -> print_true
+            Connection {
+                id: "conn_branch_true".to_string(),
+                from_node_id: "branch_node".to_string(),
+                from_pin_id: "True".to_string(),
+                to_node_id: "print_true".to_string(),
+                to_pin_id: "exec".to_string(),
+            },
+            // Execution: branch(False) -> print_false
+            Connection {
+                id: "conn_branch_false".to_string(),
+                from_node_id: "branch_node".to_string(),
+                from_pin_id: "False".to_string(),
+                to_node_id: "print_false".to_string(),
+                to_pin_id: "exec".to_string(),
+            },
+        ];
 
         let graph = BlueprintGraph {
             nodes,
