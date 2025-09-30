@@ -35,6 +35,7 @@ pub mod code_generator;
 
 // Blueprint validation
 pub mod validate_blueprint;
+pub mod test_default_ui_graph;
 
 // Tests
 #[cfg(test)]

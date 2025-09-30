@@ -95,6 +95,7 @@ impl BlueprintEditorPanel {
         add_props.insert("b".to_string(), "3".to_string());
 
         nodes.push(BlueprintNode {
+            id: "add_node".to_string(),
             definition_id: "add".to_string(),
             title: "Add".to_string(),
             icon: "➕".to_string(),
@@ -425,13 +426,27 @@ impl BlueprintEditorPanel {
 
         // Convert connections
         for connection in &self.graph.connections {
+            // Determine connection type based on source pin's data type
+            let conn_type = self.graph.nodes.iter()
+                .find(|n| n.id == connection.from_node_id)
+                .and_then(|node| {
+                    node.outputs.iter().find(|p| p.id == connection.from_pin_id)
+                })
+                .map(|pin| {
+                    match &pin.data_type {
+                        GraphDataType::Execution => ConnectionType::Execution,
+                        _ => ConnectionType::Data,
+                    }
+                })
+                .unwrap_or(ConnectionType::Data);
+
             let graph_connection = Connection::new(
                 &connection.id,
                 &connection.from_node_id,
                 &connection.from_pin_id,
                 &connection.to_node_id,
                 &connection.to_pin_id,
-                ConnectionType::Execution, // Determine type based on pins
+                conn_type,
             );
             graph_desc.add_connection(graph_connection);
         }
