@@ -2,29 +2,6 @@
 // Simple Function Definitions (nodes without execution placeholders)
 // ============================================================================
 
-//! A node that prints a string to the console for debugging.
-//!
-//! This node outputs the provided string to the console, prefixed with "[DEBUG]".
-//! Useful for inspecting values, debugging logic, or tracing execution in your graph.
-//!
-//! # Inputs
-//! - `in_message_string`: The string message to print.
-//!
-//! # Outputs
-//! - None. The message is printed to the console.
-//!
-//! # Example
-//! If `in_message_string` is "Hello, world!", the output will be:
-//! [DEBUG] Hello, world!
-//!
-//! # Notes
-//! Use this node for development and troubleshooting. Remove or disable in production code.
-
-/// Print a string to the console for debugging.
-fn print_string() {
-    println!("[DEBUG] {}", message);
-}
-
 //! A node that prints a formatted message with placeholder replacements.
 //!
 //! This node takes a format string and up to three value strings, replacing placeholders `{0}`, `{1}`, and `{2}` in the format string with the corresponding values.
@@ -52,6 +29,29 @@ fn print_formatted() {
         .replace("{0}", &value0)
         .replace("{1}", &value1)
         .replace("{2}", &value2);
+    println!("[DEBUG] {}", message);
+}
+
+//! A node that prints a string to the console for debugging.
+//!
+//! This node outputs the provided string to the console, prefixed with "[DEBUG]".
+//! Useful for inspecting values, debugging logic, or tracing execution in your graph.
+//!
+//! # Inputs
+//! - `in_message_string`: The string message to print.
+//!
+//! # Outputs
+//! - None. The message is printed to the console.
+//!
+//! # Example
+//! If `in_message_string` is "Hello, world!", the output will be:
+//! [DEBUG] Hello, world!
+//!
+//! # Notes
+//! Use this node for development and troubleshooting. Remove or disable in production code.
+
+/// Print a string to the console for debugging.
+fn print_string() {
     println!("[DEBUG] {}", message);
 }
 
