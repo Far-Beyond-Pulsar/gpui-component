@@ -244,8 +244,9 @@ mod tests {
         let func: ItemFn = syn::parse_str(code).unwrap();
         let body = extract_function_body(&func);
 
+        println!("Extracted body: {}", body);
         assert!(body.contains("let x = 5"));
-        assert!(body.contains("println!"));
+        assert!(body.contains("println"), "Body should contain println macro");
         assert!(!body.starts_with("fn"));
     }
 

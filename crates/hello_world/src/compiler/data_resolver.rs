@@ -137,16 +137,23 @@ impl DataResolver {
             }
         }
 
-        // Topological sort using Kahn's algorithm
-        let mut in_degree: HashMap<String, usize> = HashMap::new();
-        for node_id in &pure_nodes {
-            in_degree.insert(node_id.clone(), 0);
+        // Build reverse dependency map: dependents[X] = [nodes that depend on X]
+        let mut dependents: HashMap<String, Vec<String>> = HashMap::new();
+        for (target, sources) in &dependencies {
+            for source in sources {
+                dependents
+                    .entry(source.clone())
+                    .or_insert_with(Vec::new)
+                    .push(target.clone());
+            }
         }
 
-        for deps in dependencies.values() {
-            for dep in deps {
-                *in_degree.entry(dep.clone()).or_insert(0) += 1;
-            }
+        // Topological sort using Kahn's algorithm
+        // in_degree[node] = number of dependencies this node has
+        let mut in_degree: HashMap<String, usize> = HashMap::new();
+        for node_id in &pure_nodes {
+            let num_deps = dependencies.get(node_id).map(|v| v.len()).unwrap_or(0);
+            in_degree.insert(node_id.clone(), num_deps);
         }
 
         let mut queue: VecDeque<String> = in_degree
@@ -158,8 +165,9 @@ impl DataResolver {
         while let Some(node_id) = queue.pop_front() {
             self.pure_evaluation_order.push(node_id.clone());
 
-            if let Some(dependents) = dependencies.get(&node_id) {
-                for dependent in dependents {
+            // Find all nodes that depend on this node and decrement their in_degree
+            if let Some(dependent_nodes) = dependents.get(&node_id) {
+                for dependent in dependent_nodes {
                     if let Some(degree) = in_degree.get_mut(dependent) {
                         *degree -= 1;
                         if *degree == 0 {
