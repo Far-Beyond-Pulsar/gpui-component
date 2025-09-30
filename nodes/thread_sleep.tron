@@ -1,3 +1,5 @@
+//! # Thread Sleep Node
+//!
 //! A node that puts the current thread to sleep for a specified duration.
 //!
 //! This node suspends execution of the current thread for the given number
