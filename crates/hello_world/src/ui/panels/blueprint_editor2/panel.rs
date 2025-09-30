@@ -192,7 +192,7 @@ impl BlueprintEditorPanel {
         let graph_description = self.convert_to_graph_description()?;
 
         // Load node definitions and templates
-        let node_defs = crate::compiler::load_all_node_definitions(&std::path::PathBuf::from("./nodes"))
+        let node_defs = crate::compiler::load_all_node_definitions()
             .map_err(|e| format!("Failed to load node definitions: {}", e))?;
         let templates_dashmap = crate::compiler::init();
 
