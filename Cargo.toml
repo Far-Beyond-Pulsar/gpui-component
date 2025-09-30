@@ -9,6 +9,8 @@ members = [
     "crates/wef/examples/wef-winit",
     "crates/webview",
     "crates/webview/examples/wef-example",
+    "crates/pulsar_macros",
+    "crates/pulsar_std",
 ]
 
 default-members = ["crates/story"]

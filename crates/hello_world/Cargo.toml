@@ -28,5 +28,11 @@ regex = "1.10"
 chrono = { version = "0.4", features = ["serde"] }
 smol.workspace = true
 
+# New compiler dependencies
+syn = { version = "2.0", features = ["full", "parsing", "extra-traits", "visit", "visit-mut"] }
+quote = "1.0"
+prettyplease = "0.2"
+pulsar_std = { path = "../pulsar_std" }
+
 [lints]
 workspace = true

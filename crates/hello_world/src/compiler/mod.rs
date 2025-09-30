@@ -1,108 +1,98 @@
-//! # The Pulsar Blueprint Compiler
-//! 
-//! This module contains the implementation of the Pulsar Blueprint Compiler.
-//! The compiler is responsible for transforming high-level blueprint definitions
-//! into executable rust code that can be run through either rust-script or compiled
-//! into a binary via internal `cargo build`.
-//! 
-//! This process involves several steps, including parsing the blueprint syntax,
-//! type checking, and generating the final rust code. The compiler is designed to
-//! be extensible, allowing for the addition of new features and optimizations in the future.
-//! 
-//! ## Defining Nodes
-//! 
-//! Nodes are defined using the Tron template language, which provides a simple and expressive way
-//! to describe the structure and behavior of rust code and insert dynamic values. Each node is
-//! it's very own Tron template file in the ./nodes directory.
-//! 
-//! ## User-defined Nodes
-//! 
-//! Users can also define their own custom nodes by creating new .tron files in the ./nodes directory
-//! of their project. These files should follow the same structure as the built-in nodes, and can include
-//! any necessary metadata such as input and output types, descriptions, and categories.
-//! The compiler will automatically detect and include these user-defined nodes when generating
-//! the library of available nodes for blueprints via the project build.rs script.
-//! 
-//! ### Reading Node Definitions
-//! 
-//! The compiler will read these .tron files and use them to generate the library of nodes that can
-//! be used in blueprints via the UI. From there, users can drag and drop nodes into their blueprints
-//! and connect them together to create complex workflows. Nodes that connect cause the Tron template
-//! engine to render the templates together, inserting dynamic values and interconnecting the code as
-//! needed.
-//! 
-//! ## Node execution
-//! 
-//! Once the blueprint has been fully defined and the nodes have been connected, the compiler will
-//! generate the final rust code by rendering the Tron templates together. This code can then be
-//! executed using rust-script for quick iteration and testing in the editor, or compiled into a binary for
-//! production use.
-//! 
-//! The compiler also includes error handling and reporting features, allowing users to easily identify
-//! and fix issues in their blueprints. Overall, the Pulsar Blueprint Compiler is designed to be a powerful
-//! and flexible tool for creating and executing complex workflows using a visual programming approach.
+//! # The Pulsar Blueprint Compiler (Macro-Based)
+//!
+//! This compiler transforms visual node graphs into executable Rust code.
+//!
+//! ## New Architecture
+//!
+//! Unlike the old template-based system (.tron files), this compiler works with
+//! Rust functions decorated with `#[blueprint]` attribute macros from `pulsar_std`.
+//!
+//! ## Compilation Pipeline
+//!
+//! 1. **Metadata Extraction**: Parse pulsar_std to extract node metadata
+//! 2. **Data Flow Resolution**: Build data dependency graph and evaluation order
+//! 3. **Execution Routing**: Map execution connections between nodes
+//! 4. **Code Generation**: Generate Rust code with proper inlining
+//!
+//! ## Node Types
+//!
+//! - **Pure**: Inline as expressions (no exec pins)
+//! - **Function**: Generate function calls (single exec chain)
+//! - **Control Flow**: Inline with exec_output!() substitution
+//!
+//! See DESIGN.md for full architectural details.
 
-use tron::TronTemplate;
-use dashmap::DashMap;
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::sync::OnceLock;
+use crate::graph::GraphDescription;
 
-pub mod node_parser;
-pub mod graph_compiler;
+// New modular architecture
+pub mod node_metadata;
+pub mod data_resolver;
+pub mod execution_routing;
+pub mod ast_utils;
+pub mod code_generator;
 
-pub use node_parser::{NodeDefinition, load_all_node_definitions};
-pub use graph_compiler::GraphCompiler;
+// Tests
+#[cfg(test)]
+mod tests;
 
-pub fn init() -> DashMap<String, TronTemplate> {
-    let mut templates: DashMap<String, TronTemplate> = DashMap::new();
-    // Initialize templates here
-    
-    let engine_nodes = load_all_node_templates(&PathBuf::from("./nodes"));
-    let user_nodes = load_all_node_templates(&PathBuf::from("./user_nodes"));
+// Re-exports
+pub use node_metadata::NodeMetadata;
 
-    // Merge the two DashMaps into a combined dashmap of all available nodes
-    templates.extend(engine_nodes);
-    templates.extend(user_nodes);
+/// Cached node metadata from pulsar_std
+static NODE_METADATA: OnceLock<HashMap<String, NodeMetadata>> = OnceLock::new();
 
-    templates
-}
-
-fn load_node_template(path: &PathBuf) -> Option<TronTemplate> {
-    match std::fs::read_to_string(path) {
-        Ok(content) => {
-            match TronTemplate::new(&content) {
-                Ok(template) => Some(template),
-                Err(e) => {
-                    eprintln!("Error parsing template {}: {}", path.display(), e);
-                    None
-                }
+/// Get node metadata (lazily initialized)
+fn get_node_metadata() -> &'static HashMap<String, NodeMetadata> {
+    NODE_METADATA.get_or_init(|| {
+        match node_metadata::extract_node_metadata() {
+            Ok(metadata) => {
+                println!("[COMPILER] Loaded {} node definitions from pulsar_std", metadata.len());
+                metadata
             }
-        },
-        Err(e) => {
-            eprintln!("Error reading file {}: {}", path.display(), e);
-            None
-        }
-    }
-}
-
-fn load_all_node_templates(dir: &PathBuf) -> DashMap<String, TronTemplate> {
-    let templates: DashMap<String, TronTemplate> = DashMap::new();
-
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()) == Some("tron") {
-                    if let Some(template) = load_node_template(&path) {
-                        if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-                            templates.insert(name.to_string(), template);
-                        }
-                    }
-                }
+            Err(e) => {
+                eprintln!("[COMPILER] Failed to extract node metadata: {}", e);
+                HashMap::new()
             }
         }
-    } else {
-        eprintln!("Error reading directory: {}", dir.display());
+    })
+}
+
+/// Main compilation entry point for the new macro-based compiler
+pub fn compile_graph(graph: &GraphDescription) -> Result<String, String> {
+    println!("[COMPILER] Starting macro-based compilation");
+
+    // Phase 1: Get node metadata
+    let metadata = get_node_metadata();
+    if metadata.is_empty() {
+        return Err("No node metadata available - check pulsar_std".to_string());
     }
 
-    templates
+    // Phase 2: Build data flow resolver
+    let data_resolver = data_resolver::DataResolver::build(graph)?;
+    println!("[COMPILER] Built data flow resolver");
+
+    // Phase 3: Build execution routing
+    let exec_routing = execution_routing::ExecutionRouting::build_from_graph(graph);
+    println!("[COMPILER] Built execution routing");
+
+    // Phase 4: Generate code
+    let code = code_generator::generate_program(
+        graph,
+        metadata,
+        &data_resolver,
+        &exec_routing,
+    )?;
+
+    println!("[COMPILER] Code generation complete");
+    Ok(code)
+}
+
+/// Legacy compilation entry point (for backward compatibility)
+#[deprecated(note = "Use compile_graph instead - this uses old .tron template system")]
+pub fn compile_graph_legacy(graph: &GraphDescription) -> Result<String, String> {
+    eprintln!("[COMPILER] Warning: Using legacy .tron template compiler");
+    // This would use the old graph_compiler::GraphCompiler
+    Err("Legacy compiler not fully implemented - use new macro-based compiler".to_string())
 }

@@ -153,78 +153,81 @@ static NODE_DEFINITIONS: OnceLock<NodeDefinitions> = OnceLock::new();
 impl NodeDefinitions {
     pub fn load() -> &'static NodeDefinitions {
         NODE_DEFINITIONS.get_or_init(|| {
-            // Load dynamic node definitions from .tron templates
-            let dynamic_nodes = crate::compiler::load_all_node_definitions()
+            // Load dynamic node definitions from pulsar_std
+            let metadata = crate::compiler::node_metadata::extract_node_metadata()
                 .unwrap_or_else(|e| {
-                    eprintln!("Failed to load dynamic node definitions: {}", e);
+                    eprintln!("Failed to load node metadata: {}", e);
                     std::collections::HashMap::new()
                 });
 
-            // Convert dynamic nodes to static format
-            Self::from_dynamic_nodes(dynamic_nodes)
+            // Convert metadata to UI format
+            Self::from_node_metadata(metadata)
         })
     }
 
-    fn from_dynamic_nodes(dynamic_nodes: std::collections::HashMap<String, crate::compiler::NodeDefinition>) -> NodeDefinitions {
+    fn from_node_metadata(metadata: std::collections::HashMap<String, crate::compiler::NodeMetadata>) -> NodeDefinitions {
         let mut categories_map: std::collections::HashMap<String, Vec<NodeDefinition>> = std::collections::HashMap::new();
 
         // Group nodes by category
-        for (id, dynamic_def) in dynamic_nodes {
+        for (id, node_meta) in metadata {
             let mut inputs = Vec::new();
             let mut outputs = Vec::new();
 
             // Add execution inputs
-            for exec_pin in &dynamic_def.execution_inputs {
+            for exec_pin in &node_meta.exec_inputs {
                 inputs.push(PinDefinition {
-                    id: exec_pin.name.clone(),
-                    name: exec_pin.name.clone(),
+                    id: exec_pin.clone(),
+                    name: exec_pin.clone(),
                     data_type: DataType::from_type_str("execution"),
                     pin_type: PinType::Input,
                 });
             }
 
             // Add regular inputs
-            for pin in &dynamic_def.inputs {
+            for param in &node_meta.params {
                 inputs.push(PinDefinition {
-                    id: pin.name.clone(),
-                    name: pin.name.clone(),
-                    data_type: Self::convert_data_type(&pin.data_type),
+                    id: param.name.clone(),
+                    name: param.name.clone(),
+                    data_type: DataType::from_type_str(&param.ty),
                     pin_type: PinType::Input,
                 });
             }
 
             // Add execution outputs
-            for exec_pin in &dynamic_def.execution_outputs {
+            for exec_pin in &node_meta.exec_outputs {
                 outputs.push(PinDefinition {
-                    id: exec_pin.name.clone(),
-                    name: exec_pin.name.clone(),
+                    id: exec_pin.clone(),
+                    name: exec_pin.clone(),
                     data_type: DataType::from_type_str("execution"),
                     pin_type: PinType::Output,
                 });
             }
 
-            // Add regular outputs
-            for pin in &dynamic_def.outputs {
+            // Add regular outputs (return type)
+            if let Some(ref return_type) = node_meta.return_type {
                 outputs.push(PinDefinition {
-                    id: pin.name.clone(),
-                    name: pin.name.clone(),
-                    data_type: Self::convert_data_type(&pin.data_type),
+                    id: "result".to_string(),
+                    name: "result".to_string(),
+                    data_type: DataType::from_type_str(return_type),
                     pin_type: PinType::Output,
                 });
             }
 
+            let category = node_meta.category.clone().unwrap_or_else(|| "General".to_string());
+            let description = node_meta.documentation.join("\n");
+
             let static_def = NodeDefinition {
                 id: id.clone(),
-                name: dynamic_def.name,
-                icon: dynamic_def.icon,
-                description: dynamic_def.description,
+                name: node_meta.name.clone(),
+                icon: "⚙️".to_string(), // Default icon
+                description,
                 inputs,
                 outputs,
                 properties: std::collections::HashMap::new(),
             };
 
             categories_map
-                .entry(dynamic_def.category)
+                .entry(category)
                 .or_insert_with(Vec::new)
                 .push(static_def);
         }

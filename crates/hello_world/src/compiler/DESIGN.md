@@ -1,370 +1,490 @@
-# Proper Graph Compiler Design - Unreal Blueprint Model
+# Macro-Based Node Graph Compiler Design
 
-## Understanding the Execution Model
+## Overview
 
-### Template Types
+This compiler transforms visual node graphs from the Blueprint Editor into executable Rust code. Unlike the old template-based system that used `.tron` files, the new system works with Rust functions defined via `#[blueprint]` attribute macros in the `pulsar_std` crate.
 
-After analyzing the templates, there are 3 distinct types:
+## Philosophy: From Templates to Function Calls
 
-#### 1. Pure Expressions (Data Flow Only)
-```rust
-// add.tron
-@[in_a_number]@ + @[in_b_number]@
+**Old System (.tron templates):**
+- Nodes defined as template files with placeholders
+- Compiler substitutes values into placeholders
+- Example: `@[in_a_number]@ + @[in_b_number]@`
+
+**New System (Rust macros):**
+- Nodes defined as actual Rust functions
+- Compiler generates **function calls** to these nodes
+- Example: `add(value1, value2)`
+
+## Node Types
+
+The `#[blueprint]` macro supports three node types, each requiring different code generation strategies:
+
+### 1. Pure Nodes (`NodeTypes::pure`)
+- **Definition**: Functions that take inputs and return outputs, no side effects
+- **No exec pins**: These nodes are only part of data flow, never execution flow
+- **Example**:
+  ```rust
+  #[blueprint(type: NodeTypes::pure)]
+  fn add(a: i64, b: i64) -> i64 {
+      a + b
+  }
+  ```
+- **Code Generation**: Direct function call, result used inline
+  ```rust
+  let result = add(value1, value2);
+  ```
+
+### 2. Simple Function Nodes (`NodeTypes::fn`)
+- **Definition**: Functions with side effects, single execution flow
+- **One exec input, one exec output**: Linear execution chain
+- **Example**:
+  ```rust
+  #[blueprint(type: NodeTypes::fn)]
+  fn print_string(message: String) {
+      println!("[DEBUG] {}", message);
+  }
+  ```
+- **Code Generation**: Function call, then follow exec chain
+  ```rust
+  print_string(msg);
+  // Next node in exec chain continues here
+  ```
+
+### 3. Control Flow Nodes (`NodeTypes::control_flow`)
+- **Definition**: Functions that branch execution flow using `exec_output!()` macro
+- **Multiple exec outputs**: Each `exec_output!()` connects to different nodes
+- **Example**:
+  ```rust
+  #[blueprint(type: NodeTypes::control_flow)]
+  fn branch(thing: bool) {
+      if thing {
+         exec_output!("True");
+      } else {
+         exec_output!("False");
+   }
+  }
+  ```
+- **Code Generation**: **Must be inlined**, replacing `exec_output!()` with connected code
+  ```rust
+  if condition {
+      // Code from nodes connected to "True" pin
+      print_string("It's true!");
+  } else {
+      // Code from nodes connected to "False" pin
+      print_string("It's false!");
+  }
+  ```
+
+## Execution Model: Following the Blueprint Wire
+
+The compiler follows the **Unreal Engine Blueprint execution model**:
+
+1. **Entry Points**: Special nodes like `begin_play` become top-level functions (`main()`)
+2. **Execution Flow**: White exec pins define the flow of control
+3. **Data Flow**: Colored data pins carry values between nodes
+4. **Inline Expansion**: Control flow nodes are expanded inline at their usage site
+5. **Execution Routing**: Each exec output pin routes to specific connected nodes
+
+### Example: Thread Spawn
+
+```text
+BeginPlay -> thread_spawn -> print("after spawn")
+             └─body─> print("in thread")
 ```
-- No function wrapper
-- Just Rust expressions
-- Used for data calculations
-- Never part of execution flow
 
-#### 2. Simple Executable Nodes (No Exec Placeholders)
+Compiles to:
 ```rust
-// print_string.tron
-fn @[pulsar_node_fn_id]@() {
-    println!("[DEBUG] {}", @[in_message_string]@);
-}
-
-// thread_park.tron
-fn @[pulsar_node_fn_id]@() {
-    std::thread::park();
-}
-```
-- Have function wrapper
-- Have statements/side effects
-- **NO exec placeholders** (`@[pulsar_exec_*]@`)
-- Can be called as functions OR inlined
-
-#### 3. Control Flow Nodes (Have Exec Placeholders)
-```rust
-// branch.tron
-fn @[pulsar_node_fn_id]@() {
-    if @[in_condition_bool]@ {
-        @[pulsar_exec_a]@
-    } else {
-        @[pulsar_exec_b]@
-    }
-}
-
-// thread_spawn.tron
-fn @[pulsar_node_fn_id]@() -> std::thread::JoinHandle<()> {
+fn main() {
     let handle = std::thread::spawn(|| {
-        @[pulsar_exec_body]@
+        // Code from nodes connected to "body" pin
+        println!("[DEBUG] {}", "in thread");
     });
-    @[pulsar_exec_continue]@
-    handle
-}
-```
-- Have function wrapper
-- Have exec placeholders
-- **MUST be inlined**, never called as functions
-- Exec placeholders filled with nodes connected to those output pins
-
-## How Unreal Blueprints Work (Our Model)
-
-1. **Entry Points**: Begin Play, On Tick, etc. become top-level functions (main, on_tick)
-2. **Execution Flow**: White exec pins show the flow of control
-3. **Inline Expansion**: Nodes with exec placeholders are expanded inline
-4. **Execution Output Routing**: Each exec output pin routes to different code
-
-### Example 1: Linear Chain
-```
-BeginPlay -> print_string("A") -> print_string("B")
-```
-
-Generates:
-```rust
-fn main() {
-    print_string("A");
-    print_string("B");
-}
-```
-
-### Example 2: Branch
-```
-BeginPlay -> branch(condition)
-             ├─true─> print_string("true")
-             └─false─> print_string("false")
-```
-
-Generates:
-```rust
-fn main() {
-    // Inline branch template
-    if condition {
-        print_string("true");
-    } else {
-        print_string("false");
-    }
-}
-```
-
-### Example 3: Thread Spawn (The Critical Case)
-```
-BeginPlay -> thread_spawn -> print_string("after spawn")
-             └─body─> thread_park
-```
-
-Generates:
-```rust
-fn main() {
-    // Inline thread_spawn template
-    let handle = std::thread::spawn(|| {
-        // Fill pulsar_exec_body with nodes connected to "body" pin
-        thread_park();
-    });
-    // Fill pulsar_exec_continue with nodes connected to "continue" pin
-    print_string("after spawn");
-
+    // Code from nodes connected to "continue" pin
+    println!("[DEBUG] {}", "after spawn");
     handle
 }
 ```
 
 ## Compiler Architecture
 
-### Phase 1: Template Analysis
-Analyze each template to determine its type:
+### Phase 1: Node Metadata Extraction
+**Module**: `node_metadata.rs`
 
+Since nodes are now defined as Rust functions in `pulsar_std`, we need to extract metadata:
+
+**Option A: Parse `pulsar_std` source code** (Recommended)
+- Use `syn` crate to parse Rust code
+- Extract all functions with `#[blueprint]` attribute
+- Build metadata: function name, parameters, return type, node type
+- Identify `exec_output!()` calls to determine exec pins
+
+**Option B: Macro-generated registry**
+- Have the `#[blueprint]` macro generate a registry at compile time
+- Look up node metadata from this registry
+
+**Metadata Structure:**
 ```rust
-enum TemplateType {
-    /// Pure expression like "a + b"
-    PureExpression,
-
-    /// Function with no exec placeholders - can be called
-    SimpleFunction,
-
-    /// Has exec placeholders - must be inlined
-    ControlFlow {
-        exec_placeholders: Vec<String>, // e.g., ["pulsar_exec_body", "pulsar_exec_continue"]
-    },
+pub struct NodeMetadata {
+    pub name: String,
+    pub node_type: NodeType, // pure, fn, control_flow
+    pub params: Vec<Parameter>,
+    pub return_type: Option<String>,
+    pub exec_inputs: Vec<String>,  // Usually just ["exec"]
+    pub exec_outputs: Vec<String>, // e.g., ["True", "False"] for branch
 }
 
-fn analyze_template(template_content: &str) -> TemplateType {
-    if !template_content.contains("fn ") {
-        return TemplateType::PureExpression;
+pub enum NodeType {
+    Pure,          // No exec pins, pure function
+    Function,      // One exec in, one exec out
+    ControlFlow,   // One exec in, multiple exec outs
+}
+```
+
+### Phase 2: Execution Routing
+**Module**: `execution_router.rs`
+
+**KEEP THIS MODULE** - It's already well-designed in the current compiler.
+
+Maps execution connections: `(node_id, output_pin_name) -> Vec<target_node_ids>`
+
+This tells us which nodes to compile when filling each `exec_output!()` call.
+
+### Phase 3: Data Flow Resolution
+**Module**: `data_resolver.rs` (NEW)
+
+Resolves where each input value comes from:
+- Connected to an output from another node?
+- A constant/property value?
+- A default value?
+
+**Responsibilities:**
+1. Build data dependency graph
+2. Determine evaluation order for pure nodes
+3. Generate variable names for intermediate results
+4. Handle type conversions if needed
+
+**Example:**
+```text
+add_node(a: const 5, b: from multiply_node.result)
+```
+Resolves to:
+```rust
+let multiply_result = multiply(x, y);
+let add_result = add(5, multiply_result);
+```
+
+### Phase 4: Code Generation
+**Module**: `code_generator.rs`
+
+The core compilation logic. Different strategies per node type:
+
+#### A. Pure Node Code Generation
+```rust
+fn generate_pure_node(node: &NodeInstance, metadata: &NodeMetadata) -> String {
+    let args = collect_argument_values(node);
+    let result_var = format!("node_{}_result", node.id);
+    format!("let {} = {}({});", result_var, metadata.name, args.join(", "))
+}
+```
+
+#### B. Function Node Code Generation
+```rust
+fn generate_function_node(node: &NodeInstance, metadata: &NodeMetadata) -> String {
+    let args = collect_argument_values(node);
+    let mut code = format!("{}({});", metadata.name, args.join(", "));
+
+    // Follow exec chain
+    if let Some(next) = get_next_exec_node(node) {
+        code.push_str(&compile_node_inline(next));
     }
 
-    let exec_placeholders: Vec<String> = // find all @[pulsar_exec_*]@
+    code
+}
+```
 
-    if exec_placeholders.is_empty() {
-        TemplateType::SimpleFunction
-    } else {
-        TemplateType::ControlFlow { exec_placeholders }
+#### C. Control Flow Node Inlining
+```rust
+fn inline_control_flow_node(
+    node: &NodeInstance,
+    metadata: &NodeMetadata,
+    routing: &ExecutionRouter,
+) -> Result<String, String> {
+    // 1. Parse the function body from pulsar_std source
+    let source_body = get_function_source(metadata.name)?;
+
+    // 2. Find all exec_output!() macro calls
+    let exec_calls = extract_exec_output_calls(&source_body)?;
+
+    // 3. For each exec_output!(), get connected nodes
+    let mut replacements = HashMap::new();
+    for (exec_name, _position) in exec_calls {
+        let connected_nodes = routing.get_connected_nodes(&node.id, &exec_name);
+
+        // Recursively compile connected nodes
+        let mut exec_code = String::new();
+        for target_id in connected_nodes {
+            exec_code.push_str(&compile_node_inline(target_id)?);
+        }
+
+        replacements.insert(exec_name, exec_code);
+    }
+
+    // 4. Replace exec_output!() calls with actual code
+    let inlined = substitute_exec_outputs(source_body, replacements)?;
+
+    // 5. Substitute input parameters with actual values
+    let args = collect_argument_values(node);
+    let final_code = substitute_parameters(inlined, metadata.params, args)?;
+
+    Ok(final_code)
+}
+```
+
+**Key Challenge**: Parsing and transforming Rust code
+- Need to parse function bodies from `pulsar_std`
+- Find and replace `exec_output!()` macro invocations
+- Maintain proper syntax and indentation
+
+**Solution**: Use `syn` and `quote` crates:
+```rust
+use syn::{parse_str, visit::Visit, Expr, Macro};
+
+// Parse function to find exec_output!() calls
+struct ExecOutputVisitor {
+    exec_calls: Vec<(String, Span)>,
+}
+
+impl<'ast> Visit<'ast> for ExecOutputVisitor {
+    fn visit_macro(&mut self, mac: &'ast Macro) {
+        if mac.path.is_ident("exec_output") {
+            // Extract the label: exec_output!("True")
+            let label = parse_exec_output_label(mac);
+            self.exec_calls.push((label, mac.span()));
+        }
     }
 }
 ```
 
-### Phase 2: Build Execution Routing Table
-```rust
-struct ExecutionRouting {
-    // (source_node_id, output_pin_name) -> Vec<target_node_ids>
-    routes: HashMap<(String, String), Vec<String>>,
-}
+### Phase 5: Entry Point Generation
+**Module**: `entry_points.rs`
 
-impl ExecutionRouting {
-    fn get_nodes_for_pin(&self, node_id: &str, pin_name: &str) -> &[String] {
-        self.routes.get(&(node_id.to_string(), pin_name.to_string()))
-            .map(|v| v.as_slice())
-            .unwrap_or(&[])
-    }
-}
-```
+**KEEP AND ADAPT** from current compiler.
 
-### Phase 3: Generate Entry Points
-For each entry point (BeginPlay, OnTick, etc.):
+1. Find entry point nodes (begin_play, on_tick, etc.)
+2. Generate appropriate function signatures
+3. Compile the execution chain starting from each entry point
 
 ```rust
-fn compile_entry_point(
+pub fn generate_entry_point(
     entry_node: &NodeInstance,
     graph: &GraphDescription,
-    routing: &ExecutionRouting,
 ) -> Result<String, String> {
-    let function_name = match entry_node.node_type.as_str() {
+    let fn_name = match entry_node.node_type.as_str() {
         "begin_play" => "main",
         "on_tick" => "on_tick",
-        other => other,
+        _ => &entry_node.node_type,
     };
 
     let mut body = String::new();
+    compile_execution_chain(entry_node, graph, &mut body)?;
 
-    // Find first exec output and follow it
-    let first_exec_out = get_first_exec_output(&entry_node);
-    let connected_nodes = routing.get_nodes_for_pin(&entry_node.id, &first_exec_out);
+    Ok(format!("fn {}() {{\n{}}}", fn_name, body))
+}
+```
 
-    for node_id in connected_nodes {
-        let node = &graph.nodes[node_id];
-        compile_node_inline(node, graph, routing, &mut body, 1)?;
+## Critical Implementation Details
+
+### 1. Function Body Extraction
+
+**Challenge**: Get the actual source code of functions from `pulsar_std`
+
+**Solution**:
+- At compile time, use `include_str!()` to embed `pulsar_std/src/lib.rs`
+- Parse with `syn` to extract all function bodies
+- Cache in a `HashMap<String, syn::ItemFn>`
+
+```rust
+lazy_static! {
+    static ref NODE_FUNCTIONS: HashMap<String, syn::ItemFn> = {
+        let source = include_str!("../../../pulsar_std/src/lib.rs");
+        parse_all_blueprint_functions(source)
+    };
+}
+```
+
+### 2. exec_output!() Substitution
+
+**Challenge**: Replace `exec_output!("Label")` with actual node code
+
+**Solution**:
+- Parse function body to AST
+- Use `syn::visit_mut` to find and transform macro calls
+- Replace macro with a block containing the compiled node code
+
+```rust
+impl VisitMut for ExecOutputReplacer {
+    fn visit_expr_mut(&mut self, expr: &mut Expr) {
+        if let Expr::Macro(mac) = expr {
+            if mac.mac.path.is_ident("exec_output") {
+                let label = parse_label(&mac.mac);
+                let replacement_code = self.replacements.get(&label);
+                *expr = parse_str(replacement_code).unwrap();
+            }
+        }
+        visit_mut::visit_expr_mut(self, expr);
     }
-
-    Ok(format!("fn {}() {{\n{}}}", function_name, body))
 }
 ```
 
-### Phase 4: Recursive Node Compilation (THE CORE)
+### 3. Type Safety and Validation
+
+- Validate connections: Check that output types match input types
+- Use `TypeInfo` system already in place in `graph/type_system.rs`
+- Report errors with node IDs and pin names for easy debugging
+
+### 4. Error Handling
+
+All compilation errors should include:
+- Node ID and type
+- Input/output pin names
+- Expected vs actual types
+- Graph location (for editor highlighting)
 
 ```rust
-fn compile_node_inline(
-    node: &NodeInstance,
-    graph: &GraphDescription,
-    routing: &ExecutionRouting,
-    output: &mut String,
-    indent_level: usize,
-) -> Result<(), String> {
-    let template_type = get_template_type(&node.node_type)?;
-    let indent = "    ".repeat(indent_level);
+pub enum CompilerError {
+    TypeMismatch {
+        node_id: String,
+        expected: TypeInfo,
+        found: TypeInfo,
+    },
+    MissingConnection {
+        node_id: String,
+        pin_name: String,
+    },
+    CyclicDependency {
+        cycle: Vec<String>,
+    },
+    NodeNotFound {
+        node_id: String,
+    },
+}
+```
 
-    match template_type {
-        TemplateType::PureExpression => {
-            // This shouldn't be in execution flow
-            Err("Pure expressions can't be in exec flow")
-        }
+## Module Organization
 
-        TemplateType::SimpleFunction => {
-            // Just call the function
-            let args = get_args(node, graph)?;
-            output.push_str(&format!("{}{}({});\n", indent, node.node_type, args));
+```
+compiler/
+├── mod.rs                 # Main entry point, orchestrates compilation
+├── DESIGN.md              # This file
+├── node_metadata.rs       # Extract metadata from pulsar_std
+├── execution_router.rs    # Maps exec connections (KEEP from current)
+├── data_resolver.rs       # Resolves data dependencies and evaluation order
+├── code_generator.rs      # Main code generation logic
+├── entry_points.rs        # Generate entry point functions
+├── ast_utils.rs           # Helpers for parsing/transforming Rust AST
+├── type_checker.rs        # Validate types and connections
+└── errors.rs              # Error types and reporting
+```
 
-            // Follow the single exec output (if any)
-            if let Some(exec_out) = get_first_exec_output(node) {
-                let connected = routing.get_nodes_for_pin(&node.id, &exec_out);
-                for next_id in connected {
-                    compile_node_inline(&graph.nodes[next_id], graph, routing, output, indent_level)?;
-                }
-            }
-        }
+## Migration Strategy
 
-        TemplateType::ControlFlow { exec_placeholders } => {
-            // INLINE the template
-            let template = get_template(&node.node_type)?;
+1. **Keep working compiler**: Don't delete the old one immediately
+2. **Parallel implementation**: Build new compiler alongside old one
+3. **Feature flag**: Use feature flags to switch between old and new
+4. **Incremental testing**: Test each node type independently
+5. **Gradual transition**: Migrate nodes one category at a time
 
-            // Fill all placeholders
-            let mut vars = HashMap::new();
+## Testing Strategy
 
-            // Set inputs
-            for input in get_inputs(node) {
-                let var_name = format!("in_{}_{}", input.name, input.type);
-                let value = get_input_value(node, &input.name, graph)?;
-                vars.insert(var_name, value);
-            }
+### Unit Tests
+- Parse individual node functions from `pulsar_std`
+- Test exec_output!() extraction
+- Test code generation for each node type
+- Test data resolution
 
-            // CRITICAL: Fill exec placeholders
-            for placeholder in exec_placeholders {
-                // Extract pin name from placeholder: "pulsar_exec_body" -> "body"
-                let pin_name = placeholder.strip_prefix("pulsar_exec_").unwrap();
+### Integration Tests
+Test graphs of increasing complexity:
 
-                // Get nodes connected to THIS specific exec output
-                let connected = routing.get_nodes_for_pin(&node.id, pin_name);
+1. **Simple Chain**: `begin_play -> print_string`
+2. **Pure Expression**: `add(5, 3) -> print_string`
+3. **Branch**: `begin_play -> branch(true) -> [print_true, print_false]`
+4. **Thread Spawn**: The critical test case from DESIGN.md
+5. **Nested Control Flow**: Branch inside thread spawn body
+6. **Complex Graph**: Multiple control flow nodes, data dependencies
 
-                if connected.is_empty() {
-                    // No connections - empty block
-                    vars.insert(placeholder, "{}".to_string());
-                } else {
-                    // Recursively compile connected nodes
-                    let mut exec_body = String::new();
-                    for next_id in connected {
-                        compile_node_inline(
-                            &graph.nodes[next_id],
-                            graph,
-                            routing,
-                            &mut exec_body,
-                            0, // Reset indent - will be re-indented when inserted
-                        )?;
-                    }
-                    vars.insert(placeholder, exec_body);
-                }
-            }
+### Test Graph Format
+```rust
+#[test]
+fn test_simple_chain() {
+    let graph = create_test_graph(|g| {
+        let begin = g.add_node("begin_play");
+        let print = g.add_node("print_string");
+        print.set_input("message", "Hello!");
+        g.connect_exec(begin, print);
+    });
 
-            // Render template
-            let rendered = render_template(template, vars)?;
+    let code = compile(graph).unwrap();
+    assert!(code.contains("fn main()"));
+    assert!(code.contains("println!(\"[DEBUG] {}\""));
+}
+```
 
-            // Strip "fn name() { }" wrapper to get just the body
-            let body = extract_function_body(rendered)?;
+## Future Enhancements
 
-            // Add to output with proper indentation
-            for line in body.lines() {
-                output.push_str(&format!("{}{}\n", indent, line));
-            }
-        }
+1. **Optimization Pass**: Eliminate dead code, constant folding
+2. **Async/Await Support**: For async nodes
+3. **Hot Reload**: Recompile and reload without restart
+4. **Debug Info**: Generate debug symbols for breakpoints in generated code
+5. **Visual Debugging**: Map generated code back to graph positions
+6. **Incremental Compilation**: Only recompile changed subgraphs
+
+## Success Criteria
+
+The new compiler is successful when:
+
+1. ✅ All node types (pure, fn, control_flow) generate correct code
+2. ✅ Execution flow exactly matches Blueprint semantics
+3. ✅ Data dependencies are resolved correctly
+4. ✅ Control flow nodes are properly inlined
+5. ✅ Thread spawn test case works perfectly
+6. ✅ Generated code compiles without errors
+7. ✅ Generated code executes with correct behavior
+8. ✅ Compilation errors are clear and actionable
+9. ✅ Performance is acceptable for large graphs
+10. ✅ Easy to add new nodes by just adding functions to `pulsar_std`
+
+## Example: Complete Compilation
+
+### Input Graph
+```text
+BeginPlay
+  └─exec─> Branch(condition: true)
+            ├─True─> Print("Branch taken!")
+            └─False─> Print("Branch not taken!")
+```
+
+### Generated Code
+```rust
+fn main() {
+    // BeginPlay node - entry point
+
+    // Branch node - inlined control flow
+    if true {
+        // Nodes connected to "True" pin
+        println!("[DEBUG] {}", "Branch taken!");
+    } else {
+        // Nodes connected to "False" pin
+        println!("[DEBUG] {}", "Branch not taken!");
     }
-
-    Ok(())
 }
 ```
 
-### Key Helper: Extract Function Body
+## Key Principles
 
-```rust
-fn extract_function_body(template_output: &str) -> Result<String, String> {
-    // Template has form: "fn name() { BODY }"
-    // We want just BODY
-
-    // Find first '{' and last '}'
-    let start = template_output.find('{')
-        .ok_or("Template has no opening brace")?;
-    let end = template_output.rfind('}')
-        .ok_or("Template has no closing brace")?;
-
-    // Extract content between braces
-    let body = &template_output[start+1..end];
-
-    // Clean up indentation
-    Ok(body.trim().to_string())
-}
-```
-
-## What This Fixes
-
-### Before (Broken):
-```
-BeginPlay -> thread_spawn -> print_string("after")
-             └─body─> thread_park
-```
-
-Generated:
-```rust
-fn thread_spawn() -> JoinHandle<()> {
-    let handle = std::thread::spawn(|| {
-        {}  // Empty!
-    });
-    {}  // Empty!
-    handle
-}
-
-fn main() {
-    thread_spawn();  // Called as function, doesn't follow exec properly
-    print_string("after");
-}
-```
-
-### After (Correct):
-```rust
-fn main() {
-    // thread_spawn INLINED
-    let handle = std::thread::spawn(|| {
-        // pulsar_exec_body filled with nodes connected to "body" pin
-        thread_park();
-    });
-    // pulsar_exec_continue filled with nodes connected to "continue" pin
-    print_string("after");
-
-    handle
-}
-```
-
-## Implementation Strategy
-
-1. **Delete current compiler** - too broken to fix incrementally
-2. **Implement template analysis** - classify each template type
-3. **Implement execution routing** - track pin connections
-4. **Implement recursive inline compiler** - the core algorithm
-5. **Test incrementally**:
-   - Simple chain (BeginPlay -> print -> print)
-   - Branch (BeginPlay -> branch -> prints)
-   - Thread spawn (the critical test case)
-   - Nested control flow (thread spawn with branch inside body)
-
-## Critical Principles
-
-1. **Never generate functions for control flow nodes** - they must always be inlined
-2. **Always respect execution output routing** - each exec pin routes to specific code
-3. **Recursive inline expansion** - control flow nodes expand inline, filling their placeholders recursively
-4. **Simple nodes can be functions** - nodes without exec placeholders can be called
-5. **Preserve Unreal execution semantics** - follow exec pins exactly like blueprints
+1. **Trust the Type System**: Use Rust's type system to validate graphs
+2. **Follow the Wires**: Exec pins dictate control flow, data pins dictate data flow
+3. **Inline Control Flow**: Never call control flow nodes as functions
+4. **Generate Readable Code**: Humans should be able to read and debug output
+5. **Fail Loudly**: Better to error with details than generate wrong code
+6. **Preserve Semantics**: Generated code must behave exactly as the graph implies

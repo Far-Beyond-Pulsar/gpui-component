@@ -39,23 +39,9 @@ pub struct SelectRadius(usize);
 use ui::app::PulsarApp;
 
 fn main() {
-
-    let templates = compiler::init();
-
-    println!("Loaded {} node templates", templates.len());
-    for entry in templates.iter() {
-        println!(
-            " - {}: [{}]",
-            entry.key(),
-            entry
-            .placeholder_names()
-            .iter()
-            .map(|name| format!("\x1b[36m{}\x1b[0m", name)) // Cyan color
-            .collect::<Vec<_>>()
-            .join(", ")
-        );
-    }
-
+    // Note: Node metadata is now loaded lazily from pulsar_std when needed
+    println!("Pulsar Engine - Visual Programming Environment");
+    println!("Using macro-based node system from pulsar_std");
 
     let app = Application::new().with_assets(Assets);
 
