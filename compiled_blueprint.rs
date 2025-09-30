@@ -1,3 +1,7 @@
+// ============================================================================
+// Simple Function Definitions (nodes without execution placeholders)
+// ============================================================================
+
 //! A node that prints a string to the console for debugging.
 //!
 //! This node outputs the provided string to the console, prefixed with "[DEBUG]".
@@ -21,74 +25,49 @@ fn print_string() {
     println!("[DEBUG] {}", message);
 }
 
-//! # Thread Spawn Node
+//! A node that prints a formatted message with placeholder replacements.
 //!
-//! A node that spawns a new thread to execute connected code concurrently.
-//!
-//! This node creates a new operating system thread and executes the code
-//! connected to its body in that thread. The new thread runs concurrently
-//! with the current thread, allowing for parallel execution.
-//!
-//! # Outputs
-//! - `std::thread::JoinHandle<()>`: A handle to the spawned thread that can
-//!   be used to wait for the thread to complete or check its status
-//!
-//! # Execution Outputs
-//! - `continue`: Executes immediately after spawning the thread
-//! - `body`: Executes in the spawned thread
-//!
-//! # Behavior
-//! The spawned thread will execute the code in `pulsar_exec_body` and
-//! terminate when that code completes. The main thread continues execution
-//! immediately after spawning.
-//!
-//! # Example
-//! Use this node to perform background work, such as file I/O or computation,
-//! without blocking the main thread. You can join the thread later if you
-//! need to wait for its completion.
-//!
-//! # Notes
-//! - Thread spawning has overhead. Use for tasks that benefit from parallelism.
-//! - Remember to join threads if you need to wait for their completion.
-//! - This node creates a new operating system thread and executes the code
-//! connected to its body in that thread. The new thread runs concurrently
-//! with the current thread, allowing for parallel execution.
-
-/// Spawn a new thread to execute code.
-fn thread_spawn() -> std::thread::JoinHandle<()> {
-    let handle = std::thread::spawn(|| {
-        {}
-    });
-    {}
-    handle
-}
-
-//! A node that parks (suspends) the current thread until it is unparked.
-//!
-//! This node suspends the current thread, putting it to sleep until another thread
-//! explicitly unparks it. Useful for implementing custom synchronization primitives
-//! or waiting for external events.
+//! This node takes a format string and up to three value strings, replacing placeholders `{0}`, `{1}`, and `{2}` in the format string with the corresponding values.
+//! Useful for debugging, logging, or displaying dynamic messages with variable content.
 //!
 //! # Inputs
-//! - None
+//! - `in_format_string`: The format string containing placeholders `{0}`, `{1}`, `{2}`.
+//! - `in_value0_string`: The value to replace `{0}`.
+//! - `in_value1_string`: The value to replace `{1}`.
+//! - `in_value2_string`: The value to replace `{2}`.
 //!
 //! # Outputs
-//! - None (the thread is parked and resumes only when unparked)
+//! - None. The formatted message is printed to the console.
 //!
 //! # Example
-//! Use this node in conjunction with thread unpark logic to coordinate thread execution.
+//! If `in_format_string` is "Hello, {0}! You have {1} new messages.", `in_value0_string` is "Alice", and `in_value1_string` is "5", the output will be:
+//! [DEBUG] Hello, Alice! You have 5 new messages.
 //!
 //! # Notes
-//! - The thread will remain parked indefinitely until explicitly unparked.
-//! - If the thread is already unparked when `park()` is called, it will return immediately.
-//! - Use with caution to avoid deadlocks.
-
-/// Park the current thread until unparked.
-fn thread_park() {
-    std::thread::park();
+//! Only the first three placeholders are supported. Placeholders not present in the format string are ignored. Use this node for simple string formatting in logs or UI.
+//
+/// Print a formatted message with placeholder replacements.
+fn print_formatted() {
+    let message = format
+        .replace("{0}", &value0)
+        .replace("{1}", &value1)
+        .replace("{2}", &value2);
+    println!("[DEBUG] {}", message);
 }
+
+
+// ============================================================================
+// Entry Points (Begin Play, On Tick, etc.)
+// ============================================================================
 
 fn main() {
     print_string("Hello World!");
+    let handle = std::thread::spawn(|| {
+            print_formatted("", "", "", "");
+        });
+        for i in 0..0 {
+            print_formatted("", "", "", "");
+        }
+        handle
 }
 

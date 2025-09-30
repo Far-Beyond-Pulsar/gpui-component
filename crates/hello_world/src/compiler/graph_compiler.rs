@@ -88,6 +88,9 @@ impl ExecutionRouting {
         }
 
         println!("[ROUTING] Built execution routing table with {} routes", routes.len());
+        for ((node_id, pin_name), targets) in &routes {
+            println!("[ROUTING]   ({}, {}) -> {:?}", node_id, pin_name, targets);
+        }
         ExecutionRouting { routes }
     }
 
@@ -493,8 +496,16 @@ impl GraphCompiler {
 
                 // Follow single execution output
                 let node_def = self.node_definitions.get(&node.node_type).unwrap();
+                println!("[INLINE] Node '{}' has {} execution outputs: {:?}",
+                    node.node_type,
+                    node_def.execution_outputs.len(),
+                    node_def.execution_outputs.iter().map(|p| &p.name).collect::<Vec<_>>());
+
                 if let Some(exec_output) = node_def.execution_outputs.first() {
                     let connected = routing.get_connected_nodes(&node.id, &exec_output.name);
+                    println!("[INLINE] Following exec output '{}' from node '{}', found {} connected nodes: {:?}",
+                        exec_output.name, node.id, connected.len(), connected);
+
                     for next_node_id in connected {
                         if let Some(next_node) = graph.nodes.get(next_node_id) {
                             self.compile_node_inline(
@@ -507,6 +518,8 @@ impl GraphCompiler {
                             )?;
                         }
                     }
+                } else {
+                    println!("[INLINE] Node '{}' has NO execution outputs, stopping chain", node.node_type);
                 }
 
                 Ok(())

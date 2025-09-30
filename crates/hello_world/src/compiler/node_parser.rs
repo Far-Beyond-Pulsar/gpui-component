@@ -58,6 +58,17 @@ impl NodeTemplateParser {
                 description: "Execution input".to_string(),
                 default_value: None,
             });
+
+            // If node has no explicit execution outputs (not a control flow node),
+            // add implicit "exec_out" output for execution chaining
+            if node_def.execution_outputs.is_empty() {
+                node_def.execution_outputs.push(PinDefinition {
+                    name: "exec_out".to_string(),
+                    data_type: "execution".to_string(),
+                    description: "Execution output".to_string(),
+                    default_value: None,
+                });
+            }
         }
 
         Ok(node_def)
