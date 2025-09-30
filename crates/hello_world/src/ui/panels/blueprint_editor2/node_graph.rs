@@ -266,6 +266,7 @@ impl NodeGraphRenderer {
             .h(px(scaled_height))
             .child(
                 v_flex()
+                    // Enhanced background with subtle gradient effect
                     .bg(cx.theme().background)
                     .border_color(if node.is_selected {
                         gpui::yellow()
@@ -274,26 +275,45 @@ impl NodeGraphRenderer {
                     })
                     .when(node.is_selected, |style| {
                         style.border_4() // Thick border for selected nodes
+                            .shadow_2xl() // Extra shadow when selected
                     })
                     .when(!node.is_selected, |style| {
                         style.border_2() // Normal border for unselected nodes
                     })
-                    .rounded(px(8.0 * panel.graph.zoom_level))
+                    .rounded(px(12.0 * panel.graph.zoom_level)) // Slightly more rounded
                     .shadow_lg()
-                    .when(is_dragging, |style| style.opacity(0.8).shadow_2xl())
+                    .when(is_dragging, |style| style.opacity(0.9).shadow_2xl())
+                    // Add subtle inner shadow/glow for depth
+                    .relative()
+                    .overflow_hidden()
                     .cursor_pointer()
                     .child(
-                        // Header - this is the draggable area
+                        // Header - this is the draggable area with gradient
                         h_flex()
                             .w_full()
-                            .p(px(8.0 * panel.graph.zoom_level))
-                            .bg(node_color.opacity(0.2))
+                            .p(px(10.0 * panel.graph.zoom_level))
+                            .relative()
+                            // Enhanced header with gradient and border
+                            .bg(node_color.opacity(0.15))
+                            .border_b_2()
+                            .border_color(node_color.opacity(0.3))
                             .items_center()
-                            .gap(px(8.0 * panel.graph.zoom_level))
+                            .gap(px(10.0 * panel.graph.zoom_level))
                             .id(ElementId::Name(format!("node-header-{}", node.id).into()))
+                            // Add subtle top accent line
                             .child(
                                 div()
-                                    .text_size(px(16.0 * panel.graph.zoom_level))
+                                    .absolute()
+                                    .top_0()
+                                    .left_0()
+                                    .right_0()
+                                    .h(px(2.0 * panel.graph.zoom_level))
+                                    .bg(node_color.opacity(0.6))
+                            )
+                            .child(
+                                // Icon with subtle glow
+                                div()
+                                    .text_size(px(18.0 * panel.graph.zoom_level))
                                     .child(node.icon.clone()),
                             )
                             .child(
@@ -334,10 +354,12 @@ impl NodeGraphRenderer {
                             }),
                     )
                     .child(
-                        // Pins
+                        // Pins body with enhanced styling
                         v_flex()
-                            .p(px(8.0 * panel.graph.zoom_level))
-                            .gap(px(4.0 * panel.graph.zoom_level))
+                            .p(px(10.0 * panel.graph.zoom_level))
+                            .gap(px(6.0 * panel.graph.zoom_level))
+                            // Add subtle background tint to body
+                            .bg(cx.theme().muted.opacity(0.03))
                             .child(Self::render_node_pins(node, panel, cx)),
                     )
                     .on_mouse_down(gpui::MouseButton::Left, {
