@@ -1,11 +1,148 @@
-use std::collections::HashMap;
+//! # Unreal Blueprint-Style Graph Compiler
+//!
+//! This compiler transforms visual node graphs into executable Rust code following
+//! the Unreal Engine Blueprint execution model.
+//!
+//! ## Key Concepts
+//!
+//! - **Entry Points**: Nodes like `begin_play` become top-level functions (`main()`)
+//! - **Execution Flow**: White execution pins control flow, exactly like Blueprint wires
+//! - **Inline Expansion**: Nodes with execution placeholders are expanded inline
+//! - **Execution Routing**: Each execution output pin routes to specific code
+//!
+//! ## Template Types
+//!
+//! 1. **Pure Expressions**: `a + b` - Used in data flow only
+//! 2. **Simple Functions**: `print_string()` - Can be called or inlined
+//! 3. **Control Flow**: `branch`, `thread_spawn` - MUST be inlined
+//!
+//! ## Example
+//!
+//! ```text
+//! BeginPlay -> thread_spawn -> print("after spawn")
+//!              └─body─> thread_park
+//! ```
+//!
+//! Compiles to:
+//!
+//! ```rust
+//! fn main() {
+//!     let handle = std::thread::spawn(|| {
+//!         thread_park();  // From body pin
+//!     });
+//!     print("after spawn");  // From continue pin
+//!     handle
+//! }
+//! ```
+
+use std::collections::{HashMap, HashSet};
 use tron::TronTemplate;
 use crate::graph::{GraphDescription, NodeInstance, ConnectionType, PropertyValue};
 use crate::compiler::NodeDefinition;
 
+// ============================================================================
+// SECTION 1: Core Data Structures
+// ============================================================================
+
+/// Tracks which nodes are connected to which execution output pins.
+///
+/// This is critical for routing execution flow correctly. In Unreal Blueprints,
+/// each execution output pin can connect to different nodes, and we must
+/// preserve this routing when generating code.
+///
+/// ## Example
+///
+/// For a `thread_spawn` node with two exec outputs:
+/// - `body` pin connects to `thread_park` node
+/// - `continue` pin connects to `print_string` node
+///
+/// The routing table stores:
+/// ```text
+/// (thread_spawn_id, "body") -> [thread_park_id]
+/// (thread_spawn_id, "continue") -> [print_string_id]
+/// ```
+struct ExecutionRouting {
+    /// Map from (source_node_id, output_pin_name) -> Vec<target_node_ids>
+    routes: HashMap<(String, String), Vec<String>>,
+}
+
+impl ExecutionRouting {
+    /// Build routing table from graph connections.
+    ///
+    /// Analyzes all execution-type connections in the graph and builds a lookup
+    /// table that maps source pins to their target nodes.
+    fn build_from_graph(graph: &GraphDescription) -> Self {
+        let mut routes = HashMap::new();
+
+        for connection in &graph.connections {
+            if matches!(connection.connection_type, ConnectionType::Execution) {
+                let key = (
+                    connection.source_node.clone(),
+                    connection.source_pin.clone(),
+                );
+                routes
+                    .entry(key)
+                    .or_insert_with(Vec::new)
+                    .push(connection.target_node.clone());
+            }
+        }
+
+        println!("[ROUTING] Built execution routing table with {} routes", routes.len());
+        ExecutionRouting { routes }
+    }
+
+    /// Get all nodes connected to a specific execution output pin.
+    ///
+    /// Returns an empty slice if no nodes are connected to this pin.
+    fn get_connected_nodes(&self, node_id: &str, output_pin: &str) -> &[String] {
+        self.routes
+            .get(&(node_id.to_string(), output_pin.to_string()))
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+    }
+}
+
+/// Classification of node templates based on their execution characteristics.
+///
+/// This determines how a node should be compiled:
+/// - Pure expressions are used in data flow only
+/// - Simple functions can be called or inlined
+/// - Control flow nodes MUST be inlined with their placeholders filled
+#[derive(Debug, Clone)]
+enum TemplateType {
+    /// Pure expression like `a + b` - no function wrapper, just Rust expression
+    PureExpression,
+
+    /// Function with no execution placeholders - can be called as a function
+    SimpleFunction,
+
+    /// Has execution placeholders - MUST be inlined into execution flow
+    ControlFlow {
+        /// Names of execution placeholders (e.g., ["pulsar_exec_body", "pulsar_exec_continue"])
+        exec_placeholders: Vec<String>,
+    },
+}
+
+// ============================================================================
+// SECTION 2: Main Compiler Structure
+// ============================================================================
+
+/// The main graph compiler that transforms node graphs into Rust code.
+///
+/// This follows the Unreal Blueprint execution model where:
+/// - Entry points become top-level functions
+/// - Execution flow is followed recursively
+/// - Control flow nodes are expanded inline
+/// - Simple nodes can be called as functions
 pub struct GraphCompiler {
+    /// Definitions for all available node types
     node_definitions: HashMap<String, NodeDefinition>,
+
+    /// Templates for generating node code
     templates: HashMap<String, TronTemplate>,
+
+    /// Cached template type analysis
+    template_types: HashMap<String, TemplateType>,
 }
 
 impl GraphCompiler {
@@ -13,101 +150,238 @@ impl GraphCompiler {
         node_definitions: HashMap<String, NodeDefinition>,
         templates: HashMap<String, TronTemplate>,
     ) -> Self {
-        Self {
+        let mut compiler = Self {
             node_definitions,
             templates,
-        }
+            template_types: HashMap::new(),
+        };
+
+        // Pre-analyze all templates
+        compiler.analyze_all_templates();
+
+        compiler
     }
 
+    /// Main compilation entry point.
+    ///
+    /// ## Algorithm
+    ///
+    /// 1. Build execution routing table from connections
+    /// 2. Find entry points (begin_play, on_tick, etc.)
+    /// 3. Generate function definitions for simple nodes
+    /// 4. Generate entry point functions with inline expansion
+    ///
+    /// ## Output
+    ///
+    /// Returns generated Rust code as a string, or an error if compilation fails.
     pub fn compile_graph(&self, graph: &GraphDescription) -> Result<String, String> {
+        println!("[COMPILER] === Starting Compilation ===");
+
         let mut generated_code = String::new();
-        let mut generated_functions = std::collections::HashSet::new();
 
-        // Find all reachable nodes from entry points
+        // Phase 1: Build execution routing table
+        let routing = ExecutionRouting::build_from_graph(graph);
+
+        // Phase 2: Find entry points
         let entry_points = self.find_entry_points(graph);
-        let mut reachable_nodes = std::collections::HashSet::new();
-        for entry_node_id in &entry_points {
-            if let Some(entry_node) = graph.nodes.get(entry_node_id) {
-                self.collect_reachable_nodes(entry_node, graph, &mut reachable_nodes);
-            }
+        println!("[COMPILER] Found {} entry points: {:?}",
+                 entry_points.len(),
+                 entry_points.iter()
+                     .filter_map(|id| graph.nodes.get(id).map(|n| &n.node_type))
+                     .collect::<Vec<_>>());
+
+        // Phase 3: Generate simple function definitions
+        let simple_functions = self.generate_simple_functions(graph)?;
+        if !simple_functions.is_empty() {
+            generated_code.push_str("// ============================================================================\n");
+            generated_code.push_str("// Simple Function Definitions (nodes without execution placeholders)\n");
+            generated_code.push_str("// ============================================================================\n\n");
+            generated_code.push_str(&simple_functions);
+            generated_code.push_str("\n");
         }
 
-        // Generate function definitions only for reachable node types
-        for (_node_id, node_instance) in &graph.nodes {
-            let node_type = &node_instance.node_type;
+        // Phase 4: Generate entry point functions
+        generated_code.push_str("// ============================================================================\n");
+        generated_code.push_str("// Entry Points (Begin Play, On Tick, etc.)\n");
+        generated_code.push_str("// ============================================================================\n\n");
 
-            // Skip entry points like begin_play - they become main()
-            if node_type == "begin_play" {
-                continue;
-            }
-
-            // Only generate functions for nodes reachable via execution
-            if !reachable_nodes.contains(&node_instance.id) {
-                continue;
-            }
-
-            // Only generate each function type once
-            if !generated_functions.contains(node_type) {
-                generated_functions.insert(node_type.clone());
-                let function_def = self.compile_node_function(node_instance, graph)?;
-                generated_code.push_str(&function_def);
-                generated_code.push_str("\n\n");
-            }
-        }
-
-        // Then generate the main function(s) from entry points
         for entry_node_id in entry_points {
             if let Some(entry_node) = graph.nodes.get(&entry_node_id) {
-                let main_function = self.compile_main_function(entry_node, graph)?;
-                generated_code.push_str(&main_function);
+                let entry_fn = self.compile_entry_point(entry_node, graph, &routing)?;
+                generated_code.push_str(&entry_fn);
                 generated_code.push_str("\n\n");
             }
         }
 
+        println!("[COMPILER] === Compilation Complete ===");
         Ok(generated_code)
     }
 
-    fn find_entry_points(&self, graph: &GraphDescription) -> Vec<String> {
-        // Find nodes that are actual entry points (like begin_play) or system events
-        // Not just any node without incoming connections (which could be disconnected)
-        let mut entry_points = Vec::new();
+    // ========================================================================
+    // SECTION 3: Template Analysis
+    // ========================================================================
 
-        for (node_id, node) in &graph.nodes {
-            // Only consider nodes that are specifically entry point types
-            if self.is_entry_point_type(&node.node_type) {
-                entry_points.push(node_id.clone());
+    /// Pre-analyze all templates to determine their type.
+    ///
+    /// This caches the template type for faster compilation. A template is:
+    /// - **PureExpression** if it has no function wrapper
+    /// - **SimpleFunction** if it has a function but no exec placeholders
+    /// - **ControlFlow** if it has exec placeholders
+    fn analyze_all_templates(&mut self) {
+        println!("[COMPILER] Analyzing {} templates...", self.templates.len());
+
+        for (node_type, template) in &self.templates {
+            let template_type = self.analyze_template_type(template);
+            println!("[COMPILER]   {}: {:?}", node_type, template_type);
+            self.template_types.insert(node_type.clone(), template_type);
+        }
+    }
+
+    /// Analyze a single template to determine its type.
+    fn analyze_template_type(&self, template: &TronTemplate) -> TemplateType {
+        // Get template content - we need to inspect it
+        let template_str = format!("{:?}", template);
+
+        // Check if it has a function wrapper
+        if !template_str.contains("fn ") {
+            return TemplateType::PureExpression;
+        }
+
+        // Find all execution placeholders
+        let mut exec_placeholders = Vec::new();
+        for part in template_str.split("@[") {
+            if let Some(end) = part.find("]@") {
+                let placeholder = &part[..end];
+                if placeholder.starts_with("pulsar_exec_") {
+                    exec_placeholders.push(placeholder.to_string());
+                }
             }
         }
 
-        entry_points
+        if exec_placeholders.is_empty() {
+            TemplateType::SimpleFunction
+        } else {
+            TemplateType::ControlFlow { exec_placeholders }
+        }
     }
 
+    /// Get the cached template type for a node type.
+    fn get_template_type(&self, node_type: &str) -> Result<&TemplateType, String> {
+        self.template_types
+            .get(node_type)
+            .ok_or_else(|| format!("Template type not found for: {}", node_type))
+    }
+
+    // ========================================================================
+    // SECTION 4: Entry Point & Function Generation
+    // ========================================================================
+
+    /// Find all entry point nodes in the graph.
+    ///
+    /// Entry points are nodes that create top-level functions like `main()`.
+    /// Examples: `begin_play`, `on_tick`, etc.
+    fn find_entry_points(&self, graph: &GraphDescription) -> Vec<String> {
+        graph
+            .nodes
+            .iter()
+            .filter(|(_, node)| self.is_entry_point_type(&node.node_type))
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    /// Check if a node type is an entry point.
     fn is_entry_point_type(&self, node_type: &str) -> bool {
-        // Define which node types are considered entry points
         matches!(node_type, "begin_play" | "on_tick" | "on_input" | "on_event")
     }
 
-    fn collect_reachable_nodes(
-        &self,
-        node: &NodeInstance,
-        graph: &GraphDescription,
-        reachable: &mut std::collections::HashSet<String>,
-    ) {
-        // Avoid infinite loops
+    /// Generate function definitions for simple nodes (no exec placeholders).
+    ///
+    /// Only generates functions for nodes that are actually used in the graph.
+    /// Control flow nodes are always inlined, so they never get function definitions.
+    fn generate_simple_functions(&self, graph: &GraphDescription) -> Result<String, String> {
+        let mut code = String::new();
+        let mut generated = HashSet::new();
+
+        // Find all reachable nodes
+        let entry_points = self.find_entry_points(graph);
+        let reachable = self.find_reachable_nodes(graph, &entry_points);
+
+        for node_id in reachable {
+            if let Some(node) = graph.nodes.get(&node_id) {
+                let node_type = &node.node_type;
+
+                // Skip if already generated or is entry point
+                if generated.contains(node_type) || self.is_entry_point_type(node_type) {
+                    continue;
+                }
+
+                // Only generate for simple functions
+                if matches!(self.get_template_type(node_type)?, TemplateType::SimpleFunction) {
+                    let function_def = self.generate_simple_function(node_type)?;
+                    code.push_str(&function_def);
+                    code.push_str("\n\n");
+                    generated.insert(node_type.clone());
+                }
+            }
+        }
+
+        Ok(code)
+    }
+
+    /// Generate a function definition for a simple node.
+    fn generate_simple_function(&self, node_type: &str) -> Result<String, String> {
+        let node_def = self.node_definitions
+            .get(node_type)
+            .ok_or_else(|| format!("Node definition not found: {}", node_type))?;
+
+        let template = self.templates
+            .get(node_type)
+            .ok_or_else(|| format!("Template not found: {}", node_type))?;
+
+        let mut vars = HashMap::new();
+
+        // Set function ID
+        vars.insert("pulsar_node_fn_id".to_string(), node_type.to_string());
+
+        // Set input parameters (by name, not values)
+        for input in &node_def.inputs {
+            if input.data_type != "execution" {
+                let var_name = format!("in_{}_{}", input.name, input.data_type);
+                vars.insert(var_name, input.name.clone());
+            }
+        }
+
+        self.render_template(template, vars, node_type)
+    }
+
+    /// Find all nodes reachable from entry points via execution connections.
+    fn find_reachable_nodes(&self, graph: &GraphDescription, entry_points: &[String]) -> HashSet<String> {
+        let mut reachable = HashSet::new();
+
+        for entry_id in entry_points {
+            if let Some(entry_node) = graph.nodes.get(entry_id) {
+                self.collect_reachable(entry_node, graph, &mut reachable);
+            }
+        }
+
+        println!("[COMPILER] Found {} reachable nodes", reachable.len());
+        reachable
+    }
+
+    /// Recursively collect reachable nodes via execution connections.
+    fn collect_reachable(&self, node: &NodeInstance, graph: &GraphDescription, reachable: &mut HashSet<String>) {
         if reachable.contains(&node.id) {
             return;
         }
         reachable.insert(node.id.clone());
 
-        // Follow execution output connections
+        // Follow execution outputs
         for (_pin_name, pin) in &node.outputs {
             if pin.data_type == "execution" {
-                for connection_id in &pin.connected_to {
-                    if let Some(connection) = graph.connections.iter().find(|c| c.id == *connection_id) {
-                        if matches!(connection.connection_type, ConnectionType::Execution) {
-                            if let Some(next_node) = graph.nodes.get(&connection.target_node) {
-                                self.collect_reachable_nodes(next_node, graph, reachable);
-                            }
+                for conn_id in &pin.connected_to {
+                    if let Some(conn) = graph.connections.iter().find(|c| &c.id == conn_id) {
+                        if let Some(next_node) = graph.nodes.get(&conn.target_node) {
+                            self.collect_reachable(next_node, graph, reachable);
                         }
                     }
                 }
@@ -115,593 +389,361 @@ impl GraphCompiler {
         }
     }
 
-    fn compile_node_function(&self, node_instance: &NodeInstance, graph: &GraphDescription) -> Result<String, String> {
+    /// Compile an entry point node into a top-level function.
+    ///
+    /// ## Example
+    ///
+    /// `begin_play` becomes:
+    /// ```rust
+    /// fn main() {
+    ///     // Inlined execution sequence
+    /// }
+    /// ```
+    fn compile_entry_point(
+        &self,
+        entry_node: &NodeInstance,
+        graph: &GraphDescription,
+        routing: &ExecutionRouting,
+    ) -> Result<String, String> {
+        let function_name = match entry_node.node_type.as_str() {
+            "begin_play" => "main",
+            "on_tick" => "on_tick",
+            other => other,
+        };
+
+        println!("[COMPILER] Compiling entry point: {} -> fn {}", entry_node.node_type, function_name);
+
+        let mut body = String::new();
+        let mut visited = HashSet::new();
+
+        // Find first execution output and follow it
         let node_def = self.node_definitions
-            .get(&node_instance.node_type)
-            .ok_or_else(|| format!("Node definition not found: {}", node_instance.node_type))?;
+            .get(&entry_node.node_type)
+            .ok_or_else(|| format!("Node definition not found: {}", entry_node.node_type))?;
 
+        if let Some(first_exec_output) = node_def.execution_outputs.first() {
+            let connected = routing.get_connected_nodes(&entry_node.id, &first_exec_output.name);
+            for next_node_id in connected {
+                if let Some(next_node) = graph.nodes.get(next_node_id) {
+                    self.compile_node_inline(
+                        next_node,
+                        graph,
+                        routing,
+                        &mut body,
+                        &mut visited,
+                        1, // indent level
+                    )?;
+                }
+            }
+        }
+
+        Ok(format!("fn {}() {{\n{}}}", function_name, body))
+    }
+
+    // ========================================================================
+    // SECTION 5: Core Recursive Inline Compilation (THE HEART OF THE COMPILER)
+    // ========================================================================
+
+    /// Compile a node inline into the execution sequence.
+    ///
+    /// This is the core recursive algorithm that follows the Unreal Blueprint model:
+    ///
+    /// 1. **Simple Functions**: Call the function, then follow single exec output
+    /// 2. **Control Flow**: Inline the template, filling exec placeholders recursively
+    ///
+    /// ## Recursion
+    ///
+    /// When filling exec placeholders, this method calls itself recursively to
+    /// generate code for connected nodes. This naturally handles nested control
+    /// flow (e.g., a branch inside a thread spawn body).
+    ///
+    /// ## Visited Tracking
+    ///
+    /// Tracks visited nodes to avoid infinite loops in cyclic graphs.
+    fn compile_node_inline(
+        &self,
+        node: &NodeInstance,
+        graph: &GraphDescription,
+        routing: &ExecutionRouting,
+        output: &mut String,
+        visited: &mut HashSet<String>,
+        indent_level: usize,
+    ) -> Result<(), String> {
+        // Avoid infinite loops
+        if visited.contains(&node.id) {
+            return Ok(());
+        }
+        visited.insert(node.id.clone());
+
+        let indent = "    ".repeat(indent_level);
+        let template_type = self.get_template_type(&node.node_type)?;
+
+        println!("[INLINE] Compiling node '{}' (type: {}, template: {:?})",
+                 node.id, node.node_type, template_type);
+
+        match template_type {
+            TemplateType::PureExpression => {
+                Err(format!("Pure expression '{}' cannot be in execution flow", node.node_type))
+            }
+
+            TemplateType::SimpleFunction => {
+                // Generate function call
+                let args = self.get_node_arguments(node, graph)?;
+                output.push_str(&format!("{}{}({});\n", indent, node.node_type, args));
+
+                // Follow single execution output
+                let node_def = self.node_definitions.get(&node.node_type).unwrap();
+                if let Some(exec_output) = node_def.execution_outputs.first() {
+                    let connected = routing.get_connected_nodes(&node.id, &exec_output.name);
+                    for next_node_id in connected {
+                        if let Some(next_node) = graph.nodes.get(next_node_id) {
+                            self.compile_node_inline(
+                                next_node,
+                                graph,
+                                routing,
+                                output,
+                                visited,
+                                indent_level,
+                            )?;
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+
+            TemplateType::ControlFlow { ref exec_placeholders } => {
+                // Inline the control flow template
+                self.compile_control_flow_inline(
+                    node,
+                    exec_placeholders,
+                    graph,
+                    routing,
+                    output,
+                    visited,
+                    indent_level,
+                )
+            }
+        }
+    }
+
+    /// Compile a control flow node by inlining its template with filled placeholders.
+    ///
+    /// This is where the magic happens for nodes like `branch`, `thread_spawn`, etc.
+    ///
+    /// ## Algorithm
+    ///
+    /// 1. Collect input values for the node
+    /// 2. For each exec placeholder:
+    ///    - Find nodes connected to that specific output pin
+    ///    - Recursively compile them to fill the placeholder
+    /// 3. Render the template with all placeholders filled
+    /// 4. Extract just the function body (strip wrapper)
+    /// 5. Add to output with proper indentation
+    fn compile_control_flow_inline(
+        &self,
+        node: &NodeInstance,
+        exec_placeholders: &[String],
+        graph: &GraphDescription,
+        routing: &ExecutionRouting,
+        output: &mut String,
+        visited: &mut HashSet<String>,
+        indent_level: usize,
+    ) -> Result<(), String> {
         let template = self.templates
-            .get(&node_instance.node_type)
-            .ok_or_else(|| format!("Node template not found: {}", node_instance.node_type))?;
+            .get(&node.node_type)
+            .ok_or_else(|| format!("Template not found: {}", node.node_type))?;
 
-        // Generate function parameters from input definitions
-        let params = node_def.inputs
-            .iter()
-            .filter(|input| input.data_type != "execution") // Skip execution pins
-            .map(|input| format!("{}: {}", input.name, self.rust_type(&input.data_type)))
-            .collect::<Vec<_>>()
-            .join(", ");
+        let node_def = self.node_definitions
+            .get(&node.node_type)
+            .ok_or_else(|| format!("Node definition not found: {}", node.node_type))?;
 
-        // Set template variables
-        let mut template_vars = std::collections::HashMap::new();
+        let mut vars = HashMap::new();
 
-        // Set function name only - template will add parameters
-        template_vars.insert("pulsar_node_fn_id".to_string(), node_instance.node_type.clone());
+        // Set node-specific ID
+        vars.insert("pulsar_node_fn_id".to_string(), format!("node_{}", node.id));
 
-        // Set input placeholders to parameter names
+        // Set input values
         for input in &node_def.inputs {
             if input.data_type != "execution" {
                 let var_name = format!("in_{}_{}", input.name, input.data_type);
-                template_vars.insert(var_name, input.name.clone());
+                let value = self.get_input_value(node, &input.name, graph)?;
+                vars.insert(var_name, value);
             }
         }
 
-        // Set execution placeholders to empty (no chaining in function definitions)
-        for exec_output in &node_def.execution_outputs {
-            let exec_var = format!("pulsar_exec_{}", exec_output.name);
-            template_vars.insert(exec_var, "".to_string());
+        // CRITICAL: Fill execution placeholders
+        for placeholder in exec_placeholders {
+            // Extract pin name: "pulsar_exec_body" -> "body"
+            let pin_name = placeholder
+                .strip_prefix("pulsar_exec_")
+                .ok_or_else(|| format!("Invalid exec placeholder: {}", placeholder))?;
+
+            // Get nodes connected to THIS specific exec output pin
+            let connected = routing.get_connected_nodes(&node.id, pin_name);
+
+            println!("[INLINE]   Filling placeholder '{}' for pin '{}' with {} connections",
+                     placeholder, pin_name, connected.len());
+
+            if connected.is_empty() {
+                // No connections - empty block
+                vars.insert(placeholder.clone(), "{}".to_string());
+            } else {
+                // Recursively compile connected nodes
+                let mut exec_body = String::new();
+                let mut local_visited = visited.clone();
+
+                for next_node_id in connected {
+                    if let Some(next_node) = graph.nodes.get(next_node_id) {
+                        self.compile_node_inline(
+                            next_node,
+                            graph,
+                            routing,
+                            &mut exec_body,
+                            &mut local_visited,
+                            0, // Reset indent - will be re-indented when inserted
+                        )?;
+                    }
+                }
+
+                vars.insert(placeholder.clone(), exec_body.trim().to_string());
+            }
         }
 
         // Render template
-        let mut template_clone = template.clone();
-        for (key, value) in template_vars {
-            let _ = template_clone.set(&key, &value);
-        }
+        let rendered = self.render_template(template, vars, &node.node_type)?;
 
-        template_clone.render()
-            .map_err(|e| format!("Template render error for node function {}: {}", node_instance.node_type, e))
-    }
+        // Extract function body (strip "fn name() { BODY }")
+        let body = self.extract_function_body(&rendered)?;
 
-    fn compile_main_function(&self, start_node: &NodeInstance, graph: &GraphDescription) -> Result<String, String> {
-        // Generate the function body by following execution pin connections
-        let mut execution_body = String::new();
-        let mut visited = std::collections::HashSet::new();
-
-        self.generate_function_calls(start_node, graph, &mut execution_body, &mut visited)?;
-
-        // Determine function name based on node type
-        let function_name = if start_node.node_type == "begin_play" {
-            "main".to_string()
-        } else {
-            start_node.node_type.clone()
-        };
-
-        // Wrap in function definition
-        Ok(format!(
-            "fn {}() {{\n{}\n}}",
-            function_name,
-            execution_body
-        ))
-    }
-
-    fn generate_function_calls(
-        &self,
-        node: &NodeInstance,
-        graph: &GraphDescription,
-        execution_body: &mut String,
-        visited: &mut std::collections::HashSet<String>,
-    ) -> Result<(), String> {
-        // Avoid infinite loops
-        if visited.contains(&node.id) {
-            return Ok(());
-        }
-        visited.insert(node.id.clone());
-
-        // Skip generating call for begin_play - it's just the entry point
-        if node.node_type != "begin_play" {
-            let function_call = self.generate_node_call(node, graph)?;
-            execution_body.push_str(&format!("    {};\n", function_call));
-        }
-
-        // Follow execution output connections
-        for (_pin_name, pin) in &node.outputs {
-            if pin.data_type == "execution" {
-                for connection_id in &pin.connected_to {
-                    if let Some(connection) = graph.connections.iter().find(|c| c.id == *connection_id) {
-                        if matches!(connection.connection_type, ConnectionType::Execution) {
-                            if let Some(next_node) = graph.nodes.get(&connection.target_node) {
-                                self.generate_function_calls(next_node, graph, execution_body, visited)?;
-                            }
-                        }
-                    }
-                }
+        // Add to output with proper indentation
+        let indent = "    ".repeat(indent_level);
+        for line in body.lines() {
+            if !line.trim().is_empty() {
+                output.push_str(&format!("{}{}\n", indent, line));
             }
         }
 
         Ok(())
     }
 
-    fn generate_node_call(&self, node_instance: &NodeInstance, graph: &GraphDescription) -> Result<String, String> {
+    // ========================================================================
+    // SECTION 6: Helper Methods
+    // ========================================================================
+
+    /// Get the arguments for a node function call.
+    ///
+    /// Collects input values from connections, properties, or defaults.
+    fn get_node_arguments(&self, node: &NodeInstance, graph: &GraphDescription) -> Result<String, String> {
         let node_def = self.node_definitions
-            .get(&node_instance.node_type)
-            .ok_or_else(|| format!("Node definition not found: {}", node_instance.node_type))?;
+            .get(&node.node_type)
+            .ok_or_else(|| format!("Node definition not found: {}", node.node_type))?;
 
         let mut args = Vec::new();
 
-        // Generate arguments from input pins (excluding execution pins)
-        for input_def in &node_def.inputs {
-            if input_def.data_type == "execution" {
-                continue; // Skip execution pins
-            }
-
-            let pin_name = &input_def.name;
-
-            if let Some(pin) = node_instance.inputs.get(pin_name) {
-                if let Some(connected_value) = self.get_connected_value(&pin.connected_to, graph) {
-                    args.push(connected_value);
-                } else if let Some(property_value) = node_instance.properties.get(pin_name) {
-                    args.push(self.property_value_to_string(property_value));
-                } else if let Some(default) = &input_def.default_value {
-                    args.push(default.clone());
-                } else {
-                    return Err(format!("No value provided for input pin: {}", pin_name));
-                }
-            } else {
-                return Err(format!("Input pin not found: {}", pin_name));
-            }
-        }
-
-        Ok(format!("{}({})", node_instance.node_type, args.join(", ")))
-    }
-
-    fn rust_type(&self, data_type: &str) -> &'static str {
-        match data_type {
-            "string" => "String",
-            "number" => "f64",
-            "boolean" => "bool",
-            "vector2" => "(f64, f64)",
-            "vector3" => "(f64, f64, f64)",
-            "color" => "(f64, f64, f64, f64)",
-            _ => "String", // Default fallback
-        }
-    }
-
-    fn compile_execution_chain(&self, start_node: &NodeInstance, graph: &GraphDescription) -> Result<String, String> {
-        // Generate the function body by following execution pin connections
-        let mut execution_body = String::new();
-        let mut visited = std::collections::HashSet::new();
-
-        self.compile_node_sequence(start_node, graph, &mut execution_body, &mut visited)?;
-
-        // Determine function name based on node type
-        let function_name = if start_node.node_type == "begin_play" {
-            "main".to_string()
-        } else {
-            start_node.node_type.clone()
-        };
-
-        // Wrap in function definition
-        Ok(format!(
-            "fn {}() {{\n{}\n}}",
-            function_name,
-            execution_body
-        ))
-    }
-
-    fn compile_node_sequence(
-        &self,
-        node: &NodeInstance,
-        graph: &GraphDescription,
-        execution_body: &mut String,
-        visited: &mut std::collections::HashSet<String>,
-    ) -> Result<(), String> {
-        // Avoid infinite loops
-        if visited.contains(&node.id) {
-            return Ok(());
-        }
-        visited.insert(node.id.clone());
-
-        // Skip generating code for begin_play - it's just the entry point
-        if node.node_type != "begin_play" {
-            let node_code = self.compile_node_inline(node, graph)?;
-            if !node_code.is_empty() {
-                // Add proper indentation for each line
-                let indented_code = node_code
-                    .lines()
-                    .map(|line| format!("    {}", line))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                execution_body.push_str(&format!("{}\n", indented_code));
-            }
-        }
-
-        // Follow execution output connections
-        for (_pin_name, pin) in &node.outputs {
-            if pin.data_type == "execution" {
-                for connection_id in &pin.connected_to {
-                    if let Some(connection) = graph.connections.iter().find(|c| c.id == *connection_id) {
-                        if matches!(connection.connection_type, ConnectionType::Execution) {
-                            if let Some(next_node) = graph.nodes.get(&connection.target_node) {
-                                self.compile_node_sequence(next_node, graph, execution_body, visited)?;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn compile_node_inline(&self, node_instance: &NodeInstance, graph: &GraphDescription) -> Result<String, String> {
-        let node_def = self.node_definitions
-            .get(&node_instance.node_type)
-            .ok_or_else(|| format!("Node definition not found: {}", node_instance.node_type))?;
-
-        let template = self.templates
-            .get(&node_instance.node_type)
-            .ok_or_else(|| format!("Node template not found: {}", node_instance.node_type))?;
-
-        // Collect template variables
-        let mut template_vars = HashMap::new();
-
-        // Set a dummy function ID for template compatibility (will be stripped out)
-        template_vars.insert("pulsar_node_fn_id".to_string(), "dummy".to_string());
-
-        // Process input connections and properties
-        for (pin_name, pin) in &node_instance.inputs {
-            let variable_name = format!("in_{}_{}", pin_name, pin.data_type);
-
-            if let Some(connected_value) = self.get_connected_value(&pin.connected_to, graph) {
-                template_vars.insert(variable_name, connected_value);
-            } else if let Some(property_value) = node_instance.properties.get(pin_name) {
-                template_vars.insert(variable_name, self.property_value_to_string(property_value));
-            } else {
-                // Use default value
-                if let Some(input_def) = node_def.inputs.iter().find(|i| i.name == *pin_name) {
-                    if let Some(default) = &input_def.default_value {
-                        template_vars.insert(variable_name, default.clone());
-                    } else {
-                        return Err(format!("No value provided for input pin: {}", pin_name));
-                    }
-                }
-            }
-        }
-
-        // For inline nodes, execution pins are empty (no chaining in template)
-        for (pin_name, pin) in &node_instance.outputs {
-            if pin.data_type == "execution" {
-                let exec_var = format!("pulsar_exec_{}", pin_name);
-                template_vars.insert(exec_var, "".to_string()); // Empty - execution continues to next node
-            }
-        }
-
-        // Render the template
-        let mut template_clone = template.clone();
-        for (key, value) in template_vars {
-            template_clone.set(&key, &value);
-        }
-        let rendered = template_clone.render()
-            .map_err(|e| format!("Template render error for node {}: {}", node_instance.id, e))?;
-
-        // Extract just the body content, not the function wrapper
-        self.extract_template_body(&rendered)
-    }
-
-    fn extract_template_body(&self, template_output: &str) -> Result<String, String> {
-        // Look for content between function braces
-        if let Some(start) = template_output.find('{') {
-            if let Some(end) = template_output.rfind('}') {
-                let body = &template_output[start + 1..end];
-                // Clean up indentation and empty lines, preserve meaningful content
-                let cleaned_lines: Vec<_> = body
-                    .lines()
-                    .map(|line| line.trim())
-                    .filter(|line| !line.is_empty())
-                    .collect();
-
-                if cleaned_lines.is_empty() {
-                    return Ok(String::new());
-                }
-
-                return Ok(cleaned_lines.join("\n"));
-            }
-        }
-
-        // Fallback: return the template as-is, cleaned up
-        Ok(template_output.trim().to_string())
-    }
-
-    fn compile_node(&self, node_instance: &NodeInstance, graph: &GraphDescription) -> Result<String, String> {
-        let node_def = self.node_definitions
-            .get(&node_instance.node_type)
-            .ok_or_else(|| format!("Node definition not found: {}", node_instance.node_type))?;
-
-        let template = self.templates
-            .get(&node_instance.node_type)
-            .ok_or_else(|| format!("Node template not found: {}", node_instance.node_type))?;
-
-        // Collect template variables
-        let mut template_vars = HashMap::new();
-
-        // Set the function ID
-        template_vars.insert("pulsar_node_fn_id".to_string(), format!("node_{}", node_instance.id));
-
-        // Process input connections and properties
-        for (pin_name, pin) in &node_instance.inputs {
-            let variable_name = format!("in_{}_{}", pin_name, pin.data_type);
-
-            if let Some(connected_value) = self.get_connected_value(&pin.connected_to, graph) {
-                template_vars.insert(variable_name, connected_value);
-            } else if let Some(property_value) = node_instance.properties.get(pin_name) {
-                template_vars.insert(variable_name, self.property_value_to_string(property_value));
-            } else {
-                // Use default value
-                if let Some(input_def) = node_def.inputs.iter().find(|i| i.name == *pin_name) {
-                    if let Some(default) = &input_def.default_value {
-                        template_vars.insert(variable_name, default.clone());
-                    } else {
-                        return Err(format!("No value provided for input pin: {}", pin_name));
-                    }
-                }
-            }
-        }
-
-        // Process execution connections
-        // First, set ALL execution outputs from the node definition to empty strings
-        for exec_output in &node_def.execution_outputs {
-            let exec_var = format!("pulsar_exec_{}", exec_output.name);
-            template_vars.insert(exec_var, "".to_string());
-        }
-
-        // Then override with actual execution chains if pins are connected
-        for (pin_name, pin) in &node_instance.outputs {
-            if pin.data_type == "execution" {
-                let exec_var = format!("pulsar_exec_{}", pin_name);
-                let exec_code = self.get_execution_chain(&pin.connected_to, graph)?;
-                template_vars.insert(exec_var, exec_code);
-            }
-        }
-
-        // Render the template
-        let mut template_clone = template.clone();
-        // Log the template variables and template content before rendering
-        println!(
-            "Rendering node template for '{}':\n  Template variables: {:?}\n  Template content: {}",
-            node_instance.node_type,
-            template_vars.keys().collect::<Vec<_>>(),
-            node_def.template_content
-        );
-        for (key, value) in template_vars {
-            template_clone.set(&key, &value);
-        }
-        let rendered = template_clone.render()
-            .map_err(|e| format!("Template render error for node {}: {}", node_instance.id, e))?;
-
-        Ok(format!("    {}", rendered.replace('\n', "\n    ")))
-    }
-
-    // Add a new helper to allow passing template_vars to compile_node
-    fn compile_node_with_vars(&self, node_instance: &NodeInstance, graph: &GraphDescription, template_vars: &std::collections::HashMap<String, String>) -> Result<String, String> {
-        let node_def = self.node_definitions
-            .get(&node_instance.node_type)
-            .ok_or_else(|| format!("Node definition not found: {}", node_instance.node_type))?;
-        let template = self.templates
-            .get(&node_instance.node_type)
-            .ok_or_else(|| format!("Node template not found: {}", node_instance.node_type))?;
-        let mut vars = template_vars.clone();
-        // Set input pins
-        for (pin_name, pin) in &node_instance.inputs {
-            let variable_name = format!("in_{}_{}", pin_name, pin.data_type);
-            if let Some(connected_value) = self.get_connected_value(&pin.connected_to, graph) {
-                vars.insert(variable_name, connected_value);
-            } else if let Some(property_value) = node_instance.properties.get(pin_name) {
-                vars.insert(variable_name, self.property_value_to_string(property_value));
-            } else {
-                if let Some(input_def) = node_def.inputs.iter().find(|i| i.name == *pin_name) {
-                    if let Some(default) = &input_def.default_value {
-                        vars.insert(variable_name, default.clone());
-                    } else {
-                        return Err(format!("No value provided for input pin: {}", pin_name));
-                    }
-                }
-            }
-        }
-        // Set execution pins
-        // First, set ALL execution outputs from the node definition to empty strings
-        for exec_output in &node_def.execution_outputs {
-            let exec_var = format!("pulsar_exec_{}", exec_output.name);
-            vars.insert(exec_var, "".to_string());
-        }
-
-        // Then override with actual execution chains if pins are connected
-        for (pin_name, pin) in &node_instance.outputs {
-            if pin.data_type == "execution" {
-                let exec_var = format!("pulsar_exec_{}", pin_name);
-                let exec_code = self.get_execution_chain(&pin.connected_to, graph)?;
-                vars.insert(exec_var, exec_code);
-            }
-        }
-        let mut template_clone = template.clone();
-        for (key, value) in vars {
-            template_clone.set(&key, &value);
-        }
-        let rendered = template_clone.render()
-            .map_err(|e| format!("Template render error for node {}: {}", node_instance.id, e))?;
-        Ok(rendered)
-    }
-
-    fn get_connected_value(&self, connection_ids: &[String], graph: &GraphDescription) -> Option<String> {
-        // For now, return a placeholder that references the output of the connected node
-        if let Some(connection_id) = connection_ids.first() {
-            if let Some(connection) = graph.connections.iter().find(|c| c.id == *connection_id) {
-                if matches!(connection.connection_type, ConnectionType::Data) {
-                    // Generate a variable reference to the output of the source node
-                    return Some(format!(
-                        "node_{}_{}",
-                        connection.source_node,
-                        connection.source_pin
-                    ));
-                }
-            }
-        }
-        None
-    }
-
-    fn get_execution_chain(&self, connection_ids: &[String], graph: &GraphDescription) -> Result<String, String> {
-        let mut exec_code = String::new();
-
-        for connection_id in connection_ids {
-            if let Some(connection) = graph.connections.iter().find(|c| c.id == *connection_id) {
-                if matches!(connection.connection_type, ConnectionType::Execution) {
-                    if let Some(target_node) = graph.nodes.get(&connection.target_node) {
-                        // Generate a call to the target node's function with args
-                        let args = self.get_instance_args(target_node, graph)?;
-                        exec_code.push_str(&format!("{}({});\n", target_node.node_type, args));
-                    }
-                }
-            }
-        }
-
-        Ok(exec_code)
-    }
-
-    fn get_instance_args(&self, node_instance: &NodeInstance, graph: &GraphDescription) -> Result<String, String> {
-        let node_def = self.node_definitions
-            .get(&node_instance.node_type)
-            .ok_or_else(|| format!("Node definition not found: {}", node_instance.node_type))?;
-
-        let mut args = Vec::new();
-        for input_def in &node_def.inputs {
-            let pin_name = &input_def.name;
-            let variable_name = format!("in_{}_{}", pin_name, input_def.data_type);
-
-            if let Some(pin) = node_instance.inputs.get(pin_name) {
-                if let Some(connected_value) = self.get_connected_value(&pin.connected_to, graph) {
-                    args.push(connected_value);
-                } else if let Some(property_value) = node_instance.properties.get(pin_name) {
-                    args.push(self.property_value_to_string(property_value));
-                } else {
-                    // Use default value
-                    if let Some(default) = &input_def.default_value {
-                        args.push(default.clone());
-                    } else {
-                        return Err(format!("No value provided for input pin: {}", pin_name));
-                    }
-                }
-            } else {
-                return Err(format!("Input pin not found: {}", pin_name));
+        for input in &node_def.inputs {
+            if input.data_type != "execution" {
+                let value = self.get_input_value(node, &input.name, graph)?;
+                args.push(value);
             }
         }
 
         Ok(args.join(", "))
     }
 
-
-    fn property_value_to_string(&self, value: &PropertyValue) -> String {
-        match value {
-            PropertyValue::String(s) => format!("\"{}\"", s.replace('"', "\\\"")),
-            PropertyValue::Number(n) => n.to_string(),
-            PropertyValue::Boolean(b) => b.to_string(),
-            PropertyValue::Vector2(x, y) => format!("({}, {})", x, y),
-            PropertyValue::Vector3(x, y, z) => format!("({}, {}, {})", x, y, z),
-            PropertyValue::Color(r, g, b, a) => format!("({}, {}, {}, {})", r, g, b, a),
-        }
-    }
-}
-
-// Helper function to create a compiler with loaded data
-pub fn create_graph_compiler() -> Result<GraphCompiler, String> {
-    let node_definitions = crate::compiler::load_all_node_definitions()?;
-
-    // Convert node definitions to templates
-    let mut templates = HashMap::new();
-    for (key, node_def) in &node_definitions {
-        match TronTemplate::new(&node_def.template_content) {
-            Ok(template) => {
-                templates.insert(key.clone(), template);
-            }
-            Err(e) => {
-                eprintln!("Failed to create template for {}: {}", key, e);
+    /// Get the value for an input pin (from connections, properties, or defaults).
+    fn get_input_value(&self, node: &NodeInstance, input_name: &str, graph: &GraphDescription) -> Result<String, String> {
+        // Try connected value first
+        if let Some(pin) = node.inputs.get(input_name) {
+            if let Some(connected_value) = self.get_connected_value(&pin.connected_to, graph) {
+                return Ok(connected_value);
             }
         }
+
+        // Try property value
+        if let Some(property_value) = node.properties.get(input_name) {
+            return Ok(self.property_value_to_string(property_value));
+        }
+
+        // Try default value
+        let node_def = self.node_definitions.get(&node.node_type)
+            .ok_or_else(|| format!("Node definition not found: {}", node.node_type))?;
+
+        if let Some(input_def) = node_def.inputs.iter().find(|i| i.name == input_name) {
+            if let Some(default) = &input_def.default_value {
+                return Ok(default.clone());
+            }
+        }
+
+        Err(format!("No value for input '{}' on node '{}'", input_name, node.id))
     }
 
-    Ok(GraphCompiler::new(node_definitions, templates))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::graph::{Position, GraphMetadata};
-
-    #[test]
-    fn test_simple_graph_compilation() {
-        // Create a simple graph with a println node
-        let mut graph = GraphDescription {
-            nodes: HashMap::new(),
-            connections: Vec::new(),
-            metadata: GraphMetadata {
-                name: "Test Graph".to_string(),
-                description: "Test".to_string(),
-                version: "1.0.0".to_string(),
-                created_at: "2024-01-01T00:00:00Z".to_string(),
-                modified_at: "2024-01-01T00:00:00Z".to_string(),
-            },
-        };
-
-        let mut println_node = NodeInstance::new("node1", "println", Position { x: 0.0, y: 0.0 });
-        println_node.set_property("message", PropertyValue::String("Hello, World!".to_string()));
-
-        graph.add_node(println_node);
-
-        // Test compilation (would need actual templates loaded)
-        // This is just a structure test
-        assert_eq!(graph.nodes.len(), 1);
-    }
-}
-
-// Helper to robustly extract function name and definition from a Rust code block
-fn extract_fn_name(code: &str) -> Option<String> {
-    // Find the first line starting with 'fn '
-    for line in code.lines() {
-        let line = line.trim_start();
-        if line.starts_with("fn ") {
-            let after_fn = &line[3..];
-            if let Some(paren_idx) = after_fn.find('(') {
-                let name = &after_fn[..paren_idx].trim();
-                let name = name.split_whitespace().last().unwrap_or("");
-                if !name.is_empty() {
-                    return Some(name.to_string());
+    /// Get the value from a connected output pin.
+    fn get_connected_value(&self, connection_ids: &[String], graph: &GraphDescription) -> Option<String> {
+        for conn_id in connection_ids {
+            if let Some(conn) = graph.connections.iter().find(|c| c.id == *conn_id) {
+                if let Some(source_node) = graph.nodes.get(&conn.source_node) {
+                    // For pure expressions, inline the expression
+                    if matches!(self.get_template_type(&source_node.node_type).ok()?, TemplateType::PureExpression) {
+                        // TODO: Render pure expression template
+                        return Some(format!("/* expression: {} */", source_node.node_type));
+                    } else {
+                        // Function call that returns value
+                        return Some(format!("{}()", source_node.node_type));
+                    }
                 }
             }
         }
+        None
     }
-    None
-}
 
-// Helper to robustly extract the full function definition from a Rust code block
-fn extract_fn_block(code: &str) -> Option<String> {
-    let mut in_fn = false;
-    let mut brace_count = 0;
-    let mut fn_lines = Vec::new();
-    for line in code.lines() {
-        let line_trimmed = line.trim_start();
-        if !in_fn && line_trimmed.starts_with("fn ") {
-            in_fn = true;
+    /// Convert a property value to a Rust string representation.
+    fn property_value_to_string(&self, value: &PropertyValue) -> String {
+        match value {
+            PropertyValue::String(s) => format!("\"{}\"", s),
+            PropertyValue::Number(n) => n.to_string(),
+            PropertyValue::Boolean(b) => b.to_string(),
+            PropertyValue::Vector2(x, y) => format!("Vector2::new({}, {})", x, y),
+            PropertyValue::Vector3(x, y, z) => format!("Vector3::new({}, {}, {})", x, y, z),
+            PropertyValue::Color(r, g, b, a) => format!("Color::rgba({}, {}, {}, {})", r, g, b, a),
         }
-        if in_fn {
-            fn_lines.push(line);
-            brace_count += line.chars().filter(|&c| c == '{').count();
-            brace_count -= line.chars().filter(|&c| c == '}').count();
-            if brace_count == 0 && in_fn {
-                break;
+    }
+
+    /// Render a template with the given variables.
+    fn render_template(
+        &self,
+        template: &TronTemplate,
+        vars: HashMap<String, String>,
+        node_type: &str,
+    ) -> Result<String, String> {
+        let mut template_clone = template.clone();
+
+        for (key, value) in &vars {
+            if let Err(e) = template_clone.set(key, value) {
+                println!("[WARNING] Failed to set '{}' for {}: {}", key, node_type, e);
             }
         }
+
+        template_clone
+            .render()
+            .map_err(|e| format!("Template render error for {}: {}", node_type, e))
     }
-    if !fn_lines.is_empty() {
-        Some(fn_lines.join("\n"))
-    } else {
-        None
+
+    /// Extract the function body from a rendered template.
+    ///
+    /// Templates are rendered as `fn name() { BODY }`, but when inlining we only
+    /// want the BODY part. This strips the function wrapper.
+    fn extract_function_body(&self, template_output: &str) -> Result<String, String> {
+        // Find first '{' and last '}'
+        let start = template_output.find('{')
+            .ok_or("Template has no opening brace")?;
+        let end = template_output.rfind('}')
+            .ok_or("Template has no closing brace")?;
+
+        // Extract content between braces
+        let body = &template_output[start + 1..end];
+
+        // Clean up indentation
+        Ok(body.trim().to_string())
     }
 }

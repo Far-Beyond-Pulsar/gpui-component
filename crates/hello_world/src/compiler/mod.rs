@@ -50,7 +50,7 @@ pub mod node_parser;
 pub mod graph_compiler;
 
 pub use node_parser::{NodeDefinition, load_all_node_definitions};
-pub use graph_compiler::{GraphCompiler, create_graph_compiler};
+pub use graph_compiler::GraphCompiler;
 
 pub fn init() -> DashMap<String, TronTemplate> {
     let mut templates: DashMap<String, TronTemplate> = DashMap::new();
