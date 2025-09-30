@@ -33,6 +33,9 @@ pub mod execution_routing;
 pub mod ast_utils;
 pub mod code_generator;
 
+// Blueprint validation
+pub mod validate_blueprint;
+
 // Tests
 #[cfg(test)]
 mod tests;

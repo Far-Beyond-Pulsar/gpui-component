@@ -3,12 +3,9 @@
 
 use pulsar_std::*;
 
-fn main() {
+pub fn begin_play() {
     // Pure node evaluations
-    let node_begin_play_result = begin_play();
 
     // Execution chain
-    begin_play();
-    print_string("Hello World!");
 }
 
