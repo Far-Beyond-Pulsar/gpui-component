@@ -20,6 +20,8 @@ impl NodeGraphRenderer {
         panel: &mut BlueprintEditorPanel,
         cx: &mut Context<BlueprintEditorPanel>,
     ) -> impl IntoElement {
+        let focus_handle = panel.focus_handle().clone();
+
         div()
             .size_full()
             .relative()
@@ -28,6 +30,12 @@ impl NodeGraphRenderer {
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
             .overflow_hidden()
+            .track_focus(&focus_handle)
+            .key_context("BlueprintGraph")
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |panel, _event, window, cx| {
+                // Focus on click to enable keyboard events
+                panel.focus_handle().focus(window);
+            }))
             .child(Self::render_grid_background(cx))
             .child(Self::render_nodes(panel, cx))
             .child(Self::render_connections(panel, cx))
@@ -75,11 +83,19 @@ impl NodeGraphRenderer {
                     });
 
                     if let Some(node) = clicked_node {
-                        // Single click on node - select only this node
-                        panel.select_node(Some(node.id.clone()), cx);
+                        // Only change selection if this node is not already selected
+                        // This allows dragging multiple selected nodes
+                        if !panel.graph.selected_nodes.contains(&node.id) {
+                            panel.select_node(Some(node.id.clone()), cx);
+                        }
                     } else {
-                        // Start selection drag
-                        panel.start_selection_drag(graph_pos, event.modifiers.control, cx);
+                        // Check for double-click on connection (for creating reroute nodes)
+                        let handled_double_click = panel.handle_empty_space_click(graph_pos, cx);
+
+                        // Only start selection drag if we didn't handle a double-click
+                        if !handled_double_click {
+                            panel.start_selection_drag(graph_pos, event.modifiers.control, cx);
+                        }
                     }
                 }),
             )
@@ -231,12 +247,18 @@ impl NodeGraphRenderer {
         node: &BlueprintNode,
         panel: &mut BlueprintEditorPanel,
         cx: &mut Context<BlueprintEditorPanel>,
-    ) -> impl IntoElement {
+    ) -> AnyElement {
+        // Check if this is a reroute node and render it differently
+        if node.node_type == NodeType::Reroute {
+            return Self::render_reroute_node(node, panel, cx);
+        }
+
         let node_color = match node.node_type {
             NodeType::Event => cx.theme().danger,
             NodeType::Logic => cx.theme().primary,
             NodeType::Math => cx.theme().success,
             NodeType::Object => cx.theme().warning,
+            NodeType::Reroute => cx.theme().accent, // Fallback, shouldn't reach here
         };
 
         let graph_pos = Self::graph_to_screen_pos(node.position, &panel.graph);
@@ -336,15 +358,21 @@ impl NodeGraphRenderer {
                             }))
                             .on_mouse_down(gpui::MouseButton::Left, {
                                 let node_id = node_id.clone();
-                                cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
+                                cx.listener(move |panel, event: &MouseDownEvent, window, cx| {
                                     // Stop event propagation to prevent main graph handler from firing
                                     cx.stop_propagation();
+
+                                    // Ensure graph has focus for keyboard events
+                                    panel.focus_handle().focus(window);
 
                                     // Hide tooltip when interacting
                                     panel.hide_hoverable_tooltip(cx);
 
-                                    // Select this node
-                                    panel.select_node(Some(node_id.clone()), cx);
+                                    // Only change selection if this node is not already selected
+                                    // This allows dragging multiple selected nodes
+                                    if !panel.graph.selected_nodes.contains(&node_id) {
+                                        panel.select_node(Some(node_id.clone()), cx);
+                                    }
 
                                     // Start dragging
                                     let graph_pos =
@@ -364,14 +392,80 @@ impl NodeGraphRenderer {
                     )
                     .on_mouse_down(gpui::MouseButton::Left, {
                         let node_id = node_id.clone();
-                        cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
+                        cx.listener(move |panel, event: &MouseDownEvent, window, cx| {
                             // Stop event propagation to prevent main graph handler from firing
                             cx.stop_propagation();
 
-                            panel.select_node(Some(node_id.clone()), cx);
+                            // Ensure graph has focus for keyboard events
+                            panel.focus_handle().focus(window);
+
+                            // Only change selection if this node is not already selected
+                            if !panel.graph.selected_nodes.contains(&node_id) {
+                                panel.select_node(Some(node_id.clone()), cx);
+                            }
                         })
                     }),
             )
+            .into_any_element()
+    }
+
+    fn render_reroute_node(
+        node: &BlueprintNode,
+        panel: &mut BlueprintEditorPanel,
+        cx: &mut Context<BlueprintEditorPanel>,
+    ) -> AnyElement {
+        let graph_pos = Self::graph_to_screen_pos(node.position, &panel.graph);
+        let node_id = node.id.clone();
+        let is_dragging = panel.dragging_node.as_ref() == Some(&node.id);
+
+        // Get the color from the pin data type (reroute nodes have one input and one output of the same type)
+        let pin_color = if let Some(input_pin) = node.inputs.first() {
+            Self::get_pin_color(&input_pin.data_type, cx)
+        } else if let Some(output_pin) = node.outputs.first() {
+            Self::get_pin_color(&output_pin.data_type, cx)
+        } else {
+            cx.theme().accent
+        };
+
+        // Reroute node is rendered as a thick colored dot
+        let dot_size = 16.0 * panel.graph.zoom_level;
+
+        div()
+            .absolute()
+            .left(px(graph_pos.x - dot_size / 2.0)) // Center the dot on the position
+            .top(px(graph_pos.y - dot_size / 2.0))
+            .w(px(dot_size))
+            .h(px(dot_size))
+            .bg(pin_color)
+            .rounded_full()
+            .border_3()
+            .border_color(if node.is_selected {
+                gpui::yellow()
+            } else {
+                cx.theme().border
+            })
+            .when(is_dragging, |style| style.opacity(0.9).shadow_2xl())
+            .shadow_lg()
+            .cursor_pointer()
+            .on_mouse_down(gpui::MouseButton::Left, {
+                let node_id = node_id.clone();
+                cx.listener(move |panel, event: &MouseDownEvent, window, cx| {
+                    // Stop event propagation
+                    cx.stop_propagation();
+
+                    // Ensure graph has focus for keyboard events
+                    panel.focus_handle().focus(window);
+
+                    // Only change selection if this node is not already selected
+                    if !panel.graph.selected_nodes.contains(&node_id) {
+                        panel.select_node(Some(node_id.clone()), cx);
+                    }
+
+                    // Start dragging
+                    let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
+                    panel.start_drag(node_id.clone(), graph_pos, cx);
+                })
+            })
             .into_any_element()
     }
 
@@ -457,7 +551,7 @@ impl NodeGraphRenderer {
 
         // Check if this pin is compatible with the current drag
         let is_compatible = if let Some(ref drag) = panel.dragging_connection {
-            is_input && node_id != drag.from_node_id && pin.data_type == drag.from_pin_type
+            is_input && node_id != drag.from_node_id && pin.data_type.is_compatible_with(&drag.from_pin_type)
         } else {
             false
         };

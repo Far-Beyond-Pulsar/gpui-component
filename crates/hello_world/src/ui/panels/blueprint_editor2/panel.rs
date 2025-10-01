@@ -31,6 +31,7 @@ pub struct BlueprintEditorPanel {
     // Drag state
     pub dragging_node: Option<String>,
     pub drag_offset: Point<f32>,
+    pub initial_drag_positions: std::collections::HashMap<String, Point<f32>>, // Store initial positions of all dragged nodes
     // Connection drag state
     pub dragging_connection: Option<ConnectionDrag>,
     // Panning state
@@ -50,6 +51,9 @@ pub struct BlueprintEditorPanel {
     // Hoverable tooltip
     pub hoverable_tooltip: Option<Entity<HoverableTooltip>>,
     pub pending_tooltip: Option<(String, Point<f32>)>, // (content, position) waiting to show
+    // Double-click tracking for creating reroute nodes on connections
+    pub last_click_time: Option<std::time::Instant>,
+    pub last_click_pos: Option<Point<f32>>,
 }
 
 #[derive(Clone, Debug)]
@@ -338,6 +342,7 @@ impl BlueprintEditorPanel {
             resizable_state,
             dragging_node: None,
             drag_offset: Point::new(0.0, 0.0),
+            initial_drag_positions: std::collections::HashMap::new(),
             dragging_connection: None,
             is_panning: false,
             pan_start: Point::new(0.0, 0.0),
@@ -351,6 +356,8 @@ impl BlueprintEditorPanel {
             right_click_threshold: 5.0, // pixels
             hoverable_tooltip: None,
             pending_tooltip: None,
+            last_click_time: None,
+            last_click_pos: None,
         }
     }
 
@@ -503,7 +510,10 @@ impl BlueprintEditorPanel {
             // Look up node definition by ID to restore all metadata
             let node_def = node_definitions.get_node_definition(&definition_id);
 
-            let (title, icon, description, node_type) = if let Some(def) = node_def {
+            let (title, icon, description, node_type) = if definition_id == "reroute" {
+                // Special handling for reroute nodes
+                ("Reroute".to_string(), "•".to_string(), "Reroute node for organizing connections".to_string(), NodeType::Reroute)
+            } else if let Some(def) = node_def {
                 let category = node_definitions.get_category_for_node(&def.id);
                 let node_type = match category.map(|c| c.name.as_str()) {
                     Some("Events") => NodeType::Event,
@@ -580,11 +590,27 @@ impl BlueprintEditorPanel {
 
     pub fn start_drag(&mut self, node_id: String, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
         if let Some(node) = self.graph.nodes.iter().find(|n| n.id == node_id) {
-            self.dragging_node = Some(node_id);
+            self.dragging_node = Some(node_id.clone());
             self.drag_offset = Point::new(
                 mouse_pos.x - node.position.x,
                 mouse_pos.y - node.position.y,
             );
+
+            // Store initial positions of all selected nodes for multi-node dragging
+            self.initial_drag_positions.clear();
+
+            // If the dragged node is selected, drag all selected nodes
+            if self.graph.selected_nodes.contains(&node_id) {
+                for selected_id in &self.graph.selected_nodes {
+                    if let Some(selected_node) = self.graph.nodes.iter().find(|n| n.id == *selected_id) {
+                        self.initial_drag_positions.insert(selected_id.clone(), selected_node.position);
+                    }
+                }
+            } else {
+                // If dragging a non-selected node, just drag that one
+                self.initial_drag_positions.insert(node_id.clone(), node.position);
+            }
+
             // Close any open tooltips when starting drag
             self.hide_hoverable_tooltip(cx);
             cx.notify();
@@ -592,12 +618,31 @@ impl BlueprintEditorPanel {
     }
 
     pub fn update_drag(&mut self, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
-        if let Some(dragging_id) = &self.dragging_node {
-            if let Some(node) = self.graph.nodes.iter_mut().find(|n| n.id == *dragging_id) {
-                node.position = Point::new(
-                    mouse_pos.x - self.drag_offset.x,
-                    mouse_pos.y - self.drag_offset.y,
+        if let Some(dragging_id) = &self.dragging_node.clone() {
+            // Calculate the new position of the main dragged node
+            let new_position = Point::new(
+                mouse_pos.x - self.drag_offset.x,
+                mouse_pos.y - self.drag_offset.y,
+            );
+
+            // Get the initial position of the dragged node
+            if let Some(initial_pos) = self.initial_drag_positions.get(dragging_id) {
+                // Calculate the delta from the initial position
+                let delta = Point::new(
+                    new_position.x - initial_pos.x,
+                    new_position.y - initial_pos.y,
                 );
+
+                // Move all nodes that were selected when dragging started
+                for (node_id, initial_position) in &self.initial_drag_positions {
+                    if let Some(node) = self.graph.nodes.iter_mut().find(|n| n.id == *node_id) {
+                        node.position = Point::new(
+                            initial_position.x + delta.x,
+                            initial_position.y + delta.y,
+                        );
+                    }
+                }
+
                 cx.notify();
             }
         }
@@ -605,6 +650,7 @@ impl BlueprintEditorPanel {
 
     pub fn end_drag(&mut self, cx: &mut Context<Self>) {
         self.dragging_node = None;
+        self.initial_drag_positions.clear();
         cx.notify();
     }
 
@@ -703,7 +749,8 @@ impl BlueprintEditorPanel {
             if let Some(node) = self.graph.nodes.iter().find(|n| n.id == node_id) {
                 if let Some(pin) = node.inputs.iter().find(|p| p.id == pin_id) {
                     // Check if compatible and not same node
-                    if drag.from_pin_type == pin.data_type && drag.from_node_id != node_id {
+                    // Use is_compatible_with to allow Any type to match with everything
+                    if drag.from_pin_type.is_compatible_with(&pin.data_type) && drag.from_node_id != node_id {
                         let is_execution_pin = pin.data_type == GraphDataType::from_type_str("execution");
 
                         // Handle execution pin connection logic
@@ -743,13 +790,27 @@ impl BlueprintEditorPanel {
                         // Create the new connection
                         let connection = super::Connection {
                             id: uuid::Uuid::new_v4().to_string(),
-                            from_node_id: drag.from_node_id,
-                            from_pin_id: drag.from_pin_id,
-                            to_node_id: node_id,
-                            to_pin_id: pin_id,
+                            from_node_id: drag.from_node_id.clone(),
+                            from_pin_id: drag.from_pin_id.clone(),
+                            to_node_id: node_id.clone(),
+                            to_pin_id: pin_id.clone(),
                         };
                         self.graph.connections.push(connection);
                         println!("Connection created successfully!");
+
+                        // Propagate types through reroute nodes
+                        // Check if either the source or target is a reroute node
+                        let source_is_reroute = self.graph.nodes.iter().any(|n| n.id == drag.from_node_id && n.node_type == NodeType::Reroute);
+                        let target_is_reroute = self.graph.nodes.iter().any(|n| n.id == node_id && n.node_type == NodeType::Reroute);
+
+                        if source_is_reroute || target_is_reroute {
+                            // Propagate the non-Any type through the reroute chain
+                            if target_is_reroute {
+                                self.propagate_reroute_types(node_id.clone(), drag.from_pin_type.clone(), cx);
+                            } else if source_is_reroute {
+                                self.propagate_reroute_types(drag.from_node_id.clone(), pin.data_type.clone(), cx);
+                            }
+                        }
                     } else {
                         println!("Incompatible pin types or same node");
                     }
@@ -1113,6 +1174,212 @@ impl BlueprintEditorPanel {
             // Clear selection
             self.graph.selected_nodes.clear();
             cx.notify();
+        }
+    }
+
+    /// Handle click on empty space - detects double-clicks on connections to create reroute nodes
+    /// Returns true if a double-click was handled
+    pub fn handle_empty_space_click(&mut self, graph_pos: Point<f32>, cx: &mut Context<Self>) -> bool {
+        let now = std::time::Instant::now();
+        let is_double_click = if let (Some(last_time), Some(last_pos)) = (self.last_click_time, self.last_click_pos) {
+            let time_diff = now.duration_since(last_time).as_millis();
+            let pos_diff = ((graph_pos.x - last_pos.x).powi(2) + (graph_pos.y - last_pos.y).powi(2)).sqrt();
+            println!("[REROUTE] Double-click check: time_diff={}ms, pos_diff={:.2}px", time_diff, pos_diff);
+            time_diff < 500 && pos_diff < 50.0 // 500ms and 50 pixels threshold (relaxed)
+        } else {
+            false
+        };
+
+        if is_double_click {
+            println!("[REROUTE] Double-click detected! Checking for nearby connections...");
+            // Check if we're near any connection
+            if let Some(connection) = self.find_connection_near_point(graph_pos) {
+                println!("[REROUTE] Found connection near click point!");
+                // Get the data type of the connection
+                if let Some(data_type) = self.get_connection_data_type(&connection) {
+                    // Create a typeless reroute node at the click position
+                    let reroute_node = BlueprintNode::create_reroute(graph_pos);
+                    let reroute_id = reroute_node.id.clone();
+
+                    // Add the reroute node
+                    self.graph.nodes.push(reroute_node);
+
+                    // Split the connection: remove original and create two new ones
+                    let from_node = connection.from_node_id.clone();
+                    let from_pin = connection.from_pin_id.clone();
+                    let to_node = connection.to_node_id.clone();
+                    let to_pin = connection.to_pin_id.clone();
+
+                    // Remove original connection
+                    self.graph.connections.retain(|c| c.id != connection.id);
+
+                    // Create first connection: original source -> reroute
+                    self.graph.connections.push(super::Connection {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        from_node_id: from_node,
+                        from_pin_id: from_pin,
+                        to_node_id: reroute_id.clone(),
+                        to_pin_id: "input".to_string(),
+                    });
+
+                    // Create second connection: reroute -> original target
+                    self.graph.connections.push(super::Connection {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        from_node_id: reroute_id.clone(),
+                        from_pin_id: "output".to_string(),
+                        to_node_id: to_node,
+                        to_pin_id: to_pin,
+                    });
+
+                    // Propagate types through the reroute chain
+                    self.propagate_reroute_types(reroute_id, data_type, cx);
+
+                    cx.notify();
+                    // Reset double-click tracking
+                    self.last_click_time = None;
+                    self.last_click_pos = None;
+                    return true; // Double-click was handled
+                }
+            }
+
+            // Reset double-click tracking if we didn't handle it
+            self.last_click_time = None;
+            self.last_click_pos = None;
+        } else {
+            // Record this click for double-click detection
+            self.last_click_time = Some(now);
+            self.last_click_pos = Some(graph_pos);
+        }
+
+        false // No double-click handled
+    }
+
+    /// Find a connection near the given point (within a threshold distance)
+    fn find_connection_near_point(&self, point: Point<f32>) -> Option<super::Connection> {
+        const CLICK_THRESHOLD: f32 = 30.0; // pixels (increased for easier clicking)
+
+        println!("[REROUTE] Checking {} connections", self.graph.connections.len());
+
+        for connection in &self.graph.connections {
+            // Get the from and to positions
+            let from_node = self.graph.nodes.iter().find(|n| n.id == connection.from_node_id)?;
+            let to_node = self.graph.nodes.iter().find(|n| n.id == connection.to_node_id)?;
+
+            // Calculate pin positions (simplified - using node centers for now)
+            let from_pos = Point::new(
+                from_node.position.x + from_node.size.width,
+                from_node.position.y + from_node.size.height / 2.0,
+            );
+            let to_pos = Point::new(
+                to_node.position.x,
+                to_node.position.y + to_node.size.height / 2.0,
+            );
+
+            // Check if point is near the connection line using bezier approximation
+            if self.is_point_near_bezier(point, from_pos, to_pos, CLICK_THRESHOLD) {
+                println!("[REROUTE] Found connection within threshold!");
+                return Some(connection.clone());
+            }
+        }
+
+        println!("[REROUTE] No connection found near point");
+        None
+    }
+
+    /// Check if a point is near a bezier curve
+    fn is_point_near_bezier(&self, point: Point<f32>, from: Point<f32>, to: Point<f32>, threshold: f32) -> bool {
+        // Sample the bezier curve and check distance to each sample
+        let distance = (to.x - from.x).abs();
+        let control_offset = (distance * 0.4).max(50.0).min(150.0);
+        let control1 = Point::new(from.x + control_offset, from.y);
+        let control2 = Point::new(to.x - control_offset, to.y);
+
+        // Sample 20 points along the curve
+        for i in 0..=20 {
+            let t = i as f32 / 20.0;
+            let curve_point = self.bezier_point(from, control1, control2, to, t);
+            let dist = ((point.x - curve_point.x).powi(2) + (point.y - curve_point.y).powi(2)).sqrt();
+            if dist < threshold {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Calculate a point on a cubic bezier curve
+    fn bezier_point(&self, p0: Point<f32>, p1: Point<f32>, p2: Point<f32>, p3: Point<f32>, t: f32) -> Point<f32> {
+        let u = 1.0 - t;
+        let tt = t * t;
+        let uu = u * u;
+        let uuu = uu * u;
+        let ttt = tt * t;
+
+        Point::new(
+            uuu * p0.x + 3.0 * uu * t * p1.x + 3.0 * u * tt * p2.x + ttt * p3.x,
+            uuu * p0.y + 3.0 * uu * t * p1.y + 3.0 * u * tt * p2.y + ttt * p3.y,
+        )
+    }
+
+    /// Get the data type of a connection
+    fn get_connection_data_type(&self, connection: &super::Connection) -> Option<crate::graph::DataType> {
+        let from_node = self.graph.nodes.iter().find(|n| n.id == connection.from_node_id)?;
+        let output_pin = from_node.outputs.iter().find(|p| p.id == connection.from_pin_id)?;
+        Some(output_pin.data_type.clone())
+    }
+
+    /// Propagate data types through connected reroute nodes
+    /// When a typed connection is made to/from a reroute node, all connected reroute nodes should adopt that type
+    fn propagate_reroute_types(&mut self, start_node_id: String, data_type: crate::graph::DataType, _cx: &mut Context<Self>) {
+        use std::collections::{HashSet, VecDeque};
+
+        // Skip propagation for Any type (already typeless)
+        if data_type == crate::graph::DataType::Any {
+            return;
+        }
+
+        // BFS to find all connected reroute nodes
+        let mut visited = HashSet::new();
+        let mut queue = VecDeque::new();
+        queue.push_back(start_node_id);
+
+        while let Some(node_id) = queue.pop_front() {
+            if visited.contains(&node_id) {
+                continue;
+            }
+            visited.insert(node_id.clone());
+
+            // Check if this is a reroute node
+            if let Some(node) = self.graph.nodes.iter_mut().find(|n| n.id == node_id) {
+                if node.node_type == NodeType::Reroute {
+                    // Set the type of all pins to the propagated type
+                    for pin in &mut node.inputs {
+                        pin.data_type = data_type.clone();
+                    }
+                    for pin in &mut node.outputs {
+                        pin.data_type = data_type.clone();
+                    }
+
+                    // Find all connected reroute nodes
+                    for connection in &self.graph.connections {
+                        if connection.from_node_id == node_id {
+                            // Check if target is a reroute node
+                            if let Some(target_node) = self.graph.nodes.iter().find(|n| n.id == connection.to_node_id) {
+                                if target_node.node_type == NodeType::Reroute {
+                                    queue.push_back(connection.to_node_id.clone());
+                                }
+                            }
+                        } else if connection.to_node_id == node_id {
+                            // Check if source is a reroute node
+                            if let Some(source_node) = self.graph.nodes.iter().find(|n| n.id == connection.from_node_id) {
+                                if source_node.node_type == NodeType::Reroute {
+                                    queue.push_back(connection.from_node_id.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

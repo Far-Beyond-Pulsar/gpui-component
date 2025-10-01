@@ -75,6 +75,7 @@ pub enum NodeType {
     Logic,
     Math,
     Object,
+    Reroute, // Visual pass-through node for organizing connections
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -167,6 +168,20 @@ impl NodeDefinitions {
 
     fn from_node_metadata(metadata: std::collections::HashMap<String, crate::compiler::NodeMetadata>) -> NodeDefinitions {
         let mut categories_map: std::collections::HashMap<String, Vec<NodeDefinition>> = std::collections::HashMap::new();
+
+        // Add special reroute node to Utility category
+        categories_map
+            .entry("Utility".to_string())
+            .or_insert_with(Vec::new)
+            .push(NodeDefinition {
+                id: "reroute".to_string(),
+                name: "Reroute".to_string(),
+                icon: "•".to_string(),
+                description: "Organize connections with a pass-through node (typeless until connected)".to_string(),
+                inputs: vec![],
+                outputs: vec![],
+                properties: std::collections::HashMap::new(),
+            });
 
         // Group nodes by category
         for (id, node_meta) in metadata {
@@ -325,6 +340,35 @@ impl BlueprintNode {
             properties: definition.properties.clone(),
             is_selected: false,
             description: definition.description.clone(),
+        }
+    }
+
+    /// Create a typeless reroute node at the given position
+    /// The type will be inferred from the first connection made to it
+    pub fn create_reroute(position: Point<f32>) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            definition_id: "reroute".to_string(),
+            title: "Reroute".to_string(),
+            icon: "•".to_string(),
+            node_type: NodeType::Reroute,
+            position,
+            size: Size::new(16.0, 16.0), // Small size for reroute nodes
+            inputs: vec![Pin {
+                id: "input".to_string(),
+                name: "".to_string(),
+                pin_type: PinType::Input,
+                data_type: DataType::Any, // Start as typeless
+            }],
+            outputs: vec![Pin {
+                id: "output".to_string(),
+                name: "".to_string(),
+                pin_type: PinType::Output,
+                data_type: DataType::Any, // Start as typeless
+            }],
+            properties: HashMap::new(),
+            is_selected: false,
+            description: "Reroute node for organizing connections".to_string(),
         }
     }
 }

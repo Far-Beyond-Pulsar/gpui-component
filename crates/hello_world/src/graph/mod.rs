@@ -74,6 +74,7 @@ pub enum PinType {
 pub enum DataType {
     Execution,
     Typed(TypeInfo),
+    Any, // Typeless - matches with any type (used for reroute nodes)
     // Legacy types for backward compatibility
     String,
     Number,
@@ -108,6 +109,7 @@ impl DataType {
         match self {
             DataType::Execution => "()".to_string(), // Execution flow has no data type
             DataType::Typed(type_info) => type_info.to_string(),
+            DataType::Any => "Any".to_string(), // Typeless reroute node
             DataType::String => "String".to_string(),
             DataType::Number => "f64".to_string(),
             DataType::Boolean => "bool".to_string(),
@@ -122,6 +124,8 @@ impl DataType {
     /// Check if this DataType is compatible with another
     pub fn is_compatible_with(&self, other: &DataType) -> bool {
         match (self, other) {
+            // Any type is compatible with everything (for typeless reroute nodes)
+            (DataType::Any, _) | (_, DataType::Any) => true,
             (DataType::Execution, DataType::Execution) => true,
             (DataType::Typed(a), DataType::Typed(b)) => a.is_compatible_with(b),
             // Legacy compatibility
@@ -147,6 +151,11 @@ impl DataType {
                 is_rainbow: false,
             },
             DataType::Typed(type_info) => type_info.generate_pin_style(),
+            DataType::Any => PinStyle {
+                color: PinColor { r: 0.5, g: 0.5, b: 0.5, a: 1.0 }, // Gray for typeless
+                icon: PinIcon::Circle,
+                is_rainbow: false,
+            },
             // Legacy types
             DataType::String => PinStyle {
                 color: PinColor { r: 0.0, g: 1.0, b: 0.0, a: 1.0 }, // Green
@@ -208,6 +217,7 @@ impl std::fmt::Display for DataType {
         match self {
             DataType::Execution => write!(f, "execution"),
             DataType::Typed(type_info) => write!(f, "{}", type_info),
+            DataType::Any => write!(f, "any"),
             // Legacy types
             DataType::String => write!(f, "string"),
             DataType::Number => write!(f, "number"),

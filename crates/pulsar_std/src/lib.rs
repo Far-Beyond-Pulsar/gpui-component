@@ -323,7 +323,7 @@ pub fn gate(open: bool) {
     if open {
         exec_output!("Open");
     } else {
-        exec_output!("Closed");
+        // Don't execute anything if closed
     }
 }
 

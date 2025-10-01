@@ -202,7 +202,7 @@ impl DataResolver {
         &self.pure_evaluation_order
     }
 
-    /// Generate Rust code expression for an input value
+    /// Generate Rust code expression for an input value (inlines pure nodes recursively)
     pub fn generate_input_expression(
         &self,
         node_id: &str,
@@ -214,13 +214,18 @@ impl DataResolver {
                 source_node_id,
                 source_pin,
             }) => {
-                // Get the variable name for the source node's result
-                if let Some(var_name) = self.get_result_variable(source_node_id) {
-                    // If source has multiple outputs, access the specific one
-                    if let Some(source_node) = graph.nodes.get(source_node_id) {
+                // Get the source node
+                let source_node = graph.nodes.get(source_node_id)
+                    .ok_or_else(|| format!("Source node not found: {}", source_node_id))?;
+
+                // Check if source is a pure node - if so, inline it recursively
+                if self.is_pure_node(source_node_id) {
+                    self.generate_pure_node_expression(source_node, graph)
+                } else {
+                    // Non-pure nodes (function nodes with return values) use variables
+                    if let Some(var_name) = self.get_result_variable(source_node_id) {
                         if source_node.outputs.len() > 1 {
                             // Multiple outputs: access tuple element or field
-                            // For now, assume tuple and find index
                             let output_names: Vec<_> = source_node.outputs.keys().collect();
                             if let Some(index) = output_names.iter().position(|name| *name == source_pin) {
                                 Ok(format!("{}.{}", var_name, index))
@@ -232,13 +237,8 @@ impl DataResolver {
                             Ok(var_name.clone())
                         }
                     } else {
-                        Err(format!("Source node not found: {}", source_node_id))
+                        Err(format!("No variable found for source node: {}", source_node_id))
                     }
-                } else {
-                    Err(format!(
-                        "No variable found for source node: {}",
-                        source_node_id
-                    ))
                 }
             }
 
@@ -259,6 +259,35 @@ impl DataResolver {
 
             None => Err(format!("No data source for input: {}.{}", node_id, pin_name)),
         }
+    }
+
+    /// Check if a node is a pure node
+    fn is_pure_node(&self, node_id: &str) -> bool {
+        self.pure_evaluation_order.contains(&node_id.to_string())
+    }
+
+    /// Generate inlined expression for a pure node (recursive)
+    fn generate_pure_node_expression(
+        &self,
+        node: &crate::graph::NodeInstance,
+        graph: &GraphDescription,
+    ) -> Result<String, String> {
+        // Get node metadata to find function name and parameters
+        use crate::compiler::get_node_metadata;
+        let metadata = get_node_metadata();
+
+        let node_meta = metadata.get(&node.node_type)
+            .ok_or_else(|| format!("Unknown node type: {}", node.node_type))?;
+
+        // Recursively generate arguments
+        let mut args = Vec::new();
+        for param in &node_meta.params {
+            let arg_expr = self.generate_input_expression(&node.id, &param.name, graph)?;
+            args.push(arg_expr);
+        }
+
+        // Return inlined function call
+        Ok(format!("{}({})", node_meta.name, args.join(", ")))
     }
 }
 

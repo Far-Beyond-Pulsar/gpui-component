@@ -3,7 +3,7 @@
 //! The core code generation logic for transforming node graphs into Rust code.
 //!
 //! This module implements different generation strategies for each node type:
-//! - **Pure nodes**: Inline as expressions
+//! - **Pure nodes**: Recursively inlined as expressions where used (no allocations)
 //! - **Function nodes**: Generate function calls with exec chain
 //! - **Control flow nodes**: Inline function body with substitutions
 
@@ -66,19 +66,6 @@ impl<'a> CodeGenerator<'a> {
 
         let mut body = String::new();
 
-        // First, evaluate all pure nodes in dependency order
-        body.push_str("    // Pure node evaluations\n");
-        for pure_node_id in self.data_resolver.get_pure_evaluation_order() {
-            if let Some(node) = self.graph.nodes.get(pure_node_id) {
-                let code = self.generate_pure_node(node)?;
-                body.push_str("    ");
-                body.push_str(&code);
-                body.push_str("\n");
-            }
-        }
-
-        body.push_str("\n    // Execution chain\n");
-
         // Follow execution chain from event's "Body" output
         let connected_nodes = self.exec_routing.get_connected_nodes(&event_node.id, "Body");
         for target_id in connected_nodes {
@@ -127,29 +114,6 @@ impl<'a> CodeGenerator<'a> {
                 Ok(())
             }
         }
-    }
-
-    /// Generate code for a pure node (pre-evaluation)
-    fn generate_pure_node(&self, node: &NodeInstance) -> Result<String, String> {
-        let node_meta = self.metadata
-            .get(&node.node_type)
-            .ok_or_else(|| format!("Unknown node type: {}", node.node_type))?;
-
-        // Collect arguments
-        let args = self.collect_arguments(node, node_meta)?;
-
-        // Get result variable name
-        let result_var = self.data_resolver
-            .get_result_variable(&node.id)
-            .ok_or_else(|| format!("No result variable for node: {}", node.id))?;
-
-        // Generate: let result_var = function_name(args);
-        Ok(format!(
-            "let {} = {}({});",
-            result_var,
-            node_meta.name,
-            args.join(", ")
-        ))
     }
 
     /// Generate code for a function node

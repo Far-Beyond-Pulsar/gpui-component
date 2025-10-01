@@ -3,12 +3,12 @@
 
 use pulsar_std::*;
 
-pub fn main() {
-    // Pure node evaluations
-    let node_add_node_result = add(2, 3);
-    let node_greater_node_result = greater_than(node_add_node_result, 3);
+pub fn begin_play() {
+    print_string(Default::default());
+    if greater_than (add (2 , 3) , 3) { print_string (Default :: default ()) ; } else { }
+}
 
-    // Execution chain
-    if node_greater_node_result { print_string ("Result is greater than 3! \u{2713}") ; } else { print_string ("Result is 3 or less. \u{2717}") ; }
+pub fn main() {
+    if greater_than (add (2 , 3) , 3) { print_string ("Result is greater than 3! \u{2713}") ; } else { print_string ("Result is 3 or less. \u{2717}") ; }
 }
 

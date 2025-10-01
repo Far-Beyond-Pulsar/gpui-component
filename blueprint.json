@@ -1,17 +1,42 @@
 {
   "nodes": {
-    "main_event": {
-      "id": "main_event",
-      "node_type": "main",
+    "print_true": {
+      "id": "print_true",
+      "node_type": "print_string",
       "position": {
-        "x": 100.0,
-        "y": 200.0
+        "x": 884.0,
+        "y": 294.0
       },
-      "properties": {},
-      "inputs": {},
+      "properties": {
+        "message": {
+          "String": "Result is greater than 3! ✓"
+        }
+      },
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": [
+            "conn_branch_true"
+          ]
+        },
+        "message": {
+          "name": "message",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "string",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
       "outputs": {
-        "Body": {
-          "name": "Body",
+        "exec_out": {
+          "name": "exec_out",
           "pin_type": "Output",
           "data_type": "Execution",
           "connected_to": []
@@ -22,8 +47,8 @@
       "id": "add_node",
       "node_type": "add",
       "position": {
-        "x": 400.0,
-        "y": 100.0
+        "x": 154.00002,
+        "y": 483.6667
       },
       "properties": {
         "a": {
@@ -70,113 +95,9 @@
               "is_wildcard": false
             }
           },
-          "connected_to": []
-        }
-      }
-    },
-    "multiply_node": {
-      "id": "multiply_node",
-      "node_type": "multiply",
-      "position": {
-        "x": 650.0,
-        "y": 100.0
-      },
-      "properties": {
-        "b": {
-          "Number": 4.0
-        }
-      },
-      "inputs": {
-        "a": {
-          "name": "a",
-          "pin_type": "Input",
-          "data_type": {
-            "Typed": {
-              "base_type": "i64",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
-          "connected_to": []
-        },
-        "b": {
-          "name": "b",
-          "pin_type": "Input",
-          "data_type": {
-            "Typed": {
-              "base_type": "i64",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
-          "connected_to": []
-        }
-      },
-      "outputs": {
-        "result": {
-          "name": "result",
-          "pin_type": "Output",
-          "data_type": {
-            "Typed": {
-              "base_type": "i64",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
-          "connected_to": []
-        }
-      }
-    },
-    "equals_node": {
-      "id": "equals_node",
-      "node_type": "equals",
-      "position": {
-        "x": 900.0,
-        "y": 150.0
-      },
-      "properties": {
-        "b": {
-          "Number": 20.0
-        }
-      },
-      "inputs": {
-        "a": {
-          "name": "a",
-          "pin_type": "Input",
-          "data_type": {
-            "Typed": {
-              "base_type": "i64",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
-          "connected_to": []
-        },
-        "b": {
-          "name": "b",
-          "pin_type": "Input",
-          "data_type": {
-            "Typed": {
-              "base_type": "i64",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
-          "connected_to": []
-        }
-      },
-      "outputs": {
-        "result": {
-          "name": "result",
-          "pin_type": "Output",
-          "data_type": {
-            "Typed": {
-              "base_type": "bool",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
-          "connected_to": []
+          "connected_to": [
+            "conn_add_gt"
+          ]
         }
       }
     },
@@ -184,8 +105,8 @@
       "id": "branch_node",
       "node_type": "branch",
       "position": {
-        "x": 400.0,
-        "y": 300.0
+        "x": 658.0,
+        "y": 344.6667
       },
       "properties": {},
       "inputs": {
@@ -193,7 +114,9 @@
           "name": "exec",
           "pin_type": "Input",
           "data_type": "Execution",
-          "connected_to": []
+          "connected_to": [
+            "d738ec71-6f2f-4b92-8ce5-c7b5e4cc7877"
+          ]
         },
         "condition": {
           "name": "condition",
@@ -205,42 +128,89 @@
               "is_wildcard": false
             }
           },
-          "connected_to": []
+          "connected_to": [
+            "conn_gt_branch"
+          ]
         }
       },
       "outputs": {
-        "True": {
-          "name": "True",
-          "pin_type": "Output",
-          "data_type": "Execution",
-          "connected_to": []
-        },
         "False": {
           "name": "False",
           "pin_type": "Output",
           "data_type": "Execution",
-          "connected_to": []
+          "connected_to": [
+            "conn_branch_false"
+          ]
+        },
+        "True": {
+          "name": "True",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": [
+            "conn_branch_true"
+          ]
         }
       }
     },
-    "print_true": {
-      "id": "print_true",
-      "node_type": "print_string",
+    "35b1f244-6a08-4f97-9b70-28bf2423e542": {
+      "id": "35b1f244-6a08-4f97-9b70-28bf2423e542",
+      "node_type": "gate",
       "position": {
-        "x": 700.0,
-        "y": 250.0
+        "x": 687.0,
+        "y": 651.0
       },
-      "properties": {
-        "message": {
-          "String": "✓ Calculation correct! (2+3)*4 = 20"
+      "properties": {},
+      "inputs": {
+        "open": {
+          "name": "open",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "bool",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": [
+            "13e13b50-607a-49e4-a6be-0f0095efd511"
+          ]
+        },
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": [
+            "2e4aba24-842f-4e5b-8d5c-7ae8ea23f027"
+          ]
         }
       },
+      "outputs": {
+        "Open": {
+          "name": "Open",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": [
+            "fdd274d3-98c0-41c3-a56e-a6cf7bd6ac8b"
+          ]
+        }
+      }
+    },
+    "22f6fc6a-ab0d-4cb3-ac0b-b91cdf007850": {
+      "id": "22f6fc6a-ab0d-4cb3-ac0b-b91cdf007850",
+      "node_type": "print_string",
+      "position": {
+        "x": 883.0,
+        "y": 651.0
+      },
+      "properties": {},
       "inputs": {
         "exec": {
           "name": "exec",
           "pin_type": "Input",
           "data_type": "Execution",
-          "connected_to": []
+          "connected_to": [
+            "fdd274d3-98c0-41c3-a56e-a6cf7bd6ac8b"
+          ]
         },
         "message": {
           "name": "message",
@@ -261,6 +231,105 @@
           "pin_type": "Output",
           "data_type": "Execution",
           "connected_to": []
+        }
+      }
+    },
+    "83f34ff2-f122-44f5-baa0-8dd494c349ac": {
+      "id": "83f34ff2-f122-44f5-baa0-8dd494c349ac",
+      "node_type": "print_string",
+      "position": {
+        "x": 416.0,
+        "y": 653.0
+      },
+      "properties": {},
+      "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": [
+            "abb2f7b4-f1a8-41e9-9e59-0bf70180e2b1"
+          ]
+        },
+        "message": {
+          "name": "message",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "String",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        }
+      },
+      "outputs": {
+        "exec_out": {
+          "name": "exec_out",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": [
+            "2e4aba24-842f-4e5b-8d5c-7ae8ea23f027"
+          ]
+        }
+      }
+    },
+    "greater_node": {
+      "id": "greater_node",
+      "node_type": "greater_than",
+      "position": {
+        "x": 373.5825,
+        "y": 483.64526
+      },
+      "properties": {
+        "b": {
+          "Number": 3.0
+        }
+      },
+      "inputs": {
+        "b": {
+          "name": "b",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "i64",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "a": {
+          "name": "a",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "i64",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": [
+            "conn_add_gt"
+          ]
+        }
+      },
+      "outputs": {
+        "result": {
+          "name": "result",
+          "pin_type": "Output",
+          "data_type": {
+            "Typed": {
+              "base_type": "bool",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": [
+            "conn_gt_branch",
+            "13e13b50-607a-49e4-a6be-0f0095efd511"
+          ]
         }
       }
     },
@@ -268,32 +337,34 @@
       "id": "print_false",
       "node_type": "print_string",
       "position": {
-        "x": 700.0,
-        "y": 400.0
+        "x": 882.3333,
+        "y": 416.00006
       },
       "properties": {
         "message": {
-          "String": "✗ Something went wrong with the calculation!"
+          "String": "Result is 3 or less. ✗"
         }
       },
       "inputs": {
-        "exec": {
-          "name": "exec",
-          "pin_type": "Input",
-          "data_type": "Execution",
-          "connected_to": []
-        },
         "message": {
           "name": "message",
           "pin_type": "Input",
           "data_type": {
             "Typed": {
-              "base_type": "String",
+              "base_type": "string",
               "wrappers": [],
               "is_wildcard": false
             }
           },
           "connected_to": []
+        },
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": [
+            "conn_branch_false"
+          ]
         }
       },
       "outputs": {
@@ -304,36 +375,60 @@
           "connected_to": []
         }
       }
+    },
+    "a31c1b5d-8838-4003-8435-0bf0795bdcbd": {
+      "id": "a31c1b5d-8838-4003-8435-0bf0795bdcbd",
+      "node_type": "begin_play",
+      "position": {
+        "x": 188.0,
+        "y": 673.0
+      },
+      "properties": {},
+      "inputs": {},
+      "outputs": {
+        "Body": {
+          "name": "Body",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": [
+            "abb2f7b4-f1a8-41e9-9e59-0bf70180e2b1"
+          ]
+        }
+      }
+    },
+    "main_event": {
+      "id": "main_event",
+      "node_type": "main",
+      "position": {
+        "x": 414.3333,
+        "y": 277.0
+      },
+      "properties": {},
+      "inputs": {},
+      "outputs": {
+        "Body": {
+          "name": "Body",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": [
+            "d738ec71-6f2f-4b92-8ce5-c7b5e4cc7877"
+          ]
+        }
+      }
     }
   },
   "connections": [
     {
-      "id": "conn_main_branch",
-      "source_node": "main_event",
-      "source_pin": "Body",
-      "target_node": "branch_node",
-      "target_pin": "exec",
-      "connection_type": "Execution"
-    },
-    {
-      "id": "conn_add_multiply",
+      "id": "conn_add_gt",
       "source_node": "add_node",
       "source_pin": "result",
-      "target_node": "multiply_node",
+      "target_node": "greater_node",
       "target_pin": "a",
       "connection_type": "Data"
     },
     {
-      "id": "conn_multiply_equals",
-      "source_node": "multiply_node",
-      "source_pin": "result",
-      "target_node": "equals_node",
-      "target_pin": "a",
-      "connection_type": "Data"
-    },
-    {
-      "id": "conn_equals_branch",
-      "source_node": "equals_node",
+      "id": "conn_gt_branch",
+      "source_node": "greater_node",
       "source_pin": "result",
       "target_node": "branch_node",
       "target_pin": "condition",
@@ -354,13 +449,53 @@
       "target_node": "print_false",
       "target_pin": "exec",
       "connection_type": "Execution"
+    },
+    {
+      "id": "abb2f7b4-f1a8-41e9-9e59-0bf70180e2b1",
+      "source_node": "a31c1b5d-8838-4003-8435-0bf0795bdcbd",
+      "source_pin": "Body",
+      "target_node": "83f34ff2-f122-44f5-baa0-8dd494c349ac",
+      "target_pin": "exec",
+      "connection_type": "Execution"
+    },
+    {
+      "id": "2e4aba24-842f-4e5b-8d5c-7ae8ea23f027",
+      "source_node": "83f34ff2-f122-44f5-baa0-8dd494c349ac",
+      "source_pin": "exec_out",
+      "target_node": "35b1f244-6a08-4f97-9b70-28bf2423e542",
+      "target_pin": "exec",
+      "connection_type": "Execution"
+    },
+    {
+      "id": "d738ec71-6f2f-4b92-8ce5-c7b5e4cc7877",
+      "source_node": "main_event",
+      "source_pin": "Body",
+      "target_node": "branch_node",
+      "target_pin": "exec",
+      "connection_type": "Execution"
+    },
+    {
+      "id": "fdd274d3-98c0-41c3-a56e-a6cf7bd6ac8b",
+      "source_node": "35b1f244-6a08-4f97-9b70-28bf2423e542",
+      "source_pin": "Open",
+      "target_node": "22f6fc6a-ab0d-4cb3-ac0b-b91cdf007850",
+      "target_pin": "exec",
+      "connection_type": "Execution"
+    },
+    {
+      "id": "13e13b50-607a-49e4-a6be-0f0095efd511",
+      "source_node": "greater_node",
+      "source_pin": "result",
+      "target_node": "35b1f244-6a08-4f97-9b70-28bf2423e542",
+      "target_pin": "open",
+      "connection_type": "Data"
     }
   ],
   "metadata": {
-    "name": "Example Blueprint: Math & Control Flow",
-    "description": "Demonstrates event nodes, pure node chaining (add→multiply→equals), control flow (branch), and function nodes (print_string). Calculates (2+3)*4 and checks if it equals 20.",
-    "version": "2.0.0",
-    "created_at": "2025-09-30T10:00:00.000000000+00:00",
-    "modified_at": "2025-09-30T10:00:00.000000000+00:00"
+    "name": "Blueprint Graph",
+    "description": "",
+    "version": "1.0.0",
+    "created_at": "2025-10-01T03:00:04.112073600+00:00",
+    "modified_at": "2025-10-01T03:00:04.112139300+00:00"
   }
 }
