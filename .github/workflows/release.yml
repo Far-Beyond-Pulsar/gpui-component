@@ -1,0 +1,305 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+      package_name: ${{ steps.get-name.outputs.package_name }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+
+      - name: Get package name from crates/engine/Cargo.toml
+        id: get-name
+        run: |
+          PACKAGE_NAME=$(grep -m1 '^name' crates/engine/Cargo.toml | sed 's/name\s*=\s*"\(.*\)"/\1/')
+          PACKAGE_NAME=$(echo "$PACKAGE_NAME" | tr -d '[:space:]')
+          echo "package_name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "Package name: [$PACKAGE_NAME]"
+
+      - name: Check if Cargo.toml version changed
+        id: check
+        run: |
+          CURRENT_VERSION=$(grep -m1 version crates/engine/Cargo.toml | cut -d '"' -f2)
+          git checkout HEAD^1
+          PREVIOUS_VERSION=$(grep -m1 version crates/engine/Cargo.toml | cut -d '"' -f2)
+          if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            echo "Version changed: $PREVIOUS_VERSION -> $CURRENT_VERSION"
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "Version unchanged: $CURRENT_VERSION"
+          fi
+
+  create-release:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create Release
+        id: create_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.check-version.outputs.version }}
+          name: Release v${{ needs.check-version.outputs.version }}
+          draft: false
+          prerelease: false
+
+  build-release:
+    needs: [check-version, create-release]
+    if: needs.check-version.outputs.should_release == 'true'
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            bin_path: target/x86_64-unknown-linux-gnu/release
+            asset_name: -linux-x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin_path: target/x86_64-pc-windows-msvc/release
+            asset_name: -windows-x86_64.exe
+            extension: .exe
+          - os: windows-latest
+            target: i686-pc-windows-msvc
+            bin_path: target/i686-pc-windows-msvc/release
+            asset_name: -windows-i686.exe
+            extension: .exe
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            bin_path: target/aarch64-pc-windows-msvc/release
+            asset_name: -windows-arm64.exe
+            extension: .exe
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            bin_path: target/x86_64-apple-darwin/release
+            asset_name: -macos-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            bin_path: target/aarch64-apple-darwin/release
+            asset_name: -macos-arm64
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install openssl@1.1 protobuf
+          echo "OPENSSL_DIR=$(brew --prefix openssl@1.1)" >> $GITHUB_ENV
+          echo "PATH=$(brew --prefix protobuf)/bin:$PATH" >> $GITHUB_ENV
+          brew link --force protobuf
+          protoc --version
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Build native
+        uses: actions-rs/cargo@v1
+        env:
+          RUST_BACKTRACE: 1
+        with:
+          command: build
+          args: --release --target ${{ matrix.target }} -p ${{ needs.check-version.outputs.package_name }}
+
+      - name: Set binary path variables
+        shell: bash
+        run: |
+          PACKAGE_NAME="${{ needs.check-version.outputs.package_name }}"
+          FULL_BIN_PATH="${{ matrix.bin_path }}/${PACKAGE_NAME}${{ matrix.extension || '' }}"
+          FULL_ASSET_NAME="${PACKAGE_NAME}${{ matrix.asset_name }}"
+          FULL_BIN_PATH=$(echo "$FULL_BIN_PATH" | tr -d '[:space:]')
+
+          echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+          echo "FULL_BIN_PATH=${FULL_BIN_PATH}" >> $GITHUB_ENV
+          echo "FULL_ASSET_NAME=${FULL_ASSET_NAME}" >> $GITHUB_ENV
+
+          echo "Debug info:"
+          echo "- Package name: [$PACKAGE_NAME]"
+          echo "- Binary path: [$FULL_BIN_PATH]"
+          echo "- Asset name: [$FULL_ASSET_NAME]"
+
+          if [ -f "${FULL_BIN_PATH}" ]; then
+            echo "✅ Binary exists at: ${FULL_BIN_PATH}"
+            ls -la "${FULL_BIN_PATH}"
+          else
+            echo "❌ Binary NOT found at: ${FULL_BIN_PATH}"
+            echo "Contents of target directory:"
+            find target -type f | grep -E "(\\.exe$|\\.wasm$|/${PACKAGE_NAME}$)" | sort
+          fi
+
+      - name: Generate SHA256
+        shell: bash
+        run: |
+          echo "Checking binary at: [$FULL_BIN_PATH]"
+          ls -l "$FULL_BIN_PATH" || (echo "❌ ERROR: Binary still not found at $FULL_BIN_PATH" && find target -type f | grep -E "(\\.exe$|\\.wasm$|/${PACKAGE_NAME}$)" | sort && exit 1)
+          echo "Generating SHA256 for $FULL_BIN_PATH"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            sha256sum "$FULL_BIN_PATH" > "$FULL_BIN_PATH.sha256"
+          else
+            shasum -a 256 "$FULL_BIN_PATH" > "$FULL_BIN_PATH.sha256"
+          fi
+          echo "SHA256 file contents:"
+          cat "$FULL_BIN_PATH.sha256"
+
+      - name: Upload Binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.FULL_BIN_PATH }}
+          asset_name: ${{ env.FULL_ASSET_NAME }}
+          asset_content_type: application/octet-stream
+        continue-on-error: true
+
+      - name: Upload SHA256
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.FULL_BIN_PATH }}.sha256
+          asset_name: ${{ env.FULL_ASSET_NAME }}.sha256
+          asset_content_type: text/plain
+        continue-on-error: true
+
+  cross-builds:
+    needs: [check-version, create-release]
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-unknown-linux-gnu
+            asset_suffix: -linux-arm64
+            openssl_arch: arm64
+          - target: i686-unknown-linux-gnu
+            asset_suffix: -linux-i686
+            openssl_arch: i386
+          - target: armv7-unknown-linux-gnueabihf
+            asset_suffix: -linux-armv7
+            openssl_arch: armhf
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+
+      - name: Install cross
+        run: |
+          cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Set variables
+        run: |
+          PACKAGE_NAME="${{ needs.check-version.outputs.package_name }}"
+          ASSET_NAME="${PACKAGE_NAME}${{ matrix.asset_suffix }}"
+          BIN_PATH="target/${{ matrix.target }}/release/${PACKAGE_NAME}${{ matrix.extension || '' }}"
+          BIN_PATH=$(echo "$BIN_PATH" | tr -d '[:space:]')
+
+          echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+          echo "ASSET_NAME=${ASSET_NAME}" >> $GITHUB_ENV
+          echo "BIN_PATH=${BIN_PATH}" >> $GITHUB_ENV
+
+          echo "Cross-build variables:"
+          echo "- Package: [$PACKAGE_NAME]"
+          echo "- Asset name: [$ASSET_NAME]"
+          echo "- Binary path: [$BIN_PATH]"
+
+      - name: Configure cross for OpenSSL
+        if: ${{ !matrix.no_openssl }}
+        run: |
+          cat > Cross.toml << EOF
+          [target.${{ matrix.target }}]
+          pre-build = [
+              "dpkg --add-architecture ${{ matrix.openssl_arch }}",
+              "apt-get update",
+              "apt-get install -y libssl-dev:${{ matrix.openssl_arch }}"
+          ]
+          EOF
+          cat Cross.toml
+
+      - name: Build WebAssembly
+        if: matrix.target == 'wasm32-unknown-unknown'
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo build --release --target wasm32-unknown-unknown -p ${{ needs.check-version.outputs.package_name }}
+
+      - name: Build with cross
+        if: matrix.target != 'wasm32-unknown-unknown'
+        run: |
+          cross build --release --target ${{ matrix.target }} -p ${{ needs.check-version.outputs.package_name }}
+
+      - name: Generate SHA256
+        run: |
+          echo "Checking binary at: [$BIN_PATH]"
+          ls -l "$BIN_PATH" || (echo "❌ ERROR: Binary not found at $BIN_PATH" && find target -type f | grep -E "(\\.exe$|\\.wasm$|/${PACKAGE_NAME}$)" | sort && exit 1)
+          echo "Generating SHA256 for $BIN_PATH"
+          sha256sum "$BIN_PATH" > "$BIN_PATH.sha256"
+          echo "SHA256 file contents:"
+          cat "$BIN_PATH.sha256"
+
+      - name: Upload Binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.BIN_PATH }}
+          asset_name: ${{ env.ASSET_NAME }}
+          asset_content_type: application/octet-stream
+
+      - name: Upload SHA256
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.BIN_PATH }}.sha256
+          asset_name: ${{ env.ASSET_NAME }}.sha256
+          asset_content_type: text/plain

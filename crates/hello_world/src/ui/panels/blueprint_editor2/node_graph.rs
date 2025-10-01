@@ -1,5 +1,6 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui_component::Colorize;
 use gpui_component::{button::Button, h_flex, v_flex, ActiveTheme as _, IconName, StyledExt, tooltip::Tooltip};
 
 use super::panel::BlueprintEditorPanel;
@@ -1006,9 +1007,10 @@ impl NodeGraphRenderer {
                         .top(px(top))
                         .w(px(width))
                         .h(px(height))
-                        .border_1()
-                        .border_color(cx.theme().accent.opacity(0.8))
-                        .bg(cx.theme().accent.opacity(0.1))
+                        .border_2()
+                        .border_dashed()
+                        .border_color(cx.theme().accent.opacity(0.8).lighten(1.0))
+                        .bg(cx.theme().accent.opacity(0.3).lighten(1.0))
                         .rounded(px(2.0)),
                 )
                 .into_any_element()
