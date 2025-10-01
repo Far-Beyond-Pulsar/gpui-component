@@ -215,6 +215,10 @@ impl NodeGraphRenderer {
             }))
     }
 
+
+    /// # WARNING!
+    /// 
+    /// For reasons uninvestigated this causes EXTREME performance degradation at some zoom levels
     fn render_grid_background(panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
         // Multi-scale grid system that shows/hides based on zoom level
         // Grid scales: 50px (fine), 200px (medium), 1000px (coarse)
