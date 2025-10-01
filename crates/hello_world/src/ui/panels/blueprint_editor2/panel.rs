@@ -751,67 +751,42 @@ impl BlueprintEditorPanel {
                     // Check if compatible and not same node
                     // Use is_compatible_with to allow Any type to match with everything
                     if drag.from_pin_type.is_compatible_with(&pin.data_type) && drag.from_node_id != node_id {
-                        // Special handling for reroute nodes - only allow ONE connection per pin
-                        if node.node_type == NodeType::Reroute {
-                            let already_has_input = self.graph.connections.iter().any(|conn|
-                                conn.to_node_id == node_id && conn.to_pin_id == pin_id
-                            );
-                            if already_has_input {
-                                println!("Reroute node already has an input connection");
-                                cx.notify();
-                                return;
-                            }
-                        }
-
-                        // Check if source is a reroute node - only allow ONE connection from output
-                        if let Some(source_node) = self.graph.nodes.iter().find(|n| n.id == drag.from_node_id) {
-                            if source_node.node_type == NodeType::Reroute {
-                                let already_has_output = self.graph.connections.iter().any(|conn|
-                                    conn.from_node_id == drag.from_node_id && conn.from_pin_id == drag.from_pin_id
-                                );
-                                if already_has_output {
-                                    println!("Reroute node already has an output connection");
-                                    cx.notify();
-                                    return;
-                                }
-                            }
-                        }
-
                         let is_execution_pin = pin.data_type == GraphDataType::from_type_str("execution");
 
-                        // Handle execution pin connection logic
-                        if is_execution_pin {
-                            // For execution pins, implement special connection moving logic
+                        // Check if source or target is a reroute node
+                        let source_is_reroute = self.graph.nodes.iter().any(|n| n.id == drag.from_node_id && n.node_type == NodeType::Reroute);
+                        let target_is_reroute = self.graph.nodes.iter().any(|n| n.id == node_id && n.node_type == NodeType::Reroute);
 
-                            // 1. Remove any existing connection from the same source exec output pin
-                            //    (only one exec out connection at a time)
-                            self.graph.connections.retain(|conn| {
-                                !(conn.from_node_id == drag.from_node_id && conn.from_pin_id == drag.from_pin_id)
-                            });
+                        // Remove old connections based on pin and node types
+                        if is_execution_pin || source_is_reroute || target_is_reroute {
+                            // For execution pins, reroute outputs, remove existing connections from source
+                            if is_execution_pin || source_is_reroute {
+                                println!("Removing old connection from source {}:{}", drag.from_node_id, drag.from_pin_id);
+                                self.graph.connections.retain(|conn| {
+                                    !(conn.from_node_id == drag.from_node_id && conn.from_pin_id == drag.from_pin_id)
+                                });
+                            }
 
-                            // 2. For exec input pins: When reconnecting, move the connection
-                            //    (remove existing connections to this input pin)
+                            // For execution pins, reroute inputs, or regular inputs, remove existing connections to target
+                            if is_execution_pin || target_is_reroute {
+                                println!("Removing old connection to target {}:{}", node_id, pin_id);
+                                self.graph.connections.retain(|conn| {
+                                    !(conn.to_node_id == node_id && conn.to_pin_id == pin_id)
+                                });
+                            }
+                        }
+
+                        // For non-reroute, non-execution data pins, apply standard single-input rule
+                        if !is_execution_pin && !target_is_reroute {
+                            // Remove any existing connection to this input pin (move connection behavior)
+                            println!("Removing old data connection to target {}:{}", node_id, pin_id);
                             self.graph.connections.retain(|conn| {
                                 !(conn.to_node_id == node_id && conn.to_pin_id == pin_id)
                             });
-
-                            println!("Creating exec connection from {}:{} to {}:{}",
-                                     drag.from_node_id, drag.from_pin_id, node_id, pin_id);
-                        } else {
-                            // For non-execution pins, only allow one input connection
-                            let already_connected = self.graph.connections.iter().any(|conn|
-                                conn.to_node_id == node_id && conn.to_pin_id == pin_id
-                            );
-
-                            if already_connected {
-                                println!("Input pin already has a connection");
-                                cx.notify();
-                                return;
-                            }
-
-                            println!("Creating data connection from {}:{} to {}:{}",
-                                     drag.from_node_id, drag.from_pin_id, node_id, pin_id);
                         }
+
+                        println!("Creating connection from {}:{} to {}:{}",
+                                 drag.from_node_id, drag.from_pin_id, node_id, pin_id);
 
                         // Create the new connection
                         let connection = super::Connection {
@@ -824,11 +799,7 @@ impl BlueprintEditorPanel {
                         self.graph.connections.push(connection);
                         println!("Connection created successfully!");
 
-                        // Propagate types through reroute nodes
-                        // Check if either the source or target is a reroute node
-                        let source_is_reroute = self.graph.nodes.iter().any(|n| n.id == drag.from_node_id && n.node_type == NodeType::Reroute);
-                        let target_is_reroute = self.graph.nodes.iter().any(|n| n.id == node_id && n.node_type == NodeType::Reroute);
-
+                        // Propagate types through reroute nodes (reuse the checks from above)
                         if source_is_reroute || target_is_reroute {
                             // Propagate the non-Any type through the reroute chain
                             if target_is_reroute {

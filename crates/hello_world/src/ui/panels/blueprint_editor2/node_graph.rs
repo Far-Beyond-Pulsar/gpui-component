@@ -179,9 +179,10 @@ impl NodeGraphRenderer {
             .on_key_down(cx.listener(|panel, event: &KeyDownEvent, _window, cx| {
                 println!("Key pressed: {:?}", event.keystroke.key);
 
-                if event.keystroke.key == "Escape" && panel.dragging_connection.is_some() {
+                let key_lower = event.keystroke.key.to_lowercase();
+                if key_lower == "escape" && panel.dragging_connection.is_some() {
                     panel.cancel_connection_drag(cx);
-                } else if event.keystroke.key == "Delete" || event.keystroke.key == "Backspace" {
+                } else if key_lower == "delete" || key_lower == "backspace" {
                     println!(
                         "Delete key pressed! Selected nodes: {:?}",
                         panel.graph.selected_nodes
