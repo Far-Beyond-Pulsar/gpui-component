@@ -180,7 +180,12 @@ impl NodeCreationMenu {
     }
 
     fn create_node(&self, node_def: &NodeDefinition) -> BlueprintNode {
-        BlueprintNode::from_definition(node_def, self.target_position)
+        // Special handling for reroute nodes
+        if node_def.id == "reroute" {
+            BlueprintNode::create_reroute(self.target_position)
+        } else {
+            BlueprintNode::from_definition(node_def, self.target_position)
+        }
     }
 
     fn render_search_box(&self, cx: &mut Context<Self>) -> impl IntoElement {

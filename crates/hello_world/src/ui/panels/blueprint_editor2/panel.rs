@@ -751,6 +751,32 @@ impl BlueprintEditorPanel {
                     // Check if compatible and not same node
                     // Use is_compatible_with to allow Any type to match with everything
                     if drag.from_pin_type.is_compatible_with(&pin.data_type) && drag.from_node_id != node_id {
+                        // Special handling for reroute nodes - only allow ONE connection per pin
+                        if node.node_type == NodeType::Reroute {
+                            let already_has_input = self.graph.connections.iter().any(|conn|
+                                conn.to_node_id == node_id && conn.to_pin_id == pin_id
+                            );
+                            if already_has_input {
+                                println!("Reroute node already has an input connection");
+                                cx.notify();
+                                return;
+                            }
+                        }
+
+                        // Check if source is a reroute node - only allow ONE connection from output
+                        if let Some(source_node) = self.graph.nodes.iter().find(|n| n.id == drag.from_node_id) {
+                            if source_node.node_type == NodeType::Reroute {
+                                let already_has_output = self.graph.connections.iter().any(|conn|
+                                    conn.from_node_id == drag.from_node_id && conn.from_pin_id == drag.from_pin_id
+                                );
+                                if already_has_output {
+                                    println!("Reroute node already has an output connection");
+                                    cx.notify();
+                                    return;
+                                }
+                            }
+                        }
+
                         let is_execution_pin = pin.data_type == GraphDataType::from_type_str("execution");
 
                         // Handle execution pin connection logic
@@ -1104,9 +1130,10 @@ impl BlueprintEditorPanel {
         self.selection_start = Some(start_pos);
         self.selection_end = Some(start_pos);
 
-        if !add_to_selection {
-            self.graph.selected_nodes.clear();
-        }
+        // DON'T clear selection here - wait until mouse actually moves
+        // This prevents clearing selection on simple clicks
+        // The selection will be cleared in update_selection_drag if not adding to selection
+
         cx.notify();
     }
 
@@ -1124,6 +1151,17 @@ impl BlueprintEditorPanel {
     }
 
     pub fn end_selection_drag(&mut self, cx: &mut Context<Self>) {
+        // If selection start and end are the same (or very close), it was a click, not a drag
+        // Clear the selection in this case
+        if let (Some(start), Some(end)) = (self.selection_start, self.selection_end) {
+            let distance = ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt();
+            if distance < 5.0 {
+                // It was just a click on empty space, clear selection
+                self.graph.selected_nodes.clear();
+                println!("[SELECTION] Cleared selection (click on empty space)");
+            }
+        }
+
         self.selection_start = None;
         self.selection_end = None;
         cx.notify();
@@ -1161,9 +1199,17 @@ impl BlueprintEditorPanel {
     }
 
     pub fn delete_selected_nodes(&mut self, cx: &mut Context<Self>) {
+        println!("[DELETE] Selected nodes count: {}", self.graph.selected_nodes.len());
+        println!("[DELETE] Selected node IDs: {:?}", self.graph.selected_nodes);
+
         if !self.graph.selected_nodes.is_empty() {
+            let node_count_before = self.graph.nodes.len();
+
             // Remove selected nodes
             self.graph.nodes.retain(|node| !self.graph.selected_nodes.contains(&node.id));
+
+            let node_count_after = self.graph.nodes.len();
+            println!("[DELETE] Deleted {} nodes ({} -> {})", node_count_before - node_count_after, node_count_before, node_count_after);
 
             // Remove connections involving deleted nodes
             self.graph.connections.retain(|connection| {
@@ -1174,6 +1220,8 @@ impl BlueprintEditorPanel {
             // Clear selection
             self.graph.selected_nodes.clear();
             cx.notify();
+        } else {
+            println!("[DELETE] No nodes selected, nothing to delete");
         }
     }
 

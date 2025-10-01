@@ -94,6 +94,7 @@ impl NodeGraphRenderer {
 
                         // Only start selection drag if we didn't handle a double-click
                         if !handled_double_click {
+                            // Don't clear selection immediately - only when dragging or on mouse up
                             panel.start_selection_drag(graph_pos, event.modifiers.control, cx);
                         }
                     }
@@ -429,23 +430,14 @@ impl NodeGraphRenderer {
 
         // Reroute node is rendered as a thick colored dot
         let dot_size = 16.0 * panel.graph.zoom_level;
+        let clickable_size = 24.0 * panel.graph.zoom_level; // Larger clickable area
 
         div()
             .absolute()
-            .left(px(graph_pos.x - dot_size / 2.0)) // Center the dot on the position
-            .top(px(graph_pos.y - dot_size / 2.0))
-            .w(px(dot_size))
-            .h(px(dot_size))
-            .bg(pin_color)
-            .rounded_full()
-            .border_3()
-            .border_color(if node.is_selected {
-                gpui::yellow()
-            } else {
-                cx.theme().border
-            })
-            .when(is_dragging, |style| style.opacity(0.9).shadow_2xl())
-            .shadow_lg()
+            .left(px(graph_pos.x - clickable_size / 2.0)) // Center the clickable area
+            .top(px(graph_pos.y - clickable_size / 2.0))
+            .w(px(clickable_size))
+            .h(px(clickable_size))
             .cursor_pointer()
             .on_mouse_down(gpui::MouseButton::Left, {
                 let node_id = node_id.clone();
@@ -466,7 +458,89 @@ impl NodeGraphRenderer {
                     panel.start_drag(node_id.clone(), graph_pos, cx);
                 })
             })
+            .child(
+                // The visible dot (centered within the clickable area)
+                div()
+                    .absolute()
+                    .left(px((clickable_size - dot_size) / 2.0))
+                    .top(px((clickable_size - dot_size) / 2.0))
+                    .w(px(dot_size))
+                    .h(px(dot_size))
+                    .bg(pin_color)
+                    .rounded_full()
+                    .border_3()
+                    .border_color(if node.is_selected {
+                        gpui::yellow()
+                    } else {
+                        cx.theme().border
+                    })
+                    .when(is_dragging, |style| style.opacity(0.9).shadow_2xl())
+                    .shadow_lg()
+            )
+            // Invisible pins for connections - positioned at the center
+            .children(node.inputs.iter().map(|input_pin| {
+                Self::render_reroute_pin(input_pin, true, &node.id, panel, cx)
+            }))
+            .children(node.outputs.iter().map(|output_pin| {
+                Self::render_reroute_pin(output_pin, false, &node.id, panel, cx)
+            }))
             .into_any_element()
+    }
+
+    fn render_reroute_pin(
+        pin: &Pin,
+        is_input: bool,
+        node_id: &str,
+        panel: &BlueprintEditorPanel,
+        cx: &mut Context<BlueprintEditorPanel>,
+    ) -> impl IntoElement {
+        let node_id_clone = node_id.to_string();
+        let pin_id = pin.id.clone();
+
+        // Check if this pin is compatible with the current drag
+        let is_compatible = if let Some(ref drag) = panel.dragging_connection {
+            is_input && node_id != drag.from_node_id && pin.data_type.is_compatible_with(&drag.from_pin_type)
+        } else {
+            false
+        };
+
+        // Invisible pin area at the center of the dot for connections
+        div()
+            .absolute()
+            .left_1_2()
+            .top_1_2()
+            .w(px(8.0))
+            .h(px(8.0))
+            .ml(px(-4.0)) // Center it
+            .mt(px(-4.0))
+            // Make it visible when compatible
+            .when(is_compatible, |style| {
+                style.bg(gpui::white().opacity(0.3)).rounded_full()
+            })
+            .cursor_pointer()
+            .on_mouse_down(gpui::MouseButton::Left, {
+                let node_id = node_id_clone.clone();
+                let pin_id = pin_id.clone();
+                cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
+                    cx.stop_propagation();
+
+                    if is_input {
+                        // Clicking input pin - do nothing for now
+                    } else {
+                        // Clicking output pin - start connection drag
+                        panel.start_connection_drag_from_pin(node_id.clone(), pin_id.clone(), cx);
+                    }
+                })
+            })
+            .on_mouse_up(gpui::MouseButton::Left, {
+                let node_id = node_id_clone.clone();
+                let pin_id = pin_id.clone();
+                cx.listener(move |panel, _event: &MouseUpEvent, _window, cx| {
+                    if is_input && panel.dragging_connection.is_some() {
+                        panel.complete_connection_on_pin(node_id.clone(), pin_id.clone(), cx);
+                    }
+                })
+            })
     }
 
     fn render_node_pins(
@@ -764,6 +838,16 @@ impl NodeGraphRenderer {
         is_input: bool,
         graph: &BlueprintGraph,
     ) -> Option<Point<f32>> {
+        // Special handling for reroute nodes - pins are at the center
+        if node.node_type == NodeType::Reroute {
+            let node_screen_pos = Self::graph_to_screen_pos(node.position, graph);
+            // Reroute nodes connect at their center
+            return Some(Point::new(
+                node_screen_pos.x,
+                node_screen_pos.y,
+            ));
+        }
+
         // Calculate pin position in container coordinates (same as mouse events)
         let node_screen_pos = Self::graph_to_screen_pos(node.position, graph);
         let header_height = 40.0 * graph.zoom_level; // Scaled height of node header
