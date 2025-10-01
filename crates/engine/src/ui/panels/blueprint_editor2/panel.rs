@@ -599,6 +599,7 @@ impl BlueprintEditorPanel {
 
 
     pub fn start_drag(&mut self, node_id: String, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
+        print!("Starting drag for node {} at mouse position {:?}", node_id, mouse_pos);
         if let Some(node) = self.graph.nodes.iter().find(|n| n.id == node_id) {
             self.dragging_node = Some(node_id.clone());
             self.drag_offset = Point::new(
@@ -630,13 +631,10 @@ impl BlueprintEditorPanel {
     pub fn update_drag(&mut self, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
         if let Some(dragging_id) = &self.dragging_node.clone() {
             // Calculate the new position of the main dragged node
-            let raw_position = Point::new(
+            let new_position = Point::new(
                 mouse_pos.x - self.drag_offset.x,
                 mouse_pos.y - self.drag_offset.y,
             );
-
-            // Snap position to grid based on current zoom level
-            let new_position = node_graph::NodeGraphRenderer::snap_to_grid(raw_position, self.graph.zoom_level);
 
             // Get the initial position of the dragged node
             if let Some(initial_pos) = self.initial_drag_positions.get(dragging_id) {

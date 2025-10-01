@@ -37,7 +37,6 @@ impl NodeGraphRenderer {
                 // Focus on click to enable keyboard events
                 panel.focus_handle().focus(window);
             }))
-            .child(Self::render_grid_background(panel, cx))
             .child(Self::render_nodes(panel, cx))
             .child(Self::render_connections(panel, cx))
             .child(Self::render_selection_box(panel, cx))
