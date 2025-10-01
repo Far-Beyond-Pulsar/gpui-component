@@ -93,6 +93,7 @@ impl BlueprintEditorPanel {
             properties: std::collections::HashMap::new(),
             is_selected: false,
             description: "Defines the main() entry point function.".to_string(),
+            color: None,
         });
 
         // Pure node: add(2, 3)
@@ -131,6 +132,7 @@ impl BlueprintEditorPanel {
             properties: add_props,
             is_selected: false,
             description: "Adds two numbers: (2 + 3) = 5".to_string(),
+            color: None,
         });
 
         // Control flow: branch
@@ -173,6 +175,7 @@ impl BlueprintEditorPanel {
             properties: std::collections::HashMap::new(),
             is_selected: false,
             description: "Branches execution based on a condition.".to_string(),
+            color: None,
         });
 
         // Function node: print (true path)
@@ -210,6 +213,7 @@ impl BlueprintEditorPanel {
             properties: print_true_props,
             is_selected: false,
             description: "Prints success message.".to_string(),
+            color: None,
         });
 
         // Function node: print (false path)
@@ -247,6 +251,7 @@ impl BlueprintEditorPanel {
             properties: print_false_props,
             is_selected: false,
             description: "Prints alternative message.".to_string(),
+            color: None,
         });
 
         // Pure node: greater than
@@ -284,6 +289,7 @@ impl BlueprintEditorPanel {
             properties: gt_props,
             is_selected: false,
             description: "Checks if A > B: result > 3?".to_string(),
+            color: None,
         });
 
         let connections = vec![
@@ -513,9 +519,9 @@ impl BlueprintEditorPanel {
             // Look up node definition by ID to restore all metadata
             let node_def = node_definitions.get_node_definition(&definition_id);
 
-            let (title, icon, description, node_type) = if definition_id == "reroute" {
+            let (title, icon, description, node_type, color) = if definition_id == "reroute" {
                 // Special handling for reroute nodes
-                ("Reroute".to_string(), "•".to_string(), "Reroute node for organizing connections".to_string(), NodeType::Reroute)
+                ("Reroute".to_string(), "•".to_string(), "Reroute node for organizing connections".to_string(), NodeType::Reroute, None)
             } else if let Some(def) = node_def {
                 let category = node_definitions.get_category_for_node(&def.id);
                 let node_type = match category.map(|c| c.name.as_str()) {
@@ -525,10 +531,10 @@ impl BlueprintEditorPanel {
                     Some("Object") => NodeType::Object,
                     _ => NodeType::Logic,
                 };
-                (def.name.clone(), def.icon.clone(), def.description.clone(), node_type)
+                (def.name.clone(), def.icon.clone(), def.description.clone(), node_type, def.color.clone())
             } else {
                 // Fallback if definition not found
-                (definition_id.replace('_', " "), "⚙️".to_string(), String::new(), NodeType::Logic)
+                (definition_id.replace('_', " "), "⚙️".to_string(), String::new(), NodeType::Logic, None)
             };
 
             let bp_node = BlueprintNode {
@@ -562,6 +568,7 @@ impl BlueprintEditorPanel {
                 }).collect(),
                 is_selected: false,
                 description,
+                color,
             };
             nodes.push(bp_node);
         }
@@ -623,10 +630,13 @@ impl BlueprintEditorPanel {
     pub fn update_drag(&mut self, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
         if let Some(dragging_id) = &self.dragging_node.clone() {
             // Calculate the new position of the main dragged node
-            let new_position = Point::new(
+            let raw_position = Point::new(
                 mouse_pos.x - self.drag_offset.x,
                 mouse_pos.y - self.drag_offset.y,
             );
+
+            // Snap position to grid based on current zoom level
+            let new_position = node_graph::NodeGraphRenderer::snap_to_grid(raw_position, self.graph.zoom_level);
 
             // Get the initial position of the dragged node
             if let Some(initial_pos) = self.initial_drag_positions.get(dragging_id) {

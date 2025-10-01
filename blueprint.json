@@ -1,33 +1,37 @@
 {
   "nodes": {
-    "22f6fc6a-ab0d-4cb3-ac0b-b91cdf007850": {
-      "id": "22f6fc6a-ab0d-4cb3-ac0b-b91cdf007850",
+    "print_true": {
+      "id": "print_true",
       "node_type": "print_string",
       "position": {
-        "x": 775.8773,
-        "y": 644.0935
+        "x": 778.8773,
+        "y": 291.0935
       },
-      "properties": {},
+      "properties": {
+        "message": {
+          "String": "Result is greater than 3! ✓"
+        }
+      },
       "inputs": {
-        "exec": {
-          "name": "exec",
-          "pin_type": "Input",
-          "data_type": "Execution",
-          "connected_to": [
-            "11c82b84-9db8-4e0a-9508-3f1650404250"
-          ]
-        },
         "message": {
           "name": "message",
           "pin_type": "Input",
           "data_type": {
             "Typed": {
-              "base_type": "String",
+              "base_type": "string",
               "wrappers": [],
               "is_wildcard": false
             }
           },
           "connected_to": []
+        },
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": [
+            "conn_branch_true"
+          ]
         }
       },
       "outputs": {
@@ -36,47 +40,6 @@
           "pin_type": "Output",
           "data_type": "Execution",
           "connected_to": []
-        }
-      }
-    },
-    "dcf02495-0e52-439e-8e2d-8c0d69a86ff9": {
-      "id": "dcf02495-0e52-439e-8e2d-8c0d69a86ff9",
-      "node_type": "reroute",
-      "position": {
-        "x": 518.8773,
-        "y": 502.0935
-      },
-      "properties": {},
-      "inputs": {
-        "input": {
-          "name": "input",
-          "pin_type": "Input",
-          "data_type": {
-            "Typed": {
-              "base_type": "bool",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
-          "connected_to": [
-            "6c061d4d-ba6d-4823-8838-e4381f7e2930"
-          ]
-        }
-      },
-      "outputs": {
-        "output": {
-          "name": "output",
-          "pin_type": "Output",
-          "data_type": {
-            "Typed": {
-              "base_type": "bool",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
-          "connected_to": [
-            "60be01b5-3786-44cf-84c7-8a1795a4b4cf"
-          ]
         }
       }
     },
@@ -89,6 +52,14 @@
       },
       "properties": {},
       "inputs": {
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": [
+            "d738ec71-6f2f-4b92-8ce5-c7b5e4cc7877"
+          ]
+        },
         "condition": {
           "name": "condition",
           "pin_type": "Input",
@@ -101,14 +72,6 @@
           },
           "connected_to": [
             "60be01b5-3786-44cf-84c7-8a1795a4b4cf"
-          ]
-        },
-        "exec": {
-          "name": "exec",
-          "pin_type": "Input",
-          "data_type": "Execution",
-          "connected_to": [
-            "d738ec71-6f2f-4b92-8ce5-c7b5e4cc7877"
           ]
         }
       },
@@ -131,95 +94,67 @@
         }
       }
     },
-    "88ee69f5-a7ad-4213-a516-9c68b60f7752": {
-      "id": "88ee69f5-a7ad-4213-a516-9c68b60f7752",
-      "node_type": "reroute",
+    "83f34ff2-f122-44f5-baa0-8dd494c349ac": {
+      "id": "83f34ff2-f122-44f5-baa0-8dd494c349ac",
+      "node_type": "print_string",
       "position": {
-        "x": 123.03204,
-        "y": 806.34784
+        "x": 336.03516,
+        "y": 644.67236
       },
       "properties": {},
       "inputs": {
-        "input": {
-          "name": "input",
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": [
+            "abb2f7b4-f1a8-41e9-9e59-0bf70180e2b1"
+          ]
+        },
+        "message": {
+          "name": "message",
           "pin_type": "Input",
           "data_type": {
             "Typed": {
-              "base_type": "bool",
+              "base_type": "String",
               "wrappers": [],
               "is_wildcard": false
             }
           },
-          "connected_to": [
-            "9e72272a-b858-45b4-afed-dbb53c7b4c4a"
-          ]
+          "connected_to": []
         }
       },
       "outputs": {
-        "output": {
-          "name": "output",
-          "pin_type": "Output",
-          "data_type": {
-            "Typed": {
-              "base_type": "bool",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
-          "connected_to": [
-            "4fe4ca46-3cca-4faf-ba3f-d6244a716dc0"
-          ]
-        }
-      }
-    },
-    "main_event": {
-      "id": "main_event",
-      "node_type": "main",
-      "position": {
-        "x": 349.24847,
-        "y": 338.53683
-      },
-      "properties": {},
-      "inputs": {},
-      "outputs": {
-        "Body": {
-          "name": "Body",
+        "exec_out": {
+          "name": "exec_out",
           "pin_type": "Output",
           "data_type": "Execution",
           "connected_to": [
-            "d738ec71-6f2f-4b92-8ce5-c7b5e4cc7877"
+            "21762345-10d8-4c27-96cd-b21b52f17030"
           ]
         }
       }
     },
-    "9a6bcef6-8c5b-482d-9ac4-686db736b5e0": {
-      "id": "9a6bcef6-8c5b-482d-9ac4-686db736b5e0",
-      "node_type": "reroute",
+    "d690b42e-0f85-4fcd-af87-4f35265a424f": {
+      "id": "d690b42e-0f85-4fcd-af87-4f35265a424f",
+      "node_type": "gate",
       "position": {
-        "x": 519.1523,
-        "y": 809.57465
+        "x": 568.99084,
+        "y": 644.4784
       },
       "properties": {},
       "inputs": {
-        "input": {
-          "name": "input",
+        "exec": {
+          "name": "exec",
           "pin_type": "Input",
-          "data_type": {
-            "Typed": {
-              "base_type": "bool",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
+          "data_type": "Execution",
           "connected_to": [
-            "4fe4ca46-3cca-4faf-ba3f-d6244a716dc0"
+            "21762345-10d8-4c27-96cd-b21b52f17030"
           ]
-        }
-      },
-      "outputs": {
-        "output": {
-          "name": "output",
-          "pin_type": "Output",
+        },
+        "open": {
+          "name": "open",
+          "pin_type": "Input",
           "data_type": {
             "Typed": {
               "base_type": "bool",
@@ -231,24 +166,14 @@
             "74c2b3b3-0ef5-4315-8996-989255ad0f4e"
           ]
         }
-      }
-    },
-    "a31c1b5d-8838-4003-8435-0bf0795bdcbd": {
-      "id": "a31c1b5d-8838-4003-8435-0bf0795bdcbd",
-      "node_type": "begin_play",
-      "position": {
-        "x": 116.76044,
-        "y": 666.2379
       },
-      "properties": {},
-      "inputs": {},
       "outputs": {
-        "Body": {
-          "name": "Body",
+        "Open": {
+          "name": "Open",
           "pin_type": "Output",
           "data_type": "Execution",
           "connected_to": [
-            "abb2f7b4-f1a8-41e9-9e59-0bf70180e2b1"
+            "11c82b84-9db8-4e0a-9508-3f1650404250"
           ]
         }
       }
@@ -306,91 +231,68 @@
           },
           "connected_to": [
             "9e72272a-b858-45b4-afed-dbb53c7b4c4a",
-            "6c061d4d-ba6d-4823-8838-e4381f7e2930"
+            "af8cf187-ac08-48d4-a09c-5c62d631fe58"
           ]
         }
       }
     },
-    "print_true": {
-      "id": "print_true",
-      "node_type": "print_string",
+    "a31c1b5d-8838-4003-8435-0bf0795bdcbd": {
+      "id": "a31c1b5d-8838-4003-8435-0bf0795bdcbd",
+      "node_type": "begin_play",
       "position": {
-        "x": 779.8773,
-        "y": 279.0935
-      },
-      "properties": {
-        "message": {
-          "String": "Result is greater than 3! ✓"
-        }
-      },
-      "inputs": {
-        "exec": {
-          "name": "exec",
-          "pin_type": "Input",
-          "data_type": "Execution",
-          "connected_to": [
-            "conn_branch_true"
-          ]
-        },
-        "message": {
-          "name": "message",
-          "pin_type": "Input",
-          "data_type": {
-            "Typed": {
-              "base_type": "string",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
-          "connected_to": []
-        }
-      },
-      "outputs": {
-        "exec_out": {
-          "name": "exec_out",
-          "pin_type": "Output",
-          "data_type": "Execution",
-          "connected_to": []
-        }
-      }
-    },
-    "83f34ff2-f122-44f5-baa0-8dd494c349ac": {
-      "id": "83f34ff2-f122-44f5-baa0-8dd494c349ac",
-      "node_type": "print_string",
-      "position": {
-        "x": 338.87732,
-        "y": 646.0935
+        "x": 123.865906,
+        "y": 664.81683
       },
       "properties": {},
-      "inputs": {
-        "message": {
-          "name": "message",
-          "pin_type": "Input",
-          "data_type": {
-            "Typed": {
-              "base_type": "String",
-              "wrappers": [],
-              "is_wildcard": false
-            }
-          },
-          "connected_to": []
-        },
-        "exec": {
-          "name": "exec",
-          "pin_type": "Input",
+      "inputs": {},
+      "outputs": {
+        "Body": {
+          "name": "Body",
+          "pin_type": "Output",
           "data_type": "Execution",
           "connected_to": [
             "abb2f7b4-f1a8-41e9-9e59-0bf70180e2b1"
           ]
         }
+      }
+    },
+    "dcf02495-0e52-439e-8e2d-8c0d69a86ff9": {
+      "id": "dcf02495-0e52-439e-8e2d-8c0d69a86ff9",
+      "node_type": "reroute",
+      "position": {
+        "x": 523.0096,
+        "y": 493.96127
+      },
+      "properties": {},
+      "inputs": {
+        "input": {
+          "name": "input",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "bool",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": [
+            "d56eb6a0-b310-4eab-94b2-eeafe40c4252"
+          ]
+        }
       },
       "outputs": {
-        "exec_out": {
-          "name": "exec_out",
+        "output": {
+          "name": "output",
           "pin_type": "Output",
-          "data_type": "Execution",
+          "data_type": {
+            "Typed": {
+              "base_type": "bool",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
           "connected_to": [
-            "21762345-10d8-4c27-96cd-b21b52f17030"
+            "60be01b5-3786-44cf-84c7-8a1795a4b4cf"
           ]
         }
       }
@@ -399,8 +301,8 @@
       "id": "print_false",
       "node_type": "print_string",
       "position": {
-        "x": 778.21063,
-        "y": 401.09357
+        "x": 777.21063,
+        "y": 413.09357
       },
       "properties": {
         "message": {
@@ -438,26 +340,34 @@
         }
       }
     },
-    "d690b42e-0f85-4fcd-af87-4f35265a424f": {
-      "id": "d690b42e-0f85-4fcd-af87-4f35265a424f",
-      "node_type": "gate",
+    "9a6bcef6-8c5b-482d-9ac4-686db736b5e0": {
+      "id": "9a6bcef6-8c5b-482d-9ac4-686db736b5e0",
+      "node_type": "reroute",
       "position": {
-        "x": 568.99084,
-        "y": 644.4784
+        "x": 519.1523,
+        "y": 809.57465
       },
       "properties": {},
       "inputs": {
-        "exec": {
-          "name": "exec",
+        "input": {
+          "name": "input",
           "pin_type": "Input",
-          "data_type": "Execution",
+          "data_type": {
+            "Typed": {
+              "base_type": "bool",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
           "connected_to": [
-            "21762345-10d8-4c27-96cd-b21b52f17030"
+            "4fe4ca46-3cca-4faf-ba3f-d6244a716dc0"
           ]
-        },
-        "open": {
-          "name": "open",
-          "pin_type": "Input",
+        }
+      },
+      "outputs": {
+        "output": {
+          "name": "output",
+          "pin_type": "Output",
           "data_type": {
             "Typed": {
               "base_type": "bool",
@@ -469,14 +379,86 @@
             "74c2b3b3-0ef5-4315-8996-989255ad0f4e"
           ]
         }
+      }
+    },
+    "88ee69f5-a7ad-4213-a516-9c68b60f7752": {
+      "id": "88ee69f5-a7ad-4213-a516-9c68b60f7752",
+      "node_type": "reroute",
+      "position": {
+        "x": 123.03204,
+        "y": 806.34784
+      },
+      "properties": {},
+      "inputs": {
+        "input": {
+          "name": "input",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "bool",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": [
+            "9e72272a-b858-45b4-afed-dbb53c7b4c4a"
+          ]
+        }
       },
       "outputs": {
-        "Open": {
-          "name": "Open",
+        "output": {
+          "name": "output",
           "pin_type": "Output",
-          "data_type": "Execution",
+          "data_type": {
+            "Typed": {
+              "base_type": "bool",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
           "connected_to": [
-            "11c82b84-9db8-4e0a-9508-3f1650404250"
+            "4fe4ca46-3cca-4faf-ba3f-d6244a716dc0"
+          ]
+        }
+      }
+    },
+    "5e386a8f-0a71-41ab-bab4-50b26b9a2c05": {
+      "id": "5e386a8f-0a71-41ab-bab4-50b26b9a2c05",
+      "node_type": "reroute",
+      "position": {
+        "x": 76.14343,
+        "y": 489.59976
+      },
+      "properties": {},
+      "inputs": {
+        "input": {
+          "name": "input",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "bool",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": [
+            "af8cf187-ac08-48d4-a09c-5c62d631fe58"
+          ]
+        }
+      },
+      "outputs": {
+        "output": {
+          "name": "output",
+          "pin_type": "Output",
+          "data_type": {
+            "Typed": {
+              "base_type": "bool",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": [
+            "d56eb6a0-b310-4eab-94b2-eeafe40c4252"
           ]
         }
       }
@@ -485,8 +467,8 @@
       "id": "add_node",
       "node_type": "add",
       "position": {
-        "x": -364.1208,
-        "y": 464.9945
+        "x": -351.7241,
+        "y": 445.1598
       },
       "properties": {
         "a": {
@@ -497,8 +479,8 @@
         }
       },
       "inputs": {
-        "a": {
-          "name": "a",
+        "b": {
+          "name": "b",
           "pin_type": "Input",
           "data_type": {
             "Typed": {
@@ -509,8 +491,8 @@
           },
           "connected_to": []
         },
-        "b": {
-          "name": "b",
+        "a": {
+          "name": "a",
           "pin_type": "Input",
           "data_type": {
             "Typed": {
@@ -536,6 +518,65 @@
           "connected_to": [
             "conn_add_gt"
           ]
+        }
+      }
+    },
+    "main_event": {
+      "id": "main_event",
+      "node_type": "main",
+      "position": {
+        "x": 327.37244,
+        "y": 337.70212
+      },
+      "properties": {},
+      "inputs": {},
+      "outputs": {
+        "Body": {
+          "name": "Body",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": [
+            "d738ec71-6f2f-4b92-8ce5-c7b5e4cc7877"
+          ]
+        }
+      }
+    },
+    "22f6fc6a-ab0d-4cb3-ac0b-b91cdf007850": {
+      "id": "22f6fc6a-ab0d-4cb3-ac0b-b91cdf007850",
+      "node_type": "print_string",
+      "position": {
+        "x": 790.8207,
+        "y": 625.07477
+      },
+      "properties": {},
+      "inputs": {
+        "message": {
+          "name": "message",
+          "pin_type": "Input",
+          "data_type": {
+            "Typed": {
+              "base_type": "String",
+              "wrappers": [],
+              "is_wildcard": false
+            }
+          },
+          "connected_to": []
+        },
+        "exec": {
+          "name": "exec",
+          "pin_type": "Input",
+          "data_type": "Execution",
+          "connected_to": [
+            "11c82b84-9db8-4e0a-9508-3f1650404250"
+          ]
+        }
+      },
+      "outputs": {
+        "exec_out": {
+          "name": "exec_out",
+          "pin_type": "Output",
+          "data_type": "Execution",
+          "connected_to": []
         }
       }
     }
@@ -630,9 +671,17 @@
       "connection_type": "Data"
     },
     {
-      "id": "6c061d4d-ba6d-4823-8838-e4381f7e2930",
+      "id": "af8cf187-ac08-48d4-a09c-5c62d631fe58",
       "source_node": "greater_node",
       "source_pin": "result",
+      "target_node": "5e386a8f-0a71-41ab-bab4-50b26b9a2c05",
+      "target_pin": "input",
+      "connection_type": "Data"
+    },
+    {
+      "id": "d56eb6a0-b310-4eab-94b2-eeafe40c4252",
+      "source_node": "5e386a8f-0a71-41ab-bab4-50b26b9a2c05",
+      "source_pin": "output",
       "target_node": "dcf02495-0e52-439e-8e2d-8c0d69a86ff9",
       "target_pin": "input",
       "connection_type": "Data"
@@ -642,7 +691,7 @@
     "name": "Blueprint Graph",
     "description": "",
     "version": "1.0.0",
-    "created_at": "2025-10-01T04:15:40.632566400+00:00",
-    "modified_at": "2025-10-01T04:15:40.632630700+00:00"
+    "created_at": "2025-10-01T19:50:20.825438100+00:00",
+    "modified_at": "2025-10-01T19:50:20.825505400+00:00"
   }
 }

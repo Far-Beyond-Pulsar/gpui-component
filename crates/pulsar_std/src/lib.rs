@@ -390,3 +390,38 @@ pub fn float_to_int(value: f64) -> i64 {
 pub fn bool_to_string(value: bool) -> String {
     value.to_string()
 }
+
+// =============================================================================
+// Modular Node Organization
+// =============================================================================
+
+pub mod math;
+pub mod logic;
+pub mod array;
+pub mod string;
+pub mod vector;
+pub mod color;
+pub mod transform;
+pub mod rect;
+pub mod flow;
+pub mod debug;
+pub mod file_io;
+pub mod system;
+// pub mod thread;
+// pub mod timer;
+pub mod collections;
+pub mod atomic;
+pub mod channel;
+// pub mod mutex;
+// pub mod http;
+// pub mod json;
+// pub mod url;
+// pub mod path;
+// pub mod env;
+// pub mod shell;
+// pub mod process;
+// pub mod easing;
+// pub mod conversion;
+// pub mod validation;
+// pub mod events;
+// 

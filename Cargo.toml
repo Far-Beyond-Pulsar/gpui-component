@@ -2,13 +2,12 @@
 members = [
     "crates/macros",
     "crates/engine",
-    "crates/story",
     "crates/ui",
     "crates/pulsar_macros",
     "crates/pulsar_std",
 ]
 
-default-members = ["crates/story"]
+default-members = ["crates/engine"]
 resolver = "2"
 
 [workspace.dependencies]

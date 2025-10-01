@@ -37,7 +37,7 @@ impl NodeGraphRenderer {
                 // Focus on click to enable keyboard events
                 panel.focus_handle().focus(window);
             }))
-            .child(Self::render_grid_background(cx))
+            .child(Self::render_grid_background(panel, cx))
             .child(Self::render_nodes(panel, cx))
             .child(Self::render_connections(panel, cx))
             .child(Self::render_selection_box(panel, cx))
@@ -216,18 +216,96 @@ impl NodeGraphRenderer {
             }))
     }
 
-    fn render_grid_background(cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
-        // Simple grid pattern background
-        div().absolute().inset_0().child(
-            div()
-                .size_full()
-                .bg(cx.theme().muted.opacity(0.05))
-                // Grid pattern would be implemented with CSS patterns or canvas
-                .child(
-                    // Simple dot grid pattern
-                    div().absolute().inset_0().opacity(0.3).child(""), // In a real implementation, this would use CSS background patterns
-                ),
-        )
+    fn render_grid_background(panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
+        // Multi-scale grid system that shows/hides based on zoom level
+        // Grid scales: 50px (fine), 200px (medium), 1000px (coarse)
+        let zoom = panel.graph.zoom_level;
+        let pan = &panel.graph.pan_offset;
+
+        // Define grid scales and their visibility thresholds
+        let grids = [
+            (50.0, 0.5, 1.5, 0.15),   // Fine grid: visible between 0.5x and 1.5x zoom, low opacity
+            (200.0, 0.3, 2.0, 0.25),  // Medium grid: visible between 0.3x and 2.0x zoom
+            (1000.0, 0.1, 10.0, 0.35), // Coarse grid: always visible, higher opacity
+        ];
+
+        let mut grid_layers = Vec::new();
+
+        for (grid_size, min_zoom, max_zoom, base_opacity) in grids {
+            // Skip grids outside their zoom range
+            if zoom < min_zoom || zoom > max_zoom {
+                continue;
+            }
+
+            // Fade in/out at edges of zoom range
+            let fade_range = 0.2;
+            let fade_in = ((zoom - min_zoom) / (min_zoom * fade_range)).min(1.0);
+            let fade_out = ((max_zoom - zoom) / (max_zoom * fade_range)).min(1.0);
+            let fade = fade_in.min(fade_out).max(0.0);
+            let opacity = base_opacity * fade;
+
+            if opacity > 0.01 {
+                grid_layers.push(Self::render_grid_layer(grid_size, opacity, pan, zoom, cx));
+            }
+        }
+
+        div().absolute().inset_0()
+            .bg(cx.theme().muted.opacity(0.05))
+            .children(grid_layers)
+    }
+
+    fn render_grid_layer(
+        grid_size: f32,
+        opacity: f32,
+        pan: &Point<f32>,
+        zoom: f32,
+        cx: &mut Context<BlueprintEditorPanel>,
+    ) -> impl IntoElement {
+        // Calculate visible grid range
+        let scaled_grid_size = grid_size * zoom;
+
+        // Calculate grid offset based on pan
+        let offset_x = (pan.x * zoom) % scaled_grid_size;
+        let offset_y = (pan.y * zoom) % scaled_grid_size;
+
+        // Render grid dots
+        let viewport_width = 3840.0;
+        let viewport_height = 2160.0;
+
+        let grid_color = cx.theme().border.opacity(opacity);
+        let dot_size = 2.0;
+
+        let mut dots = Vec::new();
+
+        // Calculate number of grid lines needed
+        let num_cols = (viewport_width / scaled_grid_size).ceil() as i32 + 2;
+        let num_rows = (viewport_height / scaled_grid_size).ceil() as i32 + 2;
+
+        for col in 0..num_cols {
+            for row in 0..num_rows {
+                let x = offset_x + (col as f32 * scaled_grid_size);
+                let y = offset_y + (row as f32 * scaled_grid_size);
+
+                if x >= -scaled_grid_size && x <= viewport_width + scaled_grid_size
+                    && y >= -scaled_grid_size && y <= viewport_height + scaled_grid_size {
+                    dots.push(
+                        div()
+                            .absolute()
+                            .left(px(x - dot_size / 2.0))
+                            .top(px(y - dot_size / 2.0))
+                            .w(px(dot_size))
+                            .h(px(dot_size))
+                            .bg(grid_color)
+                            .rounded_full()
+                    );
+                }
+            }
+        }
+
+        div()
+            .absolute()
+            .inset_0()
+            .children(dots)
     }
 
     fn render_nodes(
@@ -279,12 +357,23 @@ impl NodeGraphRenderer {
             return Self::render_reroute_node(node, panel, cx);
         }
 
-        let node_color = match node.node_type {
-            NodeType::Event => cx.theme().danger,
-            NodeType::Logic => cx.theme().primary,
-            NodeType::Math => cx.theme().success,
-            NodeType::Object => cx.theme().warning,
-            NodeType::Reroute => cx.theme().accent, // Fallback, shouldn't reach here
+        // Use node's custom color if available, otherwise fall back to category/type-based color
+        let node_color = if let Some(ref color_str) = node.color {
+            Self::parse_hex_color(color_str).unwrap_or_else(|| match node.node_type {
+                NodeType::Event => cx.theme().danger,
+                NodeType::Logic => cx.theme().primary,
+                NodeType::Math => cx.theme().success,
+                NodeType::Object => cx.theme().warning,
+                NodeType::Reroute => cx.theme().accent,
+            })
+        } else {
+            match node.node_type {
+                NodeType::Event => cx.theme().danger,
+                NodeType::Logic => cx.theme().primary,
+                NodeType::Math => cx.theme().success,
+                NodeType::Object => cx.theme().warning,
+                NodeType::Reroute => cx.theme().accent,
+            }
         };
 
         let graph_pos = Self::graph_to_screen_pos(node.position, &panel.graph);
@@ -1354,5 +1443,51 @@ impl NodeGraphRenderer {
             (screen_pos.x.0 / graph.zoom_level) - graph.pan_offset.x,
             (screen_pos.y.0 / graph.zoom_level) - graph.pan_offset.y,
         )
+    }
+
+    /// Snaps a position to the appropriate grid size based on zoom level
+    pub fn snap_to_grid(pos: Point<f32>, zoom_level: f32) -> Point<f32> {
+        // Choose grid size based on zoom level
+        // Use finer grids when zoomed in, coarser grids when zoomed out
+        let grid_size = if zoom_level >= 1.5 {
+            50.0  // Fine grid
+        } else if zoom_level >= 0.5 {
+            50.0  // Fine grid
+        } else if zoom_level >= 0.3 {
+            200.0 // Medium grid
+        } else {
+            1000.0 // Coarse grid
+        };
+
+        Point::new(
+            (pos.x / grid_size).round() * grid_size,
+            (pos.y / grid_size).round() * grid_size,
+        )
+    }
+
+    /// Parses a hex color string (e.g., "#4A90E2") into a GPUI Hsla color
+    fn parse_hex_color(hex: &str) -> Option<gpui::Hsla> {
+        let hex = hex.trim_start_matches('#');
+
+        // Parse RGB values
+        if hex.len() == 6 {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()? as f32 / 255.0;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()? as f32 / 255.0;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()? as f32 / 255.0;
+
+            let rgba = gpui::Rgba { r, g, b, a: 1.0 };
+            Some(gpui::Hsla::from(rgba))
+        } else if hex.len() == 8 {
+            // Support RGBA format as well
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()? as f32 / 255.0;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()? as f32 / 255.0;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()? as f32 / 255.0;
+            let a = u8::from_str_radix(&hex[6..8], 16).ok()? as f32 / 255.0;
+
+            let rgba = gpui::Rgba { r, g, b, a };
+            Some(gpui::Hsla::from(rgba))
+        } else {
+            None
+        }
     }
 }

@@ -59,6 +59,7 @@ pub struct BlueprintNode {
     pub properties: HashMap<String, String>,
     pub is_selected: bool,
     pub description: String, // Markdown documentation for the node
+    pub color: Option<String>, // Custom color from blueprint attribute
 }
 
 #[derive(Clone, Debug)]
@@ -137,6 +138,7 @@ pub struct NodeDefinition {
     pub inputs: Vec<PinDefinition>,
     pub outputs: Vec<PinDefinition>,
     pub properties: HashMap<String, String>,
+    pub color: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -181,6 +183,7 @@ impl NodeDefinitions {
                 inputs: vec![],
                 outputs: vec![],
                 properties: std::collections::HashMap::new(),
+                color: None,
             });
 
         // Group nodes by category
@@ -239,6 +242,7 @@ impl NodeDefinitions {
                 inputs,
                 outputs,
                 properties: std::collections::HashMap::new(),
+                color: node_meta.color.clone(),
             };
 
             categories_map
@@ -340,6 +344,7 @@ impl BlueprintNode {
             properties: definition.properties.clone(),
             is_selected: false,
             description: definition.description.clone(),
+            color: definition.color.clone(),
         }
     }
 
@@ -369,6 +374,7 @@ impl BlueprintNode {
             properties: HashMap::new(),
             is_selected: false,
             description: "Reroute node for organizing connections".to_string(),
+            color: None,
         }
     }
 }

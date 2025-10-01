@@ -9,6 +9,6 @@ pub fn begin_play() {
 }
 
 pub fn main() {
-    if node_68d3e3b1_4d42_4ff9_b511_6749c38a7897_result { print_string ("Result is greater than 3! \u{2713}") ; } else { print_string ("Result is 3 or less. \u{2717}") ; }
+    if node_dcf02495_0e52_439e_8e2d_8c0d69a86ff9_result { print_string ("Result is greater than 3! \u{2713}") ; } else { print_string ("Result is 3 or less. \u{2717}") ; }
 }
 
