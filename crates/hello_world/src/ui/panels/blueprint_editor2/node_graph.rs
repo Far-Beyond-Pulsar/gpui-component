@@ -46,7 +46,9 @@ impl NodeGraphRenderer {
             .on_mouse_down(
                 gpui::MouseButton::Right,
                 cx.listener(|panel, event: &MouseDownEvent, _window, cx| {
-                    let mouse_pos = Point::new(event.position.x.0, event.position.y.0);
+                    // Convert window coordinates to element coordinates
+                    let element_pos = Self::window_to_graph_element_pos(event.position);
+                    let mouse_pos = Point::new(element_pos.x.0, element_pos.y.0);
 
                     // Store right-click start position for gesture detection
                     if panel.dragging_connection.is_none() && panel.dragging_node.is_none() {
@@ -58,11 +60,21 @@ impl NodeGraphRenderer {
             .on_mouse_down(
                 gpui::MouseButton::Left,
                 cx.listener(|panel, event: &MouseDownEvent, _window, cx| {
-                    let mouse_pos = Point::new(event.position.x.0, event.position.y.0);
-                    let graph_pos = Self::screen_to_graph_pos(
-                        Point::new(px(mouse_pos.x), px(mouse_pos.y)),
-                        &panel.graph,
-                    );
+                    // Debug: Print raw event position
+                    println!("[MOUSE] Raw window position: x={}, y={}", event.position.x.0, event.position.y.0);
+                    println!("[MOUSE] Element bounds: {:?}", panel.graph_element_bounds);
+
+                    // Convert window-relative coordinates to element-relative coordinates
+                    let element_pos = Self::window_to_graph_element_pos(event.position);
+                    println!("[MOUSE] Element-relative position: x={}, y={}", element_pos.x.0, element_pos.y.0);
+
+                    // Convert element coordinates to graph coordinates
+                    let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
+                    let mouse_pos = Point::new(element_pos.x.0, element_pos.y.0);
+
+                    println!("[MOUSE] Converted to graph pos: x={}, y={}", graph_pos.x, graph_pos.y);
+                    println!("[MOUSE] Pan offset: x={}, y={}", panel.graph.pan_offset.x, panel.graph.pan_offset.y);
+                    println!("[MOUSE] Zoom level: {}", panel.graph.zoom_level);
 
                     // Dismiss context menu if clicking outside of it
                     if panel.node_creation_menu.is_some() && !panel.is_position_inside_menu(mouse_pos) {
@@ -76,10 +88,16 @@ impl NodeGraphRenderer {
                         let node_right = node.position.x + node.size.width;
                         let node_bottom = node.position.y + node.size.height;
 
-                        graph_pos.x >= node_left
+                        let is_inside = graph_pos.x >= node_left
                             && graph_pos.x <= node_right
                             && graph_pos.y >= node_top
-                            && graph_pos.y <= node_bottom
+                            && graph_pos.y <= node_bottom;
+
+                        if is_inside {
+                            println!("[MOUSE] Clicked on node '{}' at graph pos ({}, {})", node.title, node.position.x, node.position.y);
+                        }
+
+                        is_inside
                     });
 
                     if let Some(node) = clicked_node {
@@ -101,7 +119,9 @@ impl NodeGraphRenderer {
                 }),
             )
             .on_mouse_move(cx.listener(|panel, event: &MouseMoveEvent, _window, cx| {
-                let mouse_pos = Point::new(event.position.x.0, event.position.y.0);
+                // Convert window coordinates to element coordinates
+                let element_pos = Self::window_to_graph_element_pos(event.position);
+                let mouse_pos = Point::new(element_pos.x.0, element_pos.y.0);
 
                 // Check if right-click drag should start panning
                 if let Some(right_start) = panel.right_click_start {
@@ -118,14 +138,14 @@ impl NodeGraphRenderer {
                 }
 
                 if panel.dragging_node.is_some() {
-                    let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
+                    let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
                     panel.update_drag(graph_pos, cx);
                 } else if panel.dragging_connection.is_some() {
                     // Update mouse position for drag line rendering
                     panel.update_connection_drag(mouse_pos, cx);
                 } else if panel.is_selecting() {
                     // Update selection drag
-                    let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
+                    let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
                     panel.update_selection_drag(graph_pos, cx);
                 } else if panel.is_panning() && panel.dragging_node.is_none() {
                     // Only update panning if we're not dragging a node
@@ -139,8 +159,9 @@ impl NodeGraphRenderer {
                         panel.end_drag(cx);
                     } else if panel.dragging_connection.is_some() {
                         // Show node creation menu when dropping connection on empty space
-                        // Use screen coordinates directly (not graph coordinates)
-                        let screen_pos = Point::new(event.position.x.0, event.position.y.0);
+                        // Menu is positioned at panel level, use panel coordinate conversion
+                        let panel_pos = Self::window_to_panel_pos(event.position);
+                        let screen_pos = Point::new(panel_pos.x.0, panel_pos.y.0);
                         panel.show_node_creation_menu(screen_pos, _window, cx);
                         panel.cancel_connection_drag(cx);
                     } else if panel.is_selecting() {
@@ -159,8 +180,9 @@ impl NodeGraphRenderer {
                     } else if panel.right_click_start.is_some() {
                         // Right-click released without dragging - show context menu
                         panel.right_click_start = None;
-                        // Use screen coordinates directly (not graph coordinates)
-                        let screen_pos = Point::new(event.position.x.0, event.position.y.0);
+                        // Menu is positioned at panel level, use panel coordinate conversion
+                        let panel_pos = Self::window_to_panel_pos(event.position);
+                        let screen_pos = Point::new(panel_pos.x.0, panel_pos.y.0);
                         panel.show_node_creation_menu(screen_pos, _window, cx);
                     }
                 }),
@@ -172,9 +194,10 @@ impl NodeGraphRenderer {
                     ScrollDelta::Lines(l) => l.y * 20.0, // Convert lines to pixels
                 };
 
-                // Perform zoom centered on the mouse - pass the raw event position and let
-                // the panel compute the focus graph position using its current zoom/pan.
-                panel.handle_zoom(delta_y, event.position, cx);
+                // Perform zoom centered on the mouse
+                // Convert to element coordinates first
+                let element_pos = Self::window_to_graph_element_pos(event.position);
+                panel.handle_zoom(delta_y, element_pos, cx);
             }))
             .on_key_down(cx.listener(|panel, event: &KeyDownEvent, _window, cx| {
                 println!("Key pressed: {:?}", event.keystroke.key);
@@ -353,7 +376,9 @@ impl NodeGraphRenderer {
                                     // Only show tooltip if it's not already visible or pending
                                     if panel.hoverable_tooltip.is_none() && panel.pending_tooltip.is_none() {
                                         // Position tooltip near the node header, offset right and up from mouse
-                                        let tooltip_pos = Point::new(event.position.x.0 + 20.0, event.position.y.0 - 60.0);
+                                        // Convert to element coordinates first
+                                        let element_pos = Self::window_to_graph_element_pos(event.position);
+                                        let tooltip_pos = Point::new(element_pos.x.0 + 20.0, element_pos.y.0 - 60.0);
                                         panel.show_hoverable_tooltip(tooltip_content.clone(), tooltip_pos, window, cx);
                                     }
                                 }
@@ -377,8 +402,9 @@ impl NodeGraphRenderer {
                                     }
 
                                     // Start dragging
-                                    let graph_pos =
-                                        Self::screen_to_graph_pos(event.position, &panel.graph);
+                                    // Convert to element coordinates first
+                                    let element_pos = Self::window_to_graph_element_pos(event.position);
+                                    let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
                                     panel.start_drag(node_id.clone(), graph_pos, cx);
                                 })
                             }),
@@ -455,7 +481,9 @@ impl NodeGraphRenderer {
                     }
 
                     // Start dragging
-                    let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
+                    // Convert to element coordinates first
+                    let element_pos = Self::window_to_graph_element_pos(event.position);
+                    let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
                     panel.start_drag(node_id.clone(), graph_pos, cx);
                 })
             })
@@ -1290,6 +1318,32 @@ impl NodeGraphRenderer {
         Point::new(
             (graph_pos.x + graph.pan_offset.x) * graph.zoom_level,
             (graph_pos.y + graph.pan_offset.y) * graph.zoom_level,
+        )
+    }
+
+    /// Convert window-relative coordinates to graph element coordinates
+    /// For graph operations: clicking nodes, selection box, dragging, etc.
+    pub fn window_to_graph_element_pos(window_pos: Point<Pixels>) -> Point<Pixels> {
+        // Graph element is nested: toolbar + resizable panel borders + graph container padding
+        const Y_OFFSET: f32 = 135.0; // Was 110px, now 25px higher
+        const X_OFFSET: f32 = 8.0; // Was 0px, now 8px left
+
+        Point::new(
+            window_pos.x - px(X_OFFSET),
+            window_pos.y - px(Y_OFFSET),
+        )
+    }
+
+    /// Convert window-relative coordinates to panel coordinates
+    /// For UI elements positioned at panel level: menus, tooltips, etc.
+    pub fn window_to_panel_pos(window_pos: Point<Pixels>) -> Point<Pixels> {
+        // Panel is at window root, just account for minimal chrome
+        const Y_OFFSET: f32 = 135.0; // Match graph operations
+        const X_OFFSET: f32 = 8.0; // Match graph operations
+
+        Point::new(
+            window_pos.x - px(X_OFFSET),
+            window_pos.y - px(Y_OFFSET),
         )
     }
 

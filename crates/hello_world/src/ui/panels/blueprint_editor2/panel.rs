@@ -54,6 +54,8 @@ pub struct BlueprintEditorPanel {
     // Double-click tracking for creating reroute nodes on connections
     pub last_click_time: Option<std::time::Instant>,
     pub last_click_pos: Option<Point<f32>>,
+    // Graph element bounds for coordinate conversion (GPUI mouse events are window-relative)
+    pub graph_element_bounds: Option<gpui::Bounds<gpui::Pixels>>,
 }
 
 #[derive(Clone, Debug)]
@@ -358,6 +360,7 @@ impl BlueprintEditorPanel {
             pending_tooltip: None,
             last_click_time: None,
             last_click_pos: None,
+            graph_element_bounds: None, // Will be set during rendering
         }
     }
 
