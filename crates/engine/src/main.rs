@@ -5,7 +5,6 @@ use gpui_component::{
 
 mod compiler;
 mod assets;
-mod engine;
 mod ui;
 mod graph;
 
