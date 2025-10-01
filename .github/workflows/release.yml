@@ -259,7 +259,7 @@ jobs:
           pre-build = [
               "dpkg --add-architecture ${{ matrix.openssl_arch }}",
               "apt-get update",
-              "apt-get install -y libssl-dev:${{ matrix.openssl_arch }} libglib2.0-dev:${{ matrix.openssl_arch }} libgtk-3-dev:${{ matrix.openssl_arch }}"
+              "apt-get install -y libssl-dev:${{ matrix.openssl_arch }} libglib2.0-dev:${{ matrix.openssl_arch }} libgtk-3-dev:${{ matrix.openssl_arch }} libsoup-3.0-dev:${{ matrix.openssl_arch }} libjavascriptcoregtk-4.1-dev:${{ matrix.openssl_arch }} libxkbcommon-x11-0:${{ matrix.openssl_arch }} libxkbcommon-x11-dev:${{ matrix.openssl_arch }}"
           ]
           EOF
           cat Cross.toml
