@@ -220,7 +220,34 @@ impl DataResolver {
                     .ok_or_else(|| format!("Source node not found: {}", source_node_id))?;
 
                 // Check if source is a pure node - if so, inline it recursively
-                if self.is_pure_node(source_node_id) {
+                use crate::compiler::get_node_metadata;
+                let metadata = get_node_metadata();
+
+                eprintln!("[DATA_RESOLVER] Checking node '{}' (type: {})", source_node_id, source_node.node_type);
+
+                // Special case: reroute nodes are transparent passthroughs
+                if source_node.node_type == "reroute" {
+                    eprintln!("[DATA_RESOLVER] Reroute node detected - passing through to its input");
+                    // Reroutes can have different pin names, find the actual input pin
+                    let input_pin = source_node.inputs.keys().next()
+                        .ok_or_else(|| format!("Reroute node {} has no input pins", source_node_id))?;
+                    eprintln!("[DATA_RESOLVER] Reroute node input pin name: '{}'", input_pin);
+                    // Recursively resolve what's connected to the reroute's input
+                    return self.generate_input_expression(source_node_id, input_pin, graph);
+                }
+
+                let is_pure = if let Some(node_meta) = metadata.get(&source_node.node_type) {
+                    eprintln!("[DATA_RESOLVER] Found metadata for '{}': type={:?}", source_node.node_type, node_meta.node_type);
+                    node_meta.node_type == NodeType::Pure
+                } else {
+                    eprintln!("[DATA_RESOLVER] NO METADATA FOUND for node type '{}'", source_node.node_type);
+                    false
+                };
+
+                eprintln!("[DATA_RESOLVER] is_pure = {}", is_pure);
+
+                if is_pure {
+                    eprintln!("[DATA_RESOLVER] Inlining pure node '{}'", source_node.node_type);
                     self.generate_pure_node_expression(source_node, graph)
                 } else {
                     // Non-pure nodes (function nodes with return values) use variables
@@ -260,11 +287,6 @@ impl DataResolver {
 
             None => Err(format!("No data source for input: {}.{}", node_id, pin_name)),
         }
-    }
-
-    /// Check if a node is a pure node
-    fn is_pure_node(&self, node_id: &str) -> bool {
-        self.pure_evaluation_order.contains(&node_id.to_string())
     }
 
     /// Generate inlined expression for a pure node (recursive)

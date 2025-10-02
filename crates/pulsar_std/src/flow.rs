@@ -29,24 +29,24 @@ use crate::{blueprint, NodeTypes, exec_output};
 /// - `condition`: The boolean condition to evaluate
 ///
 /// # Execution Outputs
-/// - `A`: Executes if the condition is true
-/// - `B`: Executes if the condition is false
+/// - `True`: Executes if the condition is true
+/// - `False`: Executes if the condition is false
 ///
 /// # Example
-/// If `condition` is true, the code connected to `A` will run.
-/// If false, the code connected to `B` will run.
+/// If `condition` is true, the code connected to `True` will run.
+/// If false, the code connected to `False` will run.
 ///
 /// # Notes
 /// Use this node for conditional logic and flow control in your graph.
 /// # Branch
 /// Routes execution based on a boolean condition.
-/// If the condition is true, the A pin executes. Otherwise, the B pin executes.
+/// If the condition is true, the True pin executes. Otherwise, the False pin executes.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn branch(condition: bool) {
     if condition {
-        exec_output!("A");
+        exec_output!("True");
     } else {
-        exec_output!("B");
+        exec_output!("False");
     }
 }
 

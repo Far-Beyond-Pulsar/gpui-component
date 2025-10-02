@@ -215,25 +215,7 @@ pub fn print_formatted(label: String, value: i64) {
 // Flow Control - Control Flow Nodes
 // =============================================================================
 
-/// Branch execution based on a boolean condition.
-///
-/// # Inputs
-/// - `condition`: Boolean value to test
-///
-/// # Execution Outputs
-/// - `True`: Executes if condition is true
-/// - `False`: Executes if condition is false
-/// # Branch
-/// Routes execution based on a boolean condition.
-/// If the condition is true, the True pin executes. Otherwise, the False pin executes.
-#[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
-pub fn branch(condition: bool) {
-    if condition {
-        exec_output!("True");
-    } else {
-        exec_output!("False");
-    }
-}
+// NOTE: Flow control nodes like branch are now defined in the flow module
 
 /// Execute a sequence of nodes in order.
 ///

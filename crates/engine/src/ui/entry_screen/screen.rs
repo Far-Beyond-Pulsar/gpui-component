@@ -54,6 +54,9 @@ impl EntryScreen {
                     })
                 })
                 .collect(),
+
+            // TODO: Fetch templates from a config file (locally compiled into the engine, written to disk
+            //       if not exists and read from there, theis way it's also updatable from the web)
             EntryTab::Create => vec![
                 CardItem::BlankProject,
                 CardItem::Template(TemplateCard {
@@ -100,6 +103,8 @@ impl EntryScreen {
             .set_title("Select Pulsar Project Folder")
             .set_directory(std::env::current_dir().unwrap_or_default());
 
+        // TODO: For some reason not having the file freezes the UI, investigate later
+        //       (seems to be an issue with rfd + gpui)
         cx.spawn(async move |this, mut cx| {
             if let Some(folder) = file_dialog.pick_folder().await {
                 let path = folder.path().to_path_buf();

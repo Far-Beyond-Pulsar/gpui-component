@@ -21,7 +21,9 @@
       "Bash(done)",
       "Bash(python3:*)",
       "Bash(rustc:*)",
-      "Bash(./test_doc_collection.exe)"
+      "Bash(./test_doc_collection.exe)",
+      "Bash(timeout 120 cargo build -p pulsar_engine)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

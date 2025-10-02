@@ -73,18 +73,18 @@ impl VisitMut for ExecOutputReplacer {
     }
 
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
-        // First recurse into children
-        visit_mut::visit_expr_mut(self, expr);
-
-        // Then check if this is an exec_output!() call
+        // Check if this is an exec_output!() call FIRST, before recursing
         if let Expr::Macro(ExprMacro { mac, .. }) = expr {
             if mac.path.is_ident("exec_output") {
+                eprintln!("[AST_UTILS] Found exec_output!() macro");
                 // Extract the label from the macro call
                 if let Ok(label) = syn::parse2::<syn::LitStr>(mac.tokens.clone()) {
                     let label_value = label.value();
+                    eprintln!("[AST_UTILS] Exec output label: '{}'", label_value);
 
                     // Get replacement code for this label
                     if let Some(replacement_code) = self.replacements.get(&label_value) {
+                        eprintln!("[AST_UTILS] Found replacement for '{}': '{}'", label_value, replacement_code);
                         // Parse replacement code as a block
                         match syn::parse_str::<Expr>(replacement_code) {
                             Ok(replacement_expr) => {
@@ -111,6 +111,8 @@ impl VisitMut for ExecOutputReplacer {
                         }
                     } else {
                         // No replacement provided - use empty block
+                        eprintln!("[AST_UTILS] NO replacement found for label '{}'", label_value);
+                        eprintln!("[AST_UTILS] Available replacements: {:?}", self.replacements.keys().collect::<Vec<_>>());
                         *expr = Expr::Block(syn::ExprBlock {
                             attrs: vec![],
                             label: None,
@@ -118,8 +120,12 @@ impl VisitMut for ExecOutputReplacer {
                         });
                     }
                 }
+                return; // Don't recurse after replacing
             }
         }
+
+        // Recurse into children for non-exec_output expressions
+        visit_mut::visit_expr_mut(self, expr);
     }
 }
 

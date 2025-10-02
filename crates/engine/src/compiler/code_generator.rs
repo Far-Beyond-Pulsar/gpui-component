@@ -208,14 +208,19 @@ impl<'a> CodeGenerator<'a> {
 
         // Build exec_output replacements
         let mut exec_replacements = HashMap::new();
+        eprintln!("[CODEGEN] Building exec replacements for control flow node '{}'", node.node_type);
+        eprintln!("[CODEGEN] Node has {} exec outputs: {:?}", node_meta.exec_outputs.len(), node_meta.exec_outputs);
+
         for exec_pin in node_meta.exec_outputs.iter() {
             let connected = self.exec_routing.get_connected_nodes(&node.id, exec_pin);
+            eprintln!("[CODEGEN] Exec pin '{}' has {} connected nodes: {:?}", exec_pin, connected.len(), connected);
 
             let mut exec_code = String::new();
             let mut local_visited = self.visited.clone();
 
             for next_node_id in connected {
                 if let Some(next_node) = self.graph.nodes.get(next_node_id) {
+                    eprintln!("[CODEGEN] Generating code for connected node '{}'", next_node.node_type);
                     // Create a sub-generator with local visited set
                     let mut sub_gen = CodeGenerator {
                         metadata: self.metadata,
@@ -230,8 +235,11 @@ impl<'a> CodeGenerator<'a> {
                 }
             }
 
+            eprintln!("[CODEGEN] Exec pin '{}' replacement code: '{}'", exec_pin, exec_code.trim());
             exec_replacements.insert(exec_pin.to_string(), exec_code.trim().to_string());
         }
+
+        eprintln!("[CODEGEN] Final exec_replacements map: {:?}", exec_replacements);
 
         // Build parameter substitutions
         let mut param_substitutions = HashMap::new();
