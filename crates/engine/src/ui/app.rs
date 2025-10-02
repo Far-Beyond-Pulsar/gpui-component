@@ -16,7 +16,7 @@ use super::{
         LevelEditorPanel, ScriptEditorPanel, BlueprintEditorPanel,
         MaterialEditorPanel,
     },
-    project_selector::{ProjectSelector, ProjectSelected},
+    entry_screen::{EntryScreen, ProjectSelected},
     file_manager_drawer::{FileManagerDrawer, FileSelected, FileType},
 };
 
@@ -28,7 +28,7 @@ pub struct ToggleFileManager;
 pub struct PulsarApp {
     dock_area: Entity<DockArea>,
     project_path: Option<PathBuf>,
-    project_selector: Option<Entity<ProjectSelector>>,
+    entry_screen: Option<Entity<EntryScreen>>,
     file_manager_drawer: Entity<FileManagerDrawer>,
     drawer_open: bool,
     blueprint_editor: Entity<BlueprintEditorPanel>,
@@ -63,18 +63,18 @@ impl PulsarApp {
             dock.set_center(center_tabs, window, cx);
         });
 
-        // Create project selector
-        let project_selector = cx.new(|cx| ProjectSelector::new(window, cx));
-        cx.subscribe(&project_selector, Self::on_project_selected).detach();
+        // Create entry screen
+        let entry_screen = cx.new(|cx| EntryScreen::new(window, cx));
+        cx.subscribe(&entry_screen, Self::on_project_selected).detach();
 
         // Create file manager drawer
-        let file_manager_drawer = cx.new(|cx| FileManagerDrawer::new(None, cx));
+        let file_manager_drawer = cx.new(|cx| FileManagerDrawer::new(None, window, cx));
         cx.subscribe(&file_manager_drawer, Self::on_file_selected).detach();
 
         Self {
             dock_area,
             project_path: None,
-            project_selector: Some(project_selector),
+            entry_screen: Some(entry_screen),
             file_manager_drawer,
             drawer_open: false,
             blueprint_editor,
@@ -83,12 +83,12 @@ impl PulsarApp {
 
     fn on_project_selected(
         &mut self,
-        _selector: Entity<ProjectSelector>,
+        _selector: Entity<EntryScreen>,
         event: &ProjectSelected,
         cx: &mut Context<Self>,
     ) {
         self.project_path = Some(event.path.clone());
-        self.project_selector = None; // Hide selector once project is loaded
+        self.entry_screen = None; // Hide entry screen once project is loaded
 
         // Update file manager with project path
         self.file_manager_drawer.update(cx, |drawer, cx| {
@@ -135,9 +135,9 @@ impl PulsarApp {
 
 impl Render for PulsarApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Show project selector if no project is loaded
-        if let Some(selector) = &self.project_selector {
-            return selector.clone().into_any_element();
+        // Show entry screen if no project is loaded
+        if let Some(screen) = &self.entry_screen {
+            return screen.clone().into_any_element();
         }
 
         v_flex()

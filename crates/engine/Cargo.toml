@@ -28,6 +28,7 @@ regex = "1.10"
 chrono = { version = "0.4", features = ["serde"] }
 smol.workspace = true
 rfd = "0.15"
+git2 = "0.19"
 
 # New compiler dependencies
 syn = { version = "2.0", features = ["full", "parsing", "extra-traits", "visit", "visit-mut"] }
