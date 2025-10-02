@@ -11,6 +11,9 @@ mod graph;
 pub use assets::Assets;
 use serde::Deserialize;
 
+// Compile-time engine version from Cargo.toml
+pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 // pub mod renderer;
 pub mod themes;
 
