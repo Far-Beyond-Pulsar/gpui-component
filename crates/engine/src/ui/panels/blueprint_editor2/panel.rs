@@ -407,9 +407,6 @@ impl BlueprintEditorPanel {
         let class_path = self.current_class_path.as_ref()
             .ok_or("No class loaded - cannot compile")?;
 
-        // Compile the entire graph
-        let compiled_code = self.compile_to_rust()?;
-
         // Create events directory
         let events_dir = class_path.join("events");
         std::fs::create_dir_all(&events_dir)
@@ -424,30 +421,52 @@ impl BlueprintEditorPanel {
             return Err("No event nodes found in graph".to_string());
         }
 
-        // For now, write the full compiled code to a single file
-        // TODO: Split by event when compiler supports per-event compilation
-        let all_events_path = events_dir.join("mod.rs");
-        std::fs::write(&all_events_path, &compiled_code)
-            .map_err(|e| format!("Failed to write events/mod.rs: {}", e))?;
+        // Compile each event individually
+        let graph_description = self.convert_to_graph_description()?;
+        let metadata = crate::compiler::node_metadata::extract_node_metadata()
+            .map_err(|e| format!("Failed to get node metadata: {}", e))?;
 
-        println!("Compiled events to {}", all_events_path.display());
+        let data_resolver = crate::compiler::data_resolver::DataResolver::build(&graph_description, &metadata)?;
+        let exec_routing = crate::compiler::execution_routing::ExecutionRouting::build_from_graph(&graph_description);
 
-        // Also generate individual event files for clarity
-        for event_node in event_nodes {
+        let mut mod_exports = Vec::new();
+
+        for event_node in &event_nodes {
+            // Find the graph node for this event
+            let graph_event = graph_description.nodes.values()
+                .find(|n| n.id == event_node.id)
+                .ok_or(format!("Event node {} not found in graph", event_node.id))?;
+
+            // Generate code for this specific event
+            let mut generator = crate::compiler::code_generator::CodeGenerator::new(
+                &metadata,
+                &data_resolver,
+                &exec_routing,
+                &graph_description,
+            );
+
+            let event_code = generator.generate_event_function(graph_event)?;
+
+            // Write to individual file
             let event_name = event_node.definition_id.to_lowercase();
             let event_file = events_dir.join(format!("{}.rs", event_name));
 
-            // For now, just create placeholder files
-            // TODO: Extract individual event code when compiler supports it
-            let placeholder = format!(
-                "// Event: {}\n// This will be auto-generated from the blueprint\n\npub fn {}() {{\n    // TODO: Generate from blueprint\n}}\n",
-                event_node.title,
-                event_name
-            );
-
-            std::fs::write(&event_file, placeholder)
+            std::fs::write(&event_file, &event_code)
                 .map_err(|e| format!("Failed to write {}: {}", event_file.display(), e))?;
+
+            mod_exports.push(event_name.clone());
+            println!("Compiled event '{}' to {}", event_node.title, event_file.display());
         }
+
+        // Create mod.rs that re-exports all events
+        let mod_content = mod_exports.iter()
+            .map(|name| format!("pub mod {};\npub use {}::*;", name, name))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let mod_path = events_dir.join("mod.rs");
+        std::fs::write(&mod_path, mod_content)
+            .map_err(|e| format!("Failed to write mod.rs: {}", e))?;
 
         Ok(())
     }

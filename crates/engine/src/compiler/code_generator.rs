@@ -74,7 +74,11 @@ impl<'a> CodeGenerator<'a> {
             }
         }
 
-        Ok(format!("pub fn {}() {{\n{}}}\n", fn_name, body))
+        // Add imports and function definition
+        Ok(format!(
+            "use pulsar_std::*;\n\npub fn {}() {{\n{}}}\n",
+            fn_name, body
+        ))
     }
 
     /// Generate execution chain starting from a node
