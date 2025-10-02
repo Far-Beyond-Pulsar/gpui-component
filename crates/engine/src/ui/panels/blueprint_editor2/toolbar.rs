@@ -94,10 +94,15 @@ impl ToolbarRenderer {
                     .icon(IconName::Check)
                     .tooltip("Save Blueprint (Ctrl+S)")
                     .on_click(cx.listener(|panel, _, _window, _cx| {
-                        if let Err(e) = panel.save_blueprint("blueprint.json") {
-                            eprintln!("Failed to save blueprint: {}", e);
+                        if let Some(class_path) = &panel.current_class_path {
+                            let save_path = class_path.join("graph_save.json");
+                            if let Err(e) = panel.save_blueprint(save_path.to_str().unwrap()) {
+                                eprintln!("Failed to save blueprint: {}", e);
+                            } else {
+                                println!("Blueprint saved to {}", save_path.display());
+                            }
                         } else {
-                            println!("Blueprint saved to blueprint.json");
+                            eprintln!("No class loaded - cannot save");
                         }
                     }))
             )
@@ -118,18 +123,10 @@ impl ToolbarRenderer {
                     .icon(IconName::ChevronRight)
                     .tooltip("Compile to Rust (Ctrl+B)")
                     .on_click(cx.listener(|panel, _, _window, _cx| {
-                        match panel.compile_to_rust() {
-                            Ok(rust_code) => {
-                                if let Err(e) = std::fs::write("compiled_blueprint.rs", &rust_code) {
-                                    eprintln!("Failed to write compiled code: {}", e);
-                                } else {
-                                    println!("Blueprint compiled to compiled_blueprint.rs");
-                                    println!("Generated code:\n{}", rust_code);
-                                }
-                            }
-                            Err(e) => {
-                                eprintln!("Compilation failed: {}", e);
-                            }
+                        if let Err(e) = panel.compile_to_class_directory() {
+                            eprintln!("Compilation failed: {}", e);
+                        } else {
+                            println!("Blueprint compiled successfully to class directory");
                         }
                     }))
             )

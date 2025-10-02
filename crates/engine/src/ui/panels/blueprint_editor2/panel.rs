@@ -28,6 +28,8 @@ pub struct BlueprintEditorPanel {
     focus_handle: FocusHandle,
     pub graph: BlueprintGraph,
     resizable_state: Entity<ResizableState>,
+    // Current class path (for saving/compiling)
+    pub current_class_path: Option<std::path::PathBuf>,
     // Drag state
     pub dragging_node: Option<String>,
     pub drag_offset: Point<f32>,
@@ -348,6 +350,7 @@ impl BlueprintEditorPanel {
             focus_handle: cx.focus_handle(),
             graph,
             resizable_state,
+            current_class_path: None,
             dragging_node: None,
             drag_offset: Point::new(0.0, 0.0),
             initial_drag_positions: std::collections::HashMap::new(),
@@ -397,6 +400,56 @@ impl BlueprintEditorPanel {
 
         // Use new macro-based compiler
         crate::compiler::compile_graph(&graph_description)
+    }
+
+    /// Compile and save events to class directory structure
+    pub fn compile_to_class_directory(&self) -> Result<(), String> {
+        let class_path = self.current_class_path.as_ref()
+            .ok_or("No class loaded - cannot compile")?;
+
+        // Compile the entire graph
+        let compiled_code = self.compile_to_rust()?;
+
+        // Create events directory
+        let events_dir = class_path.join("events");
+        std::fs::create_dir_all(&events_dir)
+            .map_err(|e| format!("Failed to create events directory: {}", e))?;
+
+        // Find all event nodes in the graph
+        let event_nodes: Vec<_> = self.graph.nodes.iter()
+            .filter(|node| node.node_type == super::NodeType::Event)
+            .collect();
+
+        if event_nodes.is_empty() {
+            return Err("No event nodes found in graph".to_string());
+        }
+
+        // For now, write the full compiled code to a single file
+        // TODO: Split by event when compiler supports per-event compilation
+        let all_events_path = events_dir.join("mod.rs");
+        std::fs::write(&all_events_path, &compiled_code)
+            .map_err(|e| format!("Failed to write events/mod.rs: {}", e))?;
+
+        println!("Compiled events to {}", all_events_path.display());
+
+        // Also generate individual event files for clarity
+        for event_node in event_nodes {
+            let event_name = event_node.definition_id.to_lowercase();
+            let event_file = events_dir.join(format!("{}.rs", event_name));
+
+            // For now, just create placeholder files
+            // TODO: Extract individual event code when compiler supports it
+            let placeholder = format!(
+                "// Event: {}\n// This will be auto-generated from the blueprint\n\npub fn {}() {{\n    // TODO: Generate from blueprint\n}}\n",
+                event_node.title,
+                event_name
+            );
+
+            std::fs::write(&event_file, placeholder)
+                .map_err(|e| format!("Failed to write {}: {}", event_file.display(), e))?;
+        }
+
+        Ok(())
     }
 
     /// Convert blueprint graph to graph description format
@@ -499,6 +552,13 @@ impl BlueprintEditorPanel {
 
         // Convert back to blueprint format
         self.graph = self.convert_from_graph_description(&graph_description)?;
+
+        // Set current_class_path to the parent directory of the loaded file
+        let path = std::path::Path::new(file_path);
+        if let Some(parent) = path.parent() {
+            self.current_class_path = Some(parent.to_path_buf());
+        }
+
         cx.notify();
 
         Ok(())

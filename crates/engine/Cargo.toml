@@ -27,6 +27,7 @@ dashmap = "6.1.0"
 regex = "1.10"
 chrono = { version = "0.4", features = ["serde"] }
 smol.workspace = true
+rfd = "0.15"
 
 # New compiler dependencies
 syn = { version = "2.0", features = ["full", "parsing", "extra-traits", "visit", "visit-mut"] }

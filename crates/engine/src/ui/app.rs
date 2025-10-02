@@ -1,9 +1,13 @@
 use gpui::*;
 use gpui_component::{
     dock::{DockArea, DockItem, Panel, PanelEvent},
-    v_flex, h_flex, ActiveTheme as _, StyledExt,
+    button::{Button, ButtonVariant, ButtonVariants as _},
+    v_flex, h_flex, ActiveTheme as _, Icon, IconName, Placement, StyledExt,
 };
 use std::sync::Arc;
+use std::path::PathBuf;
+use serde::Deserialize;
+use schemars::JsonSchema;
 
 use super::{
     editors::EditorType,
@@ -12,10 +16,22 @@ use super::{
         LevelEditorPanel, ScriptEditorPanel, BlueprintEditorPanel,
         MaterialEditorPanel,
     },
+    project_selector::{ProjectSelector, ProjectSelected},
+    file_manager_drawer::{FileManagerDrawer, FileSelected, FileType},
 };
+
+// Action to toggle the file manager drawer
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = pulsar_app)]
+pub struct ToggleFileManager;
 
 pub struct PulsarApp {
     dock_area: Entity<DockArea>,
+    project_path: Option<PathBuf>,
+    project_selector: Option<Entity<ProjectSelector>>,
+    file_manager_drawer: Entity<FileManagerDrawer>,
+    drawer_open: bool,
+    blueprint_editor: Entity<BlueprintEditorPanel>,
 }
 
 impl PulsarApp {
@@ -32,9 +48,9 @@ impl PulsarApp {
         let weak_dock = dock_area.downgrade();
         let center_tabs = DockItem::tabs(
             vec![
-                Arc::new(level_editor),
+                Arc::new(level_editor.clone()),
                 Arc::new(script_editor),
-                Arc::new(blueprint_editor),
+                Arc::new(blueprint_editor.clone()),
                 Arc::new(material_editor),
             ],
             Some(0),
@@ -47,15 +63,87 @@ impl PulsarApp {
             dock.set_center(center_tabs, window, cx);
         });
 
-        Self { dock_area }
+        // Create project selector
+        let project_selector = cx.new(|cx| ProjectSelector::new(window, cx));
+        cx.subscribe(&project_selector, Self::on_project_selected).detach();
+
+        // Create file manager drawer
+        let file_manager_drawer = cx.new(|cx| FileManagerDrawer::new(None));
+        cx.subscribe(&file_manager_drawer, Self::on_file_selected).detach();
+
+        Self {
+            dock_area,
+            project_path: None,
+            project_selector: Some(project_selector),
+            file_manager_drawer,
+            drawer_open: false,
+            blueprint_editor,
+        }
+    }
+
+    fn on_project_selected(
+        &mut self,
+        _selector: Entity<ProjectSelector>,
+        event: &ProjectSelected,
+        cx: &mut Context<Self>,
+    ) {
+        self.project_path = Some(event.path.clone());
+        self.project_selector = None; // Hide selector once project is loaded
+
+        // Update file manager with project path
+        self.file_manager_drawer.update(cx, |drawer, cx| {
+            drawer.set_project_path(event.path.clone(), cx);
+        });
+
+        cx.notify();
+    }
+
+    fn on_file_selected(
+        &mut self,
+        _drawer: Entity<FileManagerDrawer>,
+        event: &FileSelected,
+        cx: &mut Context<Self>,
+    ) {
+        match event.file_type {
+            FileType::Class => {
+                // Load the class's graph_save.json into the blueprint editor
+                let graph_save_path = event.path.join("graph_save.json");
+                if graph_save_path.exists() {
+                    self.blueprint_editor.update(cx, |editor, cx| {
+                        if let Err(e) = editor.load_blueprint(graph_save_path.to_str().unwrap(), cx) {
+                            eprintln!("Failed to load blueprint: {}", e);
+                        }
+                    });
+                    // Close the drawer after opening a file
+                    self.drawer_open = false;
+                    cx.notify();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn toggle_drawer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        self.drawer_open = !self.drawer_open;
+        cx.notify();
+    }
+
+    fn on_toggle_file_manager(&mut self, _action: &ToggleFileManager, window: &mut Window, cx: &mut Context<Self>) {
+        self.toggle_drawer(window, cx);
     }
 }
 
 impl Render for PulsarApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Show project selector if no project is loaded
+        if let Some(selector) = &self.project_selector {
+            return selector.clone().into_any_element();
+        }
+
         v_flex()
             .size_full()
             .bg(cx.theme().background)
+            .on_action(cx.listener(Self::on_toggle_file_manager))
             .child(
                 // Menu bar
                 {
@@ -67,8 +155,51 @@ impl Render for PulsarApp {
                 // Main dock area
                 div()
                     .flex_1()
+                    .relative()
                     .child(self.dock_area.clone())
             )
+            .children(if self.drawer_open {
+                Some(
+                    div()
+                        .w_full()
+                        .h(px(300.))
+                        .child(self.file_manager_drawer.clone())
+                )
+            } else {
+                None
+            })
+            .child(
+                // Footer with drawer toggle
+                h_flex()
+                    .w_full()
+                    .h(px(32.))
+                    .px_2()
+                    .items_center()
+                    .justify_between()
+                    .bg(cx.theme().sidebar)
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .child(
+                        // Left side - drawer toggle button
+                        Button::new("toggle-drawer")
+                            .ghost()
+                            .icon(if self.drawer_open { IconName::ChevronDown } else { IconName::ChevronUp })
+                            .label("Project Files")
+                            .on_click(cx.listener(|app, _, window, cx| {
+                                app.toggle_drawer(window, cx);
+                            }))
+                    )
+                    .child(
+                        // Right side - project path
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .children(self.project_path.as_ref().map(|path| {
+                                path.display().to_string()
+                            }))
+                    )
+            )
+            .into_any_element()
     }
 }
 
