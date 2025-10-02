@@ -25,7 +25,8 @@
       "Bash(timeout 120 cargo build -p pulsar_engine)",
       "Bash(cat:*)",
       "Read(//c/Users/redst/.cargo/git/checkouts/**)",
-      "Bash(timeout 90 cargo build -p pulsar_engine)"
+      "Bash(timeout 90 cargo build -p pulsar_engine)",
+      "Read(//c//**)"
     ],
     "deny": [],
     "ask": []

@@ -1,4 +1,4 @@
-use gpui::*;
+use gpui::{prelude::*, Axis, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex,
@@ -34,21 +34,28 @@ pub fn render_sidebar<V: 'static>(
         .shadow(shadow)
         .child(render_sidebar_header(on_close, cx))
         .child(
-            v_flex()
+            div()
                 .flex_1()
                 .overflow_hidden()
-                .px_6()
-                .pb_6()
-                .gap_6()
-                .child(render_sidebar_preview(card, cx))
-                .child(render_sidebar_info(card, cx))
-                .child(render_sidebar_form(
-                    project_name_input,
-                    project_path_input,
-                    on_browse,
-                    cx,
-                ))
-                .child(render_sidebar_action(card, on_action, cx))
+                .child(
+                    v_flex()
+                        .scrollable(Axis::Vertical)
+                        .child(
+                            v_flex()
+                                .px_6()
+                                .pb_6()
+                                .gap_6()
+                                .child(render_sidebar_preview(card, cx))
+                                .child(render_sidebar_info(card, cx))
+                                .child(render_sidebar_form(
+                                    project_name_input,
+                                    project_path_input,
+                                    on_browse,
+                                    cx,
+                                ))
+                                .child(render_sidebar_action(card, on_action, cx))
+                        )
+                )
         )
 }
 

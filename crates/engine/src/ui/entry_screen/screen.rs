@@ -1,4 +1,4 @@
-use gpui::{prelude::*, Axis, Animation, AnimationExt as _, *};
+use gpui::{prelude::*, Axis, Animation, AnimationExt as _, StatefulInteractiveElement as _, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex,
@@ -446,7 +446,7 @@ impl EntryScreen {
     }
 
     fn render_nav_sidebar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
+        div()
             .size_full()
             .bg(cx.theme().sidebar)
             .overflow_hidden()
@@ -702,12 +702,11 @@ impl Render for EntryScreen {
                             )
                     )
                     .child(
-                        v_flex()
+                        div()
                             .id("entry-screen-content")
                             .flex_1()
                             .overflow_hidden()
                             .child(
-                                // Scrollable content area
                                 v_flex()
                                     .scrollable(Axis::Vertical)
                                     .child(
