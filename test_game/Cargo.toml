@@ -1,0 +1,15 @@
+Pulsar-Native\test_game\Cargo.toml
+[package]
+name = "mygame"
+version = "0.1.0"
+authors = ["Your Name <your.email@example.com>"]
+edition = "2021"
+description = "A brief description."
+license = "MIT"
+repository = ""
+keywords = ["game", "engine", "pulsar-native"]
+categories = ["game-engines", "multimedia", "graphics"]
+readme = "README.md"
+
+[dependencies]
+workspace.pulsar_engine

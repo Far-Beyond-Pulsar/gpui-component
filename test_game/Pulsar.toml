@@ -1,0 +1,68 @@
+# pulsar.toml
+# Comprehensive, well-documented baseline configuration for a Pulsar-Native game project.
+# Adjust values as needed for your project.
+
+[project]
+name = "MyGame"                       # Name of your game project
+version = "0.1.0"                     # Project version
+author = "Your Name"                  # Author or studio name
+description = "A brief description."  # Short description of your game
+company = "Your Studio Name"          # Studio or company name
+license = "MIT"                       # License type (MIT, GPL, Proprietary, etc.)
+
+[window]
+title = "My Game Window"              # Window title
+width = 1280                          # Window width in pixels
+height = 720                          # Window height in pixels
+fullscreen = false                    # Start in fullscreen mode
+vsync = true                          # Enable vertical sync
+resizable = true                      # Allow window resizing
+icon = "assets/icon.png"              # Path to window icon
+
+[graphics]
+renderer = "OpenGL"                   # Options: OpenGL, Vulkan, DirectX, Metal, Software
+msaa_samples = 4                      # Multisample anti-aliasing (0 = off)
+max_fps = 144                         # Maximum frames per second (0 = unlimited)
+texture_filtering = "Anisotropic"     # Options: Nearest, Linear, Anisotropic
+shadow_quality = "High"               # Options: Low, Medium, High, Ultra
+
+[audio]
+master_volume = 1.0                   # Range: 0.0 - 1.0
+music_volume = 0.8
+sfx_volume = 0.8
+enable_3d_audio = true
+
+[input]
+mouse_sensitivity = 1.0
+invert_y_axis = false
+
+[input.key_bindings]
+move_forward = "W"
+move_backward = "S"
+move_left = "A"
+move_right = "D"
+jump = "Space"
+crouch = "Ctrl"
+shoot = "Mouse1"
+aim = "Mouse2"
+
+[paths]
+assets = "assets/"
+shaders = "shaders/"
+scripts = "classes/"
+savegames = "saves/"
+plugins = "plugins/"
+logs = "logs/"
+
+[build]
+debug = true                         # Enable debug mode
+optimize = false                     # Enable optimizations
+hot_reload = true                    # Enable hot-reloading of assets/scripts
+
+[plugins]
+enabled = ["Physics", "AI", "Networking", "UI"]   # List of enabled plugins
+disabled = ["VR"]                                 # List of disabled plugins
+
+[custom]
+# Add any custom engine or project-specific settings below
+experimental_features = false        # Example: enable experimental features
