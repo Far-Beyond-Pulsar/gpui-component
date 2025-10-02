@@ -4,21 +4,20 @@
 //!
 //! ## Macros
 //!
-//! - `#[blueprint]` - Mark a function as a blueprint node
+//! - `#[blueprint]` - Mark a function as a blueprint node and auto-register it
 //! - `exec_output!()` - Define execution output points in control flow nodes
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, ItemFn};
+use syn::{parse_macro_input, ItemFn, Pat, ReturnType, Type, FnArg, Stmt, Expr};
 
-/// Mark a function as a blueprint node.
+/// Mark a function as a blueprint node and automatically register it.
 ///
 /// # Attributes
 ///
-/// - `type`: Node type - `NodeTypes::pure`, `NodeTypes::fn`, or `NodeTypes::control_flow`
+/// - `type`: Node type - `NodeTypes::pure`, `NodeTypes::fn_`, `NodeTypes::control_flow`, or `NodeTypes::event`
 /// - `color`: Optional hex color for the node in the UI (e.g., `"#ff0000"`)
 /// - `category`: Optional category for grouping nodes (e.g., `"Math"`)
-/// - `docs_path`: Optional path to external documentation
 ///
 /// # Examples
 ///
@@ -32,7 +31,7 @@ use syn::{parse_macro_input, ItemFn};
 ///
 /// ## Function Node
 /// ```ignore
-/// #[blueprint(type: NodeTypes::fn, category: "Debug")]
+/// #[blueprint(type: NodeTypes::fn_, category: "Debug")]
 /// fn print_string(message: String) {
 ///     println!("[DEBUG] {}", message);
 /// }
@@ -50,21 +49,196 @@ use syn::{parse_macro_input, ItemFn};
 /// }
 /// ```
 #[proc_macro_attribute]
-pub fn blueprint(_args: TokenStream, input: TokenStream) -> TokenStream {
+pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as ItemFn);
+    let args_str = args.to_string();
 
-    // Note: In syn 2.0, we would parse args differently, but since the compiler
-    // will parse the source code directly to extract metadata, we don't need to
-    // parse the attributes here. Just pass through the function.
+    // Extract function information
+    let fn_name = &input.sig.ident;
+    let fn_name_str = fn_name.to_string();
 
-    // The macro simply passes through the function unchanged
-    // The compiler will parse the source code to extract metadata
+    // Parse node type
+    let node_type_str = if args_str.contains("NodeTypes :: pure") || args_str.contains("NodeTypes::pure") {
+        "Pure"
+    } else if args_str.contains("NodeTypes :: fn_") || args_str.contains("NodeTypes::fn_") {
+        "Function"
+    } else if args_str.contains("NodeTypes :: control_flow") || args_str.contains("NodeTypes::control_flow") {
+        "ControlFlow"
+    } else if args_str.contains("NodeTypes :: event") || args_str.contains("NodeTypes::event") {
+        "Event"
+    } else {
+        "Function" // Default
+    };
+
+    // Extract category
+    let category = extract_string_value(&args_str, "category");
+    let category_str = category.unwrap_or_else(|| "General".to_string());
+
+    // Extract color
+    let color = extract_string_value(&args_str, "color");
+    let color_opt = if let Some(c) = color {
+        quote! { Some(#c) }
+    } else {
+        quote! { None }
+    };
+
+    // Extract parameters
+    let params: Vec<_> = input.sig.inputs.iter().filter_map(|arg| {
+        if let FnArg::Typed(pat_type) = arg {
+            if let Pat::Ident(ident) = &*pat_type.pat {
+                let param_name = ident.ident.to_string();
+                let param_type = quote!(#pat_type.ty).to_string();
+                return Some(quote! {
+                    crate::NodeParameter {
+                        name: #param_name,
+                        ty: #param_type,
+                    }
+                });
+            }
+        }
+        None
+    }).collect();
+
+    // Extract return type
+    let return_type = match &input.sig.output {
+        ReturnType::Default => quote! { None },
+        ReturnType::Type(_, ty) => {
+            let ty_str = quote!(#ty).to_string();
+            quote! { Some(#ty_str) }
+        }
+    };
+
+    // Find exec_output calls
+    let exec_outputs = find_exec_output_labels(&input);
+    let exec_outputs_array = if exec_outputs.is_empty() {
+        quote! { &[] }
+    } else {
+        quote! { &[#(#exec_outputs),*] }
+    };
+
+    // Determine exec inputs based on node type
+    let exec_inputs = match node_type_str {
+        "Pure" | "Event" => quote! { &[] },
+        _ => quote! { &["exec"] },
+    };
+
+    // Build documentation from bp_doc attributes
+    let docs: Vec<String> = input.attrs.iter()
+        .filter_map(|attr| {
+            if attr.path().is_ident("bp_doc") {
+                attr.parse_args::<syn::LitStr>().ok().map(|lit| lit.value())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let docs_array = if docs.is_empty() {
+        quote! { &[] }
+    } else {
+        quote! { &[#(#docs),*] }
+    };
+
+    // Convert function source to string for storage
+    let fn_source = quote!(#input).to_string();
+
+    // Generate the registration const
+    let registry_ident = syn::Ident::new(
+        &format!("__BLUEPRINT_NODE__{}", fn_name_str.to_uppercase()),
+        fn_name.span()
+    );
+
+    let node_type_ident = syn::Ident::new(node_type_str, fn_name.span());
+
     let expanded = quote! {
         #[allow(dead_code)]
         #input
+
+        #[::linkme::distributed_slice(crate::BLUEPRINT_REGISTRY)]
+        #[linkme(crate = ::linkme)]
+        static #registry_ident: crate::NodeMetadata = crate::NodeMetadata {
+            name: #fn_name_str,
+            node_type: crate::NodeType::#node_type_ident,
+            params: &[#(#params),*],
+            return_type: #return_type,
+            exec_inputs: #exec_inputs,
+            exec_outputs: #exec_outputs_array,
+            function_source: #fn_source,
+            documentation: #docs_array,
+            category: #category_str,
+            color: #color_opt,
+        };
     };
 
     TokenStream::from(expanded)
+}
+
+/// Extract a string value from an attribute string like `category: "Math"`
+fn extract_string_value(attr_str: &str, key: &str) -> Option<String> {
+    if let Some(key_pos) = attr_str.find(key) {
+        if let Some(quote_start) = attr_str[key_pos..].find('"') {
+            let quote_start = key_pos + quote_start + 1;
+            if let Some(quote_end) = attr_str[quote_start..].find('"') {
+                return Some(attr_str[quote_start..quote_start + quote_end].to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Find all exec_output!() labels in a function
+fn find_exec_output_labels(func: &ItemFn) -> Vec<String> {
+    let mut labels = Vec::new();
+    find_exec_in_block(&func.block, &mut labels);
+
+    // Remove duplicates while preserving order
+    let mut seen = std::collections::HashSet::new();
+    labels.into_iter().filter(|l| seen.insert(l.clone())).collect()
+}
+
+fn find_exec_in_block(block: &syn::Block, labels: &mut Vec<String>) {
+    for stmt in &block.stmts {
+        match stmt {
+            Stmt::Expr(expr, _) => find_exec_in_expr(expr, labels),
+            Stmt::Macro(stmt_macro) => {
+                if stmt_macro.mac.path.is_ident("exec_output") {
+                    if let Ok(label) = syn::parse2::<syn::LitStr>(stmt_macro.mac.tokens.clone()) {
+                        labels.push(label.value());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn find_exec_in_expr(expr: &Expr, labels: &mut Vec<String>) {
+    match expr {
+        Expr::Macro(macro_expr) => {
+            if macro_expr.mac.path.is_ident("exec_output") {
+                if let Ok(label) = syn::parse2::<syn::LitStr>(macro_expr.mac.tokens.clone()) {
+                    labels.push(label.value());
+                }
+            }
+        }
+        Expr::Block(block_expr) => find_exec_in_block(&block_expr.block, labels),
+        Expr::If(if_expr) => {
+            find_exec_in_block(&if_expr.then_branch, labels);
+            if let Some((_, else_branch)) = &if_expr.else_branch {
+                find_exec_in_expr(else_branch, labels);
+            }
+        }
+        Expr::Match(match_expr) => {
+            for arm in &match_expr.arms {
+                find_exec_in_expr(&arm.body, labels);
+            }
+        }
+        Expr::Loop(loop_expr) => find_exec_in_block(&loop_expr.body, labels),
+        Expr::ForLoop(for_expr) => find_exec_in_block(&for_expr.body, labels),
+        Expr::While(while_expr) => find_exec_in_block(&while_expr.body, labels),
+        Expr::Unsafe(unsafe_expr) => find_exec_in_block(&unsafe_expr.block, labels),
+        _ => {}
+    }
 }
 
 /// Mark an execution output point in a control flow node.
@@ -88,15 +262,6 @@ pub fn blueprint(_args: TokenStream, input: TokenStream) -> TokenStream {
 ///     }
 /// }
 /// ```
-///
-/// # How it works
-///
-/// During compilation:
-/// 1. The compiler finds all `exec_output!()` calls in the function
-/// 2. For each call, it looks up which nodes are connected to that output pin
-/// 3. It replaces the `exec_output!()` with the generated code for those nodes
-///
-/// At runtime, this macro does nothing - it's purely a compile-time marker.
 #[proc_macro]
 pub fn exec_output(input: TokenStream) -> TokenStream {
     let _label = parse_macro_input!(input as syn::LitStr);
@@ -104,7 +269,6 @@ pub fn exec_output(input: TokenStream) -> TokenStream {
     // At runtime, this expands to nothing
     // The compiler will replace it during code generation
     let expanded = quote! {
-        // Execution output marker - replaced by compiler
         ()
     };
 
@@ -115,22 +279,7 @@ pub fn exec_output(input: TokenStream) -> TokenStream {
 ///
 /// This attribute is used to add rich documentation to nodes that will be
 /// displayed in the visual editor.
-///
-/// # Example
-///
-/// ```ignore
-/// #[bp_doc("# Add Node")]
-/// #[bp_doc("Adds two numbers together.")]
-/// #[blueprint(type: NodeTypes::pure)]
-/// fn add(a: i64, b: i64) -> i64 {
-///     a + b
-/// }
-/// ```
 #[proc_macro_attribute]
 pub fn bp_doc(_args: TokenStream, input: TokenStream) -> TokenStream {
-    // Just pass through - the compiler will parse this attribute from the source
     input
 }
-
-// Note: NodeTypes enum cannot be exported from proc-macro crate.
-// It should be defined in pulsar_std instead.

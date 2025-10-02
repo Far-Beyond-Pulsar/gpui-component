@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 pulsar_macros = { path = "../pulsar_macros" }
+linkme = "0.3"

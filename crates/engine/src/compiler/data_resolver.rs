@@ -281,7 +281,7 @@ impl DataResolver {
 
         // Recursively generate arguments
         let mut args = Vec::new();
-        for param in &node_meta.params {
+        for param in node_meta.params.iter() {
             let arg_expr = self.generate_input_expression(&node.id, &param.name, graph)?;
             args.push(arg_expr);
         }

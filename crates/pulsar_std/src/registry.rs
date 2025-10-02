@@ -1,0 +1,133 @@
+//! # Blueprint Node Registry
+//!
+//! Automatic registration system for blueprint nodes using compile-time collection.
+//!
+//! The `#[blueprint]` macro automatically adds nodes to the registry, which can then
+//! be queried by the engine to build the node library.
+
+use linkme::distributed_slice;
+
+/// Node type classification
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeType {
+    /// Pure function: no exec pins, only data flow
+    Pure,
+
+    /// Simple function: one exec in, one exec out
+    Function,
+
+    /// Control flow: one exec in, multiple exec outs via exec_output!()
+    ControlFlow,
+
+    /// Event: defines an entry point function (e.g., main, begin_play)
+    Event,
+}
+
+/// Parameter metadata
+#[derive(Debug, Clone)]
+pub struct NodeParameter {
+    pub name: &'static str,
+    pub ty: &'static str,
+}
+
+/// Complete metadata about a blueprint node
+#[derive(Debug, Clone)]
+pub struct NodeMetadata {
+    /// Name of the function
+    pub name: &'static str,
+
+    /// Type of node (pure, fn, control_flow, event)
+    pub node_type: NodeType,
+
+    /// Function parameters (inputs)
+    pub params: &'static [NodeParameter],
+
+    /// Return type (if any)
+    pub return_type: Option<&'static str>,
+
+    /// Execution input pins
+    pub exec_inputs: &'static [&'static str],
+
+    /// Execution output pins
+    pub exec_outputs: &'static [&'static str],
+
+    /// The complete function source code
+    pub function_source: &'static str,
+
+    /// Documentation from #[bp_doc] attributes
+    pub documentation: &'static [&'static str],
+
+    /// Category for grouping nodes
+    pub category: &'static str,
+
+    /// Optional hex color for the node
+    pub color: Option<&'static str>,
+}
+
+/// Global registry of all blueprint nodes
+///
+/// This is automatically populated by the #[blueprint] macro using linkme's
+/// distributed slice feature. All nodes decorated with #[blueprint] are
+/// collected here at link time.
+#[distributed_slice]
+pub static BLUEPRINT_REGISTRY: [NodeMetadata] = [..];
+
+/// Get all registered blueprint nodes
+///
+/// This function returns a slice of all nodes that have been registered
+/// via the #[blueprint] macro across all modules.
+///
+/// # Example
+///
+/// ```ignore
+/// use pulsar_std::get_all_nodes;
+///
+/// let nodes = get_all_nodes();
+/// for node in nodes {
+///     println!("Node: {} (category: {})", node.name, node.category);
+/// }
+/// ```
+pub fn get_all_nodes() -> &'static [NodeMetadata] {
+    &BLUEPRINT_REGISTRY
+}
+
+/// Get nodes filtered by category
+pub fn get_nodes_by_category(category: &str) -> Vec<&'static NodeMetadata> {
+    BLUEPRINT_REGISTRY
+        .iter()
+        .filter(|node| node.category == category)
+        .collect()
+}
+
+/// Get a specific node by name
+pub fn get_node_by_name(name: &str) -> Option<&'static NodeMetadata> {
+    BLUEPRINT_REGISTRY.iter().find(|node| node.name == name)
+}
+
+/// Get all unique categories
+pub fn get_all_categories() -> Vec<&'static str> {
+    let mut categories: Vec<_> = BLUEPRINT_REGISTRY
+        .iter()
+        .map(|node| node.category)
+        .collect();
+    categories.sort_unstable();
+    categories.dedup();
+    categories
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_registry_not_empty() {
+        let nodes = get_all_nodes();
+        assert!(!nodes.is_empty(), "Blueprint registry should contain nodes");
+    }
+
+    #[test]
+    fn test_get_categories() {
+        let categories = get_all_categories();
+        assert!(!categories.is_empty(), "Should have at least one category");
+    }
+}

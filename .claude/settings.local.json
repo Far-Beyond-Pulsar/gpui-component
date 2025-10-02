@@ -12,7 +12,9 @@
       "Bash(rg:*)",
       "Read(//c/Users/redst/.cargo/git/checkouts/zed-a70e2ad075855582/53b2f37/**)",
       "Bash(mkdir:*)",
-      "Bash(timeout 60 cargo build -p pulsar_engine)"
+      "Bash(timeout 60 cargo build -p pulsar_engine)",
+      "Bash(timeout 30 cargo check -p pulsar_std)",
+      "Bash(cargo test:*)"
     ],
     "deny": [],
     "ask": []

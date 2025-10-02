@@ -192,37 +192,37 @@ impl NodeDefinitions {
             let mut outputs = Vec::new();
 
             // Add execution inputs
-            for exec_pin in &node_meta.exec_inputs {
+            for exec_pin in node_meta.exec_inputs.iter() {
                 inputs.push(PinDefinition {
-                    id: exec_pin.clone(),
-                    name: exec_pin.clone(),
+                    id: exec_pin.to_string(),
+                    name: exec_pin.to_string(),
                     data_type: DataType::from_type_str("execution"),
                     pin_type: PinType::Input,
                 });
             }
 
             // Add regular inputs
-            for param in &node_meta.params {
+            for param in node_meta.params.iter() {
                 inputs.push(PinDefinition {
-                    id: param.name.clone(),
-                    name: param.name.clone(),
+                    id: param.name.to_string(),
+                    name: param.name.to_string(),
                     data_type: DataType::from_type_str(&param.ty),
                     pin_type: PinType::Input,
                 });
             }
 
             // Add execution outputs
-            for exec_pin in &node_meta.exec_outputs {
+            for exec_pin in node_meta.exec_outputs.iter() {
                 outputs.push(PinDefinition {
-                    id: exec_pin.clone(),
-                    name: exec_pin.clone(),
+                    id: exec_pin.to_string(),
+                    name: exec_pin.to_string(),
                     data_type: DataType::from_type_str("execution"),
                     pin_type: PinType::Output,
                 });
             }
 
             // Add regular outputs (return type)
-            if let Some(ref return_type) = node_meta.return_type {
+            if let Some(return_type) = node_meta.return_type {
                 outputs.push(PinDefinition {
                     id: "result".to_string(),
                     name: "result".to_string(),
@@ -231,18 +231,18 @@ impl NodeDefinitions {
                 });
             }
 
-            let category = node_meta.category.clone().unwrap_or_else(|| "General".to_string());
+            let category = node_meta.category.to_string();
             let description = node_meta.documentation.join("\n");
 
             let static_def = NodeDefinition {
                 id: id.clone(),
-                name: node_meta.name.clone(),
+                name: node_meta.name.to_string(),
                 icon: "⚙️".to_string(), // Default icon
                 description,
                 inputs,
                 outputs,
                 properties: std::collections::HashMap::new(),
-                color: node_meta.color.clone(),
+                color: node_meta.color.map(|s| s.to_string()),
             };
 
             categories_map

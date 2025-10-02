@@ -12,6 +12,10 @@
 //! - **Flow**: Execution flow control (branch, sequence)
 //! - **Events**: Entry points (begin_play, on_tick)
 
+// Registry infrastructure
+mod registry;
+pub use registry::*;
+
 // Re-export macros
 pub use pulsar_macros::*;
 

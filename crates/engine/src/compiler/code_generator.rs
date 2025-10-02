@@ -208,7 +208,7 @@ impl<'a> CodeGenerator<'a> {
 
         // Build exec_output replacements
         let mut exec_replacements = HashMap::new();
-        for exec_pin in &node_meta.exec_outputs {
+        for exec_pin in node_meta.exec_outputs.iter() {
             let connected = self.exec_routing.get_connected_nodes(&node.id, exec_pin);
 
             let mut exec_code = String::new();
@@ -230,15 +230,15 @@ impl<'a> CodeGenerator<'a> {
                 }
             }
 
-            exec_replacements.insert(exec_pin.clone(), exec_code.trim().to_string());
+            exec_replacements.insert(exec_pin.to_string(), exec_code.trim().to_string());
         }
 
         // Build parameter substitutions
         let mut param_substitutions = HashMap::new();
-        for param in &node_meta.params {
+        for param in node_meta.params.iter() {
             let value = self.data_resolver
                 .generate_input_expression(&node.id, &param.name, self.graph)?;
-            param_substitutions.insert(param.name.clone(), value);
+            param_substitutions.insert(param.name.to_string(), value);
         }
 
         // Inline the function with substitutions
@@ -266,7 +266,7 @@ impl<'a> CodeGenerator<'a> {
     ) -> Result<Vec<String>, String> {
         let mut args = Vec::new();
 
-        for param in &node_meta.params {
+        for param in node_meta.params.iter() {
             let value = self.data_resolver
                 .generate_input_expression(&node.id, &param.name, self.graph)?;
             args.push(value);
