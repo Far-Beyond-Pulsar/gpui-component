@@ -23,7 +23,9 @@
       "Bash(rustc:*)",
       "Bash(./test_doc_collection.exe)",
       "Bash(timeout 120 cargo build -p pulsar_engine)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Read(//c/Users/redst/.cargo/git/checkouts/**)",
+      "Bash(timeout 90 cargo build -p pulsar_engine)"
     ],
     "deny": [],
     "ask": []
