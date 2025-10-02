@@ -11,7 +11,7 @@
 //! - Type conversions (string to number, number to string, etc.)
 //! - String validation and formatting
 
-use crate::{blueprint, bp_doc, NodeTypes};
+use crate::{blueprint, NodeTypes};
 
 // =============================================================================
 // String Concatenation and Basic Operations
@@ -31,8 +31,8 @@ use crate::{blueprint, bp_doc, NodeTypes};
 ///
 /// # Notes
 /// The output is a simple concatenation. For more complex formatting, use the string_format function.
-#[bp_doc("# String Concat")]
-#[bp_doc("Joins two strings together.")]
+/// # String Concat
+/// Joins two strings together.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_concat(a: String, b: String) -> String {
     format!("{}{}", a, b)
@@ -53,8 +53,8 @@ pub fn string_concat(a: String, b: String) -> String {
 /// # Notes
 /// The length is the number of Unicode scalar values (not necessarily bytes).
 /// Use this function to check if a string is empty, limit input, or display character counts.
-#[bp_doc("# String Length")]
-#[bp_doc("Returns the number of characters in a string.")]
+/// # String Length
+/// Returns the number of characters in a string.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_length(text: String) -> usize {
     text.len()
@@ -74,8 +74,8 @@ pub fn string_length(text: String) -> usize {
 ///
 /// # Notes
 /// Use this function to validate required fields, check for missing data, or control flow based on string content.
-#[bp_doc("# String Is Empty")]
-#[bp_doc("Returns true if the string is empty.")]
+/// # String Is Empty
+/// Returns true if the string is empty.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_is_empty(text: String) -> bool {
     text.is_empty()
@@ -100,8 +100,8 @@ pub fn string_is_empty(text: String) -> bool {
 ///
 /// # Notes
 /// The search is case-sensitive and matches exact substrings. Use this function for basic string pattern checks.
-#[bp_doc("# String Contains")]
-#[bp_doc("Returns true if the string contains the specified substring.")]
+/// # String Contains
+/// Returns true if the string contains the specified substring.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_contains(text: String, substring: String) -> bool {
     text.contains(&substring)
@@ -122,8 +122,8 @@ pub fn string_contains(text: String, substring: String) -> bool {
 ///
 /// # Notes
 /// The check is case-sensitive.
-#[bp_doc("# String Starts With")]
-#[bp_doc("Returns true if the string starts with the specified prefix.")]
+/// # String Starts With
+/// Returns true if the string starts with the specified prefix.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_starts_with(text: String, prefix: String) -> bool {
     text.starts_with(&prefix)
@@ -144,8 +144,8 @@ pub fn string_starts_with(text: String, prefix: String) -> bool {
 ///
 /// # Notes
 /// The check is case-sensitive. Use this function for file extension checks, string validation, or pattern matching.
-#[bp_doc("# String Ends With")]
-#[bp_doc("Returns true if the string ends with the specified suffix.")]
+/// # String Ends With
+/// Returns true if the string ends with the specified suffix.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_ends_with(text: String, suffix: String) -> bool {
     text.ends_with(&suffix)
@@ -171,8 +171,8 @@ pub fn string_ends_with(text: String, suffix: String) -> bool {
 ///
 /// # Notes
 /// If the search substring is empty, the original string is returned unchanged.
-#[bp_doc("# String Replace")]
-#[bp_doc("Replaces all occurrences of a substring with another string.")]
+/// # String Replace
+/// Replaces all occurrences of a substring with another string.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_replace(text: String, from: String, to: String) -> String {
     text.replace(&from, &to)
@@ -194,8 +194,8 @@ pub fn string_replace(text: String, from: String, to: String) -> String {
 /// # Notes
 /// If start >= end, or indices are out of bounds, the result is an empty string.
 /// This function operates on byte indices, so be careful with multi-byte UTF-8 characters.
-#[bp_doc("# String Substring")]
-#[bp_doc("Extracts a portion of a string from start to end index.")]
+/// # String Substring
+/// Extracts a portion of a string from start to end index.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_substring(text: String, start: i64, end: i64) -> String {
     let start = start as usize;
@@ -222,8 +222,8 @@ pub fn string_substring(text: String, start: i64, end: i64) -> String {
 ///
 /// # Notes
 /// If count is negative, it is treated as zero. Use this function for string multiplication or pattern generation.
-#[bp_doc("# String Repeat")]
-#[bp_doc("Repeats a string a specified number of times.")]
+/// # String Repeat
+/// Repeats a string a specified number of times.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_repeat(text: String, count: i64) -> String {
     text.repeat(count.max(0) as usize)
@@ -242,8 +242,8 @@ pub fn string_repeat(text: String, count: i64) -> String {
 ///
 /// # Notes
 /// Whitespace includes spaces, tabs, and newlines.
-#[bp_doc("# String Trim")]
-#[bp_doc("Removes leading and trailing whitespace from a string.")]
+/// # String Trim
+/// Removes leading and trailing whitespace from a string.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_trim(text: String) -> String {
     text.trim().to_string()
@@ -266,8 +266,8 @@ pub fn string_trim(text: String) -> String {
 ///
 /// # Notes
 /// Non-alphabetic characters are not affected.
-#[bp_doc("# String Uppercase")]
-#[bp_doc("Converts a string to uppercase.")]
+/// # String Uppercase
+/// Converts a string to uppercase.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_uppercase(text: String) -> String {
     text.to_uppercase()
@@ -286,8 +286,8 @@ pub fn string_uppercase(text: String) -> String {
 ///
 /// # Notes
 /// The conversion uses Unicode-aware lowercasing. Non-alphabetic characters are unaffected.
-#[bp_doc("# String Lowercase")]
-#[bp_doc("Converts a string to lowercase.")]
+/// # String Lowercase
+/// Converts a string to lowercase.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_lowercase(text: String) -> String {
     text.to_lowercase()
@@ -313,8 +313,8 @@ pub fn string_lowercase(text: String) -> String {
 /// # Notes
 /// If the delimiter is not found, the output will be a single-element vector containing the original string.
 /// If the delimiter is an empty string, the split behavior follows Rust's default (splits at each character boundary).
-#[bp_doc("# String Split")]
-#[bp_doc("Splits a string into a vector of substrings by a delimiter.")]
+/// # String Split
+/// Splits a string into a vector of substrings by a delimiter.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_split(text: String, delimiter: String) -> Vec<String> {
     text.split(&delimiter).map(|s| s.to_string()).collect()
@@ -334,8 +334,8 @@ pub fn string_split(text: String, delimiter: String) -> Vec<String> {
 ///
 /// # Notes
 /// If the vector is empty, the output will be an empty string. If the separator is empty, the strings are concatenated directly.
-#[bp_doc("# String Join")]
-#[bp_doc("Joins a vector of strings with a separator.")]
+/// # String Join
+/// Joins a vector of strings with a separator.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_join(strings: Vec<String>, separator: String) -> String {
     strings.join(&separator)
@@ -360,8 +360,8 @@ pub fn string_join(strings: Vec<String>, separator: String) -> String {
 /// # Notes
 /// This implementation uses Rust's `format!` macro. Only the first placeholder is replaced.
 /// For more complex formatting, use additional format functions or extend the template.
-#[bp_doc("# String Format")]
-#[bp_doc("Formats a string by replacing placeholders with values.")]
+/// # String Format
+/// Formats a string by replacing placeholders with values.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_format(template: String, value: String) -> String {
     format!("{}", template.replacen("{}", &value, 1))
@@ -385,8 +385,8 @@ pub fn string_format(template: String, value: String) -> String {
 ///
 /// # Notes
 /// Leading and trailing whitespace is ignored. Only base-10 integers are supported.
-#[bp_doc("# String to Int")]
-#[bp_doc("Converts a string to an integer with error handling.")]
+/// # String to Int
+/// Converts a string to an integer with error handling.
 #[blueprint(type: NodeTypes::pure, category: "String/Conversion", color: "#7ED321")]
 pub fn string_to_int(text: String) -> Result<i32, String> {
     match text.trim().parse::<i32>() {
@@ -409,8 +409,8 @@ pub fn string_to_int(text: String) -> Result<i32, String> {
 ///
 /// # Notes
 /// Leading and trailing whitespace is ignored. Only base-10 floating-point numbers are supported.
-#[bp_doc("# String to Number")]
-#[bp_doc("Converts a string to a floating-point number with error handling.")]
+/// # String to Number
+/// Converts a string to a floating-point number with error handling.
 #[blueprint(type: NodeTypes::pure, category: "String/Conversion", color: "#7ED321")]
 pub fn string_to_number(text: String) -> Result<f32, String> {
     match text.trim().parse::<f32>() {
@@ -434,8 +434,8 @@ pub fn string_to_number(text: String) -> Result<f32, String> {
 ///
 /// # Notes
 /// Accepts common representations such as "true", "false", "1", "0", "yes", "no", "on", "off" (case-insensitive).
-#[bp_doc("# String to Bool")]
-#[bp_doc("Converts a string to a boolean value with error handling.")]
+/// # String to Bool
+/// Converts a string to a boolean value with error handling.
 #[blueprint(type: NodeTypes::pure, category: "String/Conversion", color: "#7ED321")]
 pub fn string_to_bool(text: String) -> Result<bool, String> {
     let text_lower = text.trim().to_lowercase();
@@ -464,8 +464,8 @@ pub fn string_to_bool(text: String) -> Result<bool, String> {
 ///
 /// # Notes
 /// The output uses the default formatting for the numeric type.
-#[bp_doc("# Number to String")]
-#[bp_doc("Converts a number to its string representation.")]
+/// # Number to String
+/// Converts a number to its string representation.
 #[blueprint(type: NodeTypes::pure, category: "String/Conversion", color: "#7ED321")]
 pub fn number_to_string(number: f64) -> String {
     number.to_string()
@@ -484,8 +484,8 @@ pub fn number_to_string(number: f64) -> String {
 ///
 /// # Notes
 /// The output is always lowercase.
-#[bp_doc("# Bool to String")]
-#[bp_doc("Converts a boolean to its string representation.")]
+/// # Bool to String
+/// Converts a boolean to its string representation.
 #[blueprint(type: NodeTypes::pure, category: "String/Conversion", color: "#7ED321")]
 pub fn bool_to_string(value: bool) -> String {
     value.to_string()

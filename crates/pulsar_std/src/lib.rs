@@ -17,7 +17,7 @@ mod registry;
 pub use registry::*;
 
 // Re-export macros
-pub use pulsar_macros::*;
+pub use pulsar_macros::{blueprint, exec_output};
 
 // =============================================================================
 // Node Type Enum (for blueprint attribute)
@@ -48,8 +48,8 @@ pub enum NodeTypes {
 ///
 /// This event node defines the outer main() function. The execution chain
 /// connected to the "Body" output pin will become the function body.
-#[bp_doc("# Main")]
-#[bp_doc("Defines the default Rust entry point `fn main()`.")]
+/// # Main
+/// Defines the default Rust entry point `fn main()`.
 #[blueprint(type: NodeTypes::event, category: "Events")]
 pub fn main() {
     exec_output!("Body");
@@ -58,8 +58,8 @@ pub fn main() {
 /// Begin Play event - runs when the program/engine starts.
 ///
 /// This is typically used in game/engine contexts as an initialization point.
-#[bp_doc("# Begin Play")]
-#[bp_doc("Entry point that executes when the engine starts.")]
+/// # Begin Play
+/// Entry point that executes when the engine starts.
 #[blueprint(type: NodeTypes::event, category: "Events")]
 pub fn begin_play() {
     exec_output!("Body");
@@ -77,32 +77,32 @@ pub fn begin_play() {
 ///
 /// # Returns
 /// The sum of a and b
-#[bp_doc("# Add")]
-#[bp_doc("Adds two numbers together and returns the result.")]
+/// # Add
+/// Adds two numbers together and returns the result.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn add(a: i64, b: i64) -> i64 {
     a + b
 }
 
 /// Subtract one number from another.
-#[bp_doc("# Subtract")]
-#[bp_doc("Subtracts b from a and returns the result.")]
+/// # Subtract
+/// Subtracts b from a and returns the result.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn subtract(a: i64, b: i64) -> i64 {
     a - b
 }
 
 /// Multiply two numbers together.
-#[bp_doc("# Multiply")]
-#[bp_doc("Multiplies two numbers together and returns the result.")]
+/// # Multiply
+/// Multiplies two numbers together and returns the result.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn multiply(a: i64, b: i64) -> i64 {
     a * b
 }
 
 /// Divide one number by another.
-#[bp_doc("# Divide")]
-#[bp_doc("Divides a by b and returns the result. Returns 0 if b is 0.")]
+/// # Divide
+/// Divides a by b and returns the result. Returns 0 if b is 0.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn divide(a: i64, b: i64) -> i64 {
     if b == 0 {
@@ -113,8 +113,8 @@ pub fn divide(a: i64, b: i64) -> i64 {
 }
 
 /// Add two floating point numbers.
-#[bp_doc("# Add Float")]
-#[bp_doc("Adds two floating point numbers and returns the result.")]
+/// # Add Float
+/// Adds two floating point numbers and returns the result.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn add_float(a: f64, b: f64) -> f64 {
     a + b
@@ -125,48 +125,48 @@ pub fn add_float(a: f64, b: f64) -> f64 {
 // =============================================================================
 
 /// Logical AND operation.
-#[bp_doc("# And")]
-#[bp_doc("Returns true if both inputs are true.")]
+/// # And
+/// Returns true if both inputs are true.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn and(a: bool, b: bool) -> bool {
     a && b
 }
 
 /// Logical OR operation.
-#[bp_doc("# Or")]
-#[bp_doc("Returns true if either input is true.")]
+/// # Or
+/// Returns true if either input is true.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn or(a: bool, b: bool) -> bool {
     a || b
 }
 
 /// Logical NOT operation.
-#[bp_doc("# Not")]
-#[bp_doc("Returns the opposite boolean value.")]
+/// # Not
+/// Returns the opposite boolean value.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn not(value: bool) -> bool {
     !value
 }
 
 /// Check if two numbers are equal.
-#[bp_doc("# Equals")]
-#[bp_doc("Returns true if the two numbers are equal.")]
+/// # Equals
+/// Returns true if the two numbers are equal.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn equals(a: i64, b: i64) -> bool {
     a == b
 }
 
 /// Check if a is greater than b.
-#[bp_doc("# Greater Than")]
-#[bp_doc("Returns true if a is greater than b.")]
+/// # Greater Than
+/// Returns true if a is greater than b.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn greater_than(a: i64, b: i64) -> bool {
     a > b
 }
 
 /// Check if a is less than b.
-#[bp_doc("# Less Than")]
-#[bp_doc("Returns true if a is less than b.")]
+/// # Less Than
+/// Returns true if a is less than b.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn less_than(a: i64, b: i64) -> bool {
     a < b
@@ -180,32 +180,32 @@ pub fn less_than(a: i64, b: i64) -> bool {
 ///
 /// # Inputs
 /// - `message`: The string message to print
-#[bp_doc("# Print String")]
-#[bp_doc("Prints a string to the console with [DEBUG] prefix.")]
+/// # Print String
+/// Prints a string to the console with [DEBUG] prefix.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_string(message: String) {
     println!("[DEBUG] {}", message);
 }
 
 /// Print a number to the console.
-#[bp_doc("# Print Number")]
-#[bp_doc("Prints a number to the console with [DEBUG] prefix.")]
+/// # Print Number
+/// Prints a number to the console with [DEBUG] prefix.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_number(value: i64) {
     println!("[DEBUG] {}", value);
 }
 
 /// Print a boolean to the console.
-#[bp_doc("# Print Boolean")]
-#[bp_doc("Prints a boolean value to the console.")]
+/// # Print Boolean
+/// Prints a boolean value to the console.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_bool(value: bool) {
     println!("[DEBUG] {}", value);
 }
 
 /// Print a formatted string to the console.
-#[bp_doc("# Print Formatted")]
-#[bp_doc("Prints a formatted string with a number value.")]
+/// # Print Formatted
+/// Prints a formatted string with a number value.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_formatted(label: String, value: i64) {
     println!("[DEBUG] {}: {}", label, value);
@@ -223,9 +223,9 @@ pub fn print_formatted(label: String, value: i64) {
 /// # Execution Outputs
 /// - `True`: Executes if condition is true
 /// - `False`: Executes if condition is false
-#[bp_doc("# Branch")]
-#[bp_doc("Routes execution based on a boolean condition.")]
-#[bp_doc("If the condition is true, the True pin executes. Otherwise, the False pin executes.")]
+/// # Branch
+/// Routes execution based on a boolean condition.
+/// If the condition is true, the True pin executes. Otherwise, the False pin executes.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn branch(condition: bool) {
     if condition {
@@ -241,8 +241,8 @@ pub fn branch(condition: bool) {
 /// - `Then_0`: First node to execute
 /// - `Then_1`: Second node to execute
 /// - `Then_2`: Third node to execute
-#[bp_doc("# Sequence")]
-#[bp_doc("Executes multiple execution pins in order.")]
+/// # Sequence
+/// Executes multiple execution pins in order.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn sequence() {
     exec_output!("Then_0");
@@ -260,8 +260,8 @@ pub fn sequence() {
 /// - `Case_1`: Executes if value is 1
 /// - `Case_2`: Executes if value is 2
 /// - `Default`: Executes for any other value
-#[bp_doc("# Switch on Int")]
-#[bp_doc("Routes execution based on an integer value.")]
+/// # Switch on Int
+/// Routes execution based on an integer value.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn switch_on_int(value: i64) {
     match value {
@@ -277,8 +277,8 @@ pub fn switch_on_int(value: i64) {
 /// # Execution Outputs
 /// - `Once`: Executes only on the first call
 /// - `After`: Always executes after checking
-#[bp_doc("# Do Once")]
-#[bp_doc("Executes the connected nodes only once, then blocks further execution.")]
+/// # Do Once
+/// Executes the connected nodes only once, then blocks further execution.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn do_once() {
     // Note: This is a simplified version
@@ -302,8 +302,8 @@ pub fn do_once() {
 /// # Execution Outputs
 /// - `Body`: Executes for each iteration
 /// - `Completed`: Executes after all iterations complete
-#[bp_doc("# For Loop")]
-#[bp_doc("Executes the body a specified number of times.")]
+/// # For Loop
+/// Executes the body a specified number of times.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn for_loop(count: i64) {
     for _i in 0..count {
@@ -320,8 +320,8 @@ pub fn for_loop(count: i64) {
 /// # Execution Outputs
 /// - `Open`: Executes if gate is open
 /// - `Closed`: Executes if gate is closed
-#[bp_doc("# Gate")]
-#[bp_doc("A gate that can block or allow execution flow.")]
+/// # Gate
+/// A gate that can block or allow execution flow.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn gate(open: bool) {
     if open {
@@ -336,32 +336,32 @@ pub fn gate(open: bool) {
 // =============================================================================
 
 /// Concatenate two strings.
-#[bp_doc("# String Concat")]
-#[bp_doc("Joins two strings together.")]
+/// # String Concat
+/// Joins two strings together.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_concat(a: String, b: String) -> String {
     format!("{}{}", a, b)
 }
 
 /// Get the length of a string.
-#[bp_doc("# String Length")]
-#[bp_doc("Returns the number of characters in a string.")]
+/// # String Length
+/// Returns the number of characters in a string.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_length(s: String) -> i64 {
     s.len() as i64
 }
 
 /// Convert a number to a string.
-#[bp_doc("# Number to String")]
-#[bp_doc("Converts a number to its string representation.")]
+/// # Number to String
+/// Converts a number to its string representation.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn number_to_string(value: i64) -> String {
     value.to_string()
 }
 
 /// Check if a string contains a substring.
-#[bp_doc("# String Contains")]
-#[bp_doc("Returns true if the string contains the specified substring.")]
+/// # String Contains
+/// Returns true if the string contains the specified substring.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_contains(haystack: String, needle: String) -> bool {
     haystack.contains(&needle)
@@ -372,24 +372,24 @@ pub fn string_contains(haystack: String, needle: String) -> bool {
 // =============================================================================
 
 /// Convert an integer to a float.
-#[bp_doc("# Int to Float")]
-#[bp_doc("Converts an integer to a floating point number.")]
+/// # Int to Float
+/// Converts an integer to a floating point number.
 #[blueprint(type: NodeTypes::pure, category: "Conversion")]
 pub fn int_to_float(value: i64) -> f64 {
     value as f64
 }
 
 /// Convert a float to an integer (truncating).
-#[bp_doc("# Float to Int")]
-#[bp_doc("Converts a float to an integer by truncating the decimal part.")]
+/// # Float to Int
+/// Converts a float to an integer by truncating the decimal part.
 #[blueprint(type: NodeTypes::pure, category: "Conversion")]
 pub fn float_to_int(value: f64) -> i64 {
     value as i64
 }
 
 /// Convert a boolean to a string.
-#[bp_doc("# Bool to String")]
-#[bp_doc("Converts a boolean to its string representation.")]
+/// # Bool to String
+/// Converts a boolean to its string representation.
 #[blueprint(type: NodeTypes::pure, category: "Conversion")]
 pub fn bool_to_string(value: bool) -> String {
     value.to_string()
@@ -443,4 +443,4 @@ pub use channel::*;
 // pub mod conversion;
 // pub mod validation;
 // pub mod events;
-// 
+//

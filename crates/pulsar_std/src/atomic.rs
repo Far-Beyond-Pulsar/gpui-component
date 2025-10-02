@@ -8,7 +8,7 @@
 //!
 //! All operations use Rust's standard library atomic types from `std::sync::atomic`.
 
-use crate::{blueprint, bp_doc, NodeTypes};
+use crate::{blueprint, NodeTypes};
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 // =============================================================================
@@ -28,8 +28,8 @@ use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 ///
 /// # Notes
 /// Atomic booleans are useful for thread-safe flags and synchronization.
-#[bp_doc("# Atomic Bool New")]
-#[bp_doc("Creates a new atomic boolean value.")]
+/// # Atomic Bool New
+/// Creates a new atomic boolean value.
 #[blueprint(type: NodeTypes::pure, category: "Atomic", color: "#E74C3C")]
 pub fn atomic_bool_new(value: bool) -> AtomicBool {
     AtomicBool::new(value)
@@ -48,8 +48,8 @@ pub fn atomic_bool_new(value: bool) -> AtomicBool {
 ///
 /// # Notes
 /// Uses relaxed memory ordering for performance. For stricter ordering, modify as needed.
-#[bp_doc("# Atomic Bool Load")]
-#[bp_doc("Retrieves the current value of an atomic boolean.")]
+/// # Atomic Bool Load
+/// Retrieves the current value of an atomic boolean.
 #[blueprint(type: NodeTypes::pure, category: "Atomic", color: "#E74C3C")]
 pub fn atomic_bool_load(atomic: AtomicBool) -> bool {
     atomic.load(Ordering::Relaxed)
@@ -69,8 +69,8 @@ pub fn atomic_bool_load(atomic: AtomicBool) -> bool {
 ///
 /// # Notes
 /// The atomic boolean is updated with the new value using relaxed memory ordering.
-#[bp_doc("# Atomic Bool Store")]
-#[bp_doc("Sets a value in an atomic boolean.")]
+/// # Atomic Bool Store
+/// Sets a value in an atomic boolean.
 #[blueprint(type: NodeTypes::impure, category: "Atomic", color: "#E74C3C")]
 pub fn atomic_bool_store(atomic: AtomicBool, value: bool) {
     atomic.store(value, Ordering::Relaxed);
@@ -93,8 +93,8 @@ pub fn atomic_bool_store(atomic: AtomicBool, value: bool) {
 ///
 /// # Notes
 /// Atomic types are useful for thread-safe shared state and synchronization.
-#[bp_doc("# Atomic I32 New")]
-#[bp_doc("Creates a new atomic i32 value.")]
+/// # Atomic I32 New
+/// Creates a new atomic i32 value.
 #[blueprint(type: NodeTypes::pure, category: "Atomic", color: "#E74C3C")]
 pub fn atomic_i32_new(value: i64) -> AtomicI32 {
     AtomicI32::new(value as i32)
@@ -114,8 +114,8 @@ pub fn atomic_i32_new(value: i64) -> AtomicI32 {
 /// # Notes
 /// Use this node for thread-safe reads of integer values shared between threads.
 /// Uses relaxed memory ordering for fast, non-synchronized access.
-#[bp_doc("# Atomic I32 Load")]
-#[bp_doc("Retrieves the current value of an atomic i32.")]
+/// # Atomic I32 Load
+/// Retrieves the current value of an atomic i32.
 #[blueprint(type: NodeTypes::pure, category: "Atomic", color: "#E74C3C")]
 pub fn atomic_i32_load(atomic: AtomicI32) -> i32 {
     atomic.load(Ordering::Relaxed)
@@ -135,8 +135,8 @@ pub fn atomic_i32_load(atomic: AtomicI32) -> i32 {
 ///
 /// # Notes
 /// Uses relaxed ordering. For stricter synchronization, use a different ordering if needed.
-#[bp_doc("# Atomic I32 Store")]
-#[bp_doc("Sets a value in an atomic i32.")]
+/// # Atomic I32 Store
+/// Sets a value in an atomic i32.
 #[blueprint(type: NodeTypes::impure, category: "Atomic", color: "#E74C3C")]
 pub fn atomic_i32_store(atomic: AtomicI32, value: i64) {
     atomic.store(value as i32, Ordering::Relaxed);
@@ -157,8 +157,8 @@ pub fn atomic_i32_store(atomic: AtomicI32, value: i64) {
 /// # Notes
 /// Uses Relaxed ordering for performance. For stricter memory guarantees, use other orderings as needed.
 /// The operation is thread-safe and returns the value before the addition.
-#[bp_doc("# Atomic I32 Add")]
-#[bp_doc("Atomically adds to an i32 value and returns the previous value.")]
+/// # Atomic I32 Add
+/// Atomically adds to an i32 value and returns the previous value.
 #[blueprint(type: NodeTypes::impure, category: "Atomic", color: "#E74C3C")]
 pub fn atomic_i32_add(atomic: AtomicI32, value: i64) -> i32 {
     atomic.fetch_add(value as i32, Ordering::Relaxed)

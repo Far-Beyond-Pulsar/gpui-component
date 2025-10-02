@@ -14,7 +14,7 @@
 //! - Position is a 2D vector (x, y)
 //! - Size is a 2D vector (width, height)
 
-use crate::{blueprint, bp_doc, NodeTypes};
+use crate::{blueprint, NodeTypes};
 
 // =============================================================================
 // Rectangle Construction
@@ -37,8 +37,8 @@ use crate::{blueprint, bp_doc, NodeTypes};
 ///
 /// # Notes
 /// Use this node to define rectangles for rendering, hitboxes, or layout regions.
-#[bp_doc("# Rect New")]
-#[bp_doc("Creates a new rectangle from position and size.")]
+/// # Rect New
+/// Creates a new rectangle from position and size.
 #[blueprint(type: NodeTypes::pure, category: "Rect", color: "#F5A623")]
 pub fn rect_new(position: (f32, f32), size: (f32, f32)) -> ((f32, f32), (f32, f32)) {
     (position, size)
@@ -61,8 +61,8 @@ pub fn rect_new(position: (f32, f32), size: (f32, f32)) -> ((f32, f32), (f32, f3
 ///
 /// # Notes
 /// Use this node to define rectangles for rendering, hitboxes, or layout regions.
-#[bp_doc("# Make Rect")]
-#[bp_doc("Creates a rectangle from position and size components.")]
+/// # Make Rect
+/// Creates a rectangle from position and size components.
 #[blueprint(type: NodeTypes::pure, category: "Rect", color: "#F5A623")]
 pub fn make_rect(position: (f32, f32), size: (f32, f32)) -> ((f32, f32), (f32, f32)) {
     (position, size)
@@ -88,8 +88,8 @@ pub fn make_rect(position: (f32, f32), size: (f32, f32)) -> ((f32, f32), (f32, f
 ///
 /// # Notes
 /// The format of the rectangle must match the expected input type for correct extraction.
-#[bp_doc("# Break Rect")]
-#[bp_doc("Breaks a rectangle into position and size components.")]
+/// # Break Rect
+/// Breaks a rectangle into position and size components.
 #[blueprint(type: NodeTypes::pure, category: "Rect", color: "#F5A623")]
 pub fn break_rect(rect: ((f32, f32), (f32, f32))) -> ((f32, f32), (f32, f32)) {
     let (position, size) = rect;
@@ -119,8 +119,8 @@ pub fn break_rect(rect: ((f32, f32), (f32, f32))) -> ((f32, f32), (f32, f32)) {
 /// # Notes
 /// The check is inclusive: points on the edge of the rectangle are considered inside.
 /// Use this node for geometric queries, UI hit-testing, or spatial logic.
-#[bp_doc("# Rect Contains")]
-#[bp_doc("Checks if a rectangle contains a point.")]
+/// # Rect Contains
+/// Checks if a rectangle contains a point.
 #[blueprint(type: NodeTypes::pure, category: "Rect", color: "#F5A623")]
 pub fn rect_contains(rect: ((f32, f32), (f32, f32)), point: (f32, f32)) -> bool {
     let ((rect_x, rect_y), (width, height)) = rect;

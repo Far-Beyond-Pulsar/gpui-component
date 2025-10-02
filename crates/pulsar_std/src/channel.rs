@@ -9,7 +9,7 @@
 //!
 //! All operations use Rust's standard library MPSC (Multi-Producer, Single-Consumer) channels from `std::sync::mpsc`.
 
-use crate::{blueprint, bp_doc, NodeTypes};
+use crate::{blueprint, NodeTypes};
 use std::sync::mpsc::{Receiver, Sender};
 
 // =============================================================================
@@ -27,8 +27,8 @@ use std::sync::mpsc::{Receiver, Sender};
 /// # Notes
 /// Channels are commonly used for passing data or signals between threads. The sender can be cloned to allow multiple producers.
 /// The channel is unbounded and will buffer messages until they are received.
-#[bp_doc("# Channel New")]
-#[bp_doc("Creates a new message-passing channel for thread communication.")]
+/// # Channel New
+/// Creates a new message-passing channel for thread communication.
 #[blueprint(type: NodeTypes::pure, category: "Channel", color: "#3498DB")]
 pub fn channel_new() -> (Sender<String>, Receiver<String>) {
     std::sync::mpsc::channel()
@@ -48,8 +48,8 @@ pub fn channel_new() -> (Sender<String>, Receiver<String>) {
 ///
 /// # Notes
 /// Use this node to implement inter-thread or inter-process communication patterns.
-#[bp_doc("# Channel Send")]
-#[bp_doc("Sends a message through a channel.")]
+/// # Channel Send
+/// Sends a message through a channel.
 #[blueprint(type: NodeTypes::impure, category: "Channel", color: "#3498DB")]
 pub fn channel_send(sender: Sender<String>, message: String) -> Result<(), String> {
     match sender.send(message) {
@@ -73,8 +73,8 @@ pub fn channel_send(sender: Sender<String>, message: String) -> Result<(), Strin
 /// # Notes
 /// Use this node for thread synchronization or passing data between concurrent tasks.
 /// The node blocks until a message is available or the channel is closed.
-#[bp_doc("# Channel Recv")]
-#[bp_doc("Receives a message from a channel (blocks until message is available).")]
+/// # Channel Recv
+/// Receives a message from a channel (blocks until message is available).
 #[blueprint(type: NodeTypes::impure, category: "Channel", color: "#3498DB")]
 pub fn channel_recv(receiver: Receiver<String>) -> Result<String, String> {
     match receiver.recv() {

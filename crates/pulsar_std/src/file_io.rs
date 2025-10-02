@@ -8,7 +8,7 @@
 //! - Directory operations (create, remove, list, walk)
 //! - Path manipulation (join, absolute, parent, filename, extension, stem)
 
-use crate::{blueprint, bp_doc, NodeTypes};
+use crate::{blueprint, NodeTypes};
 
 // =============================================================================
 // File Operations
@@ -27,8 +27,8 @@ use crate::{blueprint, bp_doc, NodeTypes};
 ///
 /// # Notes
 /// The entire file is read into memory. For large files, consider streaming or reading in chunks.
-#[bp_doc("# File Read")]
-#[bp_doc("Reads the contents of a file as a string.")]
+/// # File Read
+/// Reads the contents of a file as a string.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_read(path: String) -> Result<String, String> {
     match std::fs::read_to_string(path) {
@@ -51,8 +51,8 @@ pub fn file_read(path: String) -> Result<String, String> {
 ///
 /// # Notes
 /// This operation overwrites any existing content in the file.
-#[bp_doc("# File Write")]
-#[bp_doc("Writes content to a file, overwriting existing content.")]
+/// # File Write
+/// Writes content to a file, overwriting existing content.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_write(path: String, content: String) -> Result<(), String> {
     match std::fs::write(path, content) {
@@ -75,8 +75,8 @@ pub fn file_write(path: String, content: String) -> Result<(), String> {
 ///
 /// # Notes
 /// If the file does not exist, it will be created.
-#[bp_doc("# File Append")]
-#[bp_doc("Appends content to the end of a file.")]
+/// # File Append
+/// Appends content to the end of a file.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_append(path: String, content: String) -> Result<(), String> {
     use std::io::Write;
@@ -101,8 +101,8 @@ pub fn file_append(path: String, content: String) -> Result<(), String> {
 ///
 /// # Example
 /// If `path` is "data.txt" and the file exists, the output will be true.
-#[bp_doc("# File Exists")]
-#[bp_doc("Checks if a file exists at the specified path.")]
+/// # File Exists
+/// Checks if a file exists at the specified path.
 #[blueprint(type: NodeTypes::pure, category: "File I/O", color: "#E67E22")]
 pub fn file_exists(path: String) -> bool {
     std::path::Path::new(&path).exists()
@@ -121,8 +121,8 @@ pub fn file_exists(path: String) -> bool {
 ///
 /// # Notes
 /// Use with caution: this operation is irreversible and will permanently remove the file.
-#[bp_doc("# File Delete")]
-#[bp_doc("Deletes a file at the specified path.")]
+/// # File Delete
+/// Deletes a file at the specified path.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_delete(path: String) -> Result<(), String> {
     match std::fs::remove_file(path) {
@@ -145,8 +145,8 @@ pub fn file_delete(path: String) -> Result<(), String> {
 ///
 /// # Notes
 /// If the destination file already exists, it will be overwritten.
-#[bp_doc("# File Copy")]
-#[bp_doc("Copies a file from source to destination path.")]
+/// # File Copy
+/// Copies a file from source to destination path.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_copy(source: String, destination: String) -> Result<(), String> {
     match std::fs::copy(source, destination) {
@@ -169,8 +169,8 @@ pub fn file_copy(source: String, destination: String) -> Result<(), String> {
 ///
 /// # Notes
 /// If the destination is on the same filesystem, the operation is atomic and fast.
-#[bp_doc("# File Move")]
-#[bp_doc("Moves or renames a file from source to destination.")]
+/// # File Move
+/// Moves or renames a file from source to destination.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_move(source: String, destination: String) -> Result<(), String> {
     match std::fs::rename(source, destination) {
@@ -189,8 +189,8 @@ pub fn file_move(source: String, destination: String) -> Result<(), String> {
 ///
 /// # Example
 /// If `path` is "data.txt" and the file is 1024 bytes, the output will be Ok(1024).
-#[bp_doc("# File Size")]
-#[bp_doc("Returns the size of a file in bytes.")]
+/// # File Size
+/// Returns the size of a file in bytes.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_size(path: String) -> Result<u64, String> {
     match std::fs::metadata(path) {
@@ -212,8 +212,8 @@ pub fn file_size(path: String) -> Result<u64, String> {
 ///
 /// # Notes
 /// The executable flag is not implemented and always returns false.
-#[bp_doc("# File Permissions")]
-#[bp_doc("Checks file permissions (writable, readable, executable).")]
+/// # File Permissions
+/// Checks file permissions (writable, readable, executable).
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_permissions(path: String) -> Result<(bool, bool, bool), String> {
     match std::fs::metadata(path) {
@@ -242,8 +242,8 @@ pub fn file_permissions(path: String) -> Result<(bool, bool, bool), String> {
 ///
 /// # Notes
 /// The timestamp is in UTC.
-#[bp_doc("# File Modified Time")]
-#[bp_doc("Returns the last modified time of a file as Unix timestamp.")]
+/// # File Modified Time
+/// Returns the last modified time of a file as Unix timestamp.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_modified_time(path: String) -> Result<u64, String> {
     match std::fs::metadata(path) {
@@ -272,8 +272,8 @@ pub fn file_modified_time(path: String) -> Result<u64, String> {
 ///
 /// # Example
 /// If `path` is "C:/Users/file.txt" and that file exists, the output will be true.
-#[bp_doc("# File Is File")]
-#[bp_doc("Checks if a path exists and is a file.")]
+/// # File Is File
+/// Checks if a path exists and is a file.
 #[blueprint(type: NodeTypes::pure, category: "File I/O", color: "#E67E22")]
 pub fn file_is_file(path: String) -> bool {
     std::path::Path::new(&path).is_file()
@@ -289,8 +289,8 @@ pub fn file_is_file(path: String) -> bool {
 ///
 /// # Example
 /// If `path` is "C:/Users" and that directory exists, the output will be true.
-#[bp_doc("# File Is Dir")]
-#[bp_doc("Checks if a path exists and is a directory.")]
+/// # File Is Dir
+/// Checks if a path exists and is a directory.
 #[blueprint(type: NodeTypes::pure, category: "File I/O", color: "#E67E22")]
 pub fn file_is_dir(path: String) -> bool {
     std::path::Path::new(&path).is_dir()
@@ -309,8 +309,8 @@ pub fn file_is_dir(path: String) -> bool {
 ///
 /// # Notes
 /// Lines are split on newline characters. Empty files return an empty vector.
-#[bp_doc("# File Read Lines")]
-#[bp_doc("Reads a file and returns its lines as a vector of strings.")]
+/// # File Read Lines
+/// Reads a file and returns its lines as a vector of strings.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_read_lines(path: String) -> Result<Vec<String>, String> {
     match std::fs::read_to_string(path) {
@@ -333,8 +333,8 @@ pub fn file_read_lines(path: String) -> Result<Vec<String>, String> {
 ///
 /// # Notes
 /// This operation overwrites the file.
-#[bp_doc("# File Write Lines")]
-#[bp_doc("Writes lines to a file, with each string as a separate line.")]
+/// # File Write Lines
+/// Writes lines to a file, with each string as a separate line.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_write_lines(path: String, lines: Vec<String>) -> Result<(), String> {
     let content = lines.join("\n");
@@ -361,8 +361,8 @@ pub fn file_write_lines(path: String, lines: Vec<String>) -> Result<(), String> 
 ///
 /// # Notes
 /// If the directory already exists, this function will succeed without error.
-#[bp_doc("# Dir Create")]
-#[bp_doc("Creates a directory, including any necessary parent directories.")]
+/// # Dir Create
+/// Creates a directory, including any necessary parent directories.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn dir_create(path: String) -> Result<(), String> {
     match std::fs::create_dir_all(path) {
@@ -384,8 +384,8 @@ pub fn dir_create(path: String) -> Result<(), String> {
 ///
 /// # Notes
 /// Use with caution: this operation is irreversible and will delete all data in the directory.
-#[bp_doc("# Dir Remove")]
-#[bp_doc("Removes a directory and all its contents recursively.")]
+/// # Dir Remove
+/// Removes a directory and all its contents recursively.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn dir_remove(path: String) -> Result<(), String> {
     match std::fs::remove_dir_all(path) {
@@ -404,8 +404,8 @@ pub fn dir_remove(path: String) -> Result<(), String> {
 ///
 /// # Example
 /// If `path` is "C:/Users" and that directory exists, the output will be true.
-#[bp_doc("# Dir Exists")]
-#[bp_doc("Checks if a directory exists at the specified path.")]
+/// # Dir Exists
+/// Checks if a directory exists at the specified path.
 #[blueprint(type: NodeTypes::pure, category: "File I/O", color: "#E67E22")]
 pub fn dir_exists(path: String) -> bool {
     std::path::Path::new(&path).is_dir()
@@ -424,8 +424,8 @@ pub fn dir_exists(path: String) -> bool {
 ///
 /// # Notes
 /// The output contains only the names (not full paths) of the entries.
-#[bp_doc("# Dir List")]
-#[bp_doc("Lists the contents of a directory (file and folder names).")]
+/// # Dir List
+/// Lists the contents of a directory (file and folder names).
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn dir_list(path: String) -> Result<Vec<String>, String> {
     match std::fs::read_dir(path) {
@@ -457,8 +457,8 @@ pub fn dir_list(path: String) -> Result<Vec<String>, String> {
 ///
 /// # Notes
 /// The function performs a depth-first traversal.
-#[bp_doc("# Dir Walk")]
-#[bp_doc("Recursively walks through a directory tree and returns all file paths.")]
+/// # Dir Walk
+/// Recursively walks through a directory tree and returns all file paths.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn dir_walk(path: String) -> Result<Vec<String>, String> {
     use std::fs;
@@ -500,8 +500,8 @@ pub fn dir_walk(path: String) -> Result<Vec<String>, String> {
 ///
 /// # Example
 /// If `base` is "folder" and `component` is "file.txt", the output will be "folder/file.txt" (on Unix).
-#[bp_doc("# Path Join")]
-#[bp_doc("Joins two path components using the platform's path separator.")]
+/// # Path Join
+/// Joins two path components using the platform's path separator.
 #[blueprint(type: NodeTypes::pure, category: "File I/O", color: "#E67E22")]
 pub fn path_join(base: String, component: String) -> String {
     std::path::Path::new(&base)
@@ -524,8 +524,8 @@ pub fn path_join(base: String, component: String) -> String {
 ///
 /// # Notes
 /// If the path does not exist, an error is returned.
-#[bp_doc("# Path Absolute")]
-#[bp_doc("Converts a relative path to an absolute path.")]
+/// # Path Absolute
+/// Converts a relative path to an absolute path.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn path_absolute(path: String) -> Result<String, String> {
     match std::fs::canonicalize(path) {
@@ -544,8 +544,8 @@ pub fn path_absolute(path: String) -> Result<String, String> {
 ///
 /// # Example
 /// If `path` is "/home/user/file.txt", the output will be Some("/home/user").
-#[bp_doc("# Path Parent")]
-#[bp_doc("Returns the parent directory of a path.")]
+/// # Path Parent
+/// Returns the parent directory of a path.
 #[blueprint(type: NodeTypes::pure, category: "File I/O", color: "#E67E22")]
 pub fn path_parent(path: String) -> Option<String> {
     std::path::Path::new(&path)
@@ -563,8 +563,8 @@ pub fn path_parent(path: String) -> Option<String> {
 ///
 /// # Example
 /// If `path` is "/foo/bar/baz.txt", the output will be Some("baz.txt").
-#[bp_doc("# Path Filename")]
-#[bp_doc("Extracts the filename (with extension) from a path.")]
+/// # Path Filename
+/// Extracts the filename (with extension) from a path.
 #[blueprint(type: NodeTypes::pure, category: "File I/O", color: "#E67E22")]
 pub fn path_filename(path: String) -> Option<String> {
     std::path::Path::new(&path)
@@ -586,8 +586,8 @@ pub fn path_filename(path: String) -> Option<String> {
 ///
 /// # Notes
 /// The extension is returned without the leading dot.
-#[bp_doc("# Path Extension")]
-#[bp_doc("Extracts the file extension from a path (without the dot).")]
+/// # Path Extension
+/// Extracts the file extension from a path (without the dot).
 #[blueprint(type: NodeTypes::pure, category: "File I/O", color: "#E67E22")]
 pub fn path_extension(path: String) -> Option<String> {
     std::path::Path::new(&path)
@@ -606,8 +606,8 @@ pub fn path_extension(path: String) -> Option<String> {
 ///
 /// # Example
 /// If `path` is "foo/bar/baz.txt", the output will be Some("baz").
-#[bp_doc("# Path Stem")]
-#[bp_doc("Returns the filename without its extension.")]
+/// # Path Stem
+/// Returns the filename without its extension.
 #[blueprint(type: NodeTypes::pure, category: "File I/O", color: "#E67E22")]
 pub fn path_stem(path: String) -> Option<String> {
     std::path::Path::new(&path)

@@ -10,7 +10,7 @@
 //! - Exit code handling
 //! - Executable path resolution
 
-use crate::{blueprint, bp_doc, NodeTypes};
+use crate::{blueprint, NodeTypes};
 
 // =============================================================================
 // Process Control Operations
@@ -26,8 +26,8 @@ use crate::{blueprint, bp_doc, NodeTypes};
 ///
 /// # Notes
 /// The process ID is assigned by the operating system and is unique among running processes.
-#[bp_doc("# Process ID")]
-#[bp_doc("Returns the current process ID (PID).")]
+/// # Process ID
+/// Returns the current process ID (PID).
 #[blueprint(type: NodeTypes::pure, category: "Process", color: "#E74C3C")]
 pub fn process_id() -> u32 {
     std::process::id()
@@ -47,8 +47,8 @@ pub fn process_id() -> u32 {
 ///
 /// # Notes
 /// Use with caution: this will immediately terminate the process and no further nodes will execute.
-#[bp_doc("# Process Exit")]
-#[bp_doc("Exits the current process with the specified exit code.")]
+/// # Process Exit
+/// Exits the current process with the specified exit code.
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn process_exit(code: i64) -> ! {
     std::process::exit(code as i32)
@@ -65,8 +65,8 @@ pub fn process_exit(code: i64) -> ! {
 /// # Notes
 /// This is a hard abort: no destructors are run, files may not be flushed, and resources may be leaked.
 /// Use only for unrecoverable errors or debugging.
-#[bp_doc("# Process Abort")]
-#[bp_doc("Aborts the current process immediately without cleanup.")]
+/// # Process Abort
+/// Aborts the current process immediately without cleanup.
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn process_abort() -> ! {
     std::process::abort()
@@ -90,8 +90,8 @@ pub fn process_abort() -> ! {
 /// # Notes
 /// On Windows, the command is executed using `cmd /C`. On Unix-like systems, it uses `sh -c`.
 /// Use with caution, as executing arbitrary shell commands can be a security risk.
-#[bp_doc("# Shell Execute")]
-#[bp_doc("Executes a shell command and returns the standard output.")]
+/// # Shell Execute
+/// Executes a shell command and returns the standard output.
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn shell_execute(command: String) -> Result<String, String> {
     use std::process::Command;
@@ -131,8 +131,8 @@ pub fn shell_execute(command: String) -> Result<String, String> {
 ///
 /// # Notes
 /// The command runs asynchronously; you are responsible for managing the process lifecycle.
-#[bp_doc("# Shell Execute Async")]
-#[bp_doc("Executes a shell command asynchronously and returns the process ID.")]
+/// # Shell Execute Async
+/// Executes a shell command asynchronously and returns the process ID.
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn shell_execute_async(command: String) -> Result<u32, String> {
     use std::process::Command;
@@ -167,8 +167,8 @@ pub fn shell_execute_async(command: String) -> Result<u32, String> {
 ///
 /// # Notes
 /// This implementation uses the system shell to pipe commands together.
-#[bp_doc("# Shell Pipe")]
-#[bp_doc("Pipes the output of one command to another command.")]
+/// # Shell Pipe
+/// Pipes the output of one command to another command.
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn shell_pipe(command1: String, command2: String) -> Result<String, String> {
     use std::process::{Command, Stdio};
@@ -232,8 +232,8 @@ pub fn shell_pipe(command1: String, command2: String) -> Result<String, String> 
 ///
 /// # Notes
 /// The timeout is enforced by sleeping and checking process status.
-#[bp_doc("# Shell Timeout")]
-#[bp_doc("Executes a command with a timeout (in seconds).")]
+/// # Shell Timeout
+/// Executes a command with a timeout (in seconds).
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn shell_timeout(command: String, timeout: i64) -> Result<String, String> {
     use std::process::{Command, Stdio};
@@ -307,8 +307,8 @@ pub fn shell_timeout(command: String, timeout: i64) -> Result<String, String> {
 ///
 /// # Notes
 /// The exit code is returned as an integer. If the command does not return an exit code, -1 is used.
-#[bp_doc("# Shell Exit Code")]
-#[bp_doc("Executes a command and returns only the exit code.")]
+/// # Shell Exit Code
+/// Executes a command and returns only the exit code.
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn shell_exit_code(command: String) -> Result<i32, String> {
     use std::process::Command;
@@ -343,8 +343,8 @@ pub fn shell_exit_code(command: String) -> Result<i32, String> {
 ///
 /// # Notes
 /// On Windows, this function uses the `where` command; on Unix-like systems, it uses `which`.
-#[bp_doc("# Shell Which")]
-#[bp_doc("Finds the path to an executable command in the system PATH.")]
+/// # Shell Which
+/// Finds the path to an executable command in the system PATH.
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn shell_which(command: String) -> Result<String, String> {
     use std::process::Command;

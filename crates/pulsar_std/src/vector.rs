@@ -15,7 +15,7 @@
 //! - 2D vectors are represented as tuples: `(f32, f32)` for (x, y)
 //! - 3D vectors are represented as tuples: `(f32, f32, f32)` for (x, y, z)
 
-use crate::{blueprint, bp_doc, NodeTypes};
+use crate::{blueprint, NodeTypes};
 
 // =============================================================================
 // Vector2 Construction
@@ -38,8 +38,8 @@ use crate::{blueprint, bp_doc, NodeTypes};
 ///
 /// # Notes
 /// Use this node to construct 2D points, directions, or velocities for further calculations.
-#[bp_doc("# Make Vector2")]
-#[bp_doc("Creates a 2D vector from X and Y components.")]
+/// # Make Vector2
+/// Creates a 2D vector from X and Y components.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn make_vector2(x: f32, y: f32) -> (f32, f32) {
     (x, y)
@@ -61,8 +61,8 @@ pub fn make_vector2(x: f32, y: f32) -> (f32, f32) {
 ///
 /// # Notes
 /// This node is useful for constructing 2D vectors for geometry, graphics, or math operations.
-#[bp_doc("# Vector2 New")]
-#[bp_doc("Creates a new 2D vector from x and y components.")]
+/// # Vector2 New
+/// Creates a new 2D vector from x and y components.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn vector2_new(x: f32, y: f32) -> (f32, f32) {
     (x, y)
@@ -90,8 +90,8 @@ pub fn vector2_new(x: f32, y: f32) -> (f32, f32) {
 ///
 /// # Notes
 /// Use this node to construct 3D points, directions, or colors (if using RGB).
-#[bp_doc("# Make Vector3")]
-#[bp_doc("Creates a 3D vector from X, Y, and Z components.")]
+/// # Make Vector3
+/// Creates a 3D vector from X, Y, and Z components.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn make_vector3(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
     (x, y, z)
@@ -114,8 +114,8 @@ pub fn make_vector3(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
 ///
 /// # Notes
 /// This node is useful for constructing 3D vectors for use in graphics, physics, or spatial calculations.
-#[bp_doc("# Vector3 New")]
-#[bp_doc("Creates a new 3D vector from x, y, and z components.")]
+/// # Vector3 New
+/// Creates a new 3D vector from x, y, and z components.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn vector3_new(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
     (x, y, z)
@@ -140,8 +140,8 @@ pub fn vector3_new(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
 ///
 /// # Notes
 /// Useful for extracting individual coordinates from a vector.
-#[bp_doc("# Break Vector2")]
-#[bp_doc("Breaks a 2D vector into X and Y components.")]
+/// # Break Vector2
+/// Breaks a 2D vector into X and Y components.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn break_vector2(vector: (f32, f32)) -> (f32, f32) {
     let (x, y) = vector;
@@ -167,8 +167,8 @@ pub fn break_vector2(vector: (f32, f32)) -> (f32, f32) {
 ///
 /// # Notes
 /// Useful for extracting individual components from a 3D vector.
-#[bp_doc("# Break Vector3")]
-#[bp_doc("Breaks a 3D vector into X, Y, and Z components.")]
+/// # Break Vector3
+/// Breaks a 3D vector into X, Y, and Z components.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn break_vector3(vector: (f32, f32, f32)) -> (f32, f32, f32) {
     let (x, y, z) = vector;
@@ -194,8 +194,8 @@ pub fn break_vector3(vector: (f32, f32, f32)) -> (f32, f32, f32) {
 ///
 /// # Notes
 /// Use this node to access the horizontal coordinate of a vector for calculations, movement, or display.
-#[bp_doc("# Get Vector X")]
-#[bp_doc("Gets the X component from a 2D or 3D vector.")]
+/// # Get Vector X
+/// Gets the X component from a 2D or 3D vector.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn get_vector_x(vector: (f32, f32)) -> f32 {
     let (x, _) = vector;
@@ -218,8 +218,8 @@ pub fn get_vector_x(vector: (f32, f32)) -> f32 {
 ///
 /// # Notes
 /// For 3D vectors, use only the first two components (x, y).
-#[bp_doc("# Get Vector Y")]
-#[bp_doc("Gets the Y component from a 2D or 3D vector.")]
+/// # Get Vector Y
+/// Gets the Y component from a 2D or 3D vector.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn get_vector_y(vector: (f32, f32)) -> f32 {
     let (_, y) = vector;
@@ -241,8 +241,8 @@ pub fn get_vector_y(vector: (f32, f32)) -> f32 {
 ///
 /// # Notes
 /// Useful for extracting the Z coordinate for spatial calculations, rendering, or physics.
-#[bp_doc("# Get Vector Z")]
-#[bp_doc("Gets the Z component from a 3D vector.")]
+/// # Get Vector Z
+/// Gets the Z component from a 3D vector.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn get_vector_z(vector: (f32, f32, f32)) -> f32 {
     let (_, _, z) = vector;
@@ -270,8 +270,8 @@ pub fn get_vector_z(vector: (f32, f32, f32)) -> f32 {
 ///
 /// # Notes
 /// Use this node to selectively update the X coordinate of a vector without affecting the Y coordinate.
-#[bp_doc("# Set Vector X")]
-#[bp_doc("Sets the X component of a 2D vector.")]
+/// # Set Vector X
+/// Sets the X component of a 2D vector.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn set_vector_x(vector: (f32, f32), new_x: f32) -> (f32, f32) {
     let (_, y) = vector;
@@ -295,8 +295,8 @@ pub fn set_vector_x(vector: (f32, f32), new_x: f32) -> (f32, f32) {
 ///
 /// # Notes
 /// The X component is preserved from the input vector. Use this node to update only the Y value of a vector.
-#[bp_doc("# Set Vector Y")]
-#[bp_doc("Sets the Y component of a 2D vector.")]
+/// # Set Vector Y
+/// Sets the Y component of a 2D vector.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn set_vector_y(vector: (f32, f32), new_y: f32) -> (f32, f32) {
     let (x, _) = vector;
@@ -324,8 +324,8 @@ pub fn set_vector_y(vector: (f32, f32), new_y: f32) -> (f32, f32) {
 ///
 /// # Notes
 /// This operation is performed component-wise: (x1 + x2, y1 + y2).
-#[bp_doc("# Vector2 Add")]
-#[bp_doc("Adds two 2D vectors component-wise.")]
+/// # Vector2 Add
+/// Adds two 2D vectors component-wise.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn vector2_add(a: (f32, f32), b: (f32, f32)) -> (f32, f32) {
     let (x1, y1) = a;
@@ -354,8 +354,8 @@ pub fn vector2_add(a: (f32, f32), b: (f32, f32)) -> (f32, f32) {
 ///
 /// # Notes
 /// This operation is performed component-wise: (x1 + x2, y1 + y2, z1 + z2).
-#[bp_doc("# Vector3 Add")]
-#[bp_doc("Adds two 3D vectors component-wise.")]
+/// # Vector3 Add
+/// Adds two 3D vectors component-wise.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn vector3_add(a: (f32, f32, f32), b: (f32, f32, f32)) -> (f32, f32, f32) {
     let (x1, y1, z1) = a;
@@ -384,8 +384,8 @@ pub fn vector3_add(a: (f32, f32, f32), b: (f32, f32, f32)) -> (f32, f32, f32) {
 ///
 /// # Notes
 /// The dot product is positive if the vectors point in a similar direction, negative if they point in opposite directions, and zero if they are perpendicular.
-#[bp_doc("# Vector2 Dot")]
-#[bp_doc("Calculates the dot product of two 2D vectors.")]
+/// # Vector2 Dot
+/// Calculates the dot product of two 2D vectors.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn vector2_dot(a: (f32, f32), b: (f32, f32)) -> f32 {
     let (x1, y1) = a;
@@ -408,8 +408,8 @@ pub fn vector2_dot(a: (f32, f32), b: (f32, f32)) -> f32 {
 ///
 /// # Notes
 /// The output is always non-negative. If the input vector is (0.0, 0.0), the output will be 0.0.
-#[bp_doc("# Vector2 Magnitude")]
-#[bp_doc("Calculates the magnitude (length) of a 2D vector.")]
+/// # Vector2 Magnitude
+/// Calculates the magnitude (length) of a 2D vector.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn vector2_magnitude(vector: (f32, f32)) -> f32 {
     let (x, y) = vector;
@@ -433,8 +433,8 @@ pub fn vector2_magnitude(vector: (f32, f32)) -> f32 {
 ///
 /// # Notes
 /// Normalization is useful for direction calculations and when you need a unit vector.
-#[bp_doc("# Vector2 Normalize")]
-#[bp_doc("Normalizes a 2D vector to unit length.")]
+/// # Vector2 Normalize
+/// Normalizes a 2D vector to unit length.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn vector2_normalize(vector: (f32, f32)) -> (f32, f32) {
     let (x, y) = vector;
@@ -468,8 +468,8 @@ pub fn vector2_normalize(vector: (f32, f32)) -> (f32, f32) {
 ///
 /// # Notes
 /// The dot product is positive if the vectors point in a similar direction, negative if they point in opposite directions, and zero if they are perpendicular.
-#[bp_doc("# Vector3 Dot")]
-#[bp_doc("Calculates the dot product of two 3D vectors.")]
+/// # Vector3 Dot
+/// Calculates the dot product of two 3D vectors.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn vector3_dot(a: (f32, f32, f32), b: (f32, f32, f32)) -> f32 {
     let (x1, y1, z1) = a;
@@ -495,8 +495,8 @@ pub fn vector3_dot(a: (f32, f32, f32), b: (f32, f32, f32)) -> f32 {
 ///
 /// # Notes
 /// The cross product is anti-commutative: swapping the inputs reverses the direction of the result.
-#[bp_doc("# Vector3 Cross")]
-#[bp_doc("Calculates the cross product of two 3D vectors.")]
+/// # Vector3 Cross
+/// Calculates the cross product of two 3D vectors.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn vector3_cross(a: (f32, f32, f32), b: (f32, f32, f32)) -> (f32, f32, f32) {
     let (x1, y1, z1) = a;
@@ -520,8 +520,8 @@ pub fn vector3_cross(a: (f32, f32, f32), b: (f32, f32, f32)) -> (f32, f32, f32) 
 ///
 /// # Notes
 /// The output is always non-negative. If the input vector is (0.0, 0.0, 0.0), the output is 0.0.
-#[bp_doc("# Vector3 Magnitude")]
-#[bp_doc("Calculates the magnitude (length) of a 3D vector.")]
+/// # Vector3 Magnitude
+/// Calculates the magnitude (length) of a 3D vector.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn vector3_magnitude(vector: (f32, f32, f32)) -> f32 {
     let (x, y, z) = vector;
@@ -545,8 +545,8 @@ pub fn vector3_magnitude(vector: (f32, f32, f32)) -> f32 {
 ///
 /// # Notes
 /// Normalization is useful for direction calculations and when you need a unit vector.
-#[bp_doc("# Vector3 Normalize")]
-#[bp_doc("Normalizes a 3D vector to unit length.")]
+/// # Vector3 Normalize
+/// Normalizes a 3D vector to unit length.
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn vector3_normalize(vector: (f32, f32, f32)) -> (f32, f32, f32) {
     let (x, y, z) = vector;

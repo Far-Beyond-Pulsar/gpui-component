@@ -12,7 +12,7 @@
 //! `((f32, f32, f32), (f32, f32, f32), (f32, f32, f32))` for (position, rotation, scale)
 //! Each component is a 3D vector (x, y, z).
 
-use crate::{blueprint, bp_doc, NodeTypes};
+use crate::{blueprint, NodeTypes};
 
 // =============================================================================
 // Transform Construction
@@ -37,8 +37,8 @@ use crate::{blueprint, bp_doc, NodeTypes};
 ///
 /// # Notes
 /// This node is useful for constructing transform objects for use in 3D graphics or spatial calculations.
-#[bp_doc("# Transform New")]
-#[bp_doc("Creates a new transform from position, rotation, and scale.")]
+/// # Transform New
+/// Creates a new transform from position, rotation, and scale.
 #[blueprint(type: NodeTypes::pure, category: "Transform", color: "#50E3C2")]
 pub fn transform_new(position: (f32, f32, f32), rotation: (f32, f32, f32), scale: (f32, f32, f32)) -> ((f32, f32, f32), (f32, f32, f32), (f32, f32, f32)) {
     (position, rotation, scale)
@@ -63,8 +63,8 @@ pub fn transform_new(position: (f32, f32, f32), rotation: (f32, f32, f32), scale
 ///
 /// # Notes
 /// Use this node to assemble transform data for 3D objects, physics, or rendering.
-#[bp_doc("# Make Transform")]
-#[bp_doc("Creates a transform from position, rotation, and scale components.")]
+/// # Make Transform
+/// Creates a transform from position, rotation, and scale components.
 #[blueprint(type: NodeTypes::pure, category: "Transform", color: "#50E3C2")]
 pub fn make_transform(position: (f32, f32, f32), rotation: (f32, f32, f32), scale: (f32, f32, f32)) -> ((f32, f32, f32), (f32, f32, f32), (f32, f32, f32)) {
     (position, rotation, scale)
@@ -93,8 +93,8 @@ pub fn make_transform(position: (f32, f32, f32), rotation: (f32, f32, f32), scal
 ///
 /// # Notes
 /// Use this node to extract individual transform components for further manipulation.
-#[bp_doc("# Break Transform")]
-#[bp_doc("Breaks a transform into position, rotation, and scale components.")]
+/// # Break Transform
+/// Breaks a transform into position, rotation, and scale components.
 #[blueprint(type: NodeTypes::pure, category: "Transform", color: "#50E3C2")]
 pub fn break_transform(transform: ((f32, f32, f32), (f32, f32, f32), (f32, f32, f32))) -> ((f32, f32, f32), (f32, f32, f32), (f32, f32, f32)) {
     let (position, rotation, scale) = transform;

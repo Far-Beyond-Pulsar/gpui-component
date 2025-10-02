@@ -14,7 +14,14 @@
       "Bash(mkdir:*)",
       "Bash(timeout 60 cargo build -p pulsar_engine)",
       "Bash(timeout 30 cargo check -p pulsar_std)",
-      "Bash(cargo test:*)"
+      "Bash(cargo test:*)",
+      "Bash(timeout 30 cargo build -p pulsar_std)",
+      "Bash(for:*)",
+      "Bash(do sed -i 's/use crate::{blueprint, bp_doc, NodeTypes}/use crate::{blueprint, NodeTypes}/g' \"$file\")",
+      "Bash(done)",
+      "Bash(python3:*)",
+      "Bash(rustc:*)",
+      "Bash(./test_doc_collection.exe)"
     ],
     "deny": [],
     "ask": []

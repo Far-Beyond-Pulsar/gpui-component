@@ -54,7 +54,7 @@ pub struct NodeMetadata {
     /// The complete function source code
     pub function_source: &'static str,
 
-    /// Documentation from #[bp_doc] attributes
+    /// Documentation from doc comments (///)
     pub documentation: &'static [&'static str],
 
     /// Category for grouping nodes

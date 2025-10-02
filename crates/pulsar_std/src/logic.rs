@@ -9,7 +9,7 @@
 //! - Approximate equality (nearly_equal)
 //! - Conditional selection (select_bool, select_number, select_string)
 
-use crate::{blueprint, bp_doc, NodeTypes};
+use crate::{blueprint, NodeTypes};
 
 // =============================================================================
 // Boolean Logic Operations
@@ -26,9 +26,9 @@ use crate::{blueprint, bp_doc, NodeTypes};
 ///
 /// # Example
 /// If `a` is true and `b` is false, the output will be false.
-#[bp_doc("# And")]
-#[bp_doc("Performs a logical AND operation between two boolean values.")]
-#[bp_doc("Returns true if both inputs are true, false otherwise.")]
+/// # And
+/// Performs a logical AND operation between two boolean values.
+/// Returns true if both inputs are true, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn and(a: bool, b: bool) -> bool {
     a && b
@@ -52,9 +52,9 @@ pub fn and(a: bool, b: bool) -> bool {
 ///
 /// # Notes
 /// Logical OR returns true if at least one input is true. Use for combining conditions in control flow.
-#[bp_doc("# Or")]
-#[bp_doc("Performs a logical OR operation between two boolean values.")]
-#[bp_doc("Returns true if either input is true, false otherwise.")]
+/// # Or
+/// Performs a logical OR operation between two boolean values.
+/// Returns true if either input is true, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn or(a: bool, b: bool) -> bool {
     a || b
@@ -76,9 +76,9 @@ pub fn or(a: bool, b: bool) -> bool {
 ///
 /// # Notes
 /// Use this node to invert conditions in branches, filters, or toggles.
-#[bp_doc("# Not")]
-#[bp_doc("Performs a logical NOT operation on a boolean value.")]
-#[bp_doc("Returns the opposite boolean value.")]
+/// # Not
+/// Performs a logical NOT operation on a boolean value.
+/// Returns the opposite boolean value.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn not(value: bool) -> bool {
     !value
@@ -106,9 +106,9 @@ pub fn not(value: bool) -> bool {
 ///
 /// # Notes
 /// Comparison uses the standard equality operator. For custom types, ensure they implement equality.
-#[bp_doc("# Equals")]
-#[bp_doc("Checks if two values are equal.")]
-#[bp_doc("Returns true if the values are equal, false otherwise.")]
+/// # Equals
+/// Checks if two values are equal.
+/// Returns true if the values are equal, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn equals(a: i64, b: i64) -> bool {
     a == b
@@ -132,9 +132,9 @@ pub fn equals(a: i64, b: i64) -> bool {
 ///
 /// # Notes
 /// Comparison uses the standard inequality operator. For custom types, ensure they implement equality/inequality.
-#[bp_doc("# Not Equals")]
-#[bp_doc("Checks if two values are not equal.")]
-#[bp_doc("Returns true if the values are not equal, false otherwise.")]
+/// # Not Equals
+/// Checks if two values are not equal.
+/// Returns true if the values are not equal, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn not_equals(a: i64, b: i64) -> bool {
     a != b
@@ -161,9 +161,9 @@ pub fn not_equals(a: i64, b: i64) -> bool {
 ///
 /// # Notes
 /// Useful for conditional logic, filtering, and comparisons in your graph.
-#[bp_doc("# Greater Than")]
-#[bp_doc("Checks if one number is greater than another.")]
-#[bp_doc("Returns true if a > b, false otherwise.")]
+/// # Greater Than
+/// Checks if one number is greater than another.
+/// Returns true if a > b, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn greater_than(a: i64, b: i64) -> bool {
     a > b
@@ -187,9 +187,9 @@ pub fn greater_than(a: i64, b: i64) -> bool {
 ///
 /// # Notes
 /// Useful for branching, validation, and enforcing numeric constraints.
-#[bp_doc("# Less Than")]
-#[bp_doc("Checks if one number is less than another.")]
-#[bp_doc("Returns true if a < b, false otherwise.")]
+/// # Less Than
+/// Checks if one number is less than another.
+/// Returns true if a < b, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn less_than(a: i64, b: i64) -> bool {
     a < b
@@ -213,9 +213,9 @@ pub fn less_than(a: i64, b: i64) -> bool {
 ///
 /// # Notes
 /// Useful for conditional logic, filtering, and comparisons in control flow.
-#[bp_doc("# Greater Equal")]
-#[bp_doc("Checks if one number is greater than or equal to another.")]
-#[bp_doc("Returns true if a >= b, false otherwise.")]
+/// # Greater Equal
+/// Checks if one number is greater than or equal to another.
+/// Returns true if a >= b, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn greater_equal(a: i64, b: i64) -> bool {
     a >= b
@@ -240,9 +240,9 @@ pub fn greater_equal(a: i64, b: i64) -> bool {
 ///
 /// # Notes
 /// Useful for range checks, validation, and branching logic.
-#[bp_doc("# Less Equal")]
-#[bp_doc("Checks if one number is less than or equal to another.")]
-#[bp_doc("Returns true if a <= b, false otherwise.")]
+/// # Less Equal
+/// Checks if one number is less than or equal to another.
+/// Returns true if a <= b, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn less_equal(a: i64, b: i64) -> bool {
     a <= b
@@ -271,9 +271,9 @@ pub fn less_equal(a: i64, b: i64) -> bool {
 ///
 /// # Notes
 /// The check is exclusive: value > a && value < b.
-#[bp_doc("# Is Between")]
-#[bp_doc("Checks if a value is strictly between two other values (exclusive).")]
-#[bp_doc("Returns true if a < value < b, false otherwise.")]
+/// # Is Between
+/// Checks if a value is strictly between two other values (exclusive).
+/// Returns true if a < value < b, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn is_between(value: f64, a: f64, b: f64) -> bool {
     value > a && value < b
@@ -298,9 +298,9 @@ pub fn is_between(value: f64, a: f64, b: f64) -> bool {
 ///
 /// # Notes
 /// Useful for floating-point comparisons where exact equality is not reliable.
-#[bp_doc("# Nearly Equal")]
-#[bp_doc("Checks if two numbers are nearly equal within a tolerance.")]
-#[bp_doc("Returns true if |a - b| <= tolerance, false otherwise.")]
+/// # Nearly Equal
+/// Checks if two numbers are nearly equal within a tolerance.
+/// Returns true if |a - b| <= tolerance, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn nearly_equal(a: f64, b: f64, tolerance: f64) -> bool {
     (a - b).abs() <= tolerance
@@ -328,9 +328,9 @@ pub fn nearly_equal(a: f64, b: f64, tolerance: f64) -> bool {
 ///
 /// # Notes
 /// This is equivalent to the ternary operator: `condition ? a : b`. Use for concise conditional selection.
-#[bp_doc("# Select Bool")]
-#[bp_doc("Selects between two boolean values based on a condition.")]
-#[bp_doc("Returns a if condition is true, b if false.")]
+/// # Select Bool
+/// Selects between two boolean values based on a condition.
+/// Returns a if condition is true, b if false.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn select_bool(condition: bool, a: bool, b: bool) -> bool {
     if condition {
@@ -360,9 +360,9 @@ pub fn select_bool(condition: bool, a: bool, b: bool) -> bool {
 ///
 /// # Notes
 /// This is equivalent to the ternary operator: condition ? a : b.
-#[bp_doc("# Select Number")]
-#[bp_doc("Selects between two numbers based on a boolean condition.")]
-#[bp_doc("Returns a if condition is true, b if false.")]
+/// # Select Number
+/// Selects between two numbers based on a boolean condition.
+/// Returns a if condition is true, b if false.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn select_number(condition: bool, a: f64, b: f64) -> f64 {
     if condition {
@@ -391,9 +391,9 @@ pub fn select_number(condition: bool, a: f64, b: f64) -> f64 {
 ///
 /// # Notes
 /// This node implements a ternary operator for strings. Use it for simple conditional string selection.
-#[bp_doc("# Select String")]
-#[bp_doc("Selects between two strings based on a boolean condition.")]
-#[bp_doc("Returns a if condition is true, b if false.")]
+/// # Select String
+/// Selects between two strings based on a boolean condition.
+/// Returns a if condition is true, b if false.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn select_string(condition: bool, a: String, b: String) -> String {
     if condition {

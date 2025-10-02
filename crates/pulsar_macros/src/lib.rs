@@ -87,7 +87,8 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
         if let FnArg::Typed(pat_type) = arg {
             if let Pat::Ident(ident) = &*pat_type.pat {
                 let param_name = ident.ident.to_string();
-                let param_type = quote!(#pat_type.ty).to_string();
+                let ty = &*pat_type.ty;
+                let param_type = quote!(#ty).to_string();
                 return Some(quote! {
                     crate::NodeParameter {
                         name: #param_name,
@@ -122,14 +123,20 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
         _ => quote! { &["exec"] },
     };
 
-    // Build documentation from bp_doc attributes
+    // Build documentation from doc comments (/// or #[doc = "..."])
     let docs: Vec<String> = input.attrs.iter()
         .filter_map(|attr| {
-            if attr.path().is_ident("bp_doc") {
-                attr.parse_args::<syn::LitStr>().ok().map(|lit| lit.value())
-            } else {
-                None
+            // Doc comments become #[doc = "..."] attributes
+            if attr.path().is_ident("doc") {
+                if let syn::Meta::NameValue(nv) = &attr.meta {
+                    if let syn::Expr::Lit(expr_lit) = &nv.value {
+                        if let syn::Lit::Str(lit_str) = &expr_lit.lit {
+                            return Some(lit_str.value().trim().to_string());
+                        }
+                    }
+                }
             }
+            None
         })
         .collect();
 
@@ -275,11 +282,6 @@ pub fn exec_output(input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
-/// Documentation attribute for blueprint nodes.
-///
-/// This attribute is used to add rich documentation to nodes that will be
-/// displayed in the visual editor.
-#[proc_macro_attribute]
-pub fn bp_doc(_args: TokenStream, input: TokenStream) -> TokenStream {
-    input
-}
+// Note: bp_doc is no longer a proc-macro. It's just a marker attribute
+// that the #[blueprint] macro looks for. This way it doesn't get consumed
+// before blueprint can see it.

@@ -14,7 +14,7 @@
 //! All flow control nodes use `NodeTypes::control_flow` and manage execution flow through
 //! execution pins created with the `exec_output!()` macro.
 
-use crate::{blueprint, bp_doc, NodeTypes, exec_output};
+use crate::{blueprint, NodeTypes, exec_output};
 
 // =============================================================================
 // Branching Operations
@@ -38,9 +38,9 @@ use crate::{blueprint, bp_doc, NodeTypes, exec_output};
 ///
 /// # Notes
 /// Use this node for conditional logic and flow control in your graph.
-#[bp_doc("# Branch")]
-#[bp_doc("Routes execution based on a boolean condition.")]
-#[bp_doc("If the condition is true, the A pin executes. Otherwise, the B pin executes.")]
+/// # Branch
+/// Routes execution based on a boolean condition.
+/// If the condition is true, the A pin executes. Otherwise, the B pin executes.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn branch(condition: bool) {
     if condition {
@@ -71,9 +71,9 @@ pub fn branch(condition: bool) {
 ///
 /// # Notes
 /// Conditions are checked in order. Only the first true branch is executed. Use this node for multi-way branching logic.
-#[bp_doc("# Multi Branch")]
-#[bp_doc("Evaluates multiple conditions and executes the first matching branch.")]
-#[bp_doc("Conditions are checked in order. Only the first true branch executes.")]
+/// # Multi Branch
+/// Evaluates multiple conditions and executes the first matching branch.
+/// Conditions are checked in order. Only the first true branch executes.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn multi_branch(condition1: bool, condition2: bool, condition3: bool) {
     if condition1 {
@@ -112,9 +112,9 @@ pub fn multi_branch(condition1: bool, condition2: bool, condition3: bool) {
 ///
 /// # Notes
 /// You can customize the number of explicit cases by editing the match arms.
-#[bp_doc("# Switch on Int")]
-#[bp_doc("Routes execution based on an integer value.")]
-#[bp_doc("Matches the value against predefined cases or executes the default branch.")]
+/// # Switch on Int
+/// Routes execution based on an integer value.
+/// Matches the value against predefined cases or executes the default branch.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn switch_on_int(value: i64) {
     match value as i32 {
@@ -145,9 +145,9 @@ pub fn switch_on_int(value: i64) {
 ///
 /// # Notes
 /// This node is useful for conditional execution based on a boolean result.
-#[bp_doc("# Switch on Bool")]
-#[bp_doc("Routes execution based on a boolean value.")]
-#[bp_doc("Executes the True or False branch depending on the input.")]
+/// # Switch on Bool
+/// Routes execution based on a boolean value.
+/// Executes the True or False branch depending on the input.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn switch_on_bool(value: bool) {
     match value {
@@ -177,9 +177,9 @@ pub fn switch_on_bool(value: bool) {
 ///
 /// # Notes
 /// You can customize the option strings and add more branches as needed.
-#[bp_doc("# Switch on String")]
-#[bp_doc("Routes execution based on a string value.")]
-#[bp_doc("Matches the string against predefined options or executes the default branch.")]
+/// # Switch on String
+/// Routes execution based on a string value.
+/// Matches the string against predefined options or executes the default branch.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn switch_on_string(value: String) {
     match value.as_str() {
@@ -211,9 +211,9 @@ pub fn switch_on_string(value: String) {
 ///
 /// # Notes
 /// Range boundaries can be customized by modifying the threshold values.
-#[bp_doc("# Range Switch")]
-#[bp_doc("Routes execution based on which numeric range the value falls into.")]
-#[bp_doc("Useful for categorizing values into predefined ranges.")]
+/// # Range Switch
+/// Routes execution based on which numeric range the value falls into.
+/// Useful for categorizing values into predefined ranges.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn range_switch(value: f64) {
     if value < 0.0 {
@@ -253,9 +253,9 @@ pub fn range_switch(value: f64) {
 ///
 /// # Notes
 /// Patterns are checked in order. Only the first matching branch is executed. Use this node for simple string-based routing or filtering.
-#[bp_doc("# String Contains Switch")]
-#[bp_doc("Routes execution based on which pattern the string contains.")]
-#[bp_doc("Checks patterns in order and executes the first matching branch.")]
+/// # String Contains Switch
+/// Routes execution based on which pattern the string contains.
+/// Checks patterns in order and executes the first matching branch.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn string_contains_switch(text: String, pattern1: String, pattern2: String, pattern3: String) {
     if text.contains(&pattern1) {
@@ -292,9 +292,9 @@ pub fn string_contains_switch(text: String, pattern1: String, pattern2: String, 
 ///
 /// # Notes
 /// Use this node for simple iteration. For more complex iteration (e.g., over arrays), use dedicated array or collection nodes.
-#[bp_doc("# For Loop")]
-#[bp_doc("Executes a loop body a specified number of times.")]
-#[bp_doc("Iterates from 0 to count-1, executing the body each time.")]
+/// # For Loop
+/// Executes a loop body a specified number of times.
+/// Iterates from 0 to count-1, executing the body each time.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn for_loop(count: i64) {
     for _i in 0..count {
@@ -318,9 +318,9 @@ pub fn for_loop(count: i64) {
 ///
 /// # Notes
 /// Use caution to avoid infinite loops. The condition should eventually become `false` to terminate the loop.
-#[bp_doc("# While Loop")]
-#[bp_doc("Executes a loop body repeatedly while a condition is true.")]
-#[bp_doc("WARNING: Ensure the condition eventually becomes false to avoid infinite loops.")]
+/// # While Loop
+/// Executes a loop body repeatedly while a condition is true.
+/// WARNING: Ensure the condition eventually becomes false to avoid infinite loops.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn while_loop(condition: bool) {
     while condition {
@@ -353,9 +353,9 @@ pub fn while_loop(condition: bool) {
 /// # Notes
 /// The number of outputs is fixed to four for simplicity. Extend the implementation for more outputs as needed.
 /// Use this node to enforce execution order or to trigger multiple actions from a single event.
-#[bp_doc("# Sequence")]
-#[bp_doc("Executes multiple execution pins in sequential order.")]
-#[bp_doc("All outputs fire in order each time the node is triggered.")]
+/// # Sequence
+/// Executes multiple execution pins in sequential order.
+/// All outputs fire in order each time the node is triggered.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn sequence() {
     exec_output!("Then0");
@@ -389,9 +389,9 @@ pub fn sequence() {
 ///
 /// # Notes
 /// Useful for controlling flow in event graphs, gating triggers, or synchronizing logic.
-#[bp_doc("# Gate")]
-#[bp_doc("Controls execution flow with an open/close gate.")]
-#[bp_doc("Execution only passes through when the gate is open.")]
+/// # Gate
+/// Controls execution flow with an open/close gate.
+/// Execution only passes through when the gate is open.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn gate(open: bool, close: bool) {
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -435,9 +435,9 @@ pub fn gate(open: bool, close: bool) {
 /// # Notes
 /// Uses a static atomic integer for thread-safe state tracking. The number of outputs is fixed to 4 for simplicity.
 /// Extend the implementation for more outputs as needed.
-#[bp_doc("# Multi Gate")]
-#[bp_doc("Cycles through multiple outputs in sequence.")]
-#[bp_doc("Each trigger advances to the next output, wrapping around after the last.")]
+/// # Multi Gate
+/// Cycles through multiple outputs in sequence.
+/// Each trigger advances to the next output, wrapping around after the last.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn multi_gate(reset: bool) {
     use std::sync::atomic::{AtomicI32, Ordering};
@@ -480,9 +480,9 @@ pub fn multi_gate(reset: bool) {
 ///
 /// # Notes
 /// Uses a static atomic boolean for thread-safe state tracking. The state persists for the lifetime of the process.
-#[bp_doc("# Flip Flop")]
-#[bp_doc("Alternates between two outputs each time it's triggered.")]
-#[bp_doc("Useful for toggling behavior or alternating actions.")]
+/// # Flip Flop
+/// Alternates between two outputs each time it's triggered.
+/// Useful for toggling behavior or alternating actions.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn flip_flop() {
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -521,9 +521,9 @@ pub fn flip_flop() {
 ///
 /// # Notes
 /// Useful for initialization, one-time events, or gating logic that should not repeat until explicitly reset.
-#[bp_doc("# Do Once")]
-#[bp_doc("Executes only once until reset.")]
-#[bp_doc("Useful for one-time initialization or events that should not repeat.")]
+/// # Do Once
+/// Executes only once until reset.
+/// Useful for one-time initialization or events that should not repeat.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn do_once(reset: bool) {
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -562,9 +562,9 @@ pub fn do_once(reset: bool) {
 ///
 /// # Notes
 /// Useful for limiting the number of times an action can occur, such as for initialization, retries, or one-shot events.
-#[bp_doc("# Do N")]
-#[bp_doc("Executes N times then stops until reset.")]
-#[bp_doc("Useful for limiting the number of times an action can occur.")]
+/// # Do N
+/// Executes N times then stops until reset.
+/// Useful for limiting the number of times an action can occur.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn do_n(n: i64, reset: bool) {
     use std::sync::atomic::{AtomicI32, Ordering};
@@ -605,9 +605,9 @@ pub fn do_n(n: i64, reset: bool) {
 ///
 /// # Notes
 /// Use with caution in performance-critical code, as sleeping blocks the thread and may affect responsiveness.
-#[bp_doc("# Delay")]
-#[bp_doc("Pauses execution for a specified duration in milliseconds.")]
-#[bp_doc("WARNING: Blocks the current thread during the delay.")]
+/// # Delay
+/// Pauses execution for a specified duration in milliseconds.
+/// WARNING: Blocks the current thread during the delay.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn delay(milliseconds: i64) {
     std::thread::sleep(std::time::Duration::from_millis(milliseconds as u64));
@@ -634,9 +634,9 @@ pub fn delay(milliseconds: i64) {
 ///
 /// # Notes
 /// Useful for debouncing user input, delaying actions until a pause, or implementing restartable timers.
-#[bp_doc("# Retriggerable Delay")]
-#[bp_doc("Delay that resets if triggered again before completion.")]
-#[bp_doc("Useful for debouncing or waiting for a period of inactivity.")]
+/// # Retriggerable Delay
+/// Delay that resets if triggered again before completion.
+/// Useful for debouncing or waiting for a period of inactivity.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn retriggerable_delay(delay_ms: i64) {
     use std::sync::Mutex;

@@ -11,7 +11,7 @@
 //! - Interpolation and mapping functions
 //! - Special mathematical utilities
 
-use crate::{blueprint, bp_doc, NodeTypes};
+use crate::{blueprint, NodeTypes};
 
 // =============================================================================
 // Basic Arithmetic Operations
@@ -28,8 +28,8 @@ use crate::{blueprint, bp_doc, NodeTypes};
 ///
 /// # Example
 /// If `a` is 2 and `b` is 3, the output will be 5.
-#[bp_doc("# Add")]
-#[bp_doc("Adds two numbers together and returns the result.")]
+/// # Add
+/// Adds two numbers together and returns the result.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn add(a: i64, b: i64) -> i64 {
     a + b
@@ -46,8 +46,8 @@ pub fn add(a: i64, b: i64) -> i64 {
 ///
 /// # Example
 /// If `a` is 10 and `b` is 3, the output will be 7.
-#[bp_doc("# Subtract")]
-#[bp_doc("Subtracts b from a and returns the result.")]
+/// # Subtract
+/// Subtracts b from a and returns the result.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn subtract(a: i64, b: i64) -> i64 {
     a - b
@@ -64,8 +64,8 @@ pub fn subtract(a: i64, b: i64) -> i64 {
 ///
 /// # Example
 /// If `a` is 3 and `b` is 4, the output will be 12.
-#[bp_doc("# Multiply")]
-#[bp_doc("Multiplies two numbers together and returns the result.")]
+/// # Multiply
+/// Multiplies two numbers together and returns the result.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn multiply(a: i64, b: i64) -> i64 {
     a * b
@@ -86,8 +86,8 @@ pub fn multiply(a: i64, b: i64) -> i64 {
 ///
 /// # Notes
 /// Division by zero is not checked; handle with care if the divisor may be zero.
-#[bp_doc("# Divide")]
-#[bp_doc("Divides a by b and returns the result.")]
+/// # Divide
+/// Divides a by b and returns the result.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn divide(a: i64, b: i64) -> i64 {
     if b == 0 {
@@ -112,8 +112,8 @@ pub fn divide(a: i64, b: i64) -> i64 {
 ///
 /// # Notes
 /// The result has the same sign as the dividend. Division by zero will panic or return NaN depending on the type.
-#[bp_doc("# Modulo")]
-#[bp_doc("Returns the remainder of division (a % b).")]
+/// # Modulo
+/// Returns the remainder of division (a % b).
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn modulo(a: i64, b: i64) -> i64 {
     a % b
@@ -133,8 +133,8 @@ pub fn modulo(a: i64, b: i64) -> i64 {
 ///
 /// # Example
 /// If `value` is -5, the output will be 5.
-#[bp_doc("# Abs")]
-#[bp_doc("Returns the absolute value of a number.")]
+/// # Abs
+/// Returns the absolute value of a number.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn abs(value: f64) -> f64 {
     value.abs()
@@ -155,8 +155,8 @@ pub fn abs(value: f64) -> f64 {
 ///
 /// # Notes
 /// The output is always a float. Use this node to extract the direction or polarity of a value.
-#[bp_doc("# Sign")]
-#[bp_doc("Returns the sign of a number: 1.0 for positive, -1.0 for negative, 0.0 for zero.")]
+/// # Sign
+/// Returns the sign of a number: 1.0 for positive, -1.0 for negative, 0.0 for zero.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn sign(value: f64) -> f64 {
     value.signum()
@@ -180,8 +180,8 @@ pub fn sign(value: f64) -> f64 {
 ///
 /// # Notes
 /// The output is a float, not an integer type.
-#[bp_doc("# Ceil")]
-#[bp_doc("Returns the smallest integer greater than or equal to a number (ceiling).")]
+/// # Ceil
+/// Returns the smallest integer greater than or equal to a number (ceiling).
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn ceil(value: f64) -> f64 {
     value.ceil()
@@ -201,8 +201,8 @@ pub fn ceil(value: f64) -> f64 {
 ///
 /// # Notes
 /// The output is a float, not an integer type.
-#[bp_doc("# Floor")]
-#[bp_doc("Returns the largest integer less than or equal to a number (floor).")]
+/// # Floor
+/// Returns the largest integer less than or equal to a number (floor).
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn floor(value: f64) -> f64 {
     value.floor()
@@ -222,8 +222,8 @@ pub fn floor(value: f64) -> f64 {
 ///
 /// # Notes
 /// The output is a float, not an integer type. Rounds half-way cases away from zero (e.g., 2.5 -> 3.0, -2.5 -> -3.0).
-#[bp_doc("# Round")]
-#[bp_doc("Rounds a number to the nearest integer.")]
+/// # Round
+/// Rounds a number to the nearest integer.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn round(value: f64) -> f64 {
     value.round()
@@ -248,8 +248,8 @@ pub fn round(value: f64) -> f64 {
 ///
 /// # Notes
 /// Uses the standard floating-point powf function. Negative bases and non-integer exponents may yield complex results (NaN).
-#[bp_doc("# Power")]
-#[bp_doc("Raises a number to a power (base^exponent).")]
+/// # Power
+/// Raises a number to a power (base^exponent).
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn power(base: f64, exponent: f64) -> f64 {
     base.powf(exponent)
@@ -270,8 +270,8 @@ pub fn power(base: f64, exponent: f64) -> f64 {
 /// # Notes
 /// The input must be non-negative. Negative inputs will return NaN (not a number).
 /// Use this node for root calculations, distance formulas, or normalization.
-#[bp_doc("# Square Root")]
-#[bp_doc("Calculates the square root of a number.")]
+/// # Square Root
+/// Calculates the square root of a number.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn sqrt(value: f64) -> f64 {
     value.sqrt()
@@ -295,8 +295,8 @@ pub fn sqrt(value: f64) -> f64 {
 ///
 /// # Notes
 /// The input should be in radians. For degrees, convert to radians before using this node.
-#[bp_doc("# Sin")]
-#[bp_doc("Calculates the sine of an angle in radians.")]
+/// # Sin
+/// Calculates the sine of an angle in radians.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn sin(angle: f64) -> f64 {
     angle.sin()
@@ -315,8 +315,8 @@ pub fn sin(angle: f64) -> f64 {
 ///
 /// # Notes
 /// The input should be in radians. For degrees, convert to radians before using this node.
-#[bp_doc("# Cos")]
-#[bp_doc("Calculates the cosine of an angle in radians.")]
+/// # Cos
+/// Calculates the cosine of an angle in radians.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn cos(angle: f64) -> f64 {
     angle.cos()
@@ -336,8 +336,8 @@ pub fn cos(angle: f64) -> f64 {
 ///
 /// # Notes
 /// The tangent function has asymptotes at odd multiples of π/2. Inputting such values will result in very large outputs or `NaN`.
-#[bp_doc("# Tan")]
-#[bp_doc("Calculates the tangent of an angle in radians.")]
+/// # Tan
+/// Calculates the tangent of an angle in radians.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn tan(angle: f64) -> f64 {
     angle.tan()
@@ -360,8 +360,8 @@ pub fn tan(angle: f64) -> f64 {
 ///
 /// # Notes
 /// Use this node when trigonometric functions require radians instead of degrees.
-#[bp_doc("# Degrees to Radians")]
-#[bp_doc("Converts an angle from degrees to radians.")]
+/// # Degrees to Radians
+/// Converts an angle from degrees to radians.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn degrees_to_radians(degrees: f64) -> f64 {
     degrees.to_radians()
@@ -380,8 +380,8 @@ pub fn degrees_to_radians(degrees: f64) -> f64 {
 ///
 /// # Notes
 /// Use this node when you need to convert angles for display, user input, or APIs that expect degrees.
-#[bp_doc("# Radians to Degrees")]
-#[bp_doc("Converts an angle from radians to degrees.")]
+/// # Radians to Degrees
+/// Converts an angle from radians to degrees.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn radians_to_degrees(radians: f64) -> f64 {
     radians.to_degrees()
@@ -402,8 +402,8 @@ pub fn radians_to_degrees(radians: f64) -> f64 {
 ///
 /// # Notes
 /// The result is always the minimal difference, taking wrap-around into account.
-#[bp_doc("# Angle Difference")]
-#[bp_doc("Calculates the shortest angular difference between two angles.")]
+/// # Angle Difference
+/// Calculates the shortest angular difference between two angles.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn angle_difference(angle1: f64, angle2: f64) -> f64 {
     let diff = angle2 - angle1;
@@ -430,8 +430,8 @@ pub fn angle_difference(angle1: f64, angle2: f64) -> f64 {
 ///
 /// # Notes
 /// Uses the standard min function for the numeric type.
-#[bp_doc("# Min")]
-#[bp_doc("Returns the minimum of two numbers.")]
+/// # Min
+/// Returns the minimum of two numbers.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn min(a: f64, b: f64) -> f64 {
     a.min(b)
@@ -452,8 +452,8 @@ pub fn min(a: f64, b: f64) -> f64 {
 ///
 /// # Notes
 /// Uses the standard max function for the numeric type.
-#[bp_doc("# Max")]
-#[bp_doc("Returns the maximum of two numbers.")]
+/// # Max
+/// Returns the maximum of two numbers.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn max(a: f64, b: f64) -> f64 {
     a.max(b)
@@ -478,8 +478,8 @@ pub fn max(a: f64, b: f64) -> f64 {
 ///
 /// # Notes
 /// Useful for enforcing numeric constraints and preventing out-of-range values.
-#[bp_doc("# Clamp")]
-#[bp_doc("Clamps a value between a minimum and maximum.")]
+/// # Clamp
+/// Clamps a value between a minimum and maximum.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn clamp(value: f64, min: f64, max: f64) -> f64 {
     value.clamp(min, max)
@@ -500,8 +500,8 @@ pub fn clamp(value: f64, min: f64, max: f64) -> f64 {
 ///
 /// # Notes
 /// Useful for restricting values to a valid range, such as for UI sliders, physics, or normalization.
-#[bp_doc("# Clamp to Range")]
-#[bp_doc("Clamps a value to a specified range [min, max].")]
+/// # Clamp to Range
+/// Clamps a value to a specified range [min, max].
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn clamp_to_range(value: f32, min: f32, max: f32) -> f32 {
     value.clamp(min, max)
@@ -523,8 +523,8 @@ pub fn clamp_to_range(value: f32, min: f32, max: f32) -> f32 {
 ///
 /// # Notes
 /// The check is inclusive: value >= min && value <= max.
-#[bp_doc("# In Range")]
-#[bp_doc("Checks if a value is within a specified range (inclusive).")]
+/// # In Range
+/// Checks if a value is within a specified range (inclusive).
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn in_range(value: f32, min: f32, max: f32) -> bool {
     value >= min && value <= max
@@ -550,8 +550,8 @@ pub fn in_range(value: f32, min: f32, max: f32) -> bool {
 ///
 /// # Notes
 /// The parameter t is not clamped; values outside [0, 1] will extrapolate beyond a and b.
-#[bp_doc("# Lerp")]
-#[bp_doc("Linearly interpolates between two values using parameter t.")]
+/// # Lerp
+/// Linearly interpolates between two values using parameter t.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn lerp(a: f64, b: f64, t: f64) -> f64 {
     a + (b - a) * t
@@ -574,8 +574,8 @@ pub fn lerp(a: f64, b: f64, t: f64) -> f64 {
 ///
 /// # Notes
 /// If the input range is zero (from_min == from_max), the output will be to_min. No clamping is performed on the output.
-#[bp_doc("# Map Range")]
-#[bp_doc("Maps a value from one range to another.")]
+/// # Map Range
+/// Maps a value from one range to another.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn map_range(value: f32, from_min: f32, from_max: f32, to_min: f32, to_max: f32) -> f32 {
     if from_max == from_min {
@@ -602,8 +602,8 @@ pub fn map_range(value: f32, from_min: f32, from_max: f32, to_min: f32, to_max: 
 /// # Notes
 /// The formula used is: t * t * (3 - 2 * t), where t = ((x - edge0) / (edge1 - edge0)) clamped to [0, 1].
 /// Use this node for smooth transitions, anti-aliasing, or soft step functions.
-#[bp_doc("# Smoothstep")]
-#[bp_doc("Performs smooth Hermite interpolation between two edges.")]
+/// # Smoothstep
+/// Performs smooth Hermite interpolation between two edges.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
     let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
@@ -628,8 +628,8 @@ pub fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
 ///
 /// # Notes
 /// Useful for geometry, physics, and spatial calculations.
-#[bp_doc("# Distance 2D")]
-#[bp_doc("Calculates the Euclidean distance between two 2D points.")]
+/// # Distance 2D
+/// Calculates the Euclidean distance between two 2D points.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn distance2d(a: (f32, f32), b: (f32, f32)) -> f32 {
     let (x1, y1) = a;
@@ -653,8 +653,8 @@ pub fn distance2d(a: (f32, f32), b: (f32, f32)) -> f32 {
 ///
 /// # Notes
 /// Useful for geometry, physics, and spatial calculations.
-#[bp_doc("# Distance 3D")]
-#[bp_doc("Calculates the Euclidean distance between two 3D points.")]
+/// # Distance 3D
+/// Calculates the Euclidean distance between two 3D points.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn distance3d(a: (f32, f32, f32), b: (f32, f32, f32)) -> f32 {
     let (x1, y1, z1) = a;
@@ -684,8 +684,8 @@ pub fn distance3d(a: (f32, f32, f32), b: (f32, f32, f32)) -> f32 {
 ///
 /// # Notes
 /// Useful for animations, effects, or periodic triggers.
-#[bp_doc("# Bounce Value")]
-#[bp_doc("Creates a bouncing value that oscillates between 0 and 1.")]
+/// # Bounce Value
+/// Creates a bouncing value that oscillates between 0 and 1.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn bounce_value(time: f32, frequency: f32) -> f32 {
     (time * frequency).sin().abs()
@@ -705,8 +705,8 @@ pub fn bounce_value(time: f32, frequency: f32) -> f32 {
 ///
 /// # Notes
 /// The output is periodic and continuous. The period is twice the length. Useful for looping animations or oscillating values.
-#[bp_doc("# Ping Pong")]
-#[bp_doc("Creates a ping-pong value that bounces between 0 and length.")]
+/// # Ping Pong
+/// Creates a ping-pong value that bounces between 0 and length.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn ping_pong(t: f32, length: f32) -> f32 {
     let cycle = (t / length).floor();

@@ -13,7 +13,7 @@
 //!
 //! All debug nodes are `NodeTypes::fn_` with execution flow (exec in/out) and side effects.
 
-use crate::{blueprint, bp_doc, NodeTypes};
+use crate::{blueprint, NodeTypes};
 
 // =============================================================================
 // Print Operations
@@ -38,8 +38,8 @@ use crate::{blueprint, bp_doc, NodeTypes};
 ///
 /// # Notes
 /// Use this node for development and troubleshooting. Remove or disable in production code.
-#[bp_doc("# Print String")]
-#[bp_doc("Prints a string to the console with [DEBUG] prefix.")]
+/// # Print String
+/// Prints a string to the console with [DEBUG] prefix.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_string(message: String) {
     println!("[DEBUG] {}", message);
@@ -64,8 +64,8 @@ pub fn print_string(message: String) {
 ///
 /// # Notes
 /// Use this node to monitor numeric values during development or troubleshooting.
-#[bp_doc("# Print Number")]
-#[bp_doc("Prints a number to the console with [DEBUG] prefix.")]
+/// # Print Number
+/// Prints a number to the console with [DEBUG] prefix.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_number(value: f64) {
     println!("[DEBUG] Number: {}", value);
@@ -94,8 +94,8 @@ pub fn print_number(value: f64) {
 ///
 /// # Notes
 /// Use this node for debugging and development. Remove or disable in production code.
-#[bp_doc("# Print Boolean")]
-#[bp_doc("Prints a boolean value to the console with [DEBUG] prefix.")]
+/// # Print Boolean
+/// Prints a boolean value to the console with [DEBUG] prefix.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_bool(value: bool) {
     println!("[DEBUG] Boolean: {}", value);
@@ -120,8 +120,8 @@ pub fn print_bool(value: bool) {
 ///
 /// # Notes
 /// This is a simple print node. For debug output, use `print_string` instead.
-#[bp_doc("# Println")]
-#[bp_doc("Prints a message to the console.")]
+/// # Println
+/// Prints a message to the console.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn println(message: String) {
     println!("{}", message);
@@ -152,8 +152,8 @@ pub fn println(message: String) {
 /// # Notes
 /// Only the first three placeholders are supported. Placeholders not present in the
 /// format string are ignored. Use this node for simple string formatting in logs or UI.
-#[bp_doc("# Print Formatted")]
-#[bp_doc("Prints a formatted message with placeholder replacements ({0}, {1}, {2}).")]
+/// # Print Formatted
+/// Prints a formatted message with placeholder replacements ({0}, {1}, {2}).
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_formatted(format: String, value0: String, value1: String, value2: String) {
     let message = format
@@ -184,8 +184,8 @@ pub fn print_formatted(format: String, value0: String, value1: String, value2: S
 ///
 /// # Notes
 /// Use this node to reduce log spam or print only relevant information during debugging.
-#[bp_doc("# Conditional Print")]
-#[bp_doc("Prints a message only if the condition is true.")]
+/// # Conditional Print
+/// Prints a message only if the condition is true.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn conditional_print(condition: bool, message: String) {
     if condition {
@@ -216,8 +216,8 @@ pub fn conditional_print(condition: bool, message: String) {
 ///
 /// # Notes
 /// Extend this node for more complex types or richer inspection as needed.
-#[bp_doc("# Debug Inspect Value")]
-#[bp_doc("Inspects and prints a value with detailed type information.")]
+/// # Debug Inspect Value
+/// Inspects and prints a value with detailed type information.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn debug_inspect_value(value: String) {
     println!(
@@ -248,8 +248,8 @@ pub fn debug_inspect_value(value: String) {
 ///
 /// # Notes
 /// Use this node to trace execution and identify where code is running, especially in multi-threaded contexts.
-#[bp_doc("# Debug Stack Trace")]
-#[bp_doc("Prints a simple stack trace with function name, thread ID, and timestamp.")]
+/// # Debug Stack Trace
+/// Prints a simple stack trace with function name, thread ID, and timestamp.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn debug_stack_trace(function_name: String) {
     println!("[STACK_TRACE] Current function: {}", function_name);
@@ -277,8 +277,8 @@ pub fn debug_stack_trace(function_name: String) {
 /// # Notes
 /// This is a simplified implementation. For more detailed memory tracking, use platform-specific
 /// libraries or tools. Output may vary depending on OS and permissions.
-#[bp_doc("# Debug Memory Usage")]
-#[bp_doc("Prints current memory usage information for the process.")]
+/// # Debug Memory Usage
+/// Prints current memory usage information for the process.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn debug_memory_usage() {
     // Print process ID
@@ -321,8 +321,8 @@ pub fn debug_memory_usage() {
 /// # Notes
 /// The timestamp is the number of seconds since the Unix epoch.
 /// Use this node for general-purpose logging and tracing.
-#[bp_doc("# Log Info")]
-#[bp_doc("Logs an informational message with timestamp.")]
+/// # Log Info
+/// Logs an informational message with timestamp.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn log_info(message: String) {
     let now = std::time::SystemTime::now()
@@ -353,8 +353,8 @@ pub fn log_info(message: String) {
 /// # Notes
 /// The timestamp is in seconds since the Unix epoch. Use this node to highlight non-fatal
 /// issues or potential problems.
-#[bp_doc("# Log Warning")]
-#[bp_doc("Logs a warning message with timestamp to stderr.")]
+/// # Log Warning
+/// Logs a warning message with timestamp to stderr.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn log_warn(message: String) {
     let now = std::time::SystemTime::now()
@@ -385,8 +385,8 @@ pub fn log_warn(message: String) {
 /// # Notes
 /// The timestamp is the current system time in seconds since the Unix epoch. Use this node to
 /// report errors, failures, or unexpected conditions.
-#[bp_doc("# Log Error")]
-#[bp_doc("Logs an error message with timestamp to stderr.")]
+/// # Log Error
+/// Logs an error message with timestamp to stderr.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn log_error(message: String) {
     let now = std::time::SystemTime::now()
@@ -418,8 +418,8 @@ pub fn log_error(message: String) {
 ///
 /// # Notes
 /// Use only for debugging or enforcing critical invariants. Panics will terminate execution.
-#[bp_doc("# Assert True")]
-#[bp_doc("Asserts that a condition is true; panics with message if false.")]
+/// # Assert True
+/// Asserts that a condition is true; panics with message if false.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn assert_true(condition: bool, message: String) {
     if !condition {
@@ -446,8 +446,8 @@ pub fn assert_true(condition: bool, message: String) {
 ///
 /// # Notes
 /// Use for testing and debugging to verify that values match expectations.
-#[bp_doc("# Assert Equals")]
-#[bp_doc("Asserts that two values are equal; panics with message if not.")]
+/// # Assert Equals
+/// Asserts that two values are equal; panics with message if not.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn assert_equals(a: String, b: String, message: String) {
     if a != b {
@@ -479,8 +479,8 @@ pub fn assert_equals(a: String, b: String, message: String) {
 ///
 /// # Notes
 /// Use this node to halt execution and inspect program state interactively during development.
-#[bp_doc("# Breakpoint")]
-#[bp_doc("Simulates a breakpoint by printing a message and waiting for user input.")]
+/// # Breakpoint
+/// Simulates a breakpoint by printing a message and waiting for user input.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn breakpoint(message: String) {
     println!("BREAKPOINT: {}", message);
@@ -517,8 +517,8 @@ pub fn breakpoint(message: String) {
 ///
 /// # Notes
 /// Use this node to profile expensive operations or compare alternative implementations.
-#[bp_doc("# Benchmark Function")]
-#[bp_doc("Measures execution time of a code block in milliseconds.")]
+/// # Benchmark Function
+/// Measures execution time of a code block in milliseconds.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn benchmark_function(name: String) -> u64 {
     let start = std::time::Instant::now();

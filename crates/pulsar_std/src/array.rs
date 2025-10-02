@@ -11,7 +11,7 @@
 //!
 //! All operations work with Rust's `Vec<T>` type for dynamic arrays.
 
-use crate::{blueprint, bp_doc, NodeTypes};
+use crate::{blueprint, NodeTypes};
 
 // =============================================================================
 // Array Creation
@@ -28,8 +28,8 @@ use crate::{blueprint, bp_doc, NodeTypes};
 /// # Notes
 /// Use this node to initialize a vector before adding elements.
 /// The type of the vector will be inferred from usage.
-#[bp_doc("# Array New")]
-#[bp_doc("Creates a new empty vector.")]
+/// # Array New
+/// Creates a new empty vector.
 #[blueprint(type: NodeTypes::pure, category: "Array", color: "#50E3C2")]
 pub fn array_new<T>() -> Vec<T> {
     Vec::new()
@@ -53,8 +53,8 @@ pub fn array_new<T>() -> Vec<T> {
 ///
 /// # Notes
 /// This operation adds the element to the end of the vector.
-#[bp_doc("# Array Push")]
-#[bp_doc("Appends an element to the end of a vector.")]
+/// # Array Push
+/// Appends an element to the end of a vector.
 #[blueprint(type: NodeTypes::pure, category: "Array", color: "#50E3C2")]
 pub fn array_push<T>(array: Vec<T>, item: T) -> Vec<T> {
     let mut arr = array;
@@ -76,8 +76,8 @@ pub fn array_push<T>(array: Vec<T>, item: T) -> Vec<T> {
 ///
 /// # Notes
 /// This operation removes and returns the last element.
-#[bp_doc("# Array Pop")]
-#[bp_doc("Removes and returns the last element from a vector.")]
+/// # Array Pop
+/// Removes and returns the last element from a vector.
 #[blueprint(type: NodeTypes::pure, category: "Array", color: "#50E3C2")]
 pub fn array_pop<T: Clone>(array: Vec<T>) -> (Vec<T>, Option<T>) {
     let mut arr = array;
@@ -101,8 +101,8 @@ pub fn array_pop<T: Clone>(array: Vec<T>) -> (Vec<T>, Option<T>) {
 ///
 /// # Notes
 /// If the index is out of bounds, no change is made and the original vector is returned.
-#[bp_doc("# Array Set")]
-#[bp_doc("Sets the value at a specific index in a vector.")]
+/// # Array Set
+/// Sets the value at a specific index in a vector.
 #[blueprint(type: NodeTypes::pure, category: "Array", color: "#50E3C2")]
 pub fn array_set<T>(array: Vec<T>, index: i64, value: T) -> Vec<T> {
     let mut arr = array;
@@ -126,8 +126,8 @@ pub fn array_set<T>(array: Vec<T>, index: i64, value: T) -> Vec<T> {
 ///
 /// # Notes
 /// This operation removes all elements, resulting in an empty vector.
-#[bp_doc("# Array Clear")]
-#[bp_doc("Removes all elements from a vector.")]
+/// # Array Clear
+/// Removes all elements from a vector.
 #[blueprint(type: NodeTypes::pure, category: "Array", color: "#50E3C2")]
 pub fn array_clear<T>(array: Vec<T>) -> Vec<T> {
     let mut arr = array;
@@ -154,8 +154,8 @@ pub fn array_clear<T>(array: Vec<T>) -> Vec<T> {
 ///
 /// # Notes
 /// Indexing is zero-based. If the index is negative or greater than or equal to the vector length, None is returned.
-#[bp_doc("# Array Get")]
-#[bp_doc("Retrieves the element at a specific index.")]
+/// # Array Get
+/// Retrieves the element at a specific index.
 #[blueprint(type: NodeTypes::pure, category: "Array", color: "#50E3C2")]
 pub fn array_get<T: Clone>(array: Vec<T>, index: i64) -> Option<T> {
     let idx = index as usize;
@@ -176,8 +176,8 @@ pub fn array_get<T: Clone>(array: Vec<T>, index: i64) -> Option<T> {
 ///
 /// # Notes
 /// This is equivalent to getting the element at index 0.
-#[bp_doc("# Array First")]
-#[bp_doc("Returns the first element of a vector.")]
+/// # Array First
+/// Returns the first element of a vector.
 #[blueprint(type: NodeTypes::pure, category: "Array", color: "#50E3C2")]
 pub fn array_first<T: Clone>(array: Vec<T>) -> Option<T> {
     array.first().cloned()
@@ -197,8 +197,8 @@ pub fn array_first<T: Clone>(array: Vec<T>) -> Option<T> {
 ///
 /// # Notes
 /// This is equivalent to getting the element at index (length - 1).
-#[bp_doc("# Array Last")]
-#[bp_doc("Returns the last element of a vector.")]
+/// # Array Last
+/// Returns the last element of a vector.
 #[blueprint(type: NodeTypes::pure, category: "Array", color: "#50E3C2")]
 pub fn array_last<T: Clone>(array: Vec<T>) -> Option<T> {
     array.last().cloned()
@@ -222,8 +222,8 @@ pub fn array_last<T: Clone>(array: Vec<T>) -> Option<T> {
 ///
 /// # Notes
 /// The length represents the total number of elements in the vector.
-#[bp_doc("# Array Length")]
-#[bp_doc("Returns the number of elements in a vector.")]
+/// # Array Length
+/// Returns the number of elements in a vector.
 #[blueprint(type: NodeTypes::pure, category: "Array", color: "#50E3C2")]
 pub fn array_length<T>(array: Vec<T>) -> i64 {
     array.len() as i64
@@ -243,8 +243,8 @@ pub fn array_length<T>(array: Vec<T>) -> i64 {
 ///
 /// # Notes
 /// This is equivalent to checking if the length is 0.
-#[bp_doc("# Array Is Empty")]
-#[bp_doc("Checks if a vector contains no elements.")]
+/// # Array Is Empty
+/// Checks if a vector contains no elements.
 #[blueprint(type: NodeTypes::pure, category: "Array", color: "#50E3C2")]
 pub fn array_is_empty<T>(array: Vec<T>) -> bool {
     array.is_empty()
@@ -266,8 +266,8 @@ pub fn array_is_empty<T>(array: Vec<T>) -> bool {
 /// # Notes
 /// This performs a linear search through the vector.
 /// The element type must implement PartialEq for comparison.
-#[bp_doc("# Array Contains")]
-#[bp_doc("Checks if a vector contains a specific element.")]
+/// # Array Contains
+/// Checks if a vector contains a specific element.
 #[blueprint(type: NodeTypes::pure, category: "Array", color: "#50E3C2")]
 pub fn array_contains<T: PartialEq>(array: Vec<T>, item: T) -> bool {
     array.contains(&item)
@@ -294,8 +294,8 @@ pub fn array_contains<T: PartialEq>(array: Vec<T>, item: T) -> bool {
 /// # Notes
 /// Indices must satisfy 0 <= start <= end <= array length.
 /// If indices are out of bounds or invalid, an empty vector is returned.
-#[bp_doc("# Array Slice")]
-#[bp_doc("Extracts a subvector from start (inclusive) to end (exclusive).")]
+/// # Array Slice
+/// Extracts a subvector from start (inclusive) to end (exclusive).
 #[blueprint(type: NodeTypes::pure, category: "Array", color: "#50E3C2")]
 pub fn array_slice<T: Clone>(array: Vec<T>, start: i64, end: i64) -> Vec<T> {
     let start_idx = start as usize;
@@ -321,8 +321,8 @@ pub fn array_slice<T: Clone>(array: Vec<T>, start: i64, end: i64) -> Vec<T> {
 /// # Notes
 /// This creates a new vector with elements in reverse order.
 /// The original order is not preserved.
-#[bp_doc("# Array Reverse")]
-#[bp_doc("Reverses the order of elements in a vector.")]
+/// # Array Reverse
+/// Reverses the order of elements in a vector.
 #[blueprint(type: NodeTypes::pure, category: "Array", color: "#50E3C2")]
 pub fn array_reverse<T>(array: Vec<T>) -> Vec<T> {
     let mut arr = array;
@@ -345,8 +345,8 @@ pub fn array_reverse<T>(array: Vec<T>) -> Vec<T> {
 /// Sorting is based on the natural ordering of the element type.
 /// For custom types, ensure they implement `Ord`.
 /// The original input vector is not modified; a sorted copy is returned.
-#[bp_doc("# Array Sort")]
-#[bp_doc("Sorts a vector in ascending order.")]
+/// # Array Sort
+/// Sorts a vector in ascending order.
 #[blueprint(type: NodeTypes::pure, category: "Array", color: "#50E3C2")]
 pub fn array_sort<T: Ord>(array: Vec<T>) -> Vec<T> {
     let mut arr = array;
@@ -369,8 +369,8 @@ pub fn array_sort<T: Ord>(array: Vec<T>) -> Vec<T> {
 /// # Notes
 /// This creates a new vector with all elements from both input vectors.
 /// The first vector's elements appear first, followed by the second vector's elements.
-#[bp_doc("# Array Concat")]
-#[bp_doc("Concatenates two vectors into a single vector.")]
+/// # Array Concat
+/// Concatenates two vectors into a single vector.
 #[blueprint(type: NodeTypes::pure, category: "Array", color: "#50E3C2")]
 pub fn array_concat<T>(a: Vec<T>, b: Vec<T>) -> Vec<T> {
     let mut result = a;

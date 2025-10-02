@@ -12,7 +12,7 @@
 //! Colors are represented as RGBA tuples: `(f32, f32, f32, f32)` for (red, green, blue, alpha)
 //! Each component typically ranges from 0.0 to 1.0.
 
-use crate::{blueprint, bp_doc, NodeTypes};
+use crate::{blueprint, NodeTypes};
 
 // =============================================================================
 // Color Construction
@@ -36,8 +36,8 @@ use crate::{blueprint, bp_doc, NodeTypes};
 ///
 /// # Notes
 /// Use this node to construct colors for rendering, UI, or data visualization.
-#[bp_doc("# Color New")]
-#[bp_doc("Creates a new color from RGBA components.")]
+/// # Color New
+/// Creates a new color from RGBA components.
 #[blueprint(type: NodeTypes::pure, category: "Color", color: "#FF6B9D")]
 pub fn color_new(r: f32, g: f32, b: f32, a: f32) -> (f32, f32, f32, f32) {
     (r, g, b, a)
@@ -62,8 +62,8 @@ pub fn color_new(r: f32, g: f32, b: f32, a: f32) -> (f32, f32, f32, f32) {
 ///
 /// # Notes
 /// Use this node to construct colors for rendering, UI, or data visualization.
-#[bp_doc("# Make Color")]
-#[bp_doc("Creates a color from R, G, B, A components.")]
+/// # Make Color
+/// Creates a color from R, G, B, A components.
 #[blueprint(type: NodeTypes::pure, category: "Color", color: "#FF6B9D")]
 pub fn make_color(r: f32, g: f32, b: f32, a: f32) -> (f32, f32, f32, f32) {
     (r, g, b, a)
@@ -88,8 +88,8 @@ pub fn make_color(r: f32, g: f32, b: f32, a: f32) -> (f32, f32, f32, f32) {
 ///
 /// # Notes
 /// Useful for extracting color channels for further processing or analysis.
-#[bp_doc("# Break Color")]
-#[bp_doc("Breaks a color into R, G, B, A components.")]
+/// # Break Color
+/// Breaks a color into R, G, B, A components.
 #[blueprint(type: NodeTypes::pure, category: "Color", color: "#FF6B9D")]
 pub fn break_color(color: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
     let (r, g, b, a) = color;
@@ -120,8 +120,8 @@ pub fn break_color(color: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
 /// # Notes
 /// The parameter t is not clamped; values outside [0, 1] will extrapolate.
 /// Useful for color blending, gradients, and transitions.
-#[bp_doc("# Color Lerp")]
-#[bp_doc("Linearly interpolates between two colors using parameter t.")]
+/// # Color Lerp
+/// Linearly interpolates between two colors using parameter t.
 #[blueprint(type: NodeTypes::pure, category: "Color", color: "#FF6B9D")]
 pub fn color_lerp(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32), t: f32) -> (f32, f32, f32, f32) {
     let (r1, g1, b1, a1) = a;

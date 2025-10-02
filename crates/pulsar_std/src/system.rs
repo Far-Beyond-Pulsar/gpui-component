@@ -9,7 +9,7 @@
 //! - Hardware information (CPU count, memory)
 //! - Runtime information (uptime, command-line arguments)
 
-use crate::{blueprint, bp_doc, NodeTypes};
+use crate::{blueprint, NodeTypes};
 
 // =============================================================================
 // Operating System Information
@@ -27,8 +27,8 @@ use crate::{blueprint, bp_doc, NodeTypes};
 ///
 /// # Notes
 /// The output values are determined by Rust's `std::env::consts::OS`.
-#[bp_doc("# System OS")]
-#[bp_doc("Returns the operating system name (windows, macos, linux, etc.).")]
+/// # System OS
+/// Returns the operating system name (windows, macos, linux, etc.).
 #[blueprint(type: NodeTypes::pure, category: "System", color: "#9B59B6")]
 pub fn system_os() -> String {
     std::env::consts::OS.to_string()
@@ -44,8 +44,8 @@ pub fn system_os() -> String {
 ///
 /// # Notes
 /// Useful for diagnostics, logging, or platform-specific logic.
-#[bp_doc("# System Arch")]
-#[bp_doc("Returns the system architecture (x86_64, arm, etc.).")]
+/// # System Arch
+/// Returns the system architecture (x86_64, arm, etc.).
 #[blueprint(type: NodeTypes::pure, category: "System", color: "#9B59B6")]
 pub fn system_arch() -> String {
     std::env::consts::ARCH.to_string()
@@ -62,8 +62,8 @@ pub fn system_arch() -> String {
 ///
 /// # Notes
 /// This is determined at compile time based on Rust's `std::env::consts::FAMILY`.
-#[bp_doc("# System Family")]
-#[bp_doc("Returns the operating system family (unix, windows, wasm).")]
+/// # System Family
+/// Returns the operating system family (unix, windows, wasm).
 #[blueprint(type: NodeTypes::pure, category: "System", color: "#9B59B6")]
 pub fn system_family() -> String {
     std::env::consts::FAMILY.to_string()
@@ -83,8 +83,8 @@ pub fn system_family() -> String {
 ///
 /// # Notes
 /// This implementation uses the `hostname` command and works on both Windows and Unix-like systems.
-#[bp_doc("# System Hostname")]
-#[bp_doc("Returns the system hostname (network name of the machine).")]
+/// # System Hostname
+/// Returns the system hostname (network name of the machine).
 #[blueprint(type: NodeTypes::fn_, category: "System", color: "#9B59B6")]
 pub fn system_hostname() -> Result<String, String> {
     use std::process::Command;
@@ -118,8 +118,8 @@ pub fn system_hostname() -> Result<String, String> {
 ///
 /// # Notes
 /// If neither environment variable is set, the output will be None.
-#[bp_doc("# System Username")]
-#[bp_doc("Returns the current username from environment variables.")]
+/// # System Username
+/// Returns the current username from environment variables.
 #[blueprint(type: NodeTypes::pure, category: "System", color: "#9B59B6")]
 pub fn system_username() -> Option<String> {
     std::env::var("USER")
@@ -142,8 +142,8 @@ pub fn system_username() -> Option<String> {
 ///
 /// # Notes
 /// Checks the "HOME" environment variable (Unix-like systems) or "USERPROFILE" (Windows).
-#[bp_doc("# System Home Dir")]
-#[bp_doc("Returns the path to the user's home directory.")]
+/// # System Home Dir
+/// Returns the path to the user's home directory.
 #[blueprint(type: NodeTypes::pure, category: "System", color: "#9B59B6")]
 pub fn system_home_dir() -> Option<String> {
     std::env::var("HOME")
@@ -162,8 +162,8 @@ pub fn system_home_dir() -> Option<String> {
 ///
 /// # Notes
 /// The returned path is platform-dependent.
-#[bp_doc("# System Temp Dir")]
-#[bp_doc("Returns the path to the system temporary directory.")]
+/// # System Temp Dir
+/// Returns the path to the system temporary directory.
 #[blueprint(type: NodeTypes::pure, category: "System", color: "#9B59B6")]
 pub fn system_temp_dir() -> String {
     std::env::temp_dir().to_string_lossy().to_string()
@@ -180,8 +180,8 @@ pub fn system_temp_dir() -> String {
 ///
 /// # Notes
 /// The result is platform-dependent and may vary based on how the application was launched.
-#[bp_doc("# System Exe Path")]
-#[bp_doc("Returns the path to the currently running executable.")]
+/// # System Exe Path
+/// Returns the path to the currently running executable.
 #[blueprint(type: NodeTypes::fn_, category: "System", color: "#9B59B6")]
 pub fn system_exe_path() -> Result<String, String> {
     match std::env::current_exe() {
@@ -204,8 +204,8 @@ pub fn system_exe_path() -> Result<String, String> {
 ///
 /// # Notes
 /// If the number of CPUs cannot be determined, this function returns 1 as a fallback.
-#[bp_doc("# System CPU Count")]
-#[bp_doc("Returns the number of logical CPU cores available.")]
+/// # System CPU Count
+/// Returns the number of logical CPU cores available.
 #[blueprint(type: NodeTypes::pure, category: "System", color: "#9B59B6")]
 pub fn system_cpu_count() -> usize {
     std::thread::available_parallelism()
@@ -224,8 +224,8 @@ pub fn system_cpu_count() -> usize {
 ///
 /// # Notes
 /// The format and detail of the output depend on the OS and available system commands.
-#[bp_doc("# System Memory")]
-#[bp_doc("Returns system memory information as a formatted string.")]
+/// # System Memory
+/// Returns system memory information as a formatted string.
 #[blueprint(type: NodeTypes::fn_, category: "System", color: "#9B59B6")]
 pub fn system_memory() -> Result<String, String> {
     use std::process::Command;
@@ -270,8 +270,8 @@ pub fn system_memory() -> Result<String, String> {
 ///
 /// # Notes
 /// The output format may vary depending on the operating system and system locale.
-#[bp_doc("# System Uptime")]
-#[bp_doc("Returns the system uptime or boot time as a string.")]
+/// # System Uptime
+/// Returns the system uptime or boot time as a string.
 #[blueprint(type: NodeTypes::fn_, category: "System", color: "#9B59B6")]
 pub fn system_uptime() -> Result<String, String> {
     use std::process::Command;
@@ -307,8 +307,8 @@ pub fn system_uptime() -> Result<String, String> {
 ///
 /// # Notes
 /// The first argument is usually the executable path.
-#[bp_doc("# System Args")]
-#[bp_doc("Returns command line arguments passed to the current process.")]
+/// # System Args
+/// Returns command line arguments passed to the current process.
 #[blueprint(type: NodeTypes::pure, category: "System", color: "#9B59B6")]
 pub fn system_args() -> Vec<String> {
     std::env::args().collect()

@@ -8,7 +8,7 @@
 //!
 //! All operations work with Rust's standard library collection types.
 
-use crate::{blueprint, bp_doc, NodeTypes};
+use crate::{blueprint, NodeTypes};
 use std::collections::{HashMap, HashSet};
 
 // =============================================================================
@@ -25,8 +25,8 @@ use std::collections::{HashMap, HashSet};
 ///
 /// # Notes
 /// Use this node to start building a key-value collection dynamically in your graph.
-#[bp_doc("# HashMap New")]
-#[bp_doc("Creates a new empty HashMap with String keys and String values.")]
+/// # HashMap New
+/// Creates a new empty HashMap with String keys and String values.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashmap_new() -> HashMap<String, String> {
     HashMap::new()
@@ -48,8 +48,8 @@ pub fn hashmap_new() -> HashMap<String, String> {
 ///
 /// # Notes
 /// Use this node to add or update entries in a HashMap for fast key-based lookup and storage.
-#[bp_doc("# HashMap Insert")]
-#[bp_doc("Adds or updates a key-value pair in a HashMap.")]
+/// # HashMap Insert
+/// Adds or updates a key-value pair in a HashMap.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashmap_insert(map: HashMap<String, String>, key: String, value: String) -> HashMap<String, String> {
     let mut m = map;
@@ -72,8 +72,8 @@ pub fn hashmap_insert(map: HashMap<String, String>, key: String, value: String) 
 ///
 /// # Notes
 /// Returns a cloned value to avoid borrowing issues. Use this node for safe, read-only access to HashMap entries.
-#[bp_doc("# HashMap Get")]
-#[bp_doc("Retrieves a value from a HashMap by key.")]
+/// # HashMap Get
+/// Retrieves a value from a HashMap by key.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashmap_get(map: HashMap<String, String>, key: String) -> Option<String> {
     map.get(&key).cloned()
@@ -94,8 +94,8 @@ pub fn hashmap_get(map: HashMap<String, String>, key: String) -> Option<String> 
 ///
 /// # Notes
 /// The original HashMap is consumed and a new one is returned with the entry removed if present.
-#[bp_doc("# HashMap Remove")]
-#[bp_doc("Removes a key-value pair from a HashMap.")]
+/// # HashMap Remove
+/// Removes a key-value pair from a HashMap.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashmap_remove(map: HashMap<String, String>, key: String) -> (HashMap<String, String>, Option<String>) {
     let mut m = map;
@@ -118,8 +118,8 @@ pub fn hashmap_remove(map: HashMap<String, String>, key: String) -> (HashMap<Str
 ///
 /// # Notes
 /// Useful for checking existence before attempting to get or remove a value.
-#[bp_doc("# HashMap Contains Key")]
-#[bp_doc("Checks if a HashMap contains a specific key.")]
+/// # HashMap Contains Key
+/// Checks if a HashMap contains a specific key.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashmap_contains_key(map: HashMap<String, String>, key: String) -> bool {
     map.contains_key(&key)
@@ -138,8 +138,8 @@ pub fn hashmap_contains_key(map: HashMap<String, String>, key: String) -> bool {
 ///
 /// # Notes
 /// The order of keys in the output vector is not guaranteed.
-#[bp_doc("# HashMap Keys")]
-#[bp_doc("Extracts all keys from a HashMap.")]
+/// # HashMap Keys
+/// Extracts all keys from a HashMap.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashmap_keys(map: HashMap<String, String>) -> Vec<String> {
     map.keys().cloned().collect()
@@ -158,8 +158,8 @@ pub fn hashmap_keys(map: HashMap<String, String>) -> Vec<String> {
 ///
 /// # Notes
 /// The order of values in the output vector is not guaranteed.
-#[bp_doc("# HashMap Values")]
-#[bp_doc("Extracts all values from a HashMap.")]
+/// # HashMap Values
+/// Extracts all values from a HashMap.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashmap_values(map: HashMap<String, String>) -> Vec<String> {
     map.values().cloned().collect()
@@ -178,8 +178,8 @@ pub fn hashmap_values(map: HashMap<String, String>) -> Vec<String> {
 ///
 /// # Notes
 /// Returns 0 for an empty HashMap.
-#[bp_doc("# HashMap Length")]
-#[bp_doc("Returns the number of key-value pairs in a HashMap.")]
+/// # HashMap Length
+/// Returns the number of key-value pairs in a HashMap.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashmap_len(map: HashMap<String, String>) -> i64 {
     map.len() as i64
@@ -198,8 +198,8 @@ pub fn hashmap_len(map: HashMap<String, String>) -> i64 {
 ///
 /// # Notes
 /// Useful for validating state, controlling flow, or checking if a collection needs to be populated.
-#[bp_doc("# HashMap Is Empty")]
-#[bp_doc("Checks if a HashMap contains no key-value pairs.")]
+/// # HashMap Is Empty
+/// Checks if a HashMap contains no key-value pairs.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashmap_is_empty(map: HashMap<String, String>) -> bool {
     map.is_empty()
@@ -218,8 +218,8 @@ pub fn hashmap_is_empty(map: HashMap<String, String>) -> bool {
 ///
 /// # Notes
 /// The original HashMap is cleared in-place and returned.
-#[bp_doc("# HashMap Clear")]
-#[bp_doc("Removes all entries from a HashMap.")]
+/// # HashMap Clear
+/// Removes all entries from a HashMap.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashmap_clear(map: HashMap<String, String>) -> HashMap<String, String> {
     let mut m = map;
@@ -242,8 +242,8 @@ pub fn hashmap_clear(map: HashMap<String, String>) -> HashMap<String, String> {
 /// # Notes
 /// The original input maps are not modified. The result is a new HashMap containing merged entries.
 /// On key conflicts, the value from the second map is used.
-#[bp_doc("# HashMap Merge")]
-#[bp_doc("Combines two HashMaps, with the second map's values taking precedence on conflicts.")]
+/// # HashMap Merge
+/// Combines two HashMaps, with the second map's values taking precedence on conflicts.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashmap_merge(map1: HashMap<String, String>, map2: HashMap<String, String>) -> HashMap<String, String> {
     let mut result = map1;
@@ -268,8 +268,8 @@ pub fn hashmap_merge(map1: HashMap<String, String>, map2: HashMap<String, String
 ///
 /// # Notes
 /// Filtering is case-sensitive. Only values containing the exact pattern are included.
-#[bp_doc("# HashMap Filter")]
-#[bp_doc("Filters HashMap entries by checking if values contain a pattern.")]
+/// # HashMap Filter
+/// Filters HashMap entries by checking if values contain a pattern.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashmap_filter(map: HashMap<String, String>, pattern: String) -> HashMap<String, String> {
     map.into_iter()
@@ -291,8 +291,8 @@ pub fn hashmap_filter(map: HashMap<String, String>, pattern: String) -> HashMap<
 /// # Notes
 /// This implementation escapes double quotes in keys and values. The output is a flat JSON object with string keys and values.
 /// For more complex or nested data, consider using a dedicated JSON serialization library.
-#[bp_doc("# HashMap To JSON")]
-#[bp_doc("Converts a HashMap to a JSON string representation.")]
+/// # HashMap To JSON
+/// Converts a HashMap to a JSON string representation.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashmap_to_json(map: HashMap<String, String>) -> String {
     let mut json = String::from("{");
@@ -318,8 +318,8 @@ pub fn hashmap_to_json(map: HashMap<String, String>) -> String {
 ///
 /// # Notes
 /// Use this node to start building a set of unique values dynamically in your graph.
-#[bp_doc("# HashSet New")]
-#[bp_doc("Creates a new empty HashSet of Strings.")]
+/// # HashSet New
+/// Creates a new empty HashSet of Strings.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashset_new() -> HashSet<String> {
     HashSet::new()
@@ -340,8 +340,8 @@ pub fn hashset_new() -> HashSet<String> {
 ///
 /// # Notes
 /// The original HashSet is consumed and a new one is returned with the value inserted if not already present.
-#[bp_doc("# HashSet Insert")]
-#[bp_doc("Adds a value to a HashSet.")]
+/// # HashSet Insert
+/// Adds a value to a HashSet.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashset_insert(set: HashSet<String>, value: String) -> HashSet<String> {
     let mut s = set;
@@ -364,8 +364,8 @@ pub fn hashset_insert(set: HashSet<String>, value: String) -> HashSet<String> {
 ///
 /// # Notes
 /// Useful for membership checks, filtering, and set operations.
-#[bp_doc("# HashSet Contains")]
-#[bp_doc("Checks if a HashSet contains a specific value.")]
+/// # HashSet Contains
+/// Checks if a HashSet contains a specific value.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashset_contains(set: HashSet<String>, value: String) -> bool {
     set.contains(&value)
@@ -385,8 +385,8 @@ pub fn hashset_contains(set: HashSet<String>, value: String) -> bool {
 ///
 /// # Notes
 /// The original input sets are not modified. The result is a new HashSet containing the union.
-#[bp_doc("# HashSet Union")]
-#[bp_doc("Computes the union of two HashSets.")]
+/// # HashSet Union
+/// Computes the union of two HashSets.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashset_union(set1: HashSet<String>, set2: HashSet<String>) -> HashSet<String> {
     set1.union(&set2).cloned().collect()
@@ -406,8 +406,8 @@ pub fn hashset_union(set1: HashSet<String>, set2: HashSet<String>) -> HashSet<St
 ///
 /// # Notes
 /// The original input sets are not modified. The result is a new HashSet containing the intersection.
-#[bp_doc("# HashSet Intersection")]
-#[bp_doc("Computes the intersection of two HashSets.")]
+/// # HashSet Intersection
+/// Computes the intersection of two HashSets.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashset_intersection(set1: HashSet<String>, set2: HashSet<String>) -> HashSet<String> {
     set1.intersection(&set2).cloned().collect()
