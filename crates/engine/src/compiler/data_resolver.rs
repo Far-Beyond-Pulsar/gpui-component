@@ -116,7 +116,8 @@ impl DataResolver {
         for (node_id, node) in &graph.nodes {
             // Check if this node is pure according to its metadata
             if let Some(node_meta) = metadata.get(&node.node_type) {
-                if node_meta.node_type == NodeType::Pure && !node.outputs.is_empty() {
+                // A node is pure if metadata says so AND it has a return type
+                if node_meta.node_type == NodeType::Pure && node_meta.return_type.is_some() {
                     pure_nodes.insert(node_id.clone());
                     dependencies.insert(node_id.clone(), Vec::new());
                 }
