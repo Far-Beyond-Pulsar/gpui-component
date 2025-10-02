@@ -67,6 +67,10 @@ pub fn save_recent_projects(projects: &[PathBuf]) -> Result<(), String> {
 
 /// Create a blank project structure at the given path
 pub fn init_blank_project(path: &PathBuf) -> Result<(), String> {
+    // Create the main project directory
+    fs::create_dir_all(path)
+        .map_err(|e| format!("Failed to create project directory: {}", e))?;
+
     // Create Pulsar.toml
     let toml_content = r#"[package]
 name = "new_project"

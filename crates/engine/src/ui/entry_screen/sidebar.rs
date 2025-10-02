@@ -36,9 +36,10 @@ pub fn render_sidebar<V: 'static>(
         .child(
             div()
                 .flex_1()
-                .overflow_hidden()
+                .overflow_y_hidden()
                 .child(
                     v_flex()
+                        .w_full()
                         .scrollable(Axis::Vertical)
                         .child(
                             v_flex()

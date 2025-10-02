@@ -277,6 +277,14 @@ impl EntryScreen {
         let template_url = template_url.to_string();
 
         cx.spawn(async move |this, mut cx| {
+            // Ensure parent directory exists
+            if let Some(parent) = path.parent() {
+                if let Err(e) = std::fs::create_dir_all(parent) {
+                    eprintln!("Failed to create parent directory: {}", e);
+                    return;
+                }
+            }
+
             match git2::Repository::clone(&template_url, &path) {
                 Ok(_) => {
                     cx.update(|cx| {
@@ -331,6 +339,14 @@ impl EntryScreen {
         let target_path = PathBuf::from(project_path).join(project_name);
 
         cx.spawn(async move |this, mut cx| {
+            // Ensure parent directory exists
+            if let Some(parent) = target_path.parent() {
+                if let Err(e) = std::fs::create_dir_all(parent) {
+                    eprintln!("Failed to create parent directory: {}", e);
+                    return;
+                }
+            }
+
             match git2::Repository::clone(&git_url, &target_path) {
                 Ok(_) => {
                     cx.update(|cx| {
@@ -449,9 +465,10 @@ impl EntryScreen {
         div()
             .size_full()
             .bg(cx.theme().sidebar)
-            .overflow_hidden()
+            .overflow_y_hidden()
             .child(
                 v_flex()
+                    .w_full()
                     .scrollable(Axis::Vertical)
                     .child(
                         v_flex()
@@ -705,9 +722,10 @@ impl Render for EntryScreen {
                         div()
                             .id("entry-screen-content")
                             .flex_1()
-                            .overflow_hidden()
+                            .overflow_y_hidden()
                             .child(
                                 v_flex()
+                                    .w_full()
                                     .scrollable(Axis::Vertical)
                                     .child(
                                         v_flex()
