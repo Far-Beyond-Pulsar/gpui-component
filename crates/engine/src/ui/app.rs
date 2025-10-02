@@ -36,6 +36,14 @@ pub struct PulsarApp {
 
 impl PulsarApp {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_internal(None, window, cx)
+    }
+
+    pub fn new_with_project(project_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_internal(Some(project_path), window, cx)
+    }
+
+    fn new_internal(project_path: Option<PathBuf>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let dock_area = cx.new(|cx| DockArea::new("main-dock", Some(1), window, cx));
 
         // Create the initial editor panels using modular components
@@ -63,18 +71,23 @@ impl PulsarApp {
             dock.set_center(center_tabs, window, cx);
         });
 
-        // Create entry screen
-        let entry_screen = cx.new(|cx| EntryScreen::new(window, cx));
-        cx.subscribe(&entry_screen, Self::on_project_selected).detach();
+        // Create entry screen only if no project path is provided
+        let entry_screen = if project_path.is_none() {
+            let screen = cx.new(|cx| EntryScreen::new(window, cx));
+            cx.subscribe(&screen, Self::on_project_selected).detach();
+            Some(screen)
+        } else {
+            None
+        };
 
-        // Create file manager drawer
-        let file_manager_drawer = cx.new(|cx| FileManagerDrawer::new(None, window, cx));
+        // Create file manager drawer with the project path if provided
+        let file_manager_drawer = cx.new(|cx| FileManagerDrawer::new(project_path.clone(), window, cx));
         cx.subscribe(&file_manager_drawer, Self::on_file_selected).detach();
 
         Self {
             dock_area,
-            project_path: None,
-            entry_screen: Some(entry_screen),
+            project_path,
+            entry_screen,
             file_manager_drawer,
             drawer_open: false,
             blueprint_editor,

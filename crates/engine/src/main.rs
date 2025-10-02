@@ -39,6 +39,9 @@ pub struct SelectFont(usize);
 pub struct SelectRadius(usize);
 
 use ui::app::PulsarApp;
+use ui::entry_window::EntryWindow;
+use ui::entry_screen::ProjectSelected;
+use std::path::PathBuf;
 
 fn main() {
     // Note: Node metadata is now loaded lazily from pulsar_std when needed
@@ -52,46 +55,98 @@ fn main() {
 
         cx.activate(true);
 
-        let mut window_size = size(px(1200.), px(800.));
-        if let Some(display) = cx.primary_display() {
-            let display_size = display.bounds().size;
-            window_size.width = window_size.width.min(display_size.width * 0.85);
-            window_size.height = window_size.height.min(display_size.height * 0.85);
-        }
-        let window_bounds = Bounds::centered(None, window_size, cx);
+        // Open the entry/launcher window first (smaller size)
+        let entry_window_size = size(px(1000.), px(600.));
+        let entry_window_bounds = Bounds::centered(None, entry_window_size, cx);
 
-        cx.spawn(async move |cx| {
-            let options = WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-                titlebar: None,
-                window_min_size: Some(gpui::Size {
-                    width: px(1200.),
-                    height: px(800.),
-                }),
-                kind: WindowKind::Normal,
-                #[cfg(target_os = "linux")]
-                window_background: gpui::WindowBackgroundAppearance::Transparent,
-                #[cfg(target_os = "linux")]
-                window_decorations: Some(gpui::WindowDecorations::Client),
-                ..Default::default()
-            };
+        let entry_options = WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(entry_window_bounds)),
+            titlebar: None,
+            window_min_size: Some(gpui::Size {
+                width: px(800.),
+                height: px(500.),
+            }),
+            kind: WindowKind::Normal,
+            #[cfg(target_os = "linux")]
+            window_background: gpui::WindowBackgroundAppearance::Transparent,
+            #[cfg(target_os = "linux")]
+            window_decorations: Some(gpui::WindowDecorations::Client),
+            ..Default::default()
+        };
 
-            let window = cx
-                .open_window(options, |window, cx| {
-                    let view = cx.new(|cx| PulsarApp::new(window, cx));
-                    cx.new(|cx| Root::new(view.into(), window, cx))
-                })
-                .expect("failed to open window");
+        // Create the entry view before opening the window so we can subscribe to it
+        let entry_view = cx.new(|cx| EntryWindow::new_placeholder(cx));
 
-            window
-                .update(cx, |_, window, _| {
-                    window.activate_window();
-                    window.set_window_title("Pulsar Engine");
-                })
-                .expect("failed to update window");
+        let entry_window = cx
+            .open_window(entry_options, |window, cx| {
+                // Initialize the entry window now that we have the window
+                entry_view.update(cx, |view, cx| {
+                    *view = EntryWindow::new(window, cx);
+                });
 
-            Ok::<_, anyhow::Error>(())
-        })
-        .detach();
+                cx.new(|cx| Root::new(entry_view.clone().into(), window, cx))
+            })
+            .expect("failed to open entry window");
+
+        entry_window
+            .update(cx, |_, window, _| {
+                window.activate_window();
+                window.set_window_title("Pulsar - Select Project");
+            })
+            .expect("failed to update entry window");
+
+        // Subscribe to project selection events at the app level
+        let window_handle = entry_window;
+        cx.subscribe(&entry_view, move |_entry, event: &ProjectSelected, cx| {
+            let project_path = event.path.clone();
+
+            // Close the entry window
+            window_handle.update(cx, |_, window, _| {
+                window.remove_window();
+            }).ok();
+
+            // Open the main engine window with the selected project
+            open_engine_window(project_path, cx);
+        }).detach();
     });
+}
+
+fn open_engine_window(project_path: PathBuf, cx: &mut App) {
+    let mut window_size = size(px(1200.), px(800.));
+    if let Some(display) = cx.primary_display() {
+        let display_size = display.bounds().size;
+        window_size.width = window_size.width.min(display_size.width * 0.85);
+        window_size.height = window_size.height.min(display_size.height * 0.85);
+    }
+
+    let window_bounds = Bounds::centered(None, window_size, cx);
+
+    let options = WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(window_bounds)),
+        titlebar: None,
+        window_min_size: Some(gpui::Size {
+            width: px(1200.),
+            height: px(800.),
+        }),
+        kind: WindowKind::Normal,
+        #[cfg(target_os = "linux")]
+        window_background: gpui::WindowBackgroundAppearance::Transparent,
+        #[cfg(target_os = "linux")]
+        window_decorations: Some(gpui::WindowDecorations::Client),
+        ..Default::default()
+    };
+
+    let window = cx
+        .open_window(options, |window, cx| {
+            let view = cx.new(|cx| PulsarApp::new_with_project(project_path.clone(), window, cx));
+            cx.new(|cx| Root::new(view.into(), window, cx))
+        })
+        .expect("failed to open engine window");
+
+    window
+        .update(cx, |_, window, _| {
+            window.activate_window();
+            window.set_window_title("Pulsar Engine");
+        })
+        .expect("failed to update engine window");
 }

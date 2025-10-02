@@ -7,4 +7,5 @@ pub mod rainbow_engine;
 pub mod rainbow_engine_final;
 pub mod project_selector;
 pub mod entry_screen;
+pub mod entry_window;
 pub mod file_manager_drawer;
