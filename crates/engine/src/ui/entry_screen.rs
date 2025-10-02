@@ -438,14 +438,14 @@ engine_version = "0.1.0"
                                     .text_base()
                                     .font_semibold()
                                     .text_color(cx.theme().foreground)
-                                    .child(card.name())
+                                    .child(card.name().to_string())
                             )
                             .child(
                                 div()
                                     .text_xs()
                                     .text_color(cx.theme().muted_foreground)
                                     .overflow_hidden()
-                                    .child(card.description())
+                                    .child(card.description().to_string())
                             )
                     )
             )
@@ -453,7 +453,7 @@ engine_version = "0.1.0"
 
     fn render_sidebar(&mut self, cards: &[CardItem], cx: &mut Context<Self>) -> Option<impl IntoElement> {
         let selected_index = self.selected_card?;
-        let card = cards.get(selected_index)?;
+        let card = cards.get(selected_index)?.clone();
 
         Some(
             v_flex()
@@ -505,13 +505,13 @@ engine_version = "0.1.0"
                                 .text_xl()
                                 .font_bold()
                                 .text_color(cx.theme().foreground)
-                                .child(card.name())
+                                .child(card.name().to_string())
                         )
                         .child(
                             div()
                                 .text_sm()
                                 .text_color(cx.theme().muted_foreground)
-                                .child(card.description())
+                                .child(card.description().to_string())
                         )
                 )
                 .child(
@@ -561,17 +561,20 @@ engine_version = "0.1.0"
                 )
                 .child(
                     // Action button
-                    Button::new("create-open-project")
-                        .primary()
-                        .w_full()
-                        .on_click(cx.listener(move |screen, _, window, cx| {
-                            screen.handle_card_action(card, window, cx);
-                        }))
-                        .child(match card {
-                            CardItem::Project(_) => "Open Project",
-                            CardItem::Template(_) => "Create from Template",
-                            CardItem::BlankProject => "Create Project",
-                        })
+                    {
+                        let card_for_action = card.clone();
+                        Button::new("create-open-project")
+                            .primary()
+                            .w_full()
+                            .on_click(cx.listener(move |screen, _, window, cx| {
+                                screen.handle_card_action(&card_for_action, window, cx);
+                            }))
+                            .child(match &card {
+                                CardItem::Project(_) => "Open Project",
+                                CardItem::Template(_) => "Create from Template",
+                                CardItem::BlankProject => "Create Project",
+                            })
+                    }
                 )
         )
     }
