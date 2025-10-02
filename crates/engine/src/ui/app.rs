@@ -68,7 +68,7 @@ impl PulsarApp {
         cx.subscribe(&project_selector, Self::on_project_selected).detach();
 
         // Create file manager drawer
-        let file_manager_drawer = cx.new(|cx| FileManagerDrawer::new(None));
+        let file_manager_drawer = cx.new(|cx| FileManagerDrawer::new(None, cx));
         cx.subscribe(&file_manager_drawer, Self::on_file_selected).detach();
 
         Self {

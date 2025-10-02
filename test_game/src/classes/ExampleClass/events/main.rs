@@ -1,6 +1,6 @@
-// Event: begin_play
+// Event: main
 // This will be auto-generated from the blueprint
 
-pub fn begin_play() {
+pub fn main() {
     // TODO: Generate from blueprint
 }
