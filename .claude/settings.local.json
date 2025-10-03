@@ -26,7 +26,11 @@
       "Bash(cat:*)",
       "Read(//c/Users/redst/.cargo/git/checkouts/**)",
       "Bash(timeout 90 cargo build -p pulsar_engine)",
-      "Read(//c//**)"
+      "Read(//c//**)",
+      "Bash(timeout 60 cargo check -p pulsar_engine)",
+      "Bash(timeout 120 cargo build -p pulsar_engine --release)",
+      "Bash(timeout 90 cargo build -p pulsar_engine --release)",
+      "Read(//c/Users/redst/OneDrive/Documents/GitHub/GPML/crates/story/**)"
     ],
     "deny": [],
     "ask": []

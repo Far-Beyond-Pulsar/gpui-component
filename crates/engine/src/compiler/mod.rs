@@ -32,6 +32,7 @@ pub mod data_resolver;
 pub mod execution_routing;
 pub mod ast_utils;
 pub mod code_generator;
+pub mod type_extractor;
 
 // Blueprint validation
 pub mod validate_blueprint;

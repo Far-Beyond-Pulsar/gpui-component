@@ -1,6 +1,7 @@
 pub mod toolbar;
 pub mod node_graph;
 pub mod properties;
+pub mod variables;
 pub mod panel;
 pub mod node_creation_menu;
 pub mod hoverable_tooltip;

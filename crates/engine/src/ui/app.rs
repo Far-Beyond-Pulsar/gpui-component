@@ -1,10 +1,10 @@
-use gpui::*;
+use gpui::{prelude::*, Animation, AnimationExt as _, *};
 use gpui_component::{
     dock::{DockArea, DockItem, Panel, PanelEvent},
     button::{Button, ButtonVariant, ButtonVariants as _},
     v_flex, h_flex, ActiveTheme as _, Icon, IconName, Placement, StyledExt,
 };
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use std::path::PathBuf;
 use serde::Deserialize;
 use schemars::JsonSchema;
@@ -153,6 +153,8 @@ impl Render for PulsarApp {
             return screen.clone().into_any_element();
         }
 
+        let drawer_open = self.drawer_open;
+
         v_flex()
             .size_full()
             .bg(cx.theme().background)
@@ -165,22 +167,45 @@ impl Render for PulsarApp {
                 }
             )
             .child(
-                // Main dock area
+                // Main dock area with overlay
                 div()
                     .flex_1()
                     .relative()
                     .child(self.dock_area.clone())
+                    .when(drawer_open, |this| {
+                        this.child(
+                            // Overlay background
+                            div()
+                                .absolute()
+                                .top_0()
+                                .left_0()
+                                .size_full()
+                                .bg(Hsla::black().opacity(0.3))
+                                .on_mouse_down(MouseButton::Left, cx.listener(|app, _, window, cx| {
+                                    app.drawer_open = false;
+                                    cx.notify();
+                                }))
+                        )
+                        .child(
+                            // Drawer at bottom
+                            div()
+                                .absolute()
+                                .bottom_0()
+                                .left_0()
+                                .right_0()
+                                .h(px(300.))
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                .child(self.file_manager_drawer.clone())
+                                .with_animation(
+                                    "slide-up",
+                                    Animation::new(Duration::from_secs_f64(0.2)),
+                                    |this, delta| {
+                                        this.bottom(px(-300.) + delta * px(300.))
+                                    },
+                                )
+                        )
+                    })
             )
-            .children(if self.drawer_open {
-                Some(
-                    div()
-                        .w_full()
-                        .h(px(300.))
-                        .child(self.file_manager_drawer.clone())
-                )
-            } else {
-                None
-            })
             .child(
                 // Footer with drawer toggle
                 h_flex()
@@ -196,7 +221,7 @@ impl Render for PulsarApp {
                         // Left side - drawer toggle button
                         Button::new("toggle-drawer")
                             .ghost()
-                            .icon(if self.drawer_open { IconName::ChevronDown } else { IconName::ChevronUp })
+                            .icon(if drawer_open { IconName::ChevronDown } else { IconName::ChevronUp })
                             .label("Project Files")
                             .on_click(cx.listener(|app, _, window, cx| {
                                 app.toggle_drawer(window, cx);

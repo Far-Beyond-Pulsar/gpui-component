@@ -58,6 +58,12 @@ pub struct BlueprintEditorPanel {
     pub last_click_pos: Option<Point<f32>>,
     // Graph element bounds for coordinate conversion (GPUI mouse events are window-relative)
     pub graph_element_bounds: Option<gpui::Bounds<gpui::Pixels>>,
+    // Class variables
+    pub class_variables: Vec<super::variables::ClassVariable>,
+    // Variable creation state
+    pub is_creating_variable: bool,
+    pub variable_name_input: Entity<gpui_component::input::InputState>,
+    pub variable_type_dropdown: Entity<gpui_component::dropdown::DropdownState<Vec<super::variables::TypeItem>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -70,7 +76,7 @@ pub struct ConnectionDrag {
 }
 
 impl BlueprintEditorPanel {
-    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let resizable_state = ResizableState::new(cx);
 
         // Create sample nodes - demonstrates all compiler features
@@ -370,6 +376,20 @@ impl BlueprintEditorPanel {
             last_click_time: None,
             last_click_pos: None,
             graph_element_bounds: None, // Will be set during rendering
+            class_variables: Vec::new(),
+            is_creating_variable: false,
+            variable_name_input: cx.new(|cx| {
+                gpui_component::input::InputState::new(window, cx)
+                    .placeholder("Variable name...")
+            }),
+            variable_type_dropdown: cx.new(|cx| {
+                gpui_component::dropdown::DropdownState::new(
+                    Vec::new(),
+                    None,
+                    window,
+                    cx,
+                )
+            }),
         }
     }
 
@@ -1538,6 +1558,69 @@ impl BlueprintEditorPanel {
         }
     }
 
+    // Variable management methods
+
+    /// Start creating a new variable
+    pub fn start_creating_variable(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.is_creating_variable = true;
+
+        // Create a new empty input state
+        self.variable_name_input = cx.new(|cx| {
+            gpui_component::input::InputState::new(window, cx)
+                .placeholder("Variable name...")
+        });
+
+        // Populate dropdown with available types
+        let available_types = self.get_available_types();
+        let type_items: Vec<super::variables::TypeItem> = available_types
+            .into_iter()
+            .map(|type_str| super::variables::TypeItem::new(type_str))
+            .collect();
+
+        self.variable_type_dropdown.update(cx, |dropdown, cx| {
+            dropdown.set_items(type_items, window, cx);
+            dropdown.set_selected_index(Some(gpui_component::IndexPath::default()), window, cx);
+        });
+
+        cx.notify();
+    }
+
+    /// Cancel variable creation
+    pub fn cancel_creating_variable(&mut self, cx: &mut Context<Self>) {
+        self.is_creating_variable = false;
+        cx.notify();
+    }
+
+    /// Complete variable creation - add the variable to the class
+    pub fn complete_creating_variable(&mut self, cx: &mut Context<Self>) {
+        let name = self.variable_name_input.read(cx).text().to_string().trim().to_string();
+        let selected_type = self.variable_type_dropdown.read(cx).selected_value()
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "i32".to_string());
+
+        if !name.is_empty() {
+            let variable = super::variables::ClassVariable {
+                name,
+                var_type: selected_type,
+                default_value: None,
+            };
+            self.class_variables.push(variable);
+        }
+        self.is_creating_variable = false;
+        cx.notify();
+    }
+
+    /// Remove a variable from the class by name
+    pub fn remove_variable(&mut self, name: &str, cx: &mut Context<Self>) {
+        self.class_variables.retain(|v| v.name != name);
+        cx.notify();
+    }
+
+    /// Get all available types from blueprint nodes
+    pub fn get_available_types(&self) -> Vec<String> {
+        crate::compiler::type_extractor::extract_all_blueprint_types()
+    }
+
 }
 
 impl Panel for BlueprintEditorPanel {
@@ -1591,6 +1674,21 @@ impl Render for BlueprintEditorPanel {
                     .flex_1()
                     .child(
                         h_resizable("blueprint-editor-panels", self.resizable_state.clone())
+                            .child(
+                                resizable_panel()
+                                    .size(px(280.))
+                                    .size_range(px(200.)..px(400.))
+                                    .child(
+                                        div()
+                                            .size_full()
+                                            .bg(cx.theme().sidebar)
+                                            .border_1()
+                                            .border_color(cx.theme().border)
+                                            .rounded(cx.theme().radius)
+                                            .p_2()
+                                            .child(super::variables::VariablesRenderer::render(self, cx))
+                                    )
+                            )
                             .child(
                                 resizable_panel()
                                     .child(

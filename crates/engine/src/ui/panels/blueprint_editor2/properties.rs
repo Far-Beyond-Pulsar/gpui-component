@@ -85,6 +85,16 @@ impl PropertiesRenderer {
         }
     }
 
+    fn render_empty_state(cx: &mut Context<BlueprintEditorPanel>) -> AnyElement {
+        div()
+            .flex()
+            .items_center()
+            .justify_center()
+            .text_color(cx.theme().muted_foreground)
+            .child("No node selected")
+            .into_any_element()
+    }
+
     fn render_node_properties(node: &BlueprintNode, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
         v_flex()
             .gap_3()
@@ -148,16 +158,6 @@ impl PropertiesRenderer {
                     .text_color(cx.theme().foreground)
                     .child(value.to_string())
             )
-    }
-
-    fn render_empty_state(cx: &mut Context<BlueprintEditorPanel>) -> AnyElement {
-        div()
-            .flex()
-            .items_center()
-            .justify_center()
-            .text_color(cx.theme().muted_foreground)
-            .child("No node selected")
-            .into_any_element()
     }
 
     fn format_property_name(key: &str) -> String {
