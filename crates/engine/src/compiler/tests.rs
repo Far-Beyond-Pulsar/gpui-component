@@ -48,8 +48,8 @@ mod tests {
         assert_eq!(branch_node.node_type, node_metadata::NodeType::ControlFlow);
         assert_eq!(branch_node.params.len(), 1);
         assert_eq!(branch_node.exec_outputs.len(), 2);
-        assert!(branch_node.exec_outputs.contains(&"True".to_string()));
-        assert!(branch_node.exec_outputs.contains(&"False".to_string()));
+        assert!(branch_node.exec_outputs.contains(&"True"));
+        assert!(branch_node.exec_outputs.contains(&"False"));
 
         // Test print_string node (function)
         let print_node = metadata.get("print_string").unwrap();
