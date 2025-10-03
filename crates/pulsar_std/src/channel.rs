@@ -9,7 +9,7 @@
 //!
 //! All operations use Rust's standard library MPSC (Multi-Producer, Single-Consumer) channels from `std::sync::mpsc`.
 
-use crate::{blueprint, NodeTypes};
+use crate::blueprint;
 use std::sync::mpsc::{Receiver, Sender};
 
 // =============================================================================

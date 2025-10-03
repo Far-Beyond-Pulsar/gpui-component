@@ -11,7 +11,7 @@
 //! - Interpolation and mapping functions
 //! - Special mathematical utilities
 
-use crate::{blueprint, NodeTypes};
+use crate::blueprint;
 
 // =============================================================================
 // Basic Arithmetic Operations
@@ -717,3 +717,394 @@ pub fn ping_pong(t: f32, length: f32) -> f32 {
         length - position
     }
 }
+
+// =============================================================================
+// Bitwise Operations
+// =============================================================================
+
+/// Bitwise AND operation.
+///
+/// # Inputs
+/// - `a`: First integer
+/// - `b`: Second integer
+///
+/// # Returns
+/// Bitwise AND result
+///
+/// # Math Bitwise AND
+/// Performs bitwise AND operation on two integers.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn bitwise_and(a: i64, b: i64) -> i64 {
+    a & b
+}
+
+/// Bitwise OR operation.
+///
+/// # Inputs
+/// - `a`: First integer
+/// - `b`: Second integer
+///
+/// # Returns
+/// Bitwise OR result
+///
+/// # Math Bitwise OR
+/// Performs bitwise OR operation on two integers.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn bitwise_or(a: i64, b: i64) -> i64 {
+    a | b
+}
+
+/// Bitwise XOR operation.
+///
+/// # Inputs
+/// - `a`: First integer
+/// - `b`: Second integer
+///
+/// # Returns
+/// Bitwise XOR result
+///
+/// # Math Bitwise XOR
+/// Performs bitwise XOR operation on two integers.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn bitwise_xor(a: i64, b: i64) -> i64 {
+    a ^ b
+}
+
+/// Bitwise NOT operation.
+///
+/// # Inputs
+/// - `value`: The integer to invert
+///
+/// # Returns
+/// Bitwise NOT result
+///
+/// # Math Bitwise NOT
+/// Performs bitwise NOT operation (bit inversion).
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn bitwise_not(value: i64) -> i64 {
+    !value
+}
+
+/// Left bit shift operation.
+///
+/// # Inputs
+/// - `value`: The value to shift
+/// - `bits`: Number of bits to shift
+///
+/// # Returns
+/// Left-shifted result
+///
+/// # Math Bit Shift Left
+/// Shifts bits to the left.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn bit_shift_left(value: i64, bits: i64) -> i64 {
+    value << bits.clamp(0, 63)
+}
+
+/// Right bit shift operation.
+///
+/// # Inputs
+/// - `value`: The value to shift
+/// - `bits`: Number of bits to shift
+///
+/// # Returns
+/// Right-shifted result
+///
+/// # Math Bit Shift Right
+/// Shifts bits to the right.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn bit_shift_right(value: i64, bits: i64) -> i64 {
+    value >> bits.clamp(0, 63)
+}
+
+/// Count the number of set bits (population count).
+///
+/// # Inputs
+/// - `value`: The integer to analyze
+///
+/// # Returns
+/// Number of 1 bits
+///
+/// # Math Count Bits
+/// Counts the number of set bits (1s) in an integer.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn count_bits(value: i64) -> i64 {
+    value.count_ones() as i64
+}
+
+/// Get a specific bit from an integer.
+///
+/// # Inputs
+/// - `value`: The integer
+/// - `bit_index`: The bit position (0 = least significant)
+///
+/// # Returns
+/// 1 if bit is set, 0 otherwise
+///
+/// # Math Get Bit
+/// Gets the value of a specific bit.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn get_bit(value: i64, bit_index: i64) -> i64 {
+    if bit_index < 0 || bit_index >= 64 {
+        return 0;
+    }
+    (value >> bit_index) & 1
+}
+
+/// Set a specific bit in an integer.
+///
+/// # Inputs
+/// - `value`: The integer
+/// - `bit_index`: The bit position (0 = least significant)
+///
+/// # Returns
+/// Integer with the specified bit set
+///
+/// # Math Set Bit
+/// Sets a specific bit to 1.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn set_bit(value: i64, bit_index: i64) -> i64 {
+    if bit_index < 0 || bit_index >= 64 {
+        return value;
+    }
+    value | (1 << bit_index)
+}
+
+/// Clear a specific bit in an integer.
+///
+/// # Inputs
+/// - `value`: The integer
+/// - `bit_index`: The bit position (0 = least significant)
+///
+/// # Returns
+/// Integer with the specified bit cleared
+///
+/// # Math Clear Bit
+/// Clears a specific bit to 0.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn clear_bit(value: i64, bit_index: i64) -> i64 {
+    if bit_index < 0 || bit_index >= 64 {
+        return value;
+    }
+    value & !(1 << bit_index)
+}
+
+/// Toggle a specific bit in an integer.
+///
+/// # Inputs
+/// - `value`: The integer
+/// - `bit_index`: The bit position (0 = least significant)
+///
+/// # Returns
+/// Integer with the specified bit toggled
+///
+/// # Math Toggle Bit
+/// Toggles a specific bit (0->1 or 1->0).
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn toggle_bit(value: i64, bit_index: i64) -> i64 {
+    if bit_index < 0 || bit_index >= 64 {
+        return value;
+    }
+    value ^ (1 << bit_index)
+}
+
+// =============================================================================
+// Statistical Operations
+// =============================================================================
+
+/// Calculate the mean (average) of two values.
+///
+/// # Inputs
+/// - `a`: First value
+/// - `b`: Second value
+///
+/// # Returns
+/// The mean of the two values
+///
+/// # Math Mean
+/// Calculates the mean (average) of two values.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn mean(a: f64, b: f64) -> f64 {
+    (a + b) / 2.0
+}
+
+/// Calculate the median of three values.
+///
+/// # Inputs
+/// - `a`: First value
+/// - `b`: Second value
+/// - `c`: Third value
+///
+/// # Returns
+/// The median value
+///
+/// # Math Median
+/// Finds the median (middle value) of three numbers.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn median(a: f64, b: f64, c: f64) -> f64 {
+    let mut values = [a, b, c];
+    values.sort_by(|x, y| x.partial_cmp(y).unwrap());
+    values[1]
+}
+
+/// Calculate variance of two values from their mean.
+///
+/// # Inputs
+/// - `a`: First value
+/// - `b`: Second value
+///
+/// # Returns
+/// The variance
+///
+/// # Math Variance
+/// Calculates variance of two values.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn variance(a: f64, b: f64) -> f64 {
+    let mean_val = (a + b) / 2.0;
+    let diff_a = a - mean_val;
+    let diff_b = b - mean_val;
+    (diff_a * diff_a + diff_b * diff_b) / 2.0
+}
+
+/// Calculate standard deviation of two values.
+///
+/// # Inputs
+/// - `a`: First value
+/// - `b`: Second value
+///
+/// # Returns
+/// The standard deviation
+///
+/// # Math Standard Deviation
+/// Calculates standard deviation of two values.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn std_dev(a: f64, b: f64) -> f64 {
+    variance(a, b).sqrt()
+}
+
+/// Calculate the range (difference between max and min).
+///
+/// # Inputs
+/// - `a`: First value
+/// - `b`: Second value
+///
+/// # Returns
+/// The range (absolute difference)
+///
+/// # Math Range
+/// Calculates the range (difference) between two values.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn range(a: f64, b: f64) -> f64 {
+    (a - b).abs()
+}
+
+/// Normalize a value to 0-1 range.
+///
+/// # Inputs
+/// - `value`: The value to normalize
+/// - `min`: The minimum of the range
+/// - `max`: The maximum of the range
+///
+/// # Returns
+/// Normalized value (0-1)
+///
+/// # Math Normalize
+/// Normalizes a value to the 0-1 range.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn normalize(value: f64, min: f64, max: f64) -> f64 {
+    if max == min {
+        return 0.0;
+    }
+    ((value - min) / (max - min)).clamp(0.0, 1.0)
+}
+
+/// Denormalize a 0-1 value to a range.
+///
+/// # Inputs
+/// - `normalized`: The normalized value (0-1)
+/// - `min`: The minimum of the target range
+/// - `max`: The maximum of the target range
+///
+/// # Returns
+/// Denormalized value
+///
+/// # Math Denormalize
+/// Denormalizes a 0-1 value to a specific range.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn denormalize(normalized: f64, min: f64, max: f64) -> f64 {
+    min + normalized.clamp(0.0, 1.0) * (max - min)
+}
+
+/// Calculate percentage of a value relative to a total.
+///
+/// # Inputs
+/// - `value`: The part value
+/// - `total`: The total value
+///
+/// # Returns
+/// Percentage (0-100)
+///
+/// # Math Percentage
+/// Calculates what percentage value is of total.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn percentage(value: f64, total: f64) -> f64 {
+    if total == 0.0 {
+        return 0.0;
+    }
+    (value / total) * 100.0
+}
+
+/// Calculate value from percentage of total.
+///
+/// # Inputs
+/// - `percentage`: The percentage (0-100)
+/// - `total`: The total value
+///
+/// # Returns
+/// The calculated value
+///
+/// # Math From Percentage
+/// Calculates a value from a percentage of a total.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn from_percentage(percentage: f64, total: f64) -> f64 {
+    (percentage / 100.0) * total
+}
+
+/// Calculate ratio between two values.
+///
+/// # Inputs
+/// - `a`: First value
+/// - `b`: Second value
+///
+/// # Returns
+/// The ratio a/b
+///
+/// # Math Ratio
+/// Calculates the ratio between two values.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn ratio(a: f64, b: f64) -> f64 {
+    if b == 0.0 {
+        return 0.0;
+    }
+    a / b
+}
+
+/// Calculate proportion (part/whole).
+///
+/// # Inputs
+/// - `part`: The part value
+/// - `whole`: The whole value
+///
+/// # Returns
+/// The proportion (0-1)
+///
+/// # Math Proportion
+/// Calculates the proportion of part to whole.
+#[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
+pub fn proportion(part: f64, whole: f64) -> f64 {
+    if whole == 0.0 {
+        return 0.0;
+    }
+    (part / whole).clamp(0.0, 1.0)
+}
+

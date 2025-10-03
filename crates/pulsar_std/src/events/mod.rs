@@ -17,7 +17,7 @@ use crate::blueprint;
 /// # Events Emit
 /// Emits a custom event with a payload.
 #[blueprint(type: crate::NodeTypes::fn_, category: "Events")]
-pub fn emit_event(event: String, payload: String) {
+pub fn emit_event(_event: String, _payload: String) {
     // In a real implementation, this would notify listeners
 }
 
@@ -29,7 +29,7 @@ pub fn emit_event(event: String, payload: String) {
 /// # Events On
 /// Registers a handler for a custom event.
 #[blueprint(type: crate::NodeTypes::fn_, category: "Events")]
-pub fn on_event(event: String) {
+pub fn on_event(_event: String) {
     // In a real implementation, this would register a callback
 }
 
@@ -41,6 +41,6 @@ pub fn on_event(event: String) {
 /// # Events Remove Listener
 /// Removes a handler for a custom event.
 #[blueprint(type: crate::NodeTypes::fn_, category: "Events")]
-pub fn remove_event_listener(event: String) {
+pub fn remove_event_listener(_event: String) {
     // In a real implementation, this would unregister a callback
 }

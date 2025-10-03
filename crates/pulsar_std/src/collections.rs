@@ -8,7 +8,7 @@
 //!
 //! All operations work with Rust's standard library collection types.
 
-use crate::{blueprint, NodeTypes};
+use crate::blueprint;
 use std::collections::{HashMap, HashSet};
 
 // =============================================================================

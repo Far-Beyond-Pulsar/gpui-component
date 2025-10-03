@@ -10,7 +10,7 @@
 //! - Exit code handling
 //! - Executable path resolution
 
-use crate::{blueprint, NodeTypes};
+use crate::blueprint;
 
 // =============================================================================
 // Process Control Operations
@@ -239,7 +239,7 @@ pub fn shell_timeout(command: String, timeout: i64) -> Result<String, String> {
     use std::process::{Command, Stdio};
     use std::time::Duration;
 
-    let mut child = if cfg!(target_os = "windows") {
+    let child = if cfg!(target_os = "windows") {
         Command::new("cmd")
             .args(["/C", &command])
             .stdout(Stdio::piped())
