@@ -8,7 +8,7 @@
 //! - Directory operations (create, remove, list, walk)
 //! - Path manipulation (join, absolute, parent, filename, extension, stem)
 
-use crate::{blueprint, NodeTypes};
+use crate::blueprint;
 
 // =============================================================================
 // File Operations

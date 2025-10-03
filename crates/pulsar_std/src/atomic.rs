@@ -8,7 +8,7 @@
 //!
 //! All operations use Rust's standard library atomic types from `std::sync::atomic`.
 
-use crate::{blueprint, NodeTypes};
+use crate::blueprint;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 // =============================================================================

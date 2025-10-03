@@ -15,7 +15,7 @@
 //! - 2D vectors are represented as tuples: `(f32, f32)` for (x, y)
 //! - 3D vectors are represented as tuples: `(f32, f32, f32)` for (x, y, z)
 
-use crate::{blueprint, NodeTypes};
+use crate::blueprint;
 
 // =============================================================================
 // Vector2 Construction

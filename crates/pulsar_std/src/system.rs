@@ -9,7 +9,7 @@
 //! - Hardware information (CPU count, memory)
 //! - Runtime information (uptime, command-line arguments)
 
-use crate::{blueprint, NodeTypes};
+use crate::blueprint;
 
 // =============================================================================
 // Operating System Information

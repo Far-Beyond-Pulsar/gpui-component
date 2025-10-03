@@ -9,7 +9,7 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, ItemFn, Pat, ReturnType, Type, FnArg, Stmt, Expr};
+use syn::{parse_macro_input, ItemFn, Pat, ReturnType, FnArg, Stmt, Expr};
 
 /// Mark a function as a blueprint node and automatically register it.
 ///

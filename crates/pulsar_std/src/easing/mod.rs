@@ -21,7 +21,7 @@ use crate::blueprint;
 /// # Easing Lerp
 /// Linearly interpolates between two values.
 #[blueprint(type: crate::NodeTypes::pure, category: "Easing")]
-pub fn lerp(a: f64, b: f64, t: f64) -> f64 {
+pub fn ease_lerp(a: f64, b: f64, t: f64) -> f64 {
     a + (b - a) * t
 }
 

@@ -12,7 +12,7 @@
 //! Colors are represented as RGBA tuples: `(f32, f32, f32, f32)` for (red, green, blue, alpha)
 //! Each component typically ranges from 0.0 to 1.0.
 
-use crate::{blueprint, NodeTypes};
+use crate::blueprint;
 
 // =============================================================================
 // Color Construction

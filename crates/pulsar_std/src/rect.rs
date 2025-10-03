@@ -14,7 +14,7 @@
 //! - Position is a 2D vector (x, y)
 //! - Size is a 2D vector (width, height)
 
-use crate::{blueprint, NodeTypes};
+use crate::blueprint;
 
 // =============================================================================
 // Rectangle Construction

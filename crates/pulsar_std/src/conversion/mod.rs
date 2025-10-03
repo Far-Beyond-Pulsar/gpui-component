@@ -8,7 +8,7 @@
 
 use crate::blueprint;
 
-/// Convert a string to an integer.
+/// Convert a string to an integer (simple version, returns 0 on error).
 ///
 /// # Inputs
 /// - `s`: The string to convert
@@ -16,10 +16,10 @@ use crate::blueprint;
 /// # Returns
 /// The integer value, or 0 if parsing fails.
 ///
-/// # Conversion String to Int
-/// Converts a string to an integer.
+/// # Conversion Parse Int
+/// Converts a string to an integer (returns 0 on error).
 #[blueprint(type: crate::NodeTypes::pure, category: "Conversion")]
-pub fn string_to_int(s: String) -> i64 {
+pub fn parse_int(s: String) -> i64 {
     s.parse().unwrap_or(0)
 }
 
