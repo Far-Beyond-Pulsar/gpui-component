@@ -304,7 +304,7 @@ impl NodeCreationMenu {
             }))
             .id(ElementId::Name(element_id.into()))
             .child(
-                Icon::new(IconName::CircleX) // TODO: Use node type specific icon
+                Icon::new(IconName::Component) // Node icon
                     .size(px(14.0))
                     .text_color(cx.theme().accent)
             )

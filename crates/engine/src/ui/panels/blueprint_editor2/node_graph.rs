@@ -1348,7 +1348,7 @@ impl NodeGraphRenderer {
                         )
                         .child(
                             Button::new("zoom_fit")
-                                .icon(IconName::CircleCheck)
+                                .icon(IconName::BadgeCheck)
                                 .tooltip("Fit to View")
                                 .on_click(cx.listener(|panel, _, _window, cx| {
                                     let graph = panel.get_graph_mut();
