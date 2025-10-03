@@ -490,3 +490,235 @@ pub fn number_to_string(number: f64) -> String {
 pub fn bool_to_string(value: bool) -> String {
     value.to_string()
 }
+
+// =============================================================================
+// Additional String Utilities
+// =============================================================================
+
+/// Get the first character of a string.
+///
+/// # Inputs
+/// - `text`: The input string
+///
+/// # Returns
+/// The first character as a string (or empty string if input is empty)
+///
+/// # String First Char
+/// Gets the first character of a string.
+#[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
+pub fn first_char(text: String) -> String {
+    text.chars().next().map(|c| c.to_string()).unwrap_or_default()
+}
+
+/// Get the last character of a string.
+///
+/// # Inputs
+/// - `text`: The input string
+///
+/// # Returns
+/// The last character as a string (or empty string if input is empty)
+///
+/// # String Last Char
+/// Gets the last character of a string.
+#[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
+pub fn last_char(text: String) -> String {
+    text.chars().last().map(|c| c.to_string()).unwrap_or_default()
+}
+
+/// Check if string is alphabetic only.
+///
+/// # Inputs
+/// - `text`: The string to check
+///
+/// # Returns
+/// True if all characters are alphabetic
+///
+/// # String Is Alpha
+/// Checks if a string contains only alphabetic characters.
+#[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
+pub fn is_alpha(text: String) -> bool {
+    !text.is_empty() && text.chars().all(|c| c.is_alphabetic())
+}
+
+/// Check if string is numeric only.
+///
+/// # Inputs
+/// - `text`: The string to check
+///
+/// # Returns
+/// True if all characters are numeric
+///
+/// # String Is Numeric
+/// Checks if a string contains only numeric characters.
+#[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
+pub fn is_numeric(text: String) -> bool {
+    !text.is_empty() && text.chars().all(|c| c.is_numeric())
+}
+
+/// Check if string is alphanumeric only.
+///
+/// # Inputs
+/// - `text`: The string to check
+///
+/// # Returns
+/// True if all characters are alphanumeric
+///
+/// # String Is Alphanumeric
+/// Checks if a string contains only alphanumeric characters.
+#[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
+pub fn is_alphanumeric(text: String) -> bool {
+    !text.is_empty() && text.chars().all(|c| c.is_alphanumeric())
+}
+
+/// Repeat a string n times.
+///
+/// # Inputs
+/// - `text`: The string to repeat
+/// - `count`: Number of times to repeat
+///
+/// # Returns
+/// The repeated string
+///
+/// # String Repeat
+/// Repeats a string a specified number of times.
+#[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
+pub fn repeat(text: String, count: i64) -> String {
+    text.repeat(count.max(0) as usize)
+}
+
+/// Insert string at position.
+///
+/// # Inputs
+/// - `text`: The original string
+/// - `insert`: The string to insert
+/// - `position`: The position to insert at
+///
+/// # Returns
+/// String with insertion
+///
+/// # String Insert
+/// Inserts a string at a specific position.
+#[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
+pub fn insert_at(text: String, insert: String, position: i64) -> String {
+    let pos = position.clamp(0, text.len() as i64) as usize;
+    let mut result = text;
+    result.insert_str(pos, &insert);
+    result
+}
+
+/// Remove substring at position with length.
+///
+/// # Inputs
+/// - `text`: The original string
+/// - `position`: Start position
+/// - `length`: Number of characters to remove
+///
+/// # Returns
+/// String with substring removed
+///
+/// # String Remove
+/// Removes a substring at a specific position.
+#[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
+pub fn remove_at(text: String, position: i64, length: i64) -> String {
+    let start = position.clamp(0, text.len() as i64) as usize;
+    let end = (position + length).clamp(0, text.len() as i64) as usize;
+    let mut result = text;
+    result.drain(start..end.min(result.len()));
+    result
+}
+
+/// Count occurrences of substring.
+///
+/// # Inputs
+/// - `text`: The string to search in
+/// - `pattern`: The substring to count
+///
+/// # Returns
+/// Number of occurrences
+///
+/// # String Count Occurrences
+/// Counts how many times a substring appears.
+#[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
+pub fn count_occurrences(text: String, pattern: String) -> i64 {
+    if pattern.is_empty() {
+        return 0;
+    }
+    text.matches(&pattern).count() as i64
+}
+
+/// Left justify string to width.
+///
+/// # Inputs
+/// - `text`: The string to justify
+/// - `width`: The target width
+/// - `fill`: The fill character
+///
+/// # Returns
+/// Left-justified string
+///
+/// # String Left Justify
+/// Left-justifies a string to a specific width.
+#[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
+pub fn left_justify(text: String, width: i64, fill: String) -> String {
+    let fill_char = fill.chars().next().unwrap_or(' ');
+    let width = width.max(0) as usize;
+    if text.len() >= width {
+        text
+    } else {
+        format!("{}{}", text, fill_char.to_string().repeat(width - text.len()))
+    }
+}
+
+/// Right justify string to width.
+///
+/// # Inputs
+/// - `text`: The string to justify
+/// - `width`: The target width
+/// - `fill`: The fill character
+///
+/// # Returns
+/// Right-justified string
+///
+/// # String Right Justify
+/// Right-justifies a string to a specific width.
+#[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
+pub fn right_justify(text: String, width: i64, fill: String) -> String {
+    let fill_char = fill.chars().next().unwrap_or(' ');
+    let width = width.max(0) as usize;
+    if text.len() >= width {
+        text
+    } else {
+        format!("{}{}", fill_char.to_string().repeat(width - text.len()), text)
+    }
+}
+
+/// Center justify string to width.
+///
+/// # Inputs
+/// - `text`: The string to justify
+/// - `width`: The target width
+/// - `fill`: The fill character
+///
+/// # Returns
+/// Center-justified string
+///
+/// # String Center Justify
+/// Center-justifies a string to a specific width.
+#[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
+pub fn center_justify(text: String, width: i64, fill: String) -> String {
+    let fill_char = fill.chars().next().unwrap_or(' ');
+    let width = width.max(0) as usize;
+    if text.len() >= width {
+        text
+    } else {
+        let total_padding = width - text.len();
+        let left_padding = total_padding / 2;
+        let right_padding = total_padding - left_padding;
+        format!("{}{}{}", 
+            fill_char.to_string().repeat(left_padding),
+            text,
+            fill_char.to_string().repeat(right_padding)
+        )
+    }
+}
+

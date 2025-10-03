@@ -402,3 +402,20 @@ pub fn select_string(condition: bool, a: String, b: String) -> String {
         b
     }
 }
+
+/// XOR (exclusive OR) operation.
+///
+/// # Inputs
+/// - `a`: First boolean value
+/// - `b`: Second boolean value
+///
+/// # Returns
+/// True if exactly one input is true (exclusive OR)
+///
+/// # Logic XOR
+/// Returns true if exactly one of the inputs is true.
+#[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
+pub fn xor(a: bool, b: bool) -> bool {
+    a ^ b
+}
+
