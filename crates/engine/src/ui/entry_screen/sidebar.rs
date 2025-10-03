@@ -96,7 +96,7 @@ fn render_sidebar_header<V: 'static>(
 fn render_sidebar_preview<V: 'static>(card: &CardItem, cx: &mut Context<V>) -> impl IntoElement {
     let icon = match card {
         CardItem::Project(_) => IconName::Folder,
-        CardItem::Template(_) => IconName::BookOpen,
+        CardItem::Template(_) => IconName::Frame,
         CardItem::BlankProject => IconName::Plus,
     };
 
@@ -244,7 +244,7 @@ fn render_sidebar_action<V: 'static>(
 ) -> impl IntoElement {
     let (button_text, icon) = match card {
         CardItem::Project(_) => ("Open Project", IconName::FolderOpen),
-        CardItem::Template(_) => ("Create from Template", IconName::Check),
+        CardItem::Template(_) => ("Create from Template", IconName::PagePlusIn),
         CardItem::BlankProject => ("Create Project", IconName::Plus),
     };
 

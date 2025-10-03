@@ -165,15 +165,16 @@ impl FileExplorer {
             }
         } else {
             match entry.path.extension().and_then(|ext| ext.to_str()) {
-                Some("rs") => IconName::SquareTerminal,
-                Some("js") | Some("ts") => IconName::BookOpen,
-                Some("py") => IconName::BookOpen,
+                Some("rs") => IconName::Code,
+                Some("js") | Some("ts") => IconName::Code,
+                Some("py") => IconName::Code,
                 Some("toml") | Some("json") => IconName::Settings,
-                Some("md") => IconName::BookOpen,
-                Some("txt") => IconName::BookOpen,
-                Some("html") | Some("css") => IconName::Globe,
-                Some("png") | Some("jpg") | Some("jpeg") | Some("gif") => IconName::BookOpen,
-                _ => IconName::BookOpen,
+                Some("md") => IconName::Notes,
+                Some("txt") => IconName::Page,
+                Some("html") => IconName::HTML5,
+                Some("css") => IconName::CSS3,
+                Some("png") | Some("jpg") | Some("jpeg") | Some("gif") => IconName::MediaImage,
+                _ => IconName::Page,
             }
         }
     }

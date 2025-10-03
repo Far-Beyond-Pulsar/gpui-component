@@ -259,20 +259,20 @@ impl LevelEditorPanel {
     fn render_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         Toolbar::new()
             .add_button(
-                ToolbarButton::new(IconName::Asterisk, "Select")
+                ToolbarButton::new(IconName::CursorPointer, "Select")
                     .tooltip("Select Tool (S)")
                     .active(true)
             )
             .add_button(
-                ToolbarButton::new(IconName::Asterisk, "Move")
+                ToolbarButton::new(IconName::Drag, "Move")
                     .tooltip("Move Tool (M)")
             )
             .add_button(
-                ToolbarButton::new(IconName::Asterisk, "Rotate")
+                ToolbarButton::new(IconName::RotateCameraRight, "Rotate")
                     .tooltip("Rotate Tool (R)")
             )
             .add_button(
-                ToolbarButton::new(IconName::Maximize, "Scale")
+                ToolbarButton::new(IconName::Enlarge, "Scale")
                     .tooltip("Scale Tool (T)")
             )
             .render(cx)

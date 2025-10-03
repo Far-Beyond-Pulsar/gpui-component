@@ -262,8 +262,8 @@ impl Render for MainMenu {
                     .small()
                     .popup_menu(|this, window, cx| {
                         this
-                            .menu_with_icon("New File", IconName::Plus, Box::new(NewFile))
-                            .menu_with_icon("New Project", IconName::Folder, Box::new(NewProject))
+                            .menu_with_icon("New File", IconName::PagePlus, Box::new(NewFile))
+                            .menu_with_icon("New Project", IconName::FolderPlus, Box::new(NewProject))
                             .separator()
                             .menu_with_icon("Open File", IconName::FolderOpen, Box::new(OpenFile))
                             .menu_with_icon("Open Folder", IconName::FolderOpen, Box::new(OpenFolder))
@@ -275,7 +275,7 @@ impl Render for MainMenu {
                                     .menu("Clear Recent", Box::new(OpenRecent))
                             })
                             .separator()
-                            .menu_with_icon("Save", IconName::Check, Box::new(SaveFile))
+                            .menu_with_icon("Save", IconName::FloppyDisk, Box::new(SaveFile))
                             .menu("Save As...", Box::new(SaveAs))
                             .menu("Save All", Box::new(SaveAll))
                             .separator()
@@ -295,9 +295,9 @@ impl Render for MainMenu {
                             .menu("Undo", Box::new(Undo))
                             .menu("Redo", Box::new(Redo))
                             .separator()
-                            .menu_with_icon("Cut", IconName::Copy, Box::new(Cut))
+                            .menu_with_icon("Cut", IconName::Scissor, Box::new(Cut))
                             .menu_with_icon("Copy", IconName::Copy, Box::new(Copy))
-                            .menu_with_icon("Paste", IconName::Copy, Box::new(Paste))
+                            .menu_with_icon("Paste", IconName::PasteClipboard, Box::new(Paste))
                             .separator()
                             .menu("Select All", Box::new(SelectAll))
                             .separator()
@@ -332,7 +332,7 @@ impl Render for MainMenu {
                     .small()
                     .popup_menu(|this, window, cx| {
                         this
-                            .menu_with_icon("Build", IconName::Check, Box::new(Build))
+                            .menu_with_icon("Build", IconName::Tools, Box::new(Build))
                             .menu("Rebuild", Box::new(Rebuild))
                             .menu("Clean", Box::new(Clean))
                             .separator()
@@ -388,8 +388,8 @@ impl Render for MainMenu {
                     .small()
                     .popup_menu(|this, window, cx| {
                         this
-                            .menu_with_icon("Run Project", IconName::CircleCheck, Box::new(RunProject))
-                            .menu_with_icon("Debug Project", IconName::CircleX, Box::new(DebugProject))
+                            .menu_with_icon("Run Project", IconName::Play, Box::new(RunProject))
+                            .menu_with_icon("Debug Project", IconName::Bug, Box::new(DebugProject))
                             .menu("Run without Debugging", Box::new(RunWithoutDebugging))
                             .separator()
                             .menu("Stop Debugging", Box::new(StopDebugging))
@@ -423,7 +423,7 @@ impl Render for MainMenu {
                             .link_with_icon("Documentation", IconName::BookOpen, "https://docs.rs")
                             .link_with_icon("Report Issue", IconName::GitHub, "https://github.com/issues")
                             .separator()
-                            .menu_with_icon("About", IconName::Info, Box::new(AboutApp))
+                            .menu_with_icon("About", IconName::InfoCircle, Box::new(AboutApp))
                     })
             )
     }

@@ -73,7 +73,7 @@ impl ToolbarRenderer {
             )
             .child(
                 Button::new("fit_view")
-                    .icon(IconName::CircleCheck)
+                    .icon(IconName::BadgeCheck)
                     .tooltip("Fit to View (F)")
                     .on_click(cx.listener(|panel, _, _window, cx| {
                         let graph = panel.get_graph_mut();
@@ -91,7 +91,7 @@ impl ToolbarRenderer {
             )
             .child(
                 Button::new("save")
-                    .icon(IconName::Check)
+                    .icon(IconName::FloppyDisk)
                     .tooltip("Save Blueprint (Ctrl+S)")
                     .on_click(cx.listener(|panel, _, _window, _cx| {
                         if let Some(class_path) = &panel.current_class_path {
@@ -108,7 +108,7 @@ impl ToolbarRenderer {
             )
             .child(
                 Button::new("compile")
-                    .icon(IconName::ChevronRight)
+                    .icon(IconName::Play)
                     .tooltip("Compile to Rust (Ctrl+B)")
                     .on_click(cx.listener(|panel, _, _window, _cx| {
                         if let Err(e) = panel.compile_to_class_directory() {

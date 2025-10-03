@@ -443,7 +443,7 @@ impl FileManagerDrawer {
     fn render_folder_tree_node(&self, node: &FolderNode, depth: usize, cx: &mut Context<Self>) -> impl IntoElement {
         let indent = depth * 16;
         let icon = if node.is_class {
-            IconName::Frame
+            IconName::Component
         } else if node.expanded {
             IconName::FolderOpen
         } else {
@@ -550,9 +550,9 @@ impl FileManagerDrawer {
     fn render_content_item(&self, item: &FileItem, cx: &mut Context<Self>) -> impl IntoElement {
         let icon = match &item.file_type {
             FileType::Folder => IconName::Folder,
-            FileType::Class => IconName::Frame,
-            FileType::Script => IconName::BookOpen,
-            FileType::Other => IconName::Dash,
+            FileType::Class => IconName::Component,
+            FileType::Script => IconName::Code,
+            FileType::Other => IconName::Page,
         };
 
         let item_clone = item.clone();

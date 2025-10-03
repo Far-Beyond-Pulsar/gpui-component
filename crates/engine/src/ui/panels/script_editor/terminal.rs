@@ -342,7 +342,7 @@ impl Terminal {
                     .gap_1()
                     .child(
                         Button::new("clear_terminal")
-                            .icon(IconName::Delete)
+                            .icon(IconName::Trash)
                             .tooltip("Clear Terminal")
                             .ghost()
                             .xsmall()
@@ -366,7 +366,7 @@ impl Terminal {
                     )
                     .child(
                         Button::new("close_terminal")
-                            .icon(IconName::CircleX)
+                            .icon(IconName::WindowClose)
                             .tooltip("Close Terminal")
                             .ghost()
                             .xsmall()

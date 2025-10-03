@@ -236,7 +236,7 @@ impl TextEditor {
                     )
                     .child(
                         Button::new("save")
-                            .icon(IconName::Asterisk)
+                            .icon(IconName::FloppyDisk)
                             .tooltip("Save (Ctrl+S)")
                             .ghost()
                             .small()
@@ -256,7 +256,7 @@ impl TextEditor {
                     )
                     .child(
                         Button::new("replace")
-                            .icon(IconName::Search)
+                            .icon(IconName::Replace)
                             .tooltip("Replace (Ctrl+H)")
                             .ghost()
                             .small()

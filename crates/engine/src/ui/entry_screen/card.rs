@@ -68,7 +68,7 @@ pub fn render_card<V: 'static>(
 fn render_card_image<V: 'static>(card: &CardItem, cx: &mut Context<V>) -> impl IntoElement {
     let icon = match card {
         CardItem::Project(_) => IconName::Folder,
-        CardItem::Template(_) => IconName::BookOpen,
+        CardItem::Template(_) => IconName::Frame,
         CardItem::BlankProject => IconName::Plus,
     };
 

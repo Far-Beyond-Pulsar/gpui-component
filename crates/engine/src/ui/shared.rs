@@ -195,13 +195,13 @@ impl ViewportControls {
             )
             .child(
                 Button::new("axes")
-                    .icon(IconName::ArrowRight)
+                    .icon(IconName::Axes)
                     .tooltip("Toggle Axes")
                     .selected(self.show_axes)
             )
             .child(
                 Button::new("perspective")
-                    .icon(IconName::Eye)
+                    .icon(IconName::Cube)
                     .tooltip("Toggle Perspective")
                     .selected(self.perspective_mode)
             )
