@@ -4,6 +4,10 @@ name = "pulsar_engine"
 description = "A modern high-performance game engine written in Rust"
 publish = false
 version = "0.1.18"
+debug-assertations = true
+
+[profile.dev.package."*"]
+opt-level = 3
 
 [[bin]]
 name = "pulsar_engine"
