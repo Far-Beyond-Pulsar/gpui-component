@@ -107,18 +107,6 @@ impl ToolbarRenderer {
                     }))
             )
             .child(
-                Button::new("load")
-                    .icon(IconName::Inbox)
-                    .tooltip("Load Blueprint (Ctrl+O)")
-                    .on_click(cx.listener(|panel, _, _window, cx| {
-                        if let Err(e) = panel.load_blueprint("blueprint.json", cx) {
-                            eprintln!("Failed to load blueprint: {}", e);
-                        } else {
-                            println!("Blueprint loaded from blueprint.json");
-                        }
-                    }))
-            )
-            .child(
                 Button::new("compile")
                     .icon(IconName::ChevronRight)
                     .tooltip("Compile to Rust (Ctrl+B)")
