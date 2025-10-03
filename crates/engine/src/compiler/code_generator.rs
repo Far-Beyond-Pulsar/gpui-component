@@ -16,6 +16,13 @@ use super::{
     ast_utils,
 };
 
+/// Variable metadata for code generation
+#[derive(Debug, Clone)]
+pub struct VariableInfo {
+    pub name: String,
+    pub var_type: String,
+}
+
 /// Main code generator
 pub struct CodeGenerator<'a> {
     /// Node metadata from pulsar_std
@@ -30,6 +37,9 @@ pub struct CodeGenerator<'a> {
     /// The graph being compiled
     graph: &'a GraphDescription,
 
+    /// Class variables (name -> type)
+    variables: HashMap<String, String>,
+
     /// Tracks visited nodes to prevent infinite loops
     visited: HashSet<String>,
 }
@@ -40,12 +50,14 @@ impl<'a> CodeGenerator<'a> {
         data_resolver: &'a DataResolver,
         exec_routing: &'a ExecutionRouting,
         graph: &'a GraphDescription,
+        variables: HashMap<String, String>,
     ) -> Self {
         Self {
             metadata,
             data_resolver,
             exec_routing,
             graph,
+            variables,
             visited: HashSet::new(),
         }
     }
@@ -78,8 +90,9 @@ impl<'a> CodeGenerator<'a> {
         let header = Self::generate_file_header(&format!("{} event", fn_name));
 
         // Add imports and function definition
+        // Include vars import for accessing class variables
         Ok(format!(
-            "{}\nuse pulsar_std::*;\n\npub fn {}() {{\n{}}}\n",
+            "{}\nuse pulsar_std::*;\nuse super::vars::*;\n\npub fn {}() {{\n{}}}\n",
             header, fn_name, body
         ))
     }
@@ -117,6 +130,15 @@ impl<'a> CodeGenerator<'a> {
             return Ok(());
         }
         self.visited.insert(node.id.clone());
+
+        // Check if this is a variable getter or setter node
+        if node.node_type.starts_with("get_") {
+            // Getter nodes are pure (no exec chain), skip
+            return Ok(());
+        } else if node.node_type.starts_with("set_") {
+            // Setter nodes have exec chain
+            return self.generate_setter_node(node, output, indent_level);
+        }
 
         let node_meta = self.metadata
             .get(&node.node_type)
@@ -227,6 +249,7 @@ impl<'a> CodeGenerator<'a> {
                         data_resolver: self.data_resolver,
                         exec_routing: self.exec_routing,
                         graph: self.graph,
+                        variables: self.variables.clone(),
                         visited: local_visited.clone(),
                     };
 
@@ -282,6 +305,66 @@ impl<'a> CodeGenerator<'a> {
 
         Ok(args)
     }
+
+    /// Generate code for a variable setter node
+    fn generate_setter_node(
+        &mut self,
+        node: &NodeInstance,
+        output: &mut String,
+        indent_level: usize,
+    ) -> Result<(), String> {
+        let indent = "    ".repeat(indent_level);
+
+        // Extract variable name from node type (remove "set_" prefix)
+        let var_name = node.node_type.strip_prefix("set_")
+            .ok_or_else(|| format!("Invalid setter node type: {}", node.node_type))?;
+
+        // Get the value to set from the "value" input pin
+        let value_expr = self.data_resolver
+            .generate_input_expression(&node.id, "value", self.graph)?;
+
+        // Get variable type to determine Cell vs RefCell
+        let var_type = self.variables.get(var_name)
+            .ok_or_else(|| format!("Variable '{}' not found in variable definitions", var_name))?;
+
+        // Determine if this is a Copy type (uses Cell) or not (uses RefCell)
+        let is_copy_type = Self::is_copy_type(var_type);
+
+        if is_copy_type {
+            // Cell: VAR_NAME.with(|v| v.set(value));
+            output.push_str(&format!(
+                "{}{}.with(|v| v.set({}));\n",
+                indent,
+                var_name.to_uppercase(),
+                value_expr
+            ));
+        } else {
+            // RefCell: VAR_NAME.with(|v| *v.borrow_mut() = value);
+            output.push_str(&format!(
+                "{}{}.with(|v| *v.borrow_mut() = {});\n",
+                indent,
+                var_name.to_uppercase(),
+                value_expr
+            ));
+        }
+
+        // Follow execution chain from "exec_out" pin
+        if let Some(_exec_out_pin) = node.outputs.get("exec_out") {
+            let connected = self.exec_routing.get_connected_nodes(&node.id, "exec_out");
+            for next_node_id in connected {
+                if let Some(next_node) = self.graph.nodes.get(next_node_id) {
+                    self.generate_exec_chain(next_node, output, indent_level)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if a type is Copy (uses Cell) or not (uses RefCell)
+    fn is_copy_type(type_str: &str) -> bool {
+        matches!(type_str, "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "bool" | "char" | "usize" | "isize" | "i8" | "i16" | "u8" | "u16")
+    }
 }
 
 /// Generate complete Rust program from graph
@@ -290,6 +373,7 @@ pub fn generate_program(
     metadata: &HashMap<String, NodeMetadata>,
     data_resolver: &DataResolver,
     exec_routing: &ExecutionRouting,
+    variables: HashMap<String, String>,
 ) -> Result<String, String> {
     let mut code = String::new();
 
@@ -317,7 +401,7 @@ pub fn generate_program(
 
     // Generate each event function
     for event_node in event_nodes {
-        let mut generator = CodeGenerator::new(metadata, data_resolver, exec_routing, graph);
+        let mut generator = CodeGenerator::new(metadata, data_resolver, exec_routing, graph, variables.clone());
         let event_code = generator.generate_event_function(event_node)?;
         code.push_str(&event_code);
         code.push_str("\n");

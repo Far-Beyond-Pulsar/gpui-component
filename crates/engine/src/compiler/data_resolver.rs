@@ -22,6 +22,9 @@ pub struct DataResolver {
 
     /// Topologically sorted list of pure nodes that need evaluation
     pure_evaluation_order: Vec<String>,
+
+    /// Class variables (name -> type)
+    variables: HashMap<String, String>,
 }
 
 /// Where an input value comes from
@@ -43,10 +46,20 @@ pub enum DataSource {
 impl DataResolver {
     /// Build a data resolver from a graph
     pub fn build(graph: &GraphDescription, metadata: &HashMap<String, NodeMetadata>) -> Result<Self, String> {
+        Self::build_with_variables(graph, metadata, HashMap::new())
+    }
+
+    /// Build a data resolver from a graph with variable definitions
+    pub fn build_with_variables(
+        graph: &GraphDescription,
+        metadata: &HashMap<String, NodeMetadata>,
+        variables: HashMap<String, String>,
+    ) -> Result<Self, String> {
         let mut resolver = DataResolver {
             input_sources: HashMap::new(),
             result_variables: HashMap::new(),
             pure_evaluation_order: Vec::new(),
+            variables,
         };
 
         // Phase 1: Map all data connections
@@ -225,6 +238,23 @@ impl DataResolver {
 
                 eprintln!("[DATA_RESOLVER] Checking node '{}' (type: {})", source_node_id, source_node.node_type);
 
+                // Special case: variable getter nodes
+                if source_node.node_type.starts_with("get_") {
+                    let var_name = source_node.node_type.strip_prefix("get_").unwrap();
+                    let var_type = self.variables.get(var_name)
+                        .ok_or_else(|| format!("Variable '{}' not found in variable definitions", var_name))?;
+
+                    // Generate getter code based on type (Cell vs RefCell)
+                    let is_copy_type = Self::is_copy_type(var_type);
+                    if is_copy_type {
+                        // Cell: VAR_NAME.with(|v| v.get())
+                        return Ok(format!("{}.with(|v| v.get())", var_name.to_uppercase()));
+                    } else {
+                        // RefCell: VAR_NAME.with(|v| v.borrow().clone())
+                        return Ok(format!("{}.with(|v| v.borrow().clone())", var_name.to_uppercase()));
+                    }
+                }
+
                 // Special case: reroute nodes are transparent passthroughs
                 if source_node.node_type == "reroute" {
                     eprintln!("[DATA_RESOLVER] Reroute node detected - passing through to its input");
@@ -311,6 +341,11 @@ impl DataResolver {
 
         // Return inlined function call
         Ok(format!("{}({})", node_meta.name, args.join(", ")))
+    }
+
+    /// Check if a type is Copy (uses Cell) or not (uses RefCell)
+    fn is_copy_type(type_str: &str) -> bool {
+        matches!(type_str, "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "bool" | "char" | "usize" | "isize" | "i8" | "i16" | "u8" | "u16")
     }
 }
 

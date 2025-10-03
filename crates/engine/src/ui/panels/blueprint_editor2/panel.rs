@@ -64,6 +64,9 @@ pub struct BlueprintEditorPanel {
     pub is_creating_variable: bool,
     pub variable_name_input: Entity<gpui_component::input::InputState>,
     pub variable_type_dropdown: Entity<gpui_component::dropdown::DropdownState<Vec<super::variables::TypeItem>>>,
+    // Variable drag state
+    pub dragging_variable: Option<super::variables::VariableDrag>,
+    pub variable_drop_menu_position: Option<Point<f32>>,
 }
 
 #[derive(Clone, Debug)]
@@ -390,6 +393,8 @@ impl BlueprintEditorPanel {
                     cx,
                 )
             }),
+            dragging_variable: None,
+            variable_drop_menu_position: None,
         }
     }
 
@@ -427,6 +432,10 @@ impl BlueprintEditorPanel {
         let class_path = self.current_class_path.as_ref()
             .ok_or("No class loaded - cannot compile")?;
 
+        // Save variables and generate vars module first
+        self.save_variables_to_class()?;
+        self.generate_vars_module()?;
+
         // Create events directory
         let events_dir = class_path.join("events");
         std::fs::create_dir_all(&events_dir)
@@ -446,7 +455,12 @@ impl BlueprintEditorPanel {
         let metadata = crate::compiler::node_metadata::extract_node_metadata()
             .map_err(|e| format!("Failed to get node metadata: {}", e))?;
 
-        let data_resolver = crate::compiler::data_resolver::DataResolver::build(&graph_description, &metadata)?;
+        // Build variables HashMap from class_variables
+        let variables: std::collections::HashMap<String, String> = self.class_variables.iter()
+            .map(|v| (v.name.clone(), v.var_type.clone()))
+            .collect();
+
+        let data_resolver = crate::compiler::data_resolver::DataResolver::build_with_variables(&graph_description, &metadata, variables.clone())?;
         let exec_routing = crate::compiler::execution_routing::ExecutionRouting::build_from_graph(&graph_description);
 
         let mut mod_exports = Vec::new();
@@ -463,6 +477,7 @@ impl BlueprintEditorPanel {
                 &data_resolver,
                 &exec_routing,
                 &graph_description,
+                variables.clone(),
             );
 
             let event_code = generator.generate_event_function(graph_event)?;
@@ -617,6 +632,11 @@ impl BlueprintEditorPanel {
         std::fs::write(file_path, content)
             .map_err(|e| format!("Failed to write file: {}", e))?;
 
+        // Also save variables when saving the blueprint
+        if self.current_class_path.is_some() {
+            self.save_variables_to_class()?;
+        }
+
         Ok(())
     }
 
@@ -642,6 +662,9 @@ impl BlueprintEditorPanel {
         let path = std::path::Path::new(file_path);
         if let Some(parent) = path.parent() {
             self.current_class_path = Some(parent.to_path_buf());
+
+            // Load variables from vars_save.json
+            self.load_variables_from_class(parent)?;
         }
 
         cx.notify();
@@ -1605,6 +1628,11 @@ impl BlueprintEditorPanel {
                 default_value: None,
             };
             self.class_variables.push(variable);
+
+            // Auto-save variables when modified
+            if let Err(e) = self.save_variables_to_class() {
+                eprintln!("Failed to save variables: {}", e);
+            }
         }
         self.is_creating_variable = false;
         cx.notify();
@@ -1613,12 +1641,266 @@ impl BlueprintEditorPanel {
     /// Remove a variable from the class by name
     pub fn remove_variable(&mut self, name: &str, cx: &mut Context<Self>) {
         self.class_variables.retain(|v| v.name != name);
+
+        // Auto-save variables when modified
+        if let Err(e) = self.save_variables_to_class() {
+            eprintln!("Failed to save variables: {}", e);
+        }
+
         cx.notify();
     }
 
     /// Get all available types from blueprint nodes
     pub fn get_available_types(&self) -> Vec<String> {
         crate::compiler::type_extractor::extract_all_blueprint_types()
+    }
+
+    /// Load variables from vars_save.json
+    fn load_variables_from_class(&mut self, class_path: &std::path::Path) -> Result<(), String> {
+        let vars_file = class_path.join("vars_save.json");
+
+        if !vars_file.exists() {
+            // No vars file yet, that's ok - start with empty variables
+            self.class_variables.clear();
+            return Ok(());
+        }
+
+        let content = std::fs::read_to_string(&vars_file)
+            .map_err(|e| format!("Failed to read vars_save.json: {}", e))?;
+
+        let variables: Vec<super::variables::ClassVariable> = serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse vars_save.json: {}", e))?;
+
+        self.class_variables = variables;
+        Ok(())
+    }
+
+    /// Save variables to vars_save.json
+    pub fn save_variables_to_class(&self) -> Result<(), String> {
+        let class_path = self.current_class_path.as_ref()
+            .ok_or_else(|| "No class currently loaded".to_string())?;
+
+        let vars_file = class_path.join("vars_save.json");
+
+        let json = serde_json::to_string_pretty(&self.class_variables)
+            .map_err(|e| format!("Failed to serialize variables: {}", e))?;
+
+        std::fs::write(&vars_file, json)
+            .map_err(|e| format!("Failed to write vars_save.json: {}", e))?;
+
+        Ok(())
+    }
+
+    /// Generate vars/mod.rs from current variables
+    pub fn generate_vars_module(&self) -> Result<(), String> {
+        let class_path = self.current_class_path.as_ref()
+            .ok_or_else(|| "No class currently loaded".to_string())?;
+
+        let vars_dir = class_path.join("vars");
+        std::fs::create_dir_all(&vars_dir)
+            .map_err(|e| format!("Failed to create vars directory: {}", e))?;
+
+        let mut code = String::new();
+        code.push_str("//! Auto-generated variables module\n");
+        code.push_str("//! DO NOT EDIT MANUALLY - YOUR CHANGES WILL BE OVERWRITTEN\n\n");
+
+        // Check if we need RefCell
+        let needs_refcell = self.class_variables.iter().any(|v|
+            !matches!(v.var_type.as_str(), "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "bool" | "char" | "usize" | "isize" | "i8" | "i16" | "u8" | "u16")
+        );
+
+        code.push_str("use std::cell::Cell;\n");
+        if needs_refcell {
+            code.push_str("use std::cell::RefCell;\n");
+        }
+        code.push_str("\n");
+
+        // Generate variable declarations using thread_local for type safety
+        for var in &self.class_variables {
+            let default_value = if let Some(default) = &var.default_value {
+                default.clone()
+            } else {
+                // Use type defaults
+                match var.var_type.as_str() {
+                    "i32" | "i64" | "u32" | "u64" | "f32" | "f64" => "0".to_string(),
+                    "bool" => "false".to_string(),
+                    "&str" => "\"\"".to_string(),
+                    "String" => "String::new()".to_string(),
+                    _ => "Default::default()".to_string(),
+                }
+            };
+
+            // Determine if we should use Cell or RefCell based on type
+            let use_cell = matches!(var.var_type.as_str(), "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "bool" | "char" | "usize" | "isize" | "i8" | "i16" | "u8" | "u16");
+
+            if use_cell {
+                code.push_str(&format!(
+                    "thread_local! {{\n    pub static {}: Cell<{}> = Cell::new({});\n}}\n\n",
+                    var.name.to_uppercase(),
+                    var.var_type,
+                    default_value
+                ));
+            } else {
+                code.push_str(&format!(
+                    "thread_local! {{\n    pub static {}: RefCell<{}> = RefCell::new({});\n}}\n\n",
+                    var.name.to_uppercase(),
+                    var.var_type,
+                    default_value
+                ));
+            }
+        }
+
+        let mod_file = vars_dir.join("mod.rs");
+        std::fs::write(&mod_file, code)
+            .map_err(|e| format!("Failed to write vars/mod.rs: {}", e))?;
+
+        Ok(())
+    }
+
+    /// Start dragging a variable from the variables panel
+    pub fn start_dragging_variable(&mut self, var_name: String, var_type: String, cx: &mut Context<Self>) {
+        self.dragging_variable = Some(super::variables::VariableDrag {
+            var_name,
+            var_type,
+        });
+        cx.notify();
+    }
+
+    /// Finish dragging a variable and show context menu at drop position
+    pub fn finish_dragging_variable(&mut self, drop_position: Point<f32>, cx: &mut Context<Self>) {
+        if self.dragging_variable.is_some() {
+            self.variable_drop_menu_position = Some(drop_position);
+            cx.notify();
+        }
+    }
+
+    /// Cancel variable drag
+    pub fn cancel_dragging_variable(&mut self, cx: &mut Context<Self>) {
+        self.dragging_variable = None;
+        self.variable_drop_menu_position = None;
+        cx.notify();
+    }
+
+    /// Create a getter node for a variable at the specified position
+    pub fn create_getter_node(&mut self, var_name: String, var_type: String, position: Point<f32>, cx: &mut Context<Self>) {
+        let node_id = format!("get_{}_node_{}", var_name, uuid::Uuid::new_v4());
+
+        let node = BlueprintNode {
+            id: node_id,
+            definition_id: format!("get_{}", var_name),
+            title: format!("Get {}", var_name),
+            icon: "📥".to_string(),
+            node_type: NodeType::Logic,
+            position,
+            size: Size::new(180.0, 80.0),
+            inputs: vec![],
+            outputs: vec![Pin {
+                id: "value".to_string(),
+                name: var_name.clone(),
+                pin_type: PinType::Output,
+                data_type: GraphDataType::from_type_str(&var_type),
+            }],
+            properties: std::collections::HashMap::new(),
+            is_selected: false,
+            description: format!("Gets the value of {}", var_name),
+            color: None,
+        };
+
+        self.add_node(node, cx);
+        self.cancel_dragging_variable(cx);
+    }
+
+    /// Create a setter node for a variable at the specified position
+    pub fn create_setter_node(&mut self, var_name: String, var_type: String, position: Point<f32>, cx: &mut Context<Self>) {
+        let node_id = format!("set_{}_node_{}", var_name, uuid::Uuid::new_v4());
+
+        let node = BlueprintNode {
+            id: node_id,
+            definition_id: format!("set_{}", var_name),
+            title: format!("Set {}", var_name),
+            icon: "📤".to_string(),
+            node_type: NodeType::Logic,
+            position,
+            size: Size::new(180.0, 100.0),
+            inputs: vec![
+                Pin {
+                    id: "exec".to_string(),
+                    name: "".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str("execution"),
+                },
+                Pin {
+                    id: "value".to_string(),
+                    name: var_name.clone(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str(&var_type),
+                },
+            ],
+            outputs: vec![Pin {
+                id: "exec_out".to_string(),
+                name: "".to_string(),
+                pin_type: PinType::Output,
+                data_type: GraphDataType::from_type_str("execution"),
+            }],
+            properties: std::collections::HashMap::new(),
+            is_selected: false,
+            description: format!("Sets the value of {}", var_name),
+            color: None,
+        };
+
+        self.add_node(node, cx);
+        self.cancel_dragging_variable(cx);
+    }
+
+    /// Render the variable drop context menu with Get/Set options
+    fn render_variable_drop_menu(
+        &self,
+        var_drag: Option<super::variables::VariableDrag>,
+        position: Point<f32>,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        use gpui_component::{button::{Button, ButtonVariants as _}, v_flex};
+
+        let var_name = var_drag.as_ref().map(|v| v.var_name.clone()).unwrap_or_default();
+        let var_type = var_drag.as_ref().map(|v| v.var_type.clone()).unwrap_or_default();
+
+        let get_var_name = var_name.clone();
+        let get_var_type = var_type.clone();
+        let set_var_name = var_name.clone();
+        let set_var_type = var_type.clone();
+
+        v_flex()
+            .w(px(180.))
+            .gap_1()
+            .p_2()
+            .bg(cx.theme().background)
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded(cx.theme().radius)
+            .shadow_lg()
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .p_1()
+                    .child(format!("Variable: {}", var_name))
+            )
+            .child(
+                Button::new("get-variable")
+                    .ghost()
+                    .label(format!("Get {}", get_var_name))
+                    .on_click(cx.listener(move |panel, _, _, cx| {
+                        panel.create_getter_node(get_var_name.clone(), get_var_type.clone(), position, cx);
+                    }))
+            )
+            .child(
+                Button::new("set-variable")
+                    .ghost()
+                    .label(format!("Set {}", set_var_name))
+                    .on_click(cx.listener(move |panel, _, _, cx| {
+                        panel.create_setter_node(set_var_name.clone(), set_var_type.clone(), position, cx);
+                    }))
+            )
     }
 
 }
@@ -1745,6 +2027,28 @@ impl Render for BlueprintEditorPanel {
                             panel.check_tooltip_hover(mouse_pos, cx);
                         }))
                         .child(tooltip)
+                )
+            })
+            .when_some(self.variable_drop_menu_position, |this, position| {
+                // Render variable drop context menu (Get/Set selection)
+                let var_drag = self.dragging_variable.clone();
+                this.child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .size_full()
+                        .on_mouse_down(gpui::MouseButton::Left, cx.listener(|panel, _event, _window, cx| {
+                            // Click outside menu cancels it
+                            panel.cancel_dragging_variable(cx);
+                        }))
+                        .child(
+                            div()
+                                .absolute()
+                                .left(px(position.x))
+                                .top(px(position.y))
+                                .child(self.render_variable_drop_menu(var_drag, position, cx))
+                        )
                 )
             })
     }

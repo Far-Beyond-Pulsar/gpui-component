@@ -17,6 +17,13 @@ pub struct ClassVariable {
     pub default_value: Option<String>,
 }
 
+// Drag data for variables
+#[derive(Clone, Debug)]
+pub struct VariableDrag {
+    pub var_name: String,
+    pub var_type: String,
+}
+
 // Wrapper type for dropdown items with colors
 #[derive(Clone, Debug)]
 pub struct TypeItem {
@@ -155,6 +162,7 @@ impl VariablesRenderer {
 
     fn render_variable_row(var: &ClassVariable, cx: &mut Context<BlueprintEditorPanel>) -> AnyElement {
         let var_name = var.name.clone();
+        let var_type = var.var_type.clone();
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
         let mut hasher = DefaultHasher::new();
@@ -165,6 +173,10 @@ impl VariablesRenderer {
         let type_info = crate::graph::TypeInfo::parse(&var.var_type);
         let pin_color = type_info.generate_color();
 
+        // Clone for the mouse down handler
+        let drag_var_name = var_name.clone();
+        let drag_var_type = var_type.clone();
+
         h_flex()
             .w_full()
             .p_2()
@@ -174,6 +186,9 @@ impl VariablesRenderer {
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
             .hover(|style| style.bg(cx.theme().muted.opacity(0.3)))
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |panel, _event, _window, cx| {
+                panel.start_dragging_variable(drag_var_name.clone(), drag_var_type.clone(), cx);
+            }))
             .child(
                 v_flex()
                     .flex_1()

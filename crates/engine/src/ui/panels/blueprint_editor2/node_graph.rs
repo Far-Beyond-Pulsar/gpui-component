@@ -157,6 +157,10 @@ impl NodeGraphRenderer {
                 cx.listener(|panel, event: &MouseUpEvent, _window, cx| {
                     if panel.dragging_node.is_some() {
                         panel.end_drag(cx);
+                    } else if panel.dragging_variable.is_some() {
+                        // Variable dropped on canvas - show Get/Set context menu
+                        let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
+                        panel.finish_dragging_variable(graph_pos, cx);
                     } else if panel.dragging_connection.is_some() {
                         // Show node creation menu when dropping connection on empty space
                         // Menu is positioned at panel level, use panel coordinate conversion

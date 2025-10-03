@@ -74,8 +74,9 @@ pub fn compile_graph(graph: &GraphDescription) -> Result<String, String> {
         return Err("No node metadata available - check pulsar_std".to_string());
     }
 
-    // Phase 2: Build data flow resolver
-    let data_resolver = data_resolver::DataResolver::build(graph, metadata)?;
+    // Phase 2: Build data flow resolver (no variables for generic compile)
+    let variables = HashMap::new();
+    let data_resolver = data_resolver::DataResolver::build_with_variables(graph, metadata, variables.clone())?;
     println!("[COMPILER] Built data flow resolver");
 
     // Phase 3: Build execution routing
@@ -88,6 +89,7 @@ pub fn compile_graph(graph: &GraphDescription) -> Result<String, String> {
         metadata,
         &data_resolver,
         &exec_routing,
+        variables,
     )?;
 
     println!("[COMPILER] Code generation complete");
