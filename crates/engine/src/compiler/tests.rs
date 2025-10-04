@@ -11,6 +11,7 @@ mod tests {
         GraphDescription {
             nodes: HashMap::new(),
             connections: Vec::new(),
+            comments: Vec::new(),
             metadata: GraphMetadata {
                 name: "test_graph".to_string(),
                 description: "Test graph".to_string(),

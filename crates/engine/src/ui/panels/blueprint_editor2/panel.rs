@@ -1,12 +1,7 @@
 use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
-    dock::{Panel, PanelEvent},
-    resizable::{h_resizable, resizable_panel, ResizableState},
-    v_flex,
-    ActiveTheme as _, StyledExt,
-    context_menu::ContextMenuExt,
-    input::{InputState, InputEvent},
+    context_menu::ContextMenuExt, dock::{Panel, PanelEvent}, input::{InputEvent, InputState}, resizable::{h_resizable, resizable_panel, ResizableState}, v_flex, ActiveTheme as _, PixelsExt, StyledExt
 };
 use smol::Timer;
 use std::time::Duration;
@@ -1222,8 +1217,8 @@ impl BlueprintEditorPanel {
     fn calculate_menu_position(&self, requested_position: Point<f32>, window: &Window) -> Point<f32> {
         // Get actual window viewport size
         let window_bounds = window.bounds();
-        let viewport_width = window_bounds.size.width.0;
-        let viewport_height = window_bounds.size.height.0;
+        let viewport_width = window_bounds.size.width.as_f32();
+        let viewport_height = window_bounds.size.height.as_f32();
 
         // Simple edge padding to keep menu away from window edges
         let edge_padding = 10.0;
@@ -1384,12 +1379,12 @@ impl BlueprintEditorPanel {
     // so that after zooming the same graph point remains under the cursor (zoom around mouse).
     pub fn handle_zoom(&mut self, delta_y: f32, screen_pos: Point<Pixels>, cx: &mut Context<Self>) {
         // Convert screen pixels to f32 point
-        let screen = Point::new(screen_pos.x.0, screen_pos.y.0);
+        let screen = Point::new(screen_pos.x.as_f32(), screen_pos.y.as_f32());
 
         // Compute graph/world position under cursor before zoom using the shared helper
         // (keeps conversion identical to other codepaths that use this helper)
         let focus_graph_pos = super::node_graph::NodeGraphRenderer::screen_to_graph_pos(
-            Point::new(gpui::Pixels(screen.x), gpui::Pixels(screen.y)),
+            Point::new(px(screen.x), px(screen.y)),
             &self.graph,
         );
 
@@ -2220,7 +2215,7 @@ impl Render for BlueprintEditorPanel {
                         .size_full()
                         .on_mouse_move(cx.listener(|panel, event: &MouseMoveEvent, _window, cx| {
                             // Check if mouse is outside tooltip and hide if so
-                            let mouse_pos = Point::new(event.position.x.0, event.position.y.0);
+                            let mouse_pos = Point::new(event.position.x.as_f32(), event.position.y.as_f32());
                             panel.check_tooltip_hover(mouse_pos, cx);
                         }))
                         .child(tooltip)

@@ -6,13 +6,7 @@ use gpui::{
     Render, SharedString, Styled as _, Subscription, Window,
 };
 use gpui_component::{
-    badge::Badge,
-    button::{Button, ButtonVariants as _},
-    locale,
-    popup_menu::PopupMenuExt as _,
-    scroll::ScrollbarShow,
-    set_locale, ActiveTheme as _, ContextModal as _, IconName, Sizable as _, Theme, ThemeMode,
-    TitleBar, h_flex,
+    badge::Badge, button::{Button, ButtonVariants as _}, h_flex, locale, popup_menu::PopupMenuExt as _, scroll::ScrollbarShow, set_locale, ActiveTheme as _, ContextModal as _, IconName, PixelsExt, Sizable as _, Theme, ThemeMode, TitleBar
 };
 
 use crate::{themes::ThemeSwitcher, SelectFont, SelectLocale, SelectRadius, SelectScrollbarShow};
@@ -527,8 +521,8 @@ impl FontSizeSelector {
 impl Render for FontSizeSelector {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let focus_handle = self.focus_handle.clone();
-        let font_size = cx.theme().font_size.0 as i32;
-        let radius = cx.theme().radius.0 as i32;
+        let font_size = cx.theme().font_size.as_f32();
+        let radius = cx.theme().radius.as_f32();
         let scroll_show = cx.theme().scrollbar_show;
 
         div()
@@ -546,23 +540,23 @@ impl Render for FontSizeSelector {
                         this.scrollable()
                             .max_h(px(480.))
                             .label("Font Size")
-                            .menu_with_check("Large", font_size == 18, Box::new(SelectFont(18)))
+                            .menu_with_check("Large", font_size == 18.0, Box::new(SelectFont(18)))
                             .menu_with_check(
                                 "Medium (default)",
-                                font_size == 16,
+                                font_size == 16.0,
                                 Box::new(SelectFont(16)),
                             )
-                            .menu_with_check("Small", font_size == 14, Box::new(SelectFont(14)))
+                            .menu_with_check("Small", font_size == 14.0, Box::new(SelectFont(14)))
                             .separator()
                             .label("Border Radius")
-                            .menu_with_check("8px", radius == 8, Box::new(SelectRadius(8)))
+                            .menu_with_check("8px", radius == 8.0, Box::new(SelectRadius(8)))
                             .menu_with_check(
                                 "6px (default)",
-                                radius == 6,
+                                radius == 6.0,
                                 Box::new(SelectRadius(6)),
                             )
-                            .menu_with_check("4px", radius == 4, Box::new(SelectRadius(4)))
-                            .menu_with_check("0px", radius == 0, Box::new(SelectRadius(0)))
+                            .menu_with_check("4px", radius == 4.0, Box::new(SelectRadius(4)))
+                            .menu_with_check("0px", radius == 0.0, Box::new(SelectRadius(0)))
                             .separator()
                             .label("Scrollbar")
                             .menu_with_check(

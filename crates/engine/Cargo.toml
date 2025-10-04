@@ -4,7 +4,6 @@ name = "pulsar_engine"
 description = "A modern high-performance game engine written in Rust"
 publish = false
 version = "0.1.20"
-debug-assertations = true
 
 [profile.dev.package."*"]
 opt-level = 3
@@ -22,7 +21,7 @@ serde = { version = "1.0", features = ["derive"] }
 schemars = "1.0"
 uuid = { version = "1.0", features = ["v4"] }
 tracing = "0.1.41"
-rust-embed = "8.5.0"
+rust-embed = { version = "6", features = ["interpolate-folder-path", "include-exclude"] }
 flume = "0.11"
 tokio = { version = "1", features = ["full"] }
 windows.workspace = true

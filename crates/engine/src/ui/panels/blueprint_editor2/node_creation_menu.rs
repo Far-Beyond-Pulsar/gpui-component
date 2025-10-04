@@ -283,7 +283,8 @@ impl NodeCreationMenu {
 
                     if should_show {
                         // Position tooltip to the right of the menu item
-                        let tooltip_pos = Point::new(event.position.x.0 + 30.0, event.position.y.0 - 50.0);
+                        let tooltip_pos_pixels = Point::new(event.position.x + px(30.0), event.position.y - px(50.0));
+                        let tooltip_pos = Point::new(tooltip_pos_pixels.x.to_f64() as f32, tooltip_pos_pixels.y.to_f64() as f32);
                         panel_entity.update(cx, |panel, cx| {
                             panel.show_hoverable_tooltip(tooltip_content.clone(), tooltip_pos, window, cx);
                         });

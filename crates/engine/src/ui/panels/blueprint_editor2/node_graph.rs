@@ -1,7 +1,7 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui::prelude::*;
-use gpui_component::Colorize;
+use gpui_component::{Colorize, PixelsExt};
 use gpui_component::{button::Button, h_flex, v_flex, ActiveTheme as _, IconName, StyledExt, tooltip::Tooltip};
 
 use super::panel::BlueprintEditorPanel;
@@ -49,10 +49,10 @@ impl NodeGraphRenderer {
                         let mut max_y = f32::MIN;
 
                         for child_bounds in &children_bounds {
-                            min_x = min_x.min(child_bounds.origin.x.0);
-                            min_y = min_y.min(child_bounds.origin.y.0);
-                            max_x = max_x.max((child_bounds.origin.x + child_bounds.size.width).0);
-                            max_y = max_y.max((child_bounds.origin.y + child_bounds.size.height).0);
+                            min_x = min_x.min(child_bounds.origin.x.as_f32());
+                            min_y = min_y.min(child_bounds.origin.y.as_f32());
+                            max_x = max_x.max((child_bounds.origin.x + child_bounds.size.width).as_f32());
+                            max_y = max_y.max((child_bounds.origin.y + child_bounds.size.height).as_f32());
                         }
 
                         let origin = gpui::Point { x: px(min_x), y: px(min_y) };
@@ -90,7 +90,7 @@ impl NodeGraphRenderer {
                 cx.listener(|panel, event: &MouseDownEvent, _window, cx| {
                     // Convert window coordinates to element coordinates
                     let element_pos = Self::window_to_graph_element_pos(event.position, panel);
-                    let mouse_pos = Point::new(element_pos.x.0, element_pos.y.0);
+                    let mouse_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
 
                     // Store right-click start position for gesture detection
                     if panel.dragging_connection.is_none() && panel.dragging_node.is_none() {
@@ -103,19 +103,19 @@ impl NodeGraphRenderer {
                 gpui::MouseButton::Left,
                 cx.listener(|panel, event: &MouseDownEvent, _window, cx| {
                     // Debug: Print raw event position and calculated offset
-                    println!("[MOUSE] Raw window position: x={}, y={}", event.position.x.0, event.position.y.0);
+                    println!("[MOUSE] Raw window position: x={}, y={}", event.position.x.as_f32(), event.position.y.as_f32());
                     println!("[MOUSE] Stored element bounds: {:?}", panel.graph_element_bounds);
 
                     // Convert window-relative coordinates to element-relative coordinates
                     let element_pos = Self::window_to_graph_element_pos(event.position, panel);
-                    println!("[MOUSE] Calculated element-relative position: x={}, y={}", element_pos.x.0, element_pos.y.0);
+                    println!("[MOUSE] Calculated element-relative position: x={}, y={}", element_pos.x.as_f32(), element_pos.y.as_f32());
 
                     // Expected: if you click at the top-left corner of the graph, element_pos should be close to (0, 0)
                     // If not, our offset is wrong!
 
                     // Convert element coordinates to graph coordinates
                     let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
-                    let mouse_pos = Point::new(element_pos.x.0, element_pos.y.0);
+                    let mouse_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
 
                     println!("[MOUSE] Converted to graph pos: x={}, y={}", graph_pos.x, graph_pos.y);
                     println!("[MOUSE] Pan offset: x={}, y={}", panel.graph.pan_offset.x, panel.graph.pan_offset.y);
@@ -166,7 +166,7 @@ impl NodeGraphRenderer {
             .on_mouse_move(cx.listener(|panel, event: &MouseMoveEvent, _window, cx| {
                 // Convert window coordinates to element coordinates
                 let element_pos = Self::window_to_graph_element_pos(event.position, panel);
-                let mouse_pos = Point::new(element_pos.x.0, element_pos.y.0);
+                let mouse_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
 
                 // Check if right-click drag should start panning
                 if let Some(right_start) = panel.right_click_start {
@@ -220,7 +220,7 @@ impl NodeGraphRenderer {
                         // Show node creation menu when dropping connection on empty space
                         // Menu is positioned at panel level, use panel coordinate conversion
                         let panel_pos = Self::window_to_panel_pos(event.position, panel);
-                        let screen_pos = Point::new(panel_pos.x.0, panel_pos.y.0);
+                        let screen_pos = Point::new(panel_pos.x.as_f32(), panel_pos.y.as_f32());
                         panel.show_node_creation_menu(screen_pos, _window, cx);
                         panel.cancel_connection_drag(cx);
                     } else if panel.is_selecting() {
@@ -241,7 +241,7 @@ impl NodeGraphRenderer {
                         panel.right_click_start = None;
                         // Menu is positioned at panel level, use panel coordinate conversion
                         let panel_pos = Self::window_to_panel_pos(event.position, panel);
-                        let screen_pos = Point::new(panel_pos.x.0, panel_pos.y.0);
+                        let screen_pos = Point::new(panel_pos.x.as_f32(), panel_pos.y.as_f32());
                         panel.show_node_creation_menu(screen_pos, _window, cx);
                     }
                 }),
@@ -249,7 +249,7 @@ impl NodeGraphRenderer {
             .on_scroll_wheel(cx.listener(|panel, event: &ScrollWheelEvent, _window, cx| {
                 // Zoom with scroll wheel
                 let delta_y = match event.delta {
-                    ScrollDelta::Pixels(p) => p.y.0,
+                    ScrollDelta::Pixels(p) => p.y.as_f32(),
                     ScrollDelta::Lines(l) => l.y * 20.0, // Convert lines to pixels
                 };
 
@@ -486,7 +486,7 @@ impl NodeGraphRenderer {
                                             if now.duration_since(last_click).as_millis() < 500 {
                                                 if let Some(last_pos) = panel.last_click_pos {
                                                     let element_pos = Self::window_to_graph_element_pos(event.position, panel);
-                                                    let current_pos = Point::new(element_pos.x.0, element_pos.y.0);
+                                                    let current_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
                                                     let distance = ((current_pos.x - last_pos.x).powi(2) + (current_pos.y - last_pos.y).powi(2)).sqrt();
                                                     distance < 10.0
                                                 } else {
@@ -526,7 +526,7 @@ impl NodeGraphRenderer {
                                             }
 
                                             // Update click tracking
-                                            let current_pos = Point::new(element_pos.x.0, element_pos.y.0);
+                                            let current_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
                                             panel.last_click_time = Some(now);
                                             panel.last_click_pos = Some(current_pos);
                                         }
@@ -780,7 +780,7 @@ impl NodeGraphRenderer {
                                         // Position tooltip near the node header, offset right and up from mouse
                                         // Convert to element coordinates first
                                         let element_pos = Self::window_to_graph_element_pos(event.position, panel);
-                                        let tooltip_pos = Point::new(element_pos.x.0 + 20.0, element_pos.y.0 - 60.0);
+                                        let tooltip_pos = Point::new(element_pos.x.as_f32() + 20.0, element_pos.y.as_f32() - 60.0);
                                         panel.show_hoverable_tooltip(tooltip_content.clone(), tooltip_pos, window, cx);
                                     }
                                 }
@@ -1754,8 +1754,8 @@ impl NodeGraphRenderer {
 
     pub fn screen_to_graph_pos(screen_pos: Point<Pixels>, graph: &BlueprintGraph) -> Point<f32> {
         Point::new(
-            (screen_pos.x.0 / graph.zoom_level) - graph.pan_offset.x,
-            (screen_pos.y.0 / graph.zoom_level) - graph.pan_offset.y,
+            (screen_pos.x.as_f32() / graph.zoom_level) - graph.pan_offset.x,
+            (screen_pos.y.as_f32() / graph.zoom_level) - graph.pan_offset.y,
         )
     }
 

@@ -1,4 +1,4 @@
-use gpui::{prelude::*, Axis, *};
+use gpui::{prelude::*, Axis, MouseButton, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex,
@@ -32,6 +32,14 @@ pub fn render_sidebar<V: 'static>(
         .border_l_1()
         .border_color(cx.theme().border)
         .shadow(shadow)
+        .on_mouse_down(MouseButton::Left, cx.listener(|_view, _event, _window, cx| {
+            // Stop propagation to prevent clicks from falling through to background
+            cx.stop_propagation();
+        }))
+        .on_mouse_move(cx.listener(|_view, _event, _window, cx| {
+            // Stop propagation for mouse moves as well
+            cx.stop_propagation();
+        }))
         .child(render_sidebar_header(on_close, cx))
         .child(
             div()
