@@ -98,11 +98,65 @@ pub struct Connection {
     pub to_pin_id: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct BlueprintComment {
+    pub id: String,
+    pub text: String,
+    pub position: Point<f32>,
+    pub size: Size<f32>,
+    pub color: Hsla, // Background color
+    pub contained_node_ids: Vec<String>, // Nodes fully contained in this comment
+    pub is_selected: bool,
+}
+
+impl BlueprintComment {
+    pub fn new(position: Point<f32>) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            text: "Comment".to_string(),
+            position,
+            size: Size::new(300.0, 200.0),
+            color: Hsla { h: 0.5, s: 0.3, l: 0.2, a: 0.3 }, // Default semi-transparent color
+            contained_node_ids: Vec::new(),
+            is_selected: false,
+        }
+    }
+
+    /// Check if a node is fully contained within this comment's bounds
+    pub fn contains_node(&self, node: &BlueprintNode) -> bool {
+        let node_left = node.position.x;
+        let node_top = node.position.y;
+        let node_right = node.position.x + node.size.width;
+        let node_bottom = node.position.y + node.size.height;
+
+        let comment_left = self.position.x;
+        let comment_top = self.position.y;
+        let comment_right = self.position.x + self.size.width;
+        let comment_bottom = self.position.y + self.size.height;
+
+        node_left >= comment_left
+            && node_right <= comment_right
+            && node_top >= comment_top
+            && node_bottom <= comment_bottom
+    }
+
+    /// Update contained nodes based on current bounds
+    pub fn update_contained_nodes(&mut self, nodes: &[BlueprintNode]) {
+        self.contained_node_ids = nodes
+            .iter()
+            .filter(|node| self.contains_node(node))
+            .map(|node| node.id.clone())
+            .collect();
+    }
+}
+
 #[derive(Clone)]
 pub struct BlueprintGraph {
     pub nodes: Vec<BlueprintNode>,
     pub connections: Vec<Connection>,
+    pub comments: Vec<BlueprintComment>,
     pub selected_nodes: Vec<String>,
+    pub selected_comments: Vec<String>,
     pub zoom_level: f32,
     pub pan_offset: Point<f32>,
     pub virtualization_stats: VirtualizationStats,

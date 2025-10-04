@@ -67,6 +67,24 @@ pub struct BlueprintEditorPanel {
     // Variable drag state
     pub dragging_variable: Option<super::variables::VariableDrag>,
     pub variable_drop_menu_position: Option<Point<f32>>,
+    // Comment state
+    pub dragging_comment: Option<String>, // Comment ID being dragged
+    pub resizing_comment: Option<(String, ResizeHandle)>, // (comment ID, handle being dragged)
+    pub editing_comment: Option<String>, // Comment ID being edited
+    pub comment_text_input: Entity<gpui_component::input::InputState>,
+    pub comment_color_picker: Entity<gpui_component::color_picker::ColorPickerState>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ResizeHandle {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+    Top,
+    Bottom,
+    Left,
+    Right,
 }
 
 #[derive(Clone, Debug)]
@@ -81,6 +99,11 @@ pub struct ConnectionDrag {
 impl BlueprintEditorPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let resizable_state = ResizableState::new(cx);
+
+        // Create color picker with subscription
+        let comment_color_picker = cx.new(|cx| {
+            gpui_component::color_picker::ColorPickerState::new(window, cx)
+        });
 
         // Create sample nodes - demonstrates all compiler features
         let mut nodes = Vec::new();
@@ -349,13 +372,15 @@ impl BlueprintEditorPanel {
         let graph = BlueprintGraph {
             nodes,
             connections,
+            comments: vec![],
             selected_nodes: vec![],
+            selected_comments: vec![],
             zoom_level: 1.0,
             pan_offset: Point::new(0.0, 0.0),
             virtualization_stats: super::VirtualizationStats::default(),
         };
 
-        Self {
+        let mut result = Self {
             focus_handle: cx.focus_handle(),
             graph,
             resizable_state,
@@ -395,7 +420,35 @@ impl BlueprintEditorPanel {
             }),
             dragging_variable: None,
             variable_drop_menu_position: None,
-        }
+            dragging_comment: None,
+            resizing_comment: None,
+            editing_comment: None,
+            comment_text_input: cx.new(|cx| {
+                gpui_component::input::InputState::new(window, cx)
+                    .placeholder("Comment text...")
+            }),
+            comment_color_picker,
+        };
+
+        // Subscribe to color picker changes
+        let color_picker_entity = result.comment_color_picker.clone();
+        cx.subscribe_in(
+            &color_picker_entity,
+            window,
+            |this, _picker, event: &gpui_component::color_picker::ColorPickerEvent, _window, cx| {
+                if let gpui_component::color_picker::ColorPickerEvent::Change(Some(color)) = event {
+                    // Update the selected comment's color
+                    if let Some(comment_id) = this.graph.selected_comments.first() {
+                        if let Some(comment) = this.graph.comments.iter_mut().find(|c| &c.id == comment_id) {
+                            comment.color = *color;
+                            cx.notify();
+                        }
+                    }
+                }
+            },
+        );
+
+        result
     }
 
     pub fn get_graph(&self) -> &BlueprintGraph {
@@ -756,7 +809,9 @@ impl BlueprintEditorPanel {
         Ok(BlueprintGraph {
             nodes,
             connections,
+            comments: vec![],
             selected_nodes: vec![],
+            selected_comments: vec![],
             zoom_level: 1.0,
             pan_offset: Point::new(0.0, 0.0),
             virtualization_stats: VirtualizationStats::default(),
@@ -828,8 +883,147 @@ impl BlueprintEditorPanel {
     }
 
     pub fn end_drag(&mut self, cx: &mut Context<Self>) {
+        // Update comment containment after drag
+        for comment in self.graph.comments.iter_mut() {
+            comment.update_contained_nodes(&self.graph.nodes);
+        }
+
         self.dragging_node = None;
         self.initial_drag_positions.clear();
+        cx.notify();
+    }
+
+    pub fn update_comment_drag(&mut self, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
+        if let Some(comment_id) = &self.dragging_comment.clone() {
+            let new_position = Point::new(
+                mouse_pos.x - self.drag_offset.x,
+                mouse_pos.y - self.drag_offset.y,
+            );
+
+            if let Some(comment) = self.graph.comments.iter_mut().find(|c| c.id == *comment_id) {
+                let delta = Point::new(
+                    new_position.x - comment.position.x,
+                    new_position.y - comment.position.y,
+                );
+
+                comment.position = new_position;
+
+                // Move all contained nodes with the comment
+                for node_id in &comment.contained_node_ids {
+                    if let Some(node) = self.graph.nodes.iter_mut().find(|n| n.id == *node_id) {
+                        node.position.x += delta.x;
+                        node.position.y += delta.y;
+                    }
+                }
+
+                cx.notify();
+            }
+        }
+    }
+
+    pub fn end_comment_drag(&mut self, cx: &mut Context<Self>) {
+        // Update contained nodes before ending drag
+        if let Some(comment_id) = &self.dragging_comment.clone() {
+            if let Some(comment) = self.graph.comments.iter_mut().find(|c| c.id == *comment_id) {
+                comment.update_contained_nodes(&self.graph.nodes);
+            }
+        }
+
+        self.dragging_comment = None;
+        cx.notify();
+    }
+
+    pub fn update_comment_resize(&mut self, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
+        if let Some((comment_id, handle)) = &self.resizing_comment.clone() {
+            if let Some(comment) = self.graph.comments.iter_mut().find(|c| c.id == *comment_id) {
+                let delta_x = mouse_pos.x - self.drag_offset.x;
+                let delta_y = mouse_pos.y - self.drag_offset.y;
+
+                match handle {
+                    ResizeHandle::TopLeft => {
+                        comment.position.x += delta_x;
+                        comment.position.y += delta_y;
+                        comment.size.width -= delta_x;
+                        comment.size.height -= delta_y;
+                    }
+                    ResizeHandle::TopRight => {
+                        comment.position.y += delta_y;
+                        comment.size.width += delta_x;
+                        comment.size.height -= delta_y;
+                    }
+                    ResizeHandle::BottomLeft => {
+                        comment.position.x += delta_x;
+                        comment.size.width -= delta_x;
+                        comment.size.height += delta_y;
+                    }
+                    ResizeHandle::BottomRight => {
+                        comment.size.width += delta_x;
+                        comment.size.height += delta_y;
+                    }
+                    ResizeHandle::Top => {
+                        comment.position.y += delta_y;
+                        comment.size.height -= delta_y;
+                    }
+                    ResizeHandle::Bottom => {
+                        comment.size.height += delta_y;
+                    }
+                    ResizeHandle::Left => {
+                        comment.position.x += delta_x;
+                        comment.size.width -= delta_x;
+                    }
+                    ResizeHandle::Right => {
+                        comment.size.width += delta_x;
+                    }
+                }
+
+                // Enforce minimum size
+                comment.size.width = comment.size.width.max(100.0);
+                comment.size.height = comment.size.height.max(50.0);
+
+                self.drag_offset = mouse_pos;
+                cx.notify();
+            }
+        }
+    }
+
+    pub fn end_comment_resize(&mut self, cx: &mut Context<Self>) {
+        // Update contained nodes before ending resize
+        if let Some((comment_id, _)) = &self.resizing_comment.clone() {
+            if let Some(comment) = self.graph.comments.iter_mut().find(|c| c.id == *comment_id) {
+                comment.update_contained_nodes(&self.graph.nodes);
+            }
+        }
+
+        self.resizing_comment = None;
+        cx.notify();
+    }
+
+    pub fn finish_comment_editing(&mut self, cx: &mut Context<Self>) {
+        if let Some(comment_id) = &self.editing_comment.clone() {
+            // Get the edited text from the input
+            let new_text = self.comment_text_input.read(cx).text().to_string();
+
+            // Update the comment
+            if let Some(comment) = self.graph.comments.iter_mut().find(|c| c.id == *comment_id) {
+                comment.text = new_text;
+            }
+
+            self.editing_comment = None;
+            cx.notify();
+        }
+    }
+
+    pub fn create_comment_at_center(&mut self, cx: &mut Context<Self>) {
+        // Create a new comment at the center of the current view
+        let center_screen = Point::new(1920.0 / 2.0, 1080.0 / 2.0); // Center of typical view
+        let center_graph = super::node_graph::NodeGraphRenderer::screen_to_graph_pos(
+            gpui::Point::new(px(center_screen.x), px(center_screen.y)),
+            &self.graph,
+        );
+
+        let new_comment = super::BlueprintComment::new(center_graph);
+        self.graph.comments.push(new_comment);
+
         cx.notify();
     }
 

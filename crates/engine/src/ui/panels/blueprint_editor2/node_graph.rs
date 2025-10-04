@@ -73,6 +73,7 @@ impl NodeGraphRenderer {
                 // Focus on click to enable keyboard events
                 panel.focus_handle().focus(window);
             }))
+            .child(Self::render_comments(panel, cx))
             .child(Self::render_nodes(panel, cx))
             .child(Self::render_connections(panel, cx))
             .child(Self::render_selection_box(panel, cx))
@@ -176,7 +177,13 @@ impl NodeGraphRenderer {
                     }
                 }
 
-                if panel.dragging_node.is_some() {
+                if panel.dragging_comment.is_some() {
+                    let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
+                    panel.update_comment_drag(graph_pos, cx);
+                } else if panel.resizing_comment.is_some() {
+                    let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
+                    panel.update_comment_resize(graph_pos, cx);
+                } else if panel.dragging_node.is_some() {
                     let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
                     panel.update_drag(graph_pos, cx);
                 } else if panel.dragging_connection.is_some() {
@@ -194,7 +201,11 @@ impl NodeGraphRenderer {
             .on_mouse_up(
                 gpui::MouseButton::Left,
                 cx.listener(|panel, event: &MouseUpEvent, _window, cx| {
-                    if panel.dragging_node.is_some() {
+                    if panel.dragging_comment.is_some() {
+                        panel.end_comment_drag(cx);
+                    } else if panel.resizing_comment.is_some() {
+                        panel.end_comment_resize(cx);
+                    } else if panel.dragging_node.is_some() {
                         panel.end_drag(cx);
                     } else if panel.dragging_variable.is_some() {
                         // Variable dropped on canvas - show Get/Set context menu
@@ -246,7 +257,18 @@ impl NodeGraphRenderer {
                 println!("Key pressed: {:?}", event.keystroke.key);
 
                 let key_lower = event.keystroke.key.to_lowercase();
-                if key_lower == "escape" && panel.dragging_connection.is_some() {
+
+                if panel.editing_comment.is_some() {
+                    // Handle comment editing keys
+                    if key_lower == "escape" {
+                        // Cancel editing without saving
+                        panel.editing_comment = None;
+                        cx.notify();
+                    } else if key_lower == "enter" && event.keystroke.modifiers.control {
+                        // Ctrl+Enter saves the comment
+                        panel.finish_comment_editing(cx);
+                    }
+                } else if key_lower == "escape" && panel.dragging_connection.is_some() {
                     panel.cancel_connection_drag(cx);
                 } else if key_lower == "delete" || key_lower == "backspace" {
                     println!(
@@ -254,6 +276,9 @@ impl NodeGraphRenderer {
                         panel.graph.selected_nodes
                     );
                     panel.delete_selected_nodes(cx);
+                } else if key_lower == "c" && event.keystroke.modifiers.control {
+                    // Ctrl+C creates a new comment
+                    panel.create_comment_at_center(cx);
                 }
             }))
     }
@@ -352,6 +377,229 @@ impl NodeGraphRenderer {
             .absolute()
             .inset_0()
             .children(dots)
+    }
+
+    fn render_comments(
+        panel: &mut BlueprintEditorPanel,
+        cx: &mut Context<BlueprintEditorPanel>,
+    ) -> impl IntoElement {
+        let visible_comments: Vec<super::BlueprintComment> = panel
+            .graph
+            .comments
+            .iter()
+            .map(|comment| {
+                let mut comment = comment.clone();
+                comment.is_selected = panel.graph.selected_comments.contains(&comment.id);
+                comment
+            })
+            .collect();
+
+        div().absolute().inset_0().children(
+            visible_comments
+                .into_iter()
+                .map(|comment| Self::render_comment(&comment, panel, cx)),
+        )
+    }
+
+    fn render_comment(
+        comment: &super::BlueprintComment,
+        panel: &mut BlueprintEditorPanel,
+        cx: &mut Context<BlueprintEditorPanel>,
+    ) -> AnyElement {
+        let graph_pos = Self::graph_to_screen_pos(comment.position, &panel.graph);
+        let comment_id = comment.id.clone();
+        let is_dragging = panel.dragging_comment.as_ref() == Some(&comment.id);
+        let is_resizing = panel.resizing_comment.as_ref().map(|(id, _)| id) == Some(&comment.id);
+
+        // Scale comment size with zoom level
+        let scaled_width = comment.size.width * panel.graph.zoom_level;
+        let scaled_height = comment.size.height * panel.graph.zoom_level;
+
+        let resize_handle_size = 12.0 * panel.graph.zoom_level;
+
+        div()
+            .absolute()
+            .left(px(graph_pos.x))
+            .top(px(graph_pos.y))
+            .w(px(scaled_width))
+            .h(px(scaled_height))
+            .child(
+                div()
+                    .size_full()
+                    .bg(comment.color)
+                    .border_2()
+                    .border_color(if comment.is_selected {
+                        gpui::yellow()
+                    } else {
+                        comment.color.lighten(0.2)
+                    })
+                    .rounded(px(8.0 * panel.graph.zoom_level))
+                    .when(is_dragging || is_resizing, |style| style.opacity(0.8))
+                    .shadow_md()
+                    .overflow_hidden()
+                    .child({
+                        let is_editing = panel.editing_comment.as_ref() == Some(&comment.id);
+
+                        if is_editing {
+                            // Show text input for editing
+                            div()
+                                .p(px(12.0 * panel.graph.zoom_level))
+                                .size_full()
+                                .child(
+                                    gpui_component::input::TextInput::new(&panel.comment_text_input)
+                                )
+                                .into_any_element()
+                        } else {
+                            // Show static text
+                            div()
+                                .p(px(12.0 * panel.graph.zoom_level))
+                                .size_full()
+                                .text_size(px(14.0 * panel.graph.zoom_level))
+                                .text_color(gpui::white())
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .child(comment.text.clone())
+                                .on_mouse_down(gpui::MouseButton::Left, {
+                                    let comment_id = comment_id.clone();
+                                    cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
+                                        cx.stop_propagation();
+
+                                        // Select comment
+                                        if !panel.graph.selected_comments.contains(&comment_id) {
+                                            panel.graph.selected_comments.clear();
+                                            panel.graph.selected_comments.push(comment_id.clone());
+                                        }
+
+                                        // Check for double-click to start editing
+                                        let now = std::time::Instant::now();
+                                        let should_edit = if let Some(last_click) = panel.last_click_time {
+                                            if now.duration_since(last_click).as_millis() < 500 {
+                                                if let Some(last_pos) = panel.last_click_pos {
+                                                    let element_pos = Self::window_to_graph_element_pos(event.position, panel);
+                                                    let current_pos = Point::new(element_pos.x.0, element_pos.y.0);
+                                                    let distance = ((current_pos.x - last_pos.x).powi(2) + (current_pos.y - last_pos.y).powi(2)).sqrt();
+                                                    distance < 10.0
+                                                } else {
+                                                    false
+                                                }
+                                            } else {
+                                                false
+                                            }
+                                        } else {
+                                            false
+                                        };
+
+                                        if should_edit {
+                                            // Start editing
+                                            panel.editing_comment = Some(comment_id.clone());
+
+                                            // Load current comment text into input
+                                            if let Some(comment) = panel.graph.comments.iter().find(|c| c.id == comment_id) {
+                                                panel.comment_text_input.update(cx, |state, cx| {
+                                                    state.set_value(comment.text.clone(), _window, cx);
+                                                });
+                                            }
+
+                                            panel.last_click_time = None;
+                                        } else {
+                                            // Start dragging
+                                            let element_pos = Self::window_to_graph_element_pos(event.position, panel);
+                                            let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
+                                            panel.dragging_comment = Some(comment_id.clone());
+                                            panel.drag_offset = graph_pos;
+
+                                            // Update click tracking
+                                            let current_pos = Point::new(element_pos.x.0, element_pos.y.0);
+                                            panel.last_click_time = Some(now);
+                                            panel.last_click_pos = Some(current_pos);
+                                        }
+
+                                        cx.notify();
+                                    })
+                                })
+                                .into_any_element()
+                        }
+                    })
+                    // Resize handles
+                    .children([
+                        Self::render_resize_handle(super::panel::ResizeHandle::TopLeft, &comment_id, resize_handle_size, panel, cx),
+                        Self::render_resize_handle(super::panel::ResizeHandle::TopRight, &comment_id, resize_handle_size, panel, cx),
+                        Self::render_resize_handle(super::panel::ResizeHandle::BottomLeft, &comment_id, resize_handle_size, panel, cx),
+                        Self::render_resize_handle(super::panel::ResizeHandle::BottomRight, &comment_id, resize_handle_size, panel, cx),
+                        Self::render_resize_handle(super::panel::ResizeHandle::Top, &comment_id, resize_handle_size, panel, cx),
+                        Self::render_resize_handle(super::panel::ResizeHandle::Bottom, &comment_id, resize_handle_size, panel, cx),
+                        Self::render_resize_handle(super::panel::ResizeHandle::Left, &comment_id, resize_handle_size, panel, cx),
+                        Self::render_resize_handle(super::panel::ResizeHandle::Right, &comment_id, resize_handle_size, panel, cx),
+                    ])
+                    // Color picker button (only when selected)
+                    .when(comment.is_selected, |this| {
+                        this.child(
+                            div()
+                                .absolute()
+                                .top(px(8.0 * panel.graph.zoom_level))
+                                .right(px(8.0 * panel.graph.zoom_level))
+                                .child(
+                                    gpui_component::color_picker::ColorPicker::new(&panel.comment_color_picker)
+                                        .size(gpui_component::Size::Small)
+                                )
+                                .on_mouse_down(gpui::MouseButton::Left, cx.listener(|_panel, _event: &MouseDownEvent, _window, cx| {
+                                    cx.stop_propagation();
+                                }))
+                        )
+                    }),
+            )
+            .into_any_element()
+    }
+
+    fn render_resize_handle(
+        handle: super::panel::ResizeHandle,
+        comment_id: &str,
+        size: f32,
+        panel: &BlueprintEditorPanel,
+        cx: &mut Context<BlueprintEditorPanel>,
+    ) -> impl IntoElement {
+        let (left, top, cursor) = match handle {
+            super::panel::ResizeHandle::TopLeft => (Some(px(0.0)), Some(px(0.0)), CursorStyle::ResizeUpLeftDownRight),
+            super::panel::ResizeHandle::TopRight => (None, Some(px(0.0)), CursorStyle::ResizeUpRightDownLeft),
+            super::panel::ResizeHandle::BottomLeft => (Some(px(0.0)), None, CursorStyle::ResizeUpRightDownLeft),
+            super::panel::ResizeHandle::BottomRight => (None, None, CursorStyle::ResizeUpLeftDownRight),
+            super::panel::ResizeHandle::Top => (None, Some(px(0.0)), CursorStyle::ResizeUpDown),
+            super::panel::ResizeHandle::Bottom => (None, None, CursorStyle::ResizeUpDown),
+            super::panel::ResizeHandle::Left => (Some(px(0.0)), None, CursorStyle::ResizeLeftRight),
+            super::panel::ResizeHandle::Right => (None, None, CursorStyle::ResizeLeftRight),
+        };
+
+        let comment_id = comment_id.to_string();
+
+        div()
+            .absolute()
+            .when_some(left, |this, l| this.left(l))
+            .when(left.is_none(), |this| this.right(px(0.0)))
+            .when_some(top, |this, t| this.top(t))
+            .when(top.is_none(), |this| this.bottom(px(0.0)))
+            .when(matches!(handle, super::panel::ResizeHandle::Top | super::panel::ResizeHandle::Bottom), |this| {
+                this.left_0().right_0().h(px(size))
+            })
+            .when(matches!(handle, super::panel::ResizeHandle::Left | super::panel::ResizeHandle::Right), |this| {
+                this.top_0().bottom_0().w(px(size))
+            })
+            .when(!matches!(handle, super::panel::ResizeHandle::Top | super::panel::ResizeHandle::Bottom | super::panel::ResizeHandle::Left | super::panel::ResizeHandle::Right), |this| {
+                this.size(px(size))
+            })
+            .bg(gpui::transparent_black())
+            .cursor(cursor)
+            .on_mouse_down(gpui::MouseButton::Left, {
+                cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
+                    cx.stop_propagation();
+
+                    let element_pos = Self::window_to_graph_element_pos(event.position, panel);
+                    let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
+
+                    panel.resizing_comment = Some((comment_id.clone(), handle.clone()));
+                    panel.drag_offset = graph_pos;
+
+                    cx.notify();
+                })
+            })
     }
 
     fn render_nodes(
@@ -1017,8 +1265,9 @@ impl NodeGraphRenderer {
         let node_screen_pos = Self::graph_to_screen_pos(node.position, graph);
         let header_height = 40.0 * graph.zoom_level; // Scaled height of node header
         let pin_size = 12.0 * graph.zoom_level; // Scaled size of pin
-        let pin_spacing = 20.0 * graph.zoom_level; // Scaled vertical spacing between pins
-        let pin_margin = 8.0 * graph.zoom_level; // Scaled margin from node edge
+        let pin_gap = 4.0 * graph.zoom_level; // Gap between pin rows (matches render_node_pins)
+        let pin_spacing = pin_size + pin_gap; // Total vertical spacing per pin row
+        let pin_margin = 10.0 * graph.zoom_level; // Margin from node edge (matches p() in render)
 
         if is_input {
             // Find input pin index
