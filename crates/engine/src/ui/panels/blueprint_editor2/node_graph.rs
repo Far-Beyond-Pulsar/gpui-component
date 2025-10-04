@@ -61,9 +61,6 @@ impl NodeGraphRenderer {
                             height: px(max_y - min_y),
                         };
 
-                        println!("[BOUNDS] Graph element (from children) - origin: ({}, {}), size: ({}, {})",
-                            origin.x, origin.y, size.width, size.height);
-
                         // Store the graph element's bounds derived from children (which are in window coords)
                         panel_entity.update(cx, |panel, _cx| {
                             panel.graph_element_bounds = Some(gpui::Bounds { origin, size });
