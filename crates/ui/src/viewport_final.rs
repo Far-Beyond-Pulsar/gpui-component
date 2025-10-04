@@ -524,7 +524,7 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
                                 }
 
                                 // Viewport has new texture available, trigger re-render
-                                // cx.notify();
+                                cx.notify();
                             });
 
                             if let Err(e) = update_result {
