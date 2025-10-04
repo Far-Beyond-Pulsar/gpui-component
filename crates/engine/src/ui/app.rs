@@ -82,7 +82,7 @@ impl PulsarApp {
 
         // Create file manager drawer with the project path if provided
         let file_manager_drawer = cx.new(|cx| FileManagerDrawer::new(project_path.clone(), window, cx));
-        cx.subscribe(&file_manager_drawer, Self::on_file_selected).detach();
+        cx.subscribe_in(&file_manager_drawer, window, Self::on_file_selected).detach();
 
         Self {
             dock_area,
@@ -113,8 +113,9 @@ impl PulsarApp {
 
     fn on_file_selected(
         &mut self,
-        _drawer: Entity<FileManagerDrawer>,
+        _drawer: &Entity<FileManagerDrawer>,
         event: &FileSelected,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         match event.file_type {
@@ -123,7 +124,7 @@ impl PulsarApp {
                 let graph_save_path = event.path.join("graph_save.json");
                 if graph_save_path.exists() {
                     self.blueprint_editor.update(cx, |editor, cx| {
-                        if let Err(e) = editor.load_blueprint(graph_save_path.to_str().unwrap(), cx) {
+                        if let Err(e) = editor.load_blueprint(graph_save_path.to_str().unwrap(), window, cx) {
                             eprintln!("Failed to load blueprint: {}", e);
                         }
                     });

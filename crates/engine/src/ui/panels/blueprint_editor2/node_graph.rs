@@ -258,7 +258,7 @@ impl NodeGraphRenderer {
                 let element_pos = Self::window_to_graph_element_pos(event.position, panel);
                 panel.handle_zoom(delta_y, element_pos, cx);
             }))
-            .on_key_down(cx.listener(|panel, event: &KeyDownEvent, _window, cx| {
+            .on_key_down(cx.listener(|panel, event: &KeyDownEvent, window, cx| {
                 println!("Key pressed: {:?}", event.keystroke.key);
 
                 let key_lower = event.keystroke.key.to_lowercase();
@@ -283,7 +283,7 @@ impl NodeGraphRenderer {
                     panel.delete_selected_nodes(cx);
                 } else if key_lower == "c" && event.keystroke.modifiers.control {
                     // Ctrl+C creates a new comment
-                    panel.create_comment_at_center(cx);
+                    panel.create_comment_at_center(window, cx);
                 }
             }))
     }
@@ -556,8 +556,10 @@ impl NodeGraphRenderer {
                                 .top(px(8.0 * panel.graph.zoom_level))
                                 .right(px(8.0 * panel.graph.zoom_level))
                                 .child(
-                                    gpui_component::color_picker::ColorPicker::new(&panel.comment_color_picker)
-                                        .size(gpui_component::Size::Small)
+                                    gpui_component::color_picker::ColorPicker::new(
+                                        comment.color_picker_state.as_ref().expect("Color picker state")
+                                    )
+                                    .size(gpui_component::Size::Small)
                                 )
                                 .on_mouse_down(gpui::MouseButton::Left, cx.listener(|_panel, _event: &MouseDownEvent, _window, cx| {
                                     cx.stop_propagation();

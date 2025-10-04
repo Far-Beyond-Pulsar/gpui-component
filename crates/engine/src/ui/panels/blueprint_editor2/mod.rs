@@ -98,6 +98,8 @@ pub struct Connection {
     pub to_pin_id: String,
 }
 
+use gpui_component::color_picker::ColorPickerState;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BlueprintComment {
     pub id: String,
@@ -111,6 +113,8 @@ pub struct BlueprintComment {
     pub contained_node_ids: Vec<String>, // Nodes fully contained in this comment
     #[serde(skip)]
     pub is_selected: bool,
+    #[serde(skip)]
+    pub color_picker_state: Option<gpui::Entity<ColorPickerState>>,
 }
 
 // Serde helpers for GPUI types
@@ -195,7 +199,10 @@ mod hsla_serde {
 }
 
 impl BlueprintComment {
-    pub fn new(position: Point<f32>) -> Self {
+    pub fn new(position: Point<f32>, window: &mut gpui::Window, cx: &mut gpui::Context<crate::ui::panels::blueprint_editor2::BlueprintEditorPanel>) -> Self {
+        let color_picker_state = Some(cx.new(|cx| {
+            ColorPickerState::new(window, cx)
+        }));
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             text: "Comment".to_string(),
@@ -204,6 +211,7 @@ impl BlueprintComment {
             color: Hsla { h: 0.5, s: 0.3, l: 0.2, a: 0.3 }, // Default semi-transparent color
             contained_node_ids: Vec::new(),
             is_selected: false,
+            color_picker_state,
         }
     }
 

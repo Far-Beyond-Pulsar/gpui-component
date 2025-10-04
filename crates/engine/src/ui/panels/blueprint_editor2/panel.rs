@@ -68,7 +68,7 @@ pub struct BlueprintEditorPanel {
     pub resizing_comment: Option<(String, ResizeHandle)>, // (comment ID, handle being dragged)
     pub editing_comment: Option<String>, // Comment ID being edited
     pub comment_text_input: Entity<gpui_component::input::InputState>,
-    pub comment_color_picker: Entity<gpui_component::color_picker::ColorPickerState>,
+
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -96,10 +96,7 @@ impl BlueprintEditorPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let resizable_state = ResizableState::new(cx);
 
-        // Create color picker with subscription
-        let comment_color_picker = cx.new(|cx| {
-            gpui_component::color_picker::ColorPickerState::new(window, cx)
-        });
+
 
         // Create sample nodes - demonstrates all compiler features
         let mut nodes = Vec::new();
@@ -118,11 +115,11 @@ impl BlueprintEditorPanel {
                 id: "Body".to_string(),
                 name: "Body".to_string(),
                 pin_type: PinType::Output,
-                data_type: GraphDataType::from_type_str("execution"),
+                data_type: DataType::Execution,
             }],
-            properties: std::collections::HashMap::new(),
+            properties: HashMap::new(),
             is_selected: false,
-            description: "Defines the main() entry point function.".to_string(),
+            description: "Entry point for the main function".to_string(),
             color: None,
         });
 
@@ -423,26 +420,10 @@ impl BlueprintEditorPanel {
                 gpui_component::input::InputState::new(window, cx)
                     .placeholder("Comment text...")
             }),
-            comment_color_picker,
+
         };
 
-        // Subscribe to color picker changes
-        let color_picker_entity = result.comment_color_picker.clone();
-        cx.subscribe_in(
-            &color_picker_entity,
-            window,
-            |this, _picker, event: &gpui_component::color_picker::ColorPickerEvent, _window, cx| {
-                if let gpui_component::color_picker::ColorPickerEvent::Change(Some(color)) = event {
-                    // Update the selected comment's color
-                    if let Some(comment_id) = this.graph.selected_comments.first() {
-                        if let Some(comment) = this.graph.comments.iter_mut().find(|c| &c.id == comment_id) {
-                            comment.color = *color;
-                            cx.notify();
-                        }
-                    }
-                }
-            },
-        );
+
 
         result
     }
@@ -693,7 +674,7 @@ impl BlueprintEditorPanel {
     }
 
     /// Load a graph from a JSON file
-    pub fn load_blueprint(&mut self, file_path: &str, cx: &mut Context<Self>) -> Result<(), String> {
+    pub fn load_blueprint(&mut self, file_path: &str, window: &mut gpui::Window, cx: &mut Context<Self>) -> Result<(), String> {
         let content = std::fs::read_to_string(file_path)
             .map_err(|e| format!("Failed to read file: {}", e))?;
 
@@ -708,7 +689,7 @@ impl BlueprintEditorPanel {
             .map_err(|e| format!("Failed to parse JSON: {}", e))?;
 
         // Convert back to blueprint format
-        self.graph = self.convert_from_graph_description(&graph_description)?;
+        self.graph = self.convert_from_graph_description(&graph_description, window, cx)?;
 
         // Set current_class_path to the parent directory of the loaded file
         let path = std::path::Path::new(file_path);
@@ -724,7 +705,12 @@ impl BlueprintEditorPanel {
         Ok(())
     }
 
-    fn convert_from_graph_description(&self, graph_desc: &crate::graph::GraphDescription) -> Result<BlueprintGraph, String> {
+    fn convert_from_graph_description(
+        &self,
+        graph_desc: &crate::graph::GraphDescription,
+        window: &mut gpui::Window,
+        cx: &mut gpui::Context<Self>
+    ) -> Result<BlueprintGraph, String> {
         let mut nodes = Vec::new();
         let mut connections = Vec::new();
 
@@ -817,10 +803,20 @@ impl BlueprintEditorPanel {
             connections.push(bp_connection);
         }
 
+        let mut comments = graph_desc.comments.clone();
+        // Ensure all comments have a color_picker_state
+        for comment in &mut comments {
+            if comment.color_picker_state.is_none() {
+                comment.color_picker_state = Some(cx.new(|cx| {
+                    gpui_component::color_picker::ColorPickerState::new(window, cx)
+                }));
+            }
+        }
+
         Ok(BlueprintGraph {
             nodes,
             connections,
-            comments: graph_desc.comments.clone(),
+            comments,
             selected_nodes: vec![],
             selected_comments: vec![],
             zoom_level: 1.0,
@@ -1024,7 +1020,7 @@ impl BlueprintEditorPanel {
         }
     }
 
-    pub fn create_comment_at_center(&mut self, cx: &mut Context<Self>) {
+    pub fn create_comment_at_center(&mut self, window: &mut gpui::Window, cx: &mut Context<Self>) {
         // Create a new comment at the center of the current view
         let center_screen = Point::new(1920.0 / 2.0, 1080.0 / 2.0); // Center of typical view
         let center_graph = super::node_graph::NodeGraphRenderer::screen_to_graph_pos(
@@ -1032,7 +1028,7 @@ impl BlueprintEditorPanel {
             &self.graph,
         );
 
-        let new_comment = super::BlueprintComment::new(center_graph);
+        let new_comment = super::BlueprintComment::new(center_graph, window, cx);
         self.graph.comments.push(new_comment);
 
         cx.notify();
