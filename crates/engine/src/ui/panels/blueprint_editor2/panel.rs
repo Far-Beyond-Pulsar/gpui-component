@@ -68,7 +68,8 @@ pub struct BlueprintEditorPanel {
     pub resizing_comment: Option<(String, ResizeHandle)>, // (comment ID, handle being dragged)
     pub editing_comment: Option<String>, // Comment ID being edited
     pub comment_text_input: Entity<gpui_component::input::InputState>,
-
+    // Store subscriptions to keep them alive
+    pub subscriptions: Vec<gpui::Subscription>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -96,7 +97,7 @@ impl BlueprintEditorPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let resizable_state = ResizableState::new(cx);
 
-
+        // Initialize subscriptions vector
 
         // Create sample nodes - demonstrates all compiler features
         let mut nodes = Vec::new();
@@ -420,7 +421,7 @@ impl BlueprintEditorPanel {
                 gpui_component::input::InputState::new(window, cx)
                     .placeholder("Comment text...")
             }),
-
+            subscriptions: Vec::<gpui::Subscription>::new(),
         };
 
 
@@ -706,7 +707,7 @@ impl BlueprintEditorPanel {
     }
 
     fn convert_from_graph_description(
-        &self,
+        &mut self,
         graph_desc: &crate::graph::GraphDescription,
         window: &mut gpui::Window,
         cx: &mut gpui::Context<Self>
@@ -817,7 +818,7 @@ impl BlueprintEditorPanel {
         for comment in &mut comments {
             if let Some(picker_state) = comment.color_picker_state.as_ref() {
                 let comment_id = comment.id.clone();
-                cx.subscribe_in(
+                let subscription = cx.subscribe_in(
                     picker_state,
                     window,
                     move |this: &mut BlueprintEditorPanel, _picker, event: &gpui_component::color_picker::ColorPickerEvent, _window, cx| {
@@ -829,6 +830,8 @@ impl BlueprintEditorPanel {
                         }
                     }
                 );
+                // Store the subscription to keep it alive
+
             }
         }
 
