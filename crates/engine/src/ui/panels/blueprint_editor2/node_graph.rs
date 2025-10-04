@@ -1,5 +1,6 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use gpui::prelude::*;
 use gpui_component::Colorize;
 use gpui_component::{button::Button, h_flex, v_flex, ActiveTheme as _, IconName, StyledExt, tooltip::Tooltip};
 
@@ -23,6 +24,9 @@ impl NodeGraphRenderer {
     ) -> impl IntoElement {
         let focus_handle = panel.focus_handle().clone();
 
+        let graph_id = "blueprint-graph";
+        let panel_entity = cx.entity().clone();
+
         div()
             .size_full()
             .relative()
@@ -33,6 +37,41 @@ impl NodeGraphRenderer {
             .overflow_hidden()
             .track_focus(&focus_handle)
             .key_context("BlueprintGraph")
+            .on_children_prepainted({
+                let panel_entity = panel_entity.clone();
+                move |children_bounds, _window, cx| {
+                    // children_bounds are in WINDOW coordinates!
+                    // Calculate the bounding box of all children to get our element's window-relative bounds
+                    if !children_bounds.is_empty() {
+                        let mut min_x = f32::MAX;
+                        let mut min_y = f32::MAX;
+                        let mut max_x = f32::MIN;
+                        let mut max_y = f32::MIN;
+
+                        for child_bounds in &children_bounds {
+                            min_x = min_x.min(child_bounds.origin.x.0);
+                            min_y = min_y.min(child_bounds.origin.y.0);
+                            max_x = max_x.max((child_bounds.origin.x + child_bounds.size.width).0);
+                            max_y = max_y.max((child_bounds.origin.y + child_bounds.size.height).0);
+                        }
+
+                        let origin = gpui::Point { x: px(min_x), y: px(min_y) };
+                        let size = gpui::Size {
+                            width: px(max_x - min_x),
+                            height: px(max_y - min_y),
+                        };
+
+                        println!("[BOUNDS] Graph element (from children) - origin: ({}, {}), size: ({}, {})",
+                            origin.x, origin.y, size.width, size.height);
+
+                        // Store the graph element's bounds derived from children (which are in window coords)
+                        panel_entity.update(cx, |panel, _cx| {
+                            panel.graph_element_bounds = Some(gpui::Bounds { origin, size });
+                        });
+                    }
+                }
+            })
+            .id(graph_id)
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |panel, _event, window, cx| {
                 // Focus on click to enable keyboard events
                 panel.focus_handle().focus(window);
@@ -47,7 +86,7 @@ impl NodeGraphRenderer {
                 gpui::MouseButton::Right,
                 cx.listener(|panel, event: &MouseDownEvent, _window, cx| {
                     // Convert window coordinates to element coordinates
-                    let element_pos = Self::window_to_graph_element_pos(event.position);
+                    let element_pos = Self::window_to_graph_element_pos(event.position, panel);
                     let mouse_pos = Point::new(element_pos.x.0, element_pos.y.0);
 
                     // Store right-click start position for gesture detection
@@ -60,13 +99,16 @@ impl NodeGraphRenderer {
             .on_mouse_down(
                 gpui::MouseButton::Left,
                 cx.listener(|panel, event: &MouseDownEvent, _window, cx| {
-                    // Debug: Print raw event position
+                    // Debug: Print raw event position and calculated offset
                     println!("[MOUSE] Raw window position: x={}, y={}", event.position.x.0, event.position.y.0);
-                    println!("[MOUSE] Element bounds: {:?}", panel.graph_element_bounds);
+                    println!("[MOUSE] Stored element bounds: {:?}", panel.graph_element_bounds);
 
                     // Convert window-relative coordinates to element-relative coordinates
-                    let element_pos = Self::window_to_graph_element_pos(event.position);
-                    println!("[MOUSE] Element-relative position: x={}, y={}", element_pos.x.0, element_pos.y.0);
+                    let element_pos = Self::window_to_graph_element_pos(event.position, panel);
+                    println!("[MOUSE] Calculated element-relative position: x={}, y={}", element_pos.x.0, element_pos.y.0);
+
+                    // Expected: if you click at the top-left corner of the graph, element_pos should be close to (0, 0)
+                    // If not, our offset is wrong!
 
                     // Convert element coordinates to graph coordinates
                     let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
@@ -120,7 +162,7 @@ impl NodeGraphRenderer {
             )
             .on_mouse_move(cx.listener(|panel, event: &MouseMoveEvent, _window, cx| {
                 // Convert window coordinates to element coordinates
-                let element_pos = Self::window_to_graph_element_pos(event.position);
+                let element_pos = Self::window_to_graph_element_pos(event.position, panel);
                 let mouse_pos = Point::new(element_pos.x.0, element_pos.y.0);
 
                 // Check if right-click drag should start panning
@@ -164,7 +206,7 @@ impl NodeGraphRenderer {
                     } else if panel.dragging_connection.is_some() {
                         // Show node creation menu when dropping connection on empty space
                         // Menu is positioned at panel level, use panel coordinate conversion
-                        let panel_pos = Self::window_to_panel_pos(event.position);
+                        let panel_pos = Self::window_to_panel_pos(event.position, panel);
                         let screen_pos = Point::new(panel_pos.x.0, panel_pos.y.0);
                         panel.show_node_creation_menu(screen_pos, _window, cx);
                         panel.cancel_connection_drag(cx);
@@ -185,7 +227,7 @@ impl NodeGraphRenderer {
                         // Right-click released without dragging - show context menu
                         panel.right_click_start = None;
                         // Menu is positioned at panel level, use panel coordinate conversion
-                        let panel_pos = Self::window_to_panel_pos(event.position);
+                        let panel_pos = Self::window_to_panel_pos(event.position, panel);
                         let screen_pos = Point::new(panel_pos.x.0, panel_pos.y.0);
                         panel.show_node_creation_menu(screen_pos, _window, cx);
                     }
@@ -200,7 +242,7 @@ impl NodeGraphRenderer {
 
                 // Perform zoom centered on the mouse
                 // Convert to element coordinates first
-                let element_pos = Self::window_to_graph_element_pos(event.position);
+                let element_pos = Self::window_to_graph_element_pos(event.position, panel);
                 panel.handle_zoom(delta_y, element_pos, cx);
             }))
             .on_key_down(cx.listener(|panel, event: &KeyDownEvent, _window, cx| {
@@ -474,7 +516,7 @@ impl NodeGraphRenderer {
                                     if panel.hoverable_tooltip.is_none() && panel.pending_tooltip.is_none() {
                                         // Position tooltip near the node header, offset right and up from mouse
                                         // Convert to element coordinates first
-                                        let element_pos = Self::window_to_graph_element_pos(event.position);
+                                        let element_pos = Self::window_to_graph_element_pos(event.position, panel);
                                         let tooltip_pos = Point::new(element_pos.x.0 + 20.0, element_pos.y.0 - 60.0);
                                         panel.show_hoverable_tooltip(tooltip_content.clone(), tooltip_pos, window, cx);
                                     }
@@ -500,7 +542,7 @@ impl NodeGraphRenderer {
 
                                     // Start dragging
                                     // Convert to element coordinates first
-                                    let element_pos = Self::window_to_graph_element_pos(event.position);
+                                    let element_pos = Self::window_to_graph_element_pos(event.position, panel);
                                     let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
                                     panel.start_drag(node_id.clone(), graph_pos, cx);
                                 })
@@ -579,7 +621,7 @@ impl NodeGraphRenderer {
 
                     // Start dragging
                     // Convert to element coordinates first
-                    let element_pos = Self::window_to_graph_element_pos(event.position);
+                    let element_pos = Self::window_to_graph_element_pos(event.position, panel);
                     let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
                     panel.start_drag(node_id.clone(), graph_pos, cx);
                 })
@@ -1421,28 +1463,29 @@ impl NodeGraphRenderer {
 
     /// Convert window-relative coordinates to graph element coordinates
     /// For graph operations: clicking nodes, selection box, dragging, etc.
-    pub fn window_to_graph_element_pos(window_pos: Point<Pixels>) -> Point<Pixels> {
-        // Graph element is nested: toolbar + resizable panel borders + graph container padding
-        const Y_OFFSET: f32 = 135.0; // Was 110px, now 25px higher
-        const X_OFFSET: f32 = 8.0; // Was 0px, now 8px left
-
-        Point::new(
-            window_pos.x - px(X_OFFSET),
-            window_pos.y - px(Y_OFFSET),
-        )
+    ///
+    /// Mouse events from GPUI are relative to window origin.
+    /// We already have the graph element's bounds captured during events.
+    /// Simple math: element_pos = window_pos - element_origin
+    pub fn window_to_graph_element_pos(window_pos: Point<Pixels>, panel: &BlueprintEditorPanel) -> Point<Pixels> {
+        if let Some(bounds) = &panel.graph_element_bounds {
+            // Direct subtraction: mouse relative to element = mouse relative to window - element origin relative to window
+            Point::new(
+                window_pos.x - bounds.origin.x,
+                window_pos.y - bounds.origin.y,
+            )
+        } else {
+            // On first event before bounds captured, just return window pos as-is
+            // This will be corrected on the next event after bounds are set
+            window_pos
+        }
     }
 
     /// Convert window-relative coordinates to panel coordinates
     /// For UI elements positioned at panel level: menus, tooltips, etc.
-    pub fn window_to_panel_pos(window_pos: Point<Pixels>) -> Point<Pixels> {
-        // Panel is at window root, just account for minimal chrome
-        const Y_OFFSET: f32 = 135.0; // Match graph operations
-        const X_OFFSET: f32 = 8.0; // Match graph operations
-
-        Point::new(
-            window_pos.x - px(X_OFFSET),
-            window_pos.y - px(Y_OFFSET),
-        )
+    pub fn window_to_panel_pos(window_pos: Point<Pixels>, panel: &BlueprintEditorPanel) -> Point<Pixels> {
+        // Same calculation as graph element since they share the same coordinate space
+        Self::window_to_graph_element_pos(window_pos, panel)
     }
 
     pub fn screen_to_graph_pos(screen_pos: Point<Pixels>, graph: &BlueprintGraph) -> Point<f32> {
