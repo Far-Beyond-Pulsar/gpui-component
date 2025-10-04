@@ -504,8 +504,15 @@ impl NodeGraphRenderer {
                                             // Start dragging
                                             let element_pos = Self::window_to_graph_element_pos(event.position, panel);
                                             let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
-                                            panel.dragging_comment = Some(comment_id.clone());
-                                            panel.drag_offset = graph_pos;
+
+                                            // Calculate drag offset (same as node dragging)
+                                            if let Some(comment) = panel.graph.comments.iter().find(|c| c.id == comment_id) {
+                                                panel.dragging_comment = Some(comment_id.clone());
+                                                panel.drag_offset = Point::new(
+                                                    graph_pos.x - comment.position.x,
+                                                    graph_pos.y - comment.position.y,
+                                                );
+                                            }
 
                                             // Update click tracking
                                             let current_pos = Point::new(element_pos.x.0, element_pos.y.0);
