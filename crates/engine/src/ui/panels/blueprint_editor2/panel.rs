@@ -812,7 +812,7 @@ impl BlueprintEditorPanel {
         Ok(BlueprintGraph {
             nodes,
             connections,
-            comments: vec![],
+            comments: graph_desc.comments.clone(),
             selected_nodes: vec![],
             selected_comments: vec![],
             zoom_level: 1.0,
