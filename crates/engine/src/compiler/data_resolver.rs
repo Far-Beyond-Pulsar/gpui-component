@@ -90,7 +90,8 @@ impl DataResolver {
 
         // For inputs not connected, check properties or use defaults
         for (node_id, node) in &graph.nodes {
-            for (pin_name, pin) in &node.inputs {
+            for pin_instance in &node.inputs {
+                let pin_name = &pin_instance.id;
                 let key = (node_id.clone(), pin_name.clone());
 
                 if !self.input_sources.contains_key(&key) {
@@ -259,7 +260,8 @@ impl DataResolver {
                 if source_node.node_type == "reroute" {
                     eprintln!("[DATA_RESOLVER] Reroute node detected - passing through to its input");
                     // Reroutes can have different pin names, find the actual input pin
-                    let input_pin = source_node.inputs.keys().next()
+                    let input_pin = source_node.inputs.get(0)
+                        .map(|p| &p.id)
                         .ok_or_else(|| format!("Reroute node {} has no input pins", source_node_id))?;
                     eprintln!("[DATA_RESOLVER] Reroute node input pin name: '{}'", input_pin);
                     // Recursively resolve what's connected to the reroute's input
@@ -284,7 +286,7 @@ impl DataResolver {
                     if let Some(var_name) = self.get_result_variable(source_node_id) {
                         if source_node.outputs.len() > 1 {
                             // Multiple outputs: access tuple element or field
-                            let output_names: Vec<_> = source_node.outputs.keys().collect();
+                            let output_names: Vec<_> = source_node.outputs.iter().map(|p| &p.id).collect();
                             if let Some(index) = output_names.iter().position(|name| *name == source_pin) {
                                 Ok(format!("{}.{}", var_name, index))
                             } else {
@@ -305,8 +307,8 @@ impl DataResolver {
             Some(DataSource::Default) => {
                 // Use Rust default value based on type
                 if let Some(node) = graph.nodes.get(node_id) {
-                    if let Some(pin) = node.inputs.get(pin_name) {
-                        Ok(get_default_value_for_type(&pin.data_type))
+                    if let Some(pin) = node.inputs.iter().find(|p| p.id == pin_name) {
+                        Ok(get_default_value_for_type(&pin.pin.data_type))
                     } else {
                         Err(format!("Pin not found: {}.{}", node_id, pin_name))
                     }

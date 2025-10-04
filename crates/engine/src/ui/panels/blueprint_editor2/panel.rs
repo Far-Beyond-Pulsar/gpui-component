@@ -3,6 +3,7 @@ use gpui::prelude::FluentBuilder;
 use gpui_component::{
     context_menu::ContextMenuExt, dock::{Panel, PanelEvent}, input::{InputEvent, InputState}, resizable::{h_resizable, resizable_panel, ResizableState}, v_flex, ActiveTheme as _, PixelsExt, StyledExt
 };
+use crate::graph::PinInstance;
 use smol::Timer;
 use std::time::Duration;
 
@@ -764,17 +765,29 @@ impl BlueprintEditorPanel {
                 node_type,
                 position: Point::new(node_instance.position.x, node_instance.position.y),
                 size: Size::new(150.0, 100.0),
-                inputs: node_instance.inputs.iter().map(|(pin_id, pin)| Pin {
-                    id: pin_id.clone(),
-                    name: pin.name.clone(),
-                    pin_type: PinType::Input,
-                    data_type: pin.data_type.clone(),
+                inputs: node_instance.inputs.iter().map(|pin_inst| {
+                    let pin = &pin_inst.pin;
+                    Pin {
+                        id: pin_inst.id.clone(),
+                        name: pin.name.clone(),
+                        pin_type: match pin.pin_type {
+                            crate::graph::PinType::Input => PinType::Input,
+                            crate::graph::PinType::Output => PinType::Output,
+                        },
+                        data_type: pin.data_type.clone(),
+                    }
                 }).collect(),
-                outputs: node_instance.outputs.iter().map(|(pin_id, pin)| Pin {
-                    id: pin_id.clone(),
-                    name: pin.name.clone(),
-                    pin_type: PinType::Output,
-                    data_type: pin.data_type.clone(),
+                outputs: node_instance.outputs.iter().map(|pin_inst| {
+                    let pin = &pin_inst.pin;
+                    Pin {
+                        id: pin_inst.id.clone(),
+                        name: pin.name.clone(),
+                        pin_type: match pin.pin_type {
+                            crate::graph::PinType::Input => PinType::Input,
+                            crate::graph::PinType::Output => PinType::Output,
+                        },
+                        data_type: pin.data_type.clone(),
+                    }
                 }).collect(),
                 properties: node_instance.properties.iter().map(|(k, v)| {
                     let value_str = match v {

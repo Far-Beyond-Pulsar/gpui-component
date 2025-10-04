@@ -349,7 +349,7 @@ impl<'a> CodeGenerator<'a> {
         }
 
         // Follow execution chain from "exec_out" pin
-        if let Some(_exec_out_pin) = node.outputs.get("exec_out") {
+        if node.outputs.iter().any(|p| p.id == "exec_out") {
             let connected = self.exec_routing.get_connected_nodes(&node.id, "exec_out");
             for next_node_id in connected {
                 if let Some(next_node) = self.graph.nodes.get(next_node_id) {
