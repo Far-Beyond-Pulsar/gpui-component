@@ -8,9 +8,9 @@
 //! This module builds a data dependency graph and performs topological sorting
 //! to ensure pure nodes are evaluated in the correct order before being used.
 
-use std::collections::{HashMap, HashSet, VecDeque};
-use crate::graph::{GraphDescription, NodeInstance, ConnectionType};
-use super::node_metadata::{NodeMetadata, NodeType};
+use std::collections::{HashMap,HashSet,VecDeque};
+use crate::graph::{GraphDescription,NodeInstance,ConnectionType};
+use super::node_metadata::{NodeMetadata,NodeType};
 
 /// Resolves data flow for a graph
 pub struct DataResolver {
@@ -412,6 +412,7 @@ mod tests {
         let mut graph = GraphDescription {
             nodes: HashMap::new(),
             connections: Vec::new(),
+            comments: Vec::new(),
             metadata: GraphMetadata {
                 name: "test".to_string(),
                 description: String::new(),
@@ -432,7 +433,7 @@ mod tests {
 
         graph
     }
-
+    
     #[test]
     fn test_data_resolver_with_constants() {
         let graph = create_test_graph();
