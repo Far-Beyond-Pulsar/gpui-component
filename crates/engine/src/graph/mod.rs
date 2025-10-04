@@ -9,6 +9,8 @@ pub struct GraphDescription {
     pub nodes: HashMap<String, NodeInstance>,
     pub connections: Vec<Connection>,
     pub metadata: GraphMetadata,
+    #[serde(default)]
+    pub comments: Vec<crate::ui::panels::blueprint_editor2::BlueprintComment>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
