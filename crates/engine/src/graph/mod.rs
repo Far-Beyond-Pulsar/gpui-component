@@ -14,13 +14,83 @@ pub struct GraphDescription {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PinInstance {
+    pub id: String,
+    #[serde(flatten)]
+    pub pin: Pin,
+}
+
+#[derive(Debug, Clone)]
 pub struct NodeInstance {
     pub id: String,
     pub node_type: String,
     pub position: Position,
     pub properties: HashMap<String, PropertyValue>,
-    pub inputs: HashMap<String, Pin>,
-    pub outputs: HashMap<String, Pin>,
+    pub inputs: Vec<PinInstance>,
+    pub outputs: Vec<PinInstance>,
+}
+
+// Custom (de)serialization for NodeInstance to support both array and map for inputs/outputs
+impl<'de> Deserialize<'de> for NodeInstance {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct NodeInstanceHelper {
+            id: String,
+            node_type: String,
+            position: Position,
+            properties: HashMap<String, PropertyValue>,
+            #[serde(default)]
+            inputs: serde_json::Value,
+            #[serde(default)]
+            outputs: serde_json::Value,
+        }
+
+        let helper = NodeInstanceHelper::deserialize(deserializer)?;
+
+        fn parse_pins(val: &serde_json::Value) -> Vec<PinInstance> {
+            if let Some(arr) = val.as_array() {
+                arr.iter().filter_map(|v| serde_json::from_value(v.clone()).ok()).collect()
+            } else if let Some(obj) = val.as_object() {
+                obj.iter()
+                    .filter_map(|(id, v)| {
+                        let mut pin: Pin = serde_json::from_value(v.clone()).ok()?;
+                        Some(PinInstance { id: id.clone(), pin })
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        }
+
+        Ok(NodeInstance {
+            id: helper.id,
+            node_type: helper.node_type,
+            position: helper.position,
+            properties: helper.properties,
+            inputs: parse_pins(&helper.inputs),
+            outputs: parse_pins(&helper.outputs),
+        })
+    }
+}
+
+impl Serialize for NodeInstance {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut s = serializer.serialize_struct("NodeInstance", 6)?;
+        s.serialize_field("id", &self.id)?;
+        s.serialize_field("node_type", &self.node_type)?;
+        s.serialize_field("position", &self.position)?;
+        s.serialize_field("properties", &self.properties)?;
+        s.serialize_field("inputs", &self.inputs)?;
+        s.serialize_field("outputs", &self.outputs)?;
+        s.end()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -263,14 +333,14 @@ impl GraphDescription {
     pub fn add_connection(&mut self, connection: Connection) {
         // Update pin connections
         if let Some(source_node) = self.nodes.get_mut(&connection.source_node) {
-            if let Some(output_pin) = source_node.outputs.get_mut(&connection.source_pin) {
-                output_pin.connected_to.push(connection.id.clone());
+            if let Some(output_pin) = source_node.outputs.iter_mut().find(|p| p.id == connection.source_pin) {
+                output_pin.pin.connected_to.push(connection.id.clone());
             }
         }
 
         if let Some(target_node) = self.nodes.get_mut(&connection.target_node) {
-            if let Some(input_pin) = target_node.inputs.get_mut(&connection.target_pin) {
-                input_pin.connected_to.push(connection.id.clone());
+            if let Some(input_pin) = target_node.inputs.iter_mut().find(|p| p.id == connection.target_pin) {
+                input_pin.pin.connected_to.push(connection.id.clone());
             }
         }
 
@@ -295,14 +365,14 @@ impl GraphDescription {
 
             // Update pin connections
             if let Some(source_node) = self.nodes.get_mut(&connection.source_node) {
-                if let Some(output_pin) = source_node.outputs.get_mut(&connection.source_pin) {
-                    output_pin.connected_to.retain(|id| id != connection_id);
+                if let Some(output_pin) = source_node.outputs.iter_mut().find(|p| p.id == connection.source_pin) {
+                    output_pin.pin.connected_to.retain(|id| id != connection_id);
                 }
             }
 
             if let Some(target_node) = self.nodes.get_mut(&connection.target_node) {
-                if let Some(input_pin) = target_node.inputs.get_mut(&connection.target_pin) {
-                    input_pin.connected_to.retain(|id| id != connection_id);
+                if let Some(input_pin) = target_node.inputs.iter_mut().find(|p| p.id == connection.target_pin) {
+                    input_pin.pin.connected_to.retain(|id| id != connection_id);
                 }
             }
 
@@ -366,8 +436,8 @@ impl NodeInstance {
             node_type: node_type.to_string(),
             position,
             properties: HashMap::new(),
-            inputs: HashMap::new(),
-            outputs: HashMap::new(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
         }
     }
 
@@ -378,7 +448,7 @@ impl NodeInstance {
             data_type,
             connected_to: Vec::new(),
         };
-        self.inputs.insert(name.to_string(), pin);
+        self.inputs.push(PinInstance { id: name.to_string(), pin });
     }
 
     pub fn add_output_pin(&mut self, name: &str, data_type: DataType) {
@@ -388,7 +458,7 @@ impl NodeInstance {
             data_type,
             connected_to: Vec::new(),
         };
-        self.outputs.insert(name.to_string(), pin);
+        self.outputs.push(PinInstance { id: name.to_string(), pin });
     }
 
     pub fn set_property(&mut self, name: &str, value: PropertyValue) {
