@@ -813,6 +813,25 @@ impl BlueprintEditorPanel {
             }
         }
 
+        // Subscribe to color picker changes for each comment
+        for comment in &mut comments {
+            if let Some(picker_state) = comment.color_picker_state.as_ref() {
+                let comment_id = comment.id.clone();
+                cx.subscribe_in(
+                    picker_state,
+                    window,
+                    move |this: &mut BlueprintEditorPanel, _picker, event: &gpui_component::color_picker::ColorPickerEvent, _window, cx| {
+                        if let gpui_component::color_picker::ColorPickerEvent::Change(Some(color)) = event {
+                            if let Some(comment) = this.graph.comments.iter_mut().find(|c| c.id == comment_id) {
+                                comment.color = *color;
+                                cx.notify();
+                            }
+                        }
+                    }
+                );
+            }
+        }
+
         Ok(BlueprintGraph {
             nodes,
             connections,
@@ -1028,7 +1047,25 @@ impl BlueprintEditorPanel {
             &self.graph,
         );
 
-        let new_comment = super::BlueprintComment::new(center_graph, window, cx);
+        let mut new_comment = super::BlueprintComment::new(center_graph, window, cx);
+
+        // Subscribe to color picker changes for this comment
+        if let Some(picker_state) = new_comment.color_picker_state.as_ref() {
+            let comment_id = new_comment.id.clone();
+            cx.subscribe_in(
+                picker_state,
+                window,
+                move |this: &mut BlueprintEditorPanel, _picker, event: &gpui_component::color_picker::ColorPickerEvent, _window, cx| {
+                    if let gpui_component::color_picker::ColorPickerEvent::Change(Some(color)) = event {
+                        if let Some(comment) = this.graph.comments.iter_mut().find(|c| c.id == comment_id) {
+                            comment.color = *color;
+                            cx.notify();
+                        }
+                    }
+                }
+            );
+        }
+
         self.graph.comments.push(new_comment);
 
         cx.notify();
