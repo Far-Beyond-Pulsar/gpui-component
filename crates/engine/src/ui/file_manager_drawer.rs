@@ -314,6 +314,7 @@ impl FileManagerDrawer {
                 created_at: now.to_rfc3339(),
                 modified_at: now.to_rfc3339(),
             },
+            comments: Vec::new(),
         };
 
         let json = serde_json::to_string_pretty(&empty_graph).unwrap_or_default();

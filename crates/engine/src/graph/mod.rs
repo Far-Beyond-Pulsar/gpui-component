@@ -251,6 +251,7 @@ impl GraphDescription {
                 created_at: chrono::Utc::now().to_rfc3339(),
                 modified_at: chrono::Utc::now().to_rfc3339(),
             },
+            comments: Vec::new(),
         }
     }
 
