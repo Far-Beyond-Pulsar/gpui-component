@@ -646,6 +646,9 @@ impl BlueprintEditorPanel {
             graph_desc.add_connection(graph_connection);
         }
 
+        // Add comments to graph description
+        graph_desc.comments = self.graph.comments.clone();
+
         Ok(graph_desc)
     }
 
