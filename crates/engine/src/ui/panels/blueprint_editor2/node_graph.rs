@@ -69,9 +69,14 @@ impl NodeGraphRenderer {
                 }
             })
             .id(graph_id)
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |panel, _event, window, cx| {
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |panel, event, window, cx| {
                 // Focus on click to enable keyboard events
                 panel.focus_handle().focus(window);
+
+                // If editing a comment, clicking outside should save and exit edit mode
+                if panel.editing_comment.is_some() {
+                    panel.finish_comment_editing(cx);
+                }
             }))
             .child(Self::render_comments(panel, cx))
             .child(Self::render_nodes(panel, cx))
@@ -448,6 +453,12 @@ impl NodeGraphRenderer {
                                 .child(
                                     gpui_component::input::TextInput::new(&panel.comment_text_input)
                                 )
+                                .on_mouse_down(gpui::MouseButton::Left, cx.listener(|_panel, _event: &MouseDownEvent, _window, cx| {
+                                    cx.stop_propagation();
+                                }))
+                                .on_mouse_move(cx.listener(|_panel, _event: &MouseMoveEvent, _window, cx| {
+                                    cx.stop_propagation();
+                                }))
                                 .into_any_element()
                         } else {
                             // Show static text
