@@ -1,8 +1,11 @@
 use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, StyledExt, TitleBar, Icon, IconName, ActiveTheme as _,
+    h_flex, v_flex, StyledExt, Icon, IconName, ActiveTheme as _, ContextModal, TitleBar,
 };
+use crate::recent_projects::{RecentProjectsList, RecentProject};
+use directories::ProjectDirs;
+use std::path::PathBuf;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum EntryScreenView {
@@ -13,11 +16,22 @@ enum EntryScreenView {
 /// EntryScreen: Modern entry UI with sidebar navigation for recent projects and templates.
 pub struct EntryScreen {
     view: EntryScreenView,
+    recent_projects: RecentProjectsList,
+    recent_path: PathBuf,
 }
 
 impl EntryScreen {
     pub fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
-        Self { view: EntryScreenView::Recent }
+        // Find app data dir for recents
+        let proj_dirs = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
+            .expect("Could not determine app data directory");
+        let recent_path = proj_dirs.data_dir().join("recent_projects.json");
+        let recent_projects = RecentProjectsList::load(&recent_path);
+        Self {
+            view: EntryScreenView::Recent,
+            recent_projects,
+            recent_path,
+        }
     }
 
     //
@@ -29,50 +43,8 @@ impl Render for EntryScreen {
         v_flex()
             .size_full()
             .bg(theme.background)
-            // Hero/branding section with gradient and glass effect
-            .child(
-                div()
-                    .h(px(180.))
-                    .w_full()
-                    .rounded_lg()
-                    .bg_linear_gradient(
-                        90.0,
-                        theme.primary.opacity(0.85),
-                        theme.secondary.opacity(0.85),
-                    )
-                    .backdrop_blur(px(16.))
-                    .shadow_lg()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .px_12()
-                    .child(
-                        h_flex()
-                            .gap_4()
-                            .items_center()
-                            .child(
-                                Icon::new(IconName::Rocket)
-                                    .size(px(48.))
-                                    .text_color(theme.primary_foreground)
-                                    .shadow_md()
-                            )
-                            .child(
-                                div()
-                                    .text_4xl()
-                                    .font_extrabold()
-                                    .text_color(theme.primary_foreground)
-                                    .child("Pulsar Engine Launcher")
-                            )
-                    )
-                    .child(
-                        Button::new("launch-btn")
-                            .label("Launch Project")
-                            .large()
-                            .with_variant(gpui_component::button::ButtonVariant::Primary)
-                            .icon(IconName::Play)
-                            .tooltip("Launch the selected project")
-                    )
-            )
+            // Title bar at the top
+            .child(TitleBar::new())
             // Main content area
             .child(
                 h_flex()
@@ -146,10 +118,11 @@ impl Render for EntryScreen {
                                                                 h_flex()
                                                                     .gap_2()
                                                                     .items_center()
-                                                                    .child(Icon::new(IconName::Gamepad2).size(px(28.)).text_color(theme.primary))
+                                                                    .child(Icon::new(IconName::Cube).size(px(28.)).text_color(theme.primary))
                                                                     .child(div().font_semibold().child("Project 1"))
                                                                     .child(
-                                                                        gpui_component::badge::Badge::new("v1.2.3")
+                                                                        gpui_component::badge::Badge::new()
+                                                                            .count(1)
                                                                             .color(theme.primary)
                                                                     )
                                                             )
@@ -163,6 +136,13 @@ impl Render for EntryScreen {
                                                                     .icon(IconName::ArrowRight)
                                                                     .tooltip("Open this project")
                                                                     .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                                                    .on_click(cx.listener(|_this, _event, window, cx| {
+                                                                        window.open_drawer(cx, |drawer, _window, _cx| {
+                                                                            drawer
+                                                                                .title("Project 1 Details")
+                                                                                .child(div().child("Project 1 drawer content goes here."))
+                                                                        })
+                                                                    }))
                                                             )
                                                     )
                                                     .child(
@@ -179,10 +159,11 @@ impl Render for EntryScreen {
                                                                 h_flex()
                                                                     .gap_2()
                                                                     .items_center()
-                                                                    .child(Icon::new(IconName::Gamepad2).size(px(28.)).text_color(theme.primary))
+                                                                    .child(Icon::new(IconName::Star).size(px(28.)).text_color(theme.primary))
                                                                     .child(div().font_semibold().child("Project 2"))
                                                                     .child(
-                                                                        gpui_component::badge::Badge::new("v2.0.0-beta")
+                                                                        gpui_component::badge::Badge::new()
+                                                                            .count(2)
                                                                             .color(theme.secondary)
                                                                     )
                                                             )
@@ -196,6 +177,13 @@ impl Render for EntryScreen {
                                                                     .icon(IconName::ArrowRight)
                                                                     .tooltip("Open this project")
                                                                     .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                                                    .on_click(cx.listener(|_this, _event, window, cx| {
+                                                                        window.open_drawer(cx, |drawer, _window, _cx| {
+                                                                            drawer
+                                                                                .title("Project 2 Details")
+                                                                                .child(div().child("Project 2 drawer content goes here."))
+                                                                        })
+                                                                    }))
                                                             )
                                                     )
                                             )
@@ -223,10 +211,11 @@ impl Render for EntryScreen {
                                                                 h_flex()
                                                                     .gap_2()
                                                                     .items_center()
-                                                                    .child(Icon::new(IconName::Sparkles).size(px(28.)).text_color(theme.primary))
+                                                                    .child(Icon::new(IconName::Rocket).size(px(28.)).text_color(theme.primary))
                                                                     .child(div().font_semibold().child("Blank Project"))
                                                                     .child(
-                                                                        gpui_component::badge::Badge::new("New")
+                                                                        gpui_component::badge::Badge::new()
+                                                                            .dot()
                                                                             .color(theme.primary)
                                                                     )
                                                             )
@@ -253,10 +242,11 @@ impl Render for EntryScreen {
                                                                 h_flex()
                                                                     .gap_2()
                                                                     .items_center()
-                                                                    .child(Icon::new(IconName::Sparkles).size(px(28.)).text_color(theme.primary))
+                                                                    .child(Icon::new(IconName::Cube).size(px(28.)).text_color(theme.primary))
                                                                     .child(div().font_semibold().child("2D Platformer"))
                                                                     .child(
-                                                                        gpui_component::badge::Badge::new("Popular")
+                                                                        gpui_component::badge::Badge::new()
+                                                                            .count(99)
                                                                             .color(theme.secondary)
                                                                     )
                                                             )
@@ -283,10 +273,11 @@ impl Render for EntryScreen {
                                                                 h_flex()
                                                                     .gap_2()
                                                                     .items_center()
-                                                                    .child(Icon::new(IconName::Sparkles).size(px(28.)).text_color(theme.primary))
+                                                                    .child(Icon::new(IconName::Star).size(px(28.)).text_color(theme.primary))
                                                                     .child(div().font_semibold().child("3D First-Person"))
                                                                     .child(
-                                                                        gpui_component::badge::Badge::new("Beta")
+                                                                        gpui_component::badge::Badge::new()
+                                                                            .dot()
                                                                             .color(theme.primary)
                                                                     )
                                                             )

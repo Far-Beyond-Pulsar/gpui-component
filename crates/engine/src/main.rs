@@ -6,6 +6,7 @@ mod assets;
 mod compiler;
 mod graph;
 mod ui;
+mod recent_projects;
 
 pub use assets::Assets;
 use serde::Deserialize;
