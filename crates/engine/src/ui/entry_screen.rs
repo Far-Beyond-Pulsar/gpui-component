@@ -100,10 +100,12 @@ impl EntryScreen {
     }
     
     fn calculate_columns(&self, width: Pixels) -> usize {
+        // Account for left and right padding (12px each) on the card list container
+        let available_width = width - px(24.); // 12px left + 12px right padding
         // Minimum card width (320px) + gap (6px) = 326px per column
         // Calculate how many columns fit in the available width
         let card_width_with_gap = px(326.); // 320px card + 6px gap
-        let columns = (width / card_width_with_gap).floor() as usize;
+        let columns = (available_width / card_width_with_gap).floor() as usize;
         // Ensure at least 1 column, maximum reasonable number
         columns.max(1).min(6)
     }
