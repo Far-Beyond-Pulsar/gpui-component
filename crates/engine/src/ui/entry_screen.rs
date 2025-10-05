@@ -1065,16 +1065,19 @@ impl EntryScreen {
                                     .child("Repository URL")
                             )
                             .child(
-                                div()
-                                    .px_3()
-                                    .py_2()
-                                    .border_1()
-                                    .border_color(theme.border)
-                                    .rounded_md()
-                                    .bg(theme.background)
-                                    .text_sm()
-                                    .text_color(theme.foreground)
-                                    .child(git_url_display)
+                                {
+                                    let git_url_display_owned = git_url_display.to_string();
+                                    div()
+                                        .px_3()
+                                        .py_2()
+                                        .border_1()
+                                        .border_color(theme.border)
+                                        .rounded_md()
+                                        .bg(theme.background)
+                                        .text_sm()
+                                        .text_color(theme.foreground)
+                                        .child(git_url_display_owned)
+                                }
                             )
                             .child(
                                 div()
