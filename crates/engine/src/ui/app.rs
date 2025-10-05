@@ -2,7 +2,7 @@ use gpui::{prelude::*, Animation, AnimationExt as _, KeyBinding, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
-    h_flex, v_flex, ActiveTheme as _, IconName, StyledExt,
+    h_flex, v_flex, ActiveTheme as _, ContextModal, IconName, StyledExt,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -323,10 +323,9 @@ impl Render for PulsarApp {
         cx.on_action(
             cx.listener(|app, _action: &OpenSettingsWindow, window, cx| {
                 if app.settings_window.is_none() {
-                    let settings =
-                        cx.new(|cx| crate::ui::settings_window::SettingsWindow::new(window, cx));
+                    let settings = cx.new(|cx| crate::ui::settings_window::SettingsWindow::new());
                     app.settings_window = Some(settings);
-                    window.open_modal(cx, |modal, _, _| modal.child(settings.clone()));
+                    window.open_modal(cx, |modal, window, cx| modal.child(settings.clone()));
                 }
             }),
         );
