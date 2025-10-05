@@ -78,10 +78,19 @@ impl Render for SettingsScreen {
                             .text_color(theme.foreground)
                     )
                     .child(
+                        Button::new("minimize-settings")
+                            .ghost()
+                            .icon(IconName::Minimize)
+                            .on_click(cx.listener(|_screen, _, window, cx| {
+                                window.minimize_window();
+                                cx.notify();
+                            }))
+                    )
+                    .child(
                         Button::new("close-settings")
                             .ghost()
                             .icon(IconName::Close)
-                            .on_click(cx.listener(|_screen, _, window: &mut gpui::Window, cx| {
+                            .on_click(cx.listener(|_screen, _, window, cx| {
                                 window.remove_window();
                                 cx.notify();
                             }))
