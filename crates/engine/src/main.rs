@@ -1,3 +1,4 @@
+use crate::settings::EngineSettings;
 use gpui::*;
 use gpui_component::Root;
 
@@ -15,8 +16,6 @@ pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 // pub mod renderer;
 pub mod settings;
 pub mod themes;
-
-use settings::EngineSettings;
 
 use gpui::Action;
 use gpui::SharedString;
@@ -103,33 +102,6 @@ fn main() {
         gpui_component::init(cx);
 
         cx.activate(true);
-
-        // --- THEME REGISTRY INIT ---
-        // Watch the themes directory in appdata for changes
-        if let Err(err) =
-            gpui_component::ThemeRegistry::watch_dir(themes_dir.clone(), cx, move |cx| {
-                // On load, apply the active theme from settings
-                let settings = EngineSettings::load(&config_file);
-                if let Some(theme) = gpui_component::ThemeRegistry::global(cx)
-                    .themes()
-                    .get(&settings.active_theme)
-                    .cloned()
-                {
-                    gpui_component::Theme::global_mut(cx).apply_config(&theme);
-                }
-            })
-        {
-            eprintln!("Failed to watch themes directory: {err}");
-        }
-
-        // Apply the active theme at startup
-        if let Some(theme) = gpui_component::ThemeRegistry::global(cx)
-            .themes()
-            .get(&engine_settings.active_theme)
-            .cloned()
-        {
-            gpui_component::Theme::global_mut(cx).apply_config(&theme);
-        }
 
         // Open the entry/launcher window first (smaller size)
         let entry_window_size = size(px(1000.), px(600.));

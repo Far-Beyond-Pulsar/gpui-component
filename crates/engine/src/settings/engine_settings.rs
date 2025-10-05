@@ -1,4 +1,3 @@
-Pulsar-Native/crates/engine/src/settings/engine_settings.rs
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -8,7 +7,7 @@ use std::path::{Path, PathBuf};
 pub struct EngineSettings {
     /// The currently active theme (by name).
     pub active_theme: String,
-    /// Other settings can be added here.
+    // TODO: Other settings can be added here.
 }
 
 impl Default for EngineSettings {

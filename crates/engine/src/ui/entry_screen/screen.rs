@@ -1,10 +1,9 @@
-use gpui::{prelude::*, Axis, Animation, AnimationExt as _, StatefulInteractiveElement as _, *};
+use gpui::{prelude::*, Animation, AnimationExt as _, Axis, StatefulInteractiveElement as _, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex,
+    h_flex,
     input::{InputState, TextInput},
-    TitleBar,
-    ActiveTheme as _, Icon, IconName, Sizable, StyledExt,
+    v_flex, ActiveTheme as _, Icon, IconName, Sizable, StyledExt, TitleBar,
 };
 use std::{path::PathBuf, time::Duration};
 
@@ -166,16 +165,17 @@ impl EntryScreen {
 
                 // Filter templates by search query
                 if !search_lower.is_empty() {
-                    templates.retain(|card| {
-                        match card {
-                            CardItem::BlankProject => "blank".contains(&search_lower),
-                            CardItem::Template(template) => {
-                                template.name.to_lowercase().contains(&search_lower)
-                                    || template.description.to_lowercase().contains(&search_lower)
-                                    || template.tags.iter().any(|tag| tag.to_lowercase().contains(&search_lower))
-                            }
-                            _ => true,
+                    templates.retain(|card| match card {
+                        CardItem::BlankProject => "blank".contains(&search_lower),
+                        CardItem::Template(template) => {
+                            template.name.to_lowercase().contains(&search_lower)
+                                || template.description.to_lowercase().contains(&search_lower)
+                                || template
+                                    .tags
+                                    .iter()
+                                    .any(|tag| tag.to_lowercase().contains(&search_lower))
                         }
+                        _ => true,
                     });
                 }
 
@@ -384,80 +384,82 @@ impl EntryScreen {
                                     .child(match self.active_tab {
                                         EntryTab::Manage => "Recent Projects",
                                         EntryTab::Create => "Create New Project",
-                                    })
+                                    }),
                             )
                             .child(
                                 div()
                                     .text_base()
                                     .text_color(cx.theme().muted_foreground)
                                     .child(match self.active_tab {
-                                        EntryTab::Manage => "Open a recent project or select a folder",
-                                        EntryTab::Create => "Choose a template or start from scratch",
-                                    })
-                            )
+                                        EntryTab::Manage => {
+                                            "Open a recent project or select a folder"
+                                        }
+                                        EntryTab::Create => {
+                                            "Choose a template or start from scratch"
+                                        }
+                                    }),
+                            ),
                     )
             )
             .child(
                 // Search bar
-                div()
-                    .w(px(400.))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_2()
-                            .px_3()
-                            .h(px(40.))
-                            .rounded(px(8.))
-                            .bg(cx.theme().muted.opacity(0.3))
-                            .border_1()
-                            .border_color(cx.theme().border)
-                            .child(
-                                Icon::new(IconName::Search)
-                                    .size(px(16.))
-                                    .text_color(cx.theme().muted_foreground)
+                div().w(px(400.)).child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .px_3()
+                        .h(px(40.))
+                        .rounded(px(8.))
+                        .bg(cx.theme().muted.opacity(0.3))
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .child(
+                            Icon::new(IconName::Search)
+                                .size(px(16.))
+                                .text_color(cx.theme().muted_foreground),
+                        )
+                        .child(
+                            div().flex_1().child(
+                                gpui::div()
+                                    .w_full()
+                                    .text_color(cx.theme().foreground)
+                                    .on_key_down(cx.listener(
+                                        |screen, event: &KeyDownEvent, _, cx| {
+                                            if let Some(text) =
+                                                event.keystroke.key.strip_prefix("char:")
+                                            {
+                                                screen.search_query.push_str(text);
+                                                cx.notify();
+                                            } else if event.keystroke.key == "backspace" {
+                                                screen.search_query.pop();
+                                                cx.notify();
+                                            }
+                                        },
+                                    ))
+                                    .child(if self.search_query.is_empty() {
+                                        div()
+                                            .text_sm()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child("Search templates...")
+                                    } else {
+                                        div().text_sm().child(self.search_query.clone())
+                                    }),
+                            ),
+                        )
+                        .when(!self.search_query.is_empty(), |this| {
+                            this.child(
+                                Button::new("clear-search")
+                                    .small()
+                                    .ghost()
+                                    .icon(IconName::Close)
+                                    .on_click(cx.listener(|screen, _, _, cx| {
+                                        screen.search_query.clear();
+                                        cx.notify();
+                                    })),
                             )
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .child(
-                                        gpui::div()
-                                            .w_full()
-                                            .text_color(cx.theme().foreground)
-                                            .on_key_down(cx.listener(|screen, event: &KeyDownEvent, _, cx| {
-                                                if let Some(text) = event.keystroke.key.strip_prefix("char:") {
-                                                    screen.search_query.push_str(text);
-                                                    cx.notify();
-                                                } else if event.keystroke.key == "backspace" {
-                                                    screen.search_query.pop();
-                                                    cx.notify();
-                                                }
-                                            }))
-                                            .child(if self.search_query.is_empty() {
-                                                div()
-                                                    .text_sm()
-                                                    .text_color(cx.theme().muted_foreground)
-                                                    .child("Search templates...")
-                                            } else {
-                                                div()
-                                                    .text_sm()
-                                                    .child(self.search_query.clone())
-                                            })
-                                    )
-                            )
-                            .when(!self.search_query.is_empty(), |this| {
-                                this.child(
-                                    Button::new("clear-search")
-                                        .small()
-                                        .ghost()
-                                        .icon(IconName::Close)
-                                        .on_click(cx.listener(|screen, _, _, cx| {
-                                            screen.search_query.clear();
-                                            cx.notify();
-                                        }))
-                                )
-                            })
-                    )
+                        }),
+                ),
             )
     }
 
@@ -467,16 +469,13 @@ impl EntryScreen {
             .bg(cx.theme().sidebar)
             .overflow_y_hidden()
             .child(
-                v_flex()
-                    .w_full()
-                    .scrollable(Axis::Vertical)
-                    .child(
-                        v_flex()
-                            .gap_6()
-                            .p_6()
-                            .child(self.render_logo(cx))
-                            .child(self.render_nav_buttons(cx))
-                    )
+                v_flex().w_full().scrollable(Axis::Vertical).child(
+                    v_flex()
+                        .gap_6()
+                        .p_6()
+                        .child(self.render_logo(cx))
+                        .child(self.render_nav_buttons(cx)),
+                ),
             )
     }
 
@@ -499,22 +498,22 @@ impl EntryScreen {
                             .child(
                                 Icon::new(IconName::CircleCheck)
                                     .size(px(24.))
-                                    .text_color(cx.theme().primary_foreground)
-                            )
+                                    .text_color(cx.theme().primary_foreground),
+                            ),
                     )
                     .child(
                         div()
                             .text_xl()
                             .font_bold()
                             .text_color(cx.theme().foreground)
-                            .child("Pulsar")
-                    )
+                            .child("Pulsar"),
+                    ),
             )
             .child(
                 div()
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
-                    .child("Game Engine")
+                    .child("Game Engine"),
             )
     }
 
@@ -527,19 +526,8 @@ impl EntryScreen {
                 EntryTab::Manage,
                 cx,
             ))
-            .child(self.render_nav_button(
-                "Create New",
-                IconName::Plus,
-                EntryTab::Create,
-                cx,
-            ))
-            .child(
-                div()
-                    .h(px(1.))
-                    .w_full()
-                    .my_2()
-                    .bg(cx.theme().border)
-            )
+            .child(self.render_nav_button("Create New", IconName::Plus, EntryTab::Create, cx))
+            .child(div().h(px(1.)).w_full().my_2().bg(cx.theme().border))
             .child(
                 Button::new("open-folder-nav")
                     .ghost()
@@ -549,7 +537,7 @@ impl EntryScreen {
                     .label("Open Folder")
                     .on_click(cx.listener(|screen, _, window, cx| {
                         screen.open_folder_dialog(window, cx);
-                    }))
+                    })),
             )
             .child(
                 Button::new("clone-git-nav")
@@ -561,7 +549,7 @@ impl EntryScreen {
                     .on_click(cx.listener(|screen, _, _, cx| {
                         screen.show_git_clone_dialog = true;
                         cx.notify();
-                    }))
+                    })),
             )
     }
 
@@ -612,16 +600,24 @@ impl EntryScreen {
 
                 div()
                     .cursor_pointer()
-                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |screen, _, window, cx| {
-                        screen.selected_card = Some(index);
-                        screen.update_inputs_for_card(&card_clone, window, cx);
-                        cx.notify();
-                    }))
+                    .on_mouse_down(
+                        gpui::MouseButton::Left,
+                        cx.listener(move |screen, _, window, cx| {
+                            screen.selected_card = Some(index);
+                            screen.update_inputs_for_card(&card_clone, window, cx);
+                            cx.notify();
+                        }),
+                    )
                     .child(card::render_card(card_item, index, is_selected, cx))
             }))
     }
 
-    fn update_inputs_for_card(&mut self, card: &CardItem, window: &mut Window, cx: &mut Context<Self>) {
+    fn update_inputs_for_card(
+        &mut self,
+        card: &CardItem,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match card {
             CardItem::Project(p) => {
                 let name = p.name.clone();
