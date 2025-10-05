@@ -687,10 +687,10 @@ impl Render for EntryScreen {
                         div()
                             .id("entry-screen-content")
                             .flex_1()
+                            .overflow_y_hidden()
                             .child(
                                 v_flex()
                                     .w_full()
-                                    .h_full()
                                     .scrollable(Axis::Vertical)
                                     .child(
                                         v_flex()
