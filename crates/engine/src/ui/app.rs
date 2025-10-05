@@ -134,14 +134,15 @@ impl PulsarApp {
 
     fn on_tab_panel_event(
         &mut self,
-        _tabs: &TabPanel,
+        _tabs: &Entity<TabPanel>,
         event: &PanelEvent,
+        _window: &mut Window,
         _cx: &mut Context<Self>,
     ) {
         match event {
-            &PanelEvent::TabClosed(entity_id) => {
+            PanelEvent::TabClosed(entity_id) => {
                 self.blueprint_editors
-                    .retain(|e| e.entity_id() != entity_id);
+                    .retain(|e| e.entity_id() != *entity_id);
             }
             _ => {}
         }
