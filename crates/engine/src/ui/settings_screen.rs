@@ -53,6 +53,10 @@ impl Render for SettingsScreen {
             .bg(theme.background)
             .p_8()
             .gap_8()
+            .on_action(cx.listener(|screen: &mut SettingsScreen, action: &SelectThemeAction, _window: &mut Window, cx: &mut Context<SettingsScreen>| {
+                screen.selected_theme = action.theme_name.clone();
+                cx.notify();
+            }))
             .child(
                 h_flex()
                     .items_center()
@@ -108,11 +112,11 @@ impl Render for SettingsScreen {
                                                 let is_selected = *name == selected;
                                                 // Use a custom Action type for theme selection
 
-                                                                                                menu = menu.menu_with_check(
-                                                                                                    name.clone(),
-                                                                                                    is_selected,
-                                                                                                    Box::new(SelectThemeAction::new(name.clone())),
-                                                                                                );
+                                                menu = menu.menu_with_check(
+                                                    name.clone(),
+                                                    is_selected,
+                                                    Box::new(SelectThemeAction::new(name.clone())),
+                                                );
 
                                             }
                                             menu
