@@ -16,7 +16,12 @@ use serde::{Deserialize, Serialize};
 #[folder = "../../themes"]
 struct EmbeddedThemes;
 
-const STATE_FILE: &str = "target/state.json";
+fn get_state_file_path() -> PathBuf {
+    let proj_dirs = directories::ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
+        .expect("Could not determine app data directory");
+    let app_data_dir = proj_dirs.data_dir();
+    app_data_dir.join("state.json")
+}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct State {
@@ -35,7 +40,8 @@ impl Default for State {
 
 pub fn init(cx: &mut App) {
     // Load last theme state
-    let json = std::fs::read_to_string(STATE_FILE).unwrap_or(String::default());
+    let state_file_path = get_state_file_path();
+    let json = std::fs::read_to_string(&state_file_path).unwrap_or(String::default());
     tracing::info!("Load themes...");
     let state = serde_json::from_str::<State>(&json).unwrap_or_default();
 
@@ -87,7 +93,11 @@ pub fn init(cx: &mut App) {
         };
 
         let json = serde_json::to_string_pretty(&state).unwrap();
-        std::fs::write(STATE_FILE, json).unwrap();
+        let state_file_path = get_state_file_path();
+        if let Some(parent) = state_file_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        std::fs::write(state_file_path, json).unwrap();
     })
     .detach();
 }
