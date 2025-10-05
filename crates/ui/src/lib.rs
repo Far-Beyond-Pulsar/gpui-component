@@ -2,15 +2,15 @@ mod event;
 mod global_state;
 mod icon;
 mod index_path;
-pub mod viewport_final; // Final working zero-copy viewport
 #[cfg(any(feature = "inspector", debug_assertions))]
 mod inspector;
 mod kbd;
-mod menu;
+pub mod menu;
 mod root;
 mod styled;
 mod time;
 mod title_bar;
+pub mod viewport_final; // Final working zero-copy viewport
 mod virtual_list;
 mod window_border;
 
