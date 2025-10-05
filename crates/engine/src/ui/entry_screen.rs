@@ -263,6 +263,8 @@ impl EntryScreen {
     }
     
     fn launch_project(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        eprintln!("DEBUG: launch_project called with path: {:?}", path);
+        
         let project_name = path.file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("Unknown")
@@ -280,7 +282,9 @@ impl EntryScreen {
         self.recent_projects.add_or_update(recent_project);
         self.recent_projects.save(&self.recent_projects_path);
         
+        eprintln!("DEBUG: Emitting ProjectSelected event");
         cx.emit(crate::ui::project_selector::ProjectSelected { path });
+        eprintln!("DEBUG: ProjectSelected event emitted");
     }
     
     fn remove_recent_project(&mut self, path: String, cx: &mut Context<Self>) {
