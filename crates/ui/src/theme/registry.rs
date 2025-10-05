@@ -101,15 +101,16 @@ impl ThemeRegistry {
     {
         Self::global_mut(cx).themes_dir = themes_dir.clone();
 
-        // Load theme in the background.
+        // Reload themes synchronously
+        Self::reload_themes(cx);
+        on_load(cx);
+
+        // Then watch for changes
         cx.spawn(async move |cx| {
             _ = cx.update(|cx| {
                 if let Err(err) = Self::_watch_themes_dir(themes_dir, cx) {
                     tracing::error!("Failed to watch themes directory: {}", err);
                 }
-
-                Self::reload_themes(cx);
-                on_load(cx);
             });
         })
         .detach();

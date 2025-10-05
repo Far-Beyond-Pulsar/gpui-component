@@ -106,6 +106,7 @@ fn main() {
 
     app.run(move |cx| {
         gpui_component::init(cx);
+        crate::themes::init(cx);
 
         cx.bind_keys([KeyBinding::new("ctrl-,", OpenSettings, None)]);
         cx.on_action(|_: &OpenSettings, cx| {
