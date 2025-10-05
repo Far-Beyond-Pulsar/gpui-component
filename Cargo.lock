@@ -5017,6 +5017,8 @@ dependencies = [
  "git2",
  "gpui",
  "gpui-component",
+ "open",
+ "parking_lot",
  "prettyplease",
  "pulsar_std",
  "quote",

@@ -34,6 +34,8 @@ rfd = "0.15"
 git2 = "0.19"
 directories = "5"
 toml = "0.8"
+parking_lot = "0.12"
+open = "5"
 
 # New compiler dependencies
 syn = { version = "2.0", features = ["full", "parsing", "extra-traits", "visit", "visit-mut"] }

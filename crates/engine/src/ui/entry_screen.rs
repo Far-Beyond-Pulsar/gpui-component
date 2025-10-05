@@ -1,15 +1,20 @@
 use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, StyledExt, Icon, IconName, ActiveTheme as _, TitleBar, Placement, ContextModal
+    h_flex, v_flex, StyledExt, Icon, IconName, ActiveTheme as _, TitleBar,
+    progress::Progress, input::TextInput,
 };
 use std::path::PathBuf;
 use crate::recent_projects::{RecentProject, RecentProjectsList};
+use std::sync::Arc;
+use parking_lot::Mutex;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum EntryScreenView {
     Recent,
     Templates,
+    NewProject,
+    CloneGit,
 }
 
 /// Template definition with Git repository info
@@ -19,54 +24,64 @@ struct Template {
     description: String,
     icon: IconName,
     repo_url: String,
-    image_url: Option<String>,
+    category: String,
 }
 
 impl Template {
-    fn new(name: &str, desc: &str, icon: IconName, repo_url: &str) -> Self {
+    fn new(name: &str, desc: &str, icon: IconName, repo_url: &str, category: &str) -> Self {
         Self {
             name: name.to_string(),
             description: desc.to_string(),
             icon,
             repo_url: repo_url.to_string(),
-            image_url: None,
+            category: category.to_string(),
         }
-    }
-    
-    fn with_image(mut self, image_url: &str) -> Self {
-        self.image_url = Some(image_url.to_string());
-        self
     }
 }
 
-/// EntryScreen: Modern entry UI with sidebar navigation for recent projects and templates.
+#[derive(Clone)]
+struct CloneProgress {
+    current: usize,
+    total: usize,
+    message: String,
+    completed: bool,
+    error: Option<String>,
+}
+
+/// EntryScreen: AAA-quality project manager
 pub struct EntryScreen {
     view: EntryScreenView,
     recent_projects: RecentProjectsList,
     templates: Vec<Template>,
     recent_projects_path: PathBuf,
+    clone_progress: Option<Arc<Mutex<CloneProgress>>>,
+    new_project_name: String,
+    new_project_path: Option<PathBuf>,
+    git_repo_url: String,
+    search_query: String,
 }
 
 impl EntryScreen {
     pub fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
-        // Load recent projects from disk
         let recent_projects_path = directories::ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
             .map(|proj| proj.data_dir().join("recent_projects.json"))
             .unwrap_or_else(|| PathBuf::from("recent_projects.json"));
         
         let recent_projects = RecentProjectsList::load(&recent_projects_path);
         
-        // Define templates with their Git repositories
         let templates = vec![
-            Template::new("Blank Project", "A new empty project with basic structure", IconName::Folder, "https://github.com/pulsar-templates/blank.git"),
-            Template::new("2D Platformer", "Classic 2D side-scrolling platformer starter", IconName::Gamepad, "https://github.com/pulsar-templates/2d-platformer.git"),
-            Template::new("3D First-Person", "First-person 3D game with basic controls", IconName::Cube, "https://github.com/pulsar-templates/3d-fps.git"),
-            Template::new("Top-Down RPG", "Top-down RPG with inventory and dialogue", IconName::Map, "https://github.com/pulsar-templates/topdown-rpg.git"),
-            Template::new("Visual Novel", "Visual novel with branching narratives", IconName::BookOpen, "https://github.com/pulsar-templates/visual-novel.git"),
-            Template::new("Puzzle Game", "Grid-based puzzle game foundation", IconName::Box, "https://github.com/pulsar-templates/puzzle.git"),
-            Template::new("Tower Defense", "Tower defense with enemy waves", IconName::Shield, "https://github.com/pulsar-templates/tower-defense.git"),
-            Template::new("Card Game", "Card-based game with deck system", IconName::CreditCard, "https://github.com/pulsar-templates/card-game.git"),
-            Template::new("Racing Game", "Racing game with physics", IconName::Rocket, "https://github.com/pulsar-templates/racing.git"),
+            Template::new("Blank Project", "Empty project with minimal structure", IconName::Folder, "https://github.com/pulsar-templates/blank.git", "Basic"),
+            Template::new("Core", "Core engine features and systems", IconName::Settings, "https://github.com/pulsar-templates/core.git", "Basic"),
+            Template::new("2D Platformer", "Classic side-scrolling platformer", IconName::Gamepad, "https://github.com/pulsar-templates/2d-platformer.git", "2D"),
+            Template::new("2D Top-Down", "Top-down 2D game with camera", IconName::Map, "https://github.com/pulsar-templates/2d-topdown.git", "2D"),
+            Template::new("3D First Person", "FPS with movement and camera", IconName::Eye, "https://github.com/pulsar-templates/3d-fps.git", "3D"),
+            Template::new("3D Platformer", "3D platformer with physics", IconName::Cube, "https://github.com/pulsar-templates/3d-platformer.git", "3D"),
+            Template::new("Tower Defense", "Wave-based tower defense", IconName::Shield, "https://github.com/pulsar-templates/tower-defense.git", "Strategy"),
+            Template::new("Action RPG", "Action-oriented RPG systems", IconName::Star, "https://github.com/pulsar-templates/action-rpg.git", "RPG"),
+            Template::new("Visual Novel", "Narrative-driven visual novel", IconName::BookOpen, "https://github.com/pulsar-templates/visual-novel.git", "Narrative"),
+            Template::new("Puzzle", "Puzzle game mechanics", IconName::Box, "https://github.com/pulsar-templates/puzzle.git", "Puzzle"),
+            Template::new("Card Game", "Card-based game system", IconName::CreditCard, "https://github.com/pulsar-templates/card-game.git", "Card"),
+            Template::new("Racing", "Racing game with physics", IconName::Rocket, "https://github.com/pulsar-templates/racing.git", "Racing"),
         ];
         
         Self {
@@ -74,7 +89,18 @@ impl EntryScreen {
             recent_projects,
             templates,
             recent_projects_path,
+            clone_progress: None,
+            new_project_name: String::new(),
+            new_project_path: None,
+            git_repo_url: String::new(),
+            search_query: String::new(),
         }
+    }
+    
+    fn calculate_columns(&self, _width: Pixels) -> usize {
+        // For now, use a fixed responsive column count
+        // In production, read actual window width properly
+        3 // Default to 3 columns
     }
     
     fn open_folder_dialog(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -87,15 +113,13 @@ impl EntryScreen {
         cx.spawn(async move |this, mut cx| {
             if let Some(folder) = file_dialog.pick_folder().await {
                 let path = folder.path().to_path_buf();
-                
-                // Validate that Pulsar.toml exists
                 let toml_path = path.join("Pulsar.toml");
+                
                 if !toml_path.exists() {
-                    eprintln!("Invalid project: Pulsar.toml not found in selected folder");
+                    eprintln!("Invalid project: Pulsar.toml not found");
                     return;
                 }
                 
-                // Add to recent projects
                 let project_name = path.file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("Unknown")
@@ -106,7 +130,7 @@ impl EntryScreen {
                 let recent_project = RecentProject {
                     name: project_name,
                     path: path.to_string_lossy().to_string(),
-                    last_opened: Some(chrono::Local::now().format("%Y-%m-%d").to_string()),
+                    last_opened: Some(chrono::Local::now().format("%Y-%m-%d %H:%M").to_string()),
                     is_git,
                 };
                 
@@ -121,39 +145,82 @@ impl EntryScreen {
         }).detach();
     }
     
-    fn clone_template(&self, template: &Template, _window: &mut Window, cx: &mut Context<Self>) {
-        let repo_url = template.repo_url.clone();
-        let template_name = template.name.clone();
+    fn clone_git_repo(&mut self, repo_url: String, target_name: String, _window: &mut Window, cx: &mut Context<Self>) {
+        let progress = Arc::new(Mutex::new(CloneProgress {
+            current: 0,
+            total: 100,
+            message: "Initializing...".to_string(),
+            completed: false,
+            error: None,
+        }));
+        
+        self.clone_progress = Some(progress.clone());
         let recent_projects_path = self.recent_projects_path.clone();
         
-        // Ask user where to clone the template
-        let file_dialog = rfd::AsyncFileDialog::new()
-            .set_title(format!("Choose location for {}", template_name))
-            .set_directory(std::env::current_dir().unwrap_or_default());
-        
         cx.spawn(async move |this, mut cx| {
+            let file_dialog = rfd::AsyncFileDialog::new()
+                .set_title(format!("Choose location for {}", target_name))
+                .set_directory(std::env::current_dir().unwrap_or_default());
+            
             if let Some(folder) = file_dialog.pick_folder().await {
                 let parent_path = folder.path().to_path_buf();
-                let project_name = template_name.replace(" ", "_").to_lowercase();
+                let project_name = target_name.replace(" ", "_").to_lowercase();
                 let target_path = parent_path.join(&project_name);
+                let target_path_str = target_path.to_string_lossy().to_string();
                 
-                // Clone the repository
-                eprintln!("Cloning template from {} to {:?}", repo_url, target_path);
+                {
+                    let mut prog = progress.lock();
+                    prog.message = "Cloning repository...".to_string();
+                    prog.current = 10;
+                }
                 
-                // Use git2 or std::process::Command to clone
-                let clone_result = std::process::Command::new("git")
-                    .args(["clone", &repo_url, target_path.to_str().unwrap()])
-                    .output();
+                cx.update(|cx| {
+                    this.update(cx, |_, cx| cx.notify()).ok();
+                }).ok();
                 
-                match clone_result {
-                    Ok(output) if output.status.success() => {
-                        eprintln!("Successfully cloned template");
+                let repo_url_clone = repo_url.clone();
+                let progress_clone = progress.clone();
+                let target_path_clone = target_path.clone();
+                
+                let repo_result = std::thread::spawn(move || {
+                    let mut callbacks = git2::RemoteCallbacks::new();
+                    let progress_inner = progress_clone.clone();
+                    
+                    callbacks.transfer_progress(move |stats| {
+                        let mut prog = progress_inner.lock();
+                        prog.current = stats.received_objects();
+                        prog.total = stats.total_objects();
+                        prog.message = format!(
+                            "Receiving objects: {}/{} ({:.1}%)",
+                            stats.received_objects(),
+                            stats.total_objects(),
+                            (stats.received_objects() as f32 / stats.total_objects() as f32) * 100.0
+                        );
+                        true
+                    });
+                    
+                    let mut fetch_options = git2::FetchOptions::new();
+                    fetch_options.remote_callbacks(callbacks);
+                    
+                    let mut builder = git2::build::RepoBuilder::new();
+                    builder.fetch_options(fetch_options);
+                    
+                    builder.clone(&repo_url_clone, &target_path_clone)
+                }).join();
+                
+                match repo_result {
+                    Ok(Ok(_repo)) => {
+                        {
+                            let mut prog = progress.lock();
+                            prog.completed = true;
+                            prog.current = prog.total;
+                            prog.message = "Clone completed!".to_string();
+                        }
                         
-                        // Add to recent projects
                         let recent_project = RecentProject {
                             name: project_name.clone(),
-                            path: target_path.to_string_lossy().to_string(),
-                            last_opened: Some(chrono::Local::now().format("%Y-%m-%d").to_string()),
+                            path: target_path_str,
+                            last_opened: Some(chrono::Local::now().format("%Y-%m-%d %H:%M").to_string()),
                             is_git: true,
                         };
                         
@@ -161,23 +228,41 @@ impl EntryScreen {
                             this.update(cx, |screen, cx| {
                                 screen.recent_projects.add_or_update(recent_project);
                                 screen.recent_projects.save(&recent_projects_path);
+                                screen.clone_progress = None;
                                 cx.emit(crate::ui::project_selector::ProjectSelected { path: target_path });
                             }).ok();
                         }).ok();
                     }
-                    Ok(output) => {
-                        eprintln!("Failed to clone template: {}", String::from_utf8_lossy(&output.stderr));
+                    Ok(Err(e)) => {
+                        let mut prog = progress.lock();
+                        prog.error = Some(format!("Clone failed: {}", e));
+                        prog.message = "Error occurred".to_string();
                     }
-                    Err(e) => {
-                        eprintln!("Failed to execute git: {}", e);
+                    Err(_) => {
+                        let mut prog = progress.lock();
+                        prog.error = Some("Thread panic during clone".to_string());
                     }
                 }
+                
+                cx.update(|cx| {
+                    this.update(cx, |_, cx| cx.notify()).ok();
+                }).ok();
+            } else {
+                cx.update(|cx| {
+                    this.update(cx, |screen, cx| {
+                        screen.clone_progress = None;
+                        cx.notify();
+                    }).ok();
+                }).ok();
             }
         }).detach();
     }
     
-    fn open_project(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        // Update last opened time
+    fn clone_template(&mut self, template: &Template, window: &mut Window, cx: &mut Context<Self>) {
+        self.clone_git_repo(template.repo_url.clone(), template.name.clone(), window, cx);
+    }
+    
+    fn launch_project(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         let project_name = path.file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("Unknown")
@@ -188,7 +273,7 @@ impl EntryScreen {
         let recent_project = RecentProject {
             name: project_name,
             path: path.to_string_lossy().to_string(),
-            last_opened: Some(chrono::Local::now().format("%Y-%m-%d").to_string()),
+            last_opened: Some(chrono::Local::now().format("%Y-%m-%d %H:%M").to_string()),
             is_git,
         };
         
@@ -203,91 +288,117 @@ impl EntryScreen {
         self.recent_projects.save(&self.recent_projects_path);
         cx.notify();
     }
+    
+    fn browse_project_location(&mut self, cx: &mut Context<Self>) {
+        let file_dialog = rfd::AsyncFileDialog::new()
+            .set_title("Choose Project Location")
+            .set_directory(std::env::current_dir().unwrap_or_default());
+        
+        cx.spawn(async move |this, mut cx| {
+            if let Some(folder) = file_dialog.pick_folder().await {
+                cx.update(|cx| {
+                    this.update(cx, |screen, cx| {
+                        screen.new_project_path = Some(folder.path().to_path_buf());
+                        cx.notify();
+                    }).ok();
+                }).ok();
+            }
+        }).detach();
+    }
+    
+    fn create_new_project(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if self.new_project_name.is_empty() {
+            return;
+        }
+        
+        let name = self.new_project_name.clone();
+        let base_path = self.new_project_path.clone()
+            .or_else(|| std::env::current_dir().ok())
+            .unwrap_or_else(|| PathBuf::from("."));
+        
+        let project_path = base_path.join(&name);
+        let recent_projects_path = self.recent_projects_path.clone();
+        
+        cx.spawn(async move |this, mut cx| {
+            if let Err(e) = std::fs::create_dir_all(&project_path) {
+                eprintln!("Failed to create project directory: {}", e);
+                return;
+            }
+            
+            let toml_content = format!(
+                r#"[project]
+name = "{}"
+version = "0.1.0"
+engine_version = "0.1.23"
+
+[settings]
+default_scene = "scenes/main.scene"
+"#,
+                name
+            );
+            
+            if let Err(e) = std::fs::write(project_path.join("Pulsar.toml"), toml_content) {
+                eprintln!("Failed to create Pulsar.toml: {}", e);
+                return;
+            }
+            
+            let dirs = ["assets", "scenes", "scripts", "prefabs"];
+            for dir in dirs {
+                let _ = std::fs::create_dir_all(project_path.join(dir));
+            }
+            
+            let _ = std::process::Command::new("git")
+                .args(["init"])
+                .current_dir(&project_path)
+                .output();
+            
+            let recent_project = RecentProject {
+                name: name.clone(),
+                path: project_path.to_string_lossy().to_string(),
+                last_opened: Some(chrono::Local::now().format("%Y-%m-%d %H:%M").to_string()),
+                is_git: project_path.join(".git").exists(),
+            };
+            
+            cx.update(|cx| {
+                this.update(cx, |screen, cx| {
+                    screen.recent_projects.add_or_update(recent_project);
+                    screen.recent_projects.save(&recent_projects_path);
+                    screen.new_project_name.clear();
+                    screen.view = EntryScreenView::Recent;
+                    cx.emit(crate::ui::project_selector::ProjectSelected { path: project_path });
+                }).ok();
+            }).ok();
+        }).detach();
+    }
 }
 
 impl EventEmitter<crate::ui::project_selector::ProjectSelected> for EntryScreen {}
 
 impl Render for EntryScreen {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
-        let is_recent_active = self.view == EntryScreenView::Recent;
-        let is_templates_active = self.view == EntryScreenView::Templates;
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let bounds = window.viewport_size();
+        let cols = self.calculate_columns(bounds.width);
+        let view = self.view;
         
         v_flex()
             .size_full()
-            .bg(theme.background)
-            // Title bar at the top
+            .bg(cx.theme().background)
             .child(TitleBar::new())
-            // Main content area
             .child(
                 h_flex()
                     .size_full()
+                    .child(self.render_sidebar(cx))
                     .child(
-                        // Sidebar with icons and tooltips
-                        v_flex()
-                            .w(px(72.))
-                            .h_full()
-                            .bg(theme.sidebar)
-                            .border_r_1()
-                            .border_color(theme.border)
-                            .gap_2()
-                            .items_center()
-                            .pt_8()
-                            .child(
-                                Button::new("recent-projects")
-                                    .icon(IconName::FolderClosed)
-                                    .label("")
-                                    .tooltip("Recent Projects")
-                                    .with_variant(if is_recent_active {
-                                        gpui_component::button::ButtonVariant::Primary
-                                    } else {
-                                        gpui_component::button::ButtonVariant::Ghost
-                                    })
-                                    .on_click(cx.listener(|this: &mut Self, _, _, cx| {
-                                        this.view = EntryScreenView::Recent;
-                                        cx.notify();
-                                    }))
-                            )
-                            .child(
-                                Button::new("templates")
-                                    .icon(IconName::Star)
-                                    .label("")
-                                    .tooltip("Templates")
-                                    .with_variant(if is_templates_active {
-                                        gpui_component::button::ButtonVariant::Primary
-                                    } else {
-                                        gpui_component::button::ButtonVariant::Ghost
-                                    })
-                                    .on_click(cx.listener(|this: &mut Self, _, _, cx| {
-                                        this.view = EntryScreenView::Templates;
-                                        cx.notify();
-                                    }))
-                            )
-                            .child(
-                                // Spacer
-                                div().flex_1()
-                            )
-                            .child(
-                                Button::new("new-project")
-                                    .icon(IconName::Plus)
-                                    .label("")
-                                    .tooltip("Open Project Folder")
-                                    .with_variant(gpui_component::button::ButtonVariant::Ghost)
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.open_folder_dialog(window, cx);
-                                    }))
-                            )
-                    )
-                    .child(
-                        // Main area
                         v_flex()
                             .flex_1()
                             .h_full()
-                            .bg(theme.background)
+                            .bg(cx.theme().background)
                             .child(
-                                match self.view {
-                                    EntryScreenView::Recent => self.render_recent_projects(cx).into_any_element(),
-                                    EntryScreenView::Templates => self.render_templates(cx).into_any_element(),
+                                match view {
+                                    EntryScreenView::Recent => self.render_recent_projects(cols, cx).into_any_element(),
+                                    EntryScreenView::Templates => self.render_templates(cols, cx).into_any_element(),
+                                    EntryScreenView::NewProject => self.render_new_project(cx).into_any_element(),
+                                    EntryScreenView::CloneGit => self.render_clone_git(cx).into_any_element(),
                                 }
                             )
                     )
@@ -296,7 +407,100 @@ impl Render for EntryScreen {
 }
 
 impl EntryScreen {
-    fn render_recent_projects(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        
+        v_flex()
+            .w(px(72.))
+            .h_full()
+            .bg(theme.sidebar)
+            .border_r_1()
+            .border_color(theme.border)
+            .gap_2()
+            .items_center()
+            .pt_8()
+            .pb_4()
+            .child(
+                Button::new("recent-projects")
+                    .icon(IconName::FolderClosed)
+                    .label("")
+                    .tooltip("Recent Projects")
+                    .with_variant(if self.view == EntryScreenView::Recent {
+                        gpui_component::button::ButtonVariant::Primary
+                    } else {
+                        gpui_component::button::ButtonVariant::Ghost
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.view = EntryScreenView::Recent;
+                        cx.notify();
+                    }))
+            )
+            .child(
+                Button::new("templates")
+                    .icon(IconName::Star)
+                    .label("")
+                    .tooltip("Project Templates")
+                    .with_variant(if self.view == EntryScreenView::Templates {
+                        gpui_component::button::ButtonVariant::Primary
+                    } else {
+                        gpui_component::button::ButtonVariant::Ghost
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.view = EntryScreenView::Templates;
+                        cx.notify();
+                    }))
+            )
+            .child(
+                Button::new("new-project")
+                    .icon(IconName::Plus)
+                    .label("")
+                    .tooltip("Create New Project")
+                    .with_variant(if self.view == EntryScreenView::NewProject {
+                        gpui_component::button::ButtonVariant::Primary
+                    } else {
+                        gpui_component::button::ButtonVariant::Ghost
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.view = EntryScreenView::NewProject;
+                        cx.notify();
+                    }))
+            )
+            .child(
+                Button::new("clone-git")
+                    .icon(IconName::GitHub)
+                    .label("")
+                    .tooltip("Clone from Git")
+                    .with_variant(if self.view == EntryScreenView::CloneGit {
+                        gpui_component::button::ButtonVariant::Primary
+                    } else {
+                        gpui_component::button::ButtonVariant::Ghost
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.view = EntryScreenView::CloneGit;
+                        cx.notify();
+                    }))
+            )
+            .child(div().flex_1())
+            .child(
+                Button::new("open-existing")
+                    .icon(IconName::FolderOpen)
+                    .label("")
+                    .tooltip("Open Existing Project")
+                    .with_variant(gpui_component::button::ButtonVariant::Ghost)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_folder_dialog(window, cx);
+                    }))
+            )
+            .child(
+                Button::new("settings")
+                    .icon(IconName::Settings)
+                    .label("")
+                    .tooltip("Settings")
+                    .with_variant(gpui_component::button::ButtonVariant::Ghost)
+            )
+    }
+    
+    fn render_recent_projects(&mut self, cols: usize, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         
         v_flex()
@@ -316,13 +520,28 @@ impl EntryScreen {
                             .child("Recent Projects")
                     )
                     .child(
-                        Button::new("open-folder-btn")
-                            .label("Open Folder")
-                            .icon(IconName::FolderOpen)
-                            .with_variant(gpui_component::button::ButtonVariant::Primary)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_folder_dialog(window, cx);
-                            }))
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("refresh-btn")
+                                    .label("Refresh")
+                                    .icon(IconName::ArrowUp)
+                                    .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        let path = this.recent_projects_path.clone();
+                                        this.recent_projects = RecentProjectsList::load(&path);
+                                        cx.notify();
+                                    }))
+                            )
+                            .child(
+                                Button::new("open-folder-btn")
+                                    .label("Open Folder")
+                                    .icon(IconName::FolderOpen)
+                                    .with_variant(gpui_component::button::ButtonVariant::Primary)
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.open_folder_dialog(window, cx);
+                                    }))
+                            )
                     )
             )
             .child(gpui_component::divider::Divider::horizontal())
@@ -348,16 +567,16 @@ impl EntryScreen {
                             div()
                                 .text_sm()
                                 .text_color(theme.muted_foreground)
-                                .child("Open a project or create one from a template")
+                                .child("Create a new project or open an existing one to get started")
                         )
                         .into_any_element()
                 } else {
-                    self.render_project_cards(cx).into_any_element()
+                    self.render_project_grid(cols, cx).into_any_element()
                 }
             })
     }
     
-    fn render_project_cards(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_project_grid(&mut self, cols: usize, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let projects = self.recent_projects.projects.clone();
         
@@ -380,10 +599,8 @@ impl EntryScreen {
                 .bg(theme.sidebar)
                 .shadow_lg()
                 .overflow_hidden()
-                .cursor_pointer()
-                .hover(|style| style.border_color(theme.primary))
+                .hover(|style| style.border_color(theme.primary).shadow_xl())
                 .child(
-                    // Card header with icon and title
                     h_flex()
                         .p_4()
                         .gap_3()
@@ -400,7 +617,8 @@ impl EntryScreen {
                                 .flex_1()
                                 .font_semibold()
                                 .text_color(theme.foreground)
-                                .child(proj_name.clone())
+                                .overflow_hidden()
+                                .child(proj_name)
                         )
                         .when(is_git, |this| {
                             this.child(
@@ -416,28 +634,34 @@ impl EntryScreen {
                         })
                 )
                 .child(
-                    // Card content
                     v_flex()
                         .flex_1()
                         .p_4()
                         .gap_2()
                         .child(
                             div()
-                                .text_sm()
+                                .text_xs()
                                 .text_color(theme.muted_foreground)
-                                .child(format!("Path: {}", proj_path))
+                                .child("Path")
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(theme.foreground)
+                                .overflow_hidden()
+                                .child(proj_path.clone())
                         )
                         .when(proj_last_opened.is_some(), |this| {
                             this.child(
                                 div()
-                                    .text_sm()
+                                    .text_xs()
                                     .text_color(theme.muted_foreground)
+                                    .mt_2()
                                     .child(format!("Last opened: {}", proj_last_opened.as_ref().unwrap()))
                             )
                         })
                 )
                 .child(
-                    // Card actions
                     h_flex()
                         .p_4()
                         .gap_2()
@@ -445,15 +669,27 @@ impl EntryScreen {
                         .border_color(theme.border)
                         .child(
                             Button::new(SharedString::from(format!("open-{}", proj_path)))
-                                .label("Open")
+                                .label("Launch")
                                 .icon(IconName::Play)
                                 .with_variant(gpui_component::button::ButtonVariant::Primary)
                                 .on_click(cx.listener({
                                     let path = PathBuf::from(proj_path.clone());
                                     move |this, _, _, cx| {
-                                        this.open_project(path.clone(), cx);
+                                        this.launch_project(path.clone(), cx);
                                     }
                                 }))
+                        )
+                        .child(
+                            Button::new(SharedString::from(format!("location-{}", proj_path)))
+                                .icon(IconName::FolderOpen)
+                                .tooltip("Open in file manager")
+                                .with_variant(gpui_component::button::ButtonVariant::Ghost)
+                                .on_click({
+                                    let path = proj_path.clone();
+                                    move |_, _, _| {
+                                        let _ = open::that(&path);
+                                    }
+                                })
                         )
                         .child(
                             Button::new(SharedString::from(format!("remove-{}", proj_path)))
@@ -472,14 +708,13 @@ impl EntryScreen {
             row = row.child(card);
             count += 1;
             
-            if count == 3 {
+            if count >= cols {
                 container = container.child(row);
                 row = h_flex().gap_6();
                 count = 0;
             }
         }
         
-        // Add remaining items if any
         if count > 0 {
             container = container.child(row);
         }
@@ -487,9 +722,10 @@ impl EntryScreen {
         container
     }
     
-    fn render_templates(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_templates(&mut self, cols: usize, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let templates = self.templates.clone();
+        let has_progress = self.clone_progress.is_some();
         
         v_flex()
             .size_full()
@@ -497,16 +733,11 @@ impl EntryScreen {
             .p_12()
             .gap_6()
             .child(
-                h_flex()
-                    .justify_between()
-                    .items_center()
-                    .child(
-                        div()
-                            .text_2xl()
-                            .font_bold()
-                            .text_color(theme.foreground)
-                            .child("Project Templates")
-                    )
+                div()
+                    .text_2xl()
+                    .font_bold()
+                    .text_color(theme.foreground)
+                    .child("Project Templates")
             )
             .child(gpui_component::divider::Divider::horizontal())
             .child(
@@ -514,104 +745,405 @@ impl EntryScreen {
                     .text_sm()
                     .text_color(theme.muted_foreground)
                     .mb_4()
-                    .child("Choose a template to start your project. Each template will be cloned from its Git repository.")
+                    .child("Choose a template to start your project. Templates are cloned from Git with full progress tracking.")
             )
-            .child({
-                let mut container = v_flex().gap_6();
-                let mut row = h_flex().gap_6();
-                let mut count = 0;
-                
-                for template in templates.iter() {
-                    let template_clone = template.clone();
-                    let template_icon = template.icon.clone();
-                    let template_name = template.name.clone();
-                    let template_desc = template.description.clone();
-                    
-                    let card = v_flex()
-                        .w(px(320.))
-                        .h(px(280.))
+            .when(has_progress, |this| {
+                this.child(
+                    v_flex()
+                        .gap_4()
+                        .p_6()
                         .border_1()
-                        .border_color(theme.border)
+                        .border_color(theme.primary)
                         .rounded_lg()
                         .bg(theme.sidebar)
-                        .shadow_lg()
-                        .overflow_hidden()
-                        .cursor_pointer()
-                        .hover(|style| style.border_color(theme.primary))
                         .child(
-                            // Optional image placeholder
                             div()
-                                .h(px(120.))
-                                .w_full()
-                                .bg(theme.background)
-                                .border_b_1()
-                                .border_color(theme.border)
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .child(
-                                    Icon::new(template_icon)
-                                        .size(px(48.))
-                                        .text_color(theme.primary)
-                                )
+                                .font_semibold()
+                                .text_color(theme.foreground)
+                                .child("Cloning Repository...")
                         )
                         .child(
-                            // Card header
+                            div()
+                                .text_sm()
+                                .text_color(theme.muted_foreground)
+                                .child("Please wait...")
+                        )
+                        .child(Progress::new().value(50.0))
+                )
+            })
+            .child(self.render_template_grid(templates, cols, cx))
+    }
+    
+    fn render_template_grid(&mut self, templates: Vec<Template>, cols: usize, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        
+        let mut container = v_flex().gap_6();
+        let mut row = h_flex().gap_6();
+        let mut count = 0;
+        
+        for template in templates.iter() {
+            let template_clone = template.clone();
+            let template_icon = template.icon.clone();
+            let template_name = template.name.clone();
+            let template_desc = template.description.clone();
+            let template_category = template.category.clone();
+            
+            let card = v_flex()
+                .w(px(320.))
+                .h(px(300.))
+                .border_1()
+                .border_color(theme.border)
+                .rounded_lg()
+                .bg(theme.sidebar)
+                .shadow_lg()
+                .overflow_hidden()
+                .hover(|style| style.border_color(theme.primary).shadow_xl())
+                .child(
+                    div()
+                        .h(px(120.))
+                        .w_full()
+                        .bg(theme.background)
+                        .border_b_1()
+                        .border_color(theme.border)
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            Icon::new(template_icon)
+                                .size(px(48.))
+                                .text_color(theme.primary)
+                        )
+                )
+                .child(
+                    v_flex()
+                        .p_4()
+                        .gap_2()
+                        .child(
                             h_flex()
-                                .p_4()
-                                .gap_3()
+                                .justify_between()
                                 .items_center()
                                 .child(
                                     div()
-                                        .flex_1()
                                         .font_semibold()
                                         .text_color(theme.foreground)
                                         .child(template_name.clone())
                                 )
+                                .child(
+                                    div()
+                                        .px_2()
+                                        .py_1()
+                                        .rounded_md()
+                                        .bg(theme.muted)
+                                        .text_xs()
+                                        .text_color(theme.foreground)
+                                        .child(template_category)
+                                )
                         )
                         .child(
-                            // Card description
                             div()
-                                .flex_1()
-                                .px_4()
-                                .pb_4()
                                 .text_sm()
                                 .text_color(theme.muted_foreground)
                                 .child(template_desc)
                         )
+                )
+                .child(div().flex_1())
+                .child(
+                    h_flex()
+                        .p_4()
+                        .border_t_1()
+                        .border_color(theme.border)
                         .child(
-                            // Card action
-                            h_flex()
+                            Button::new(SharedString::from(format!("create-{}", template_name)))
+                                .label("Use Template")
+                                .icon(IconName::Plus)
+                                .with_variant(gpui_component::button::ButtonVariant::Primary)
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.clone_template(&template_clone, window, cx);
+                                }))
+                        )
+                );
+            
+            row = row.child(card);
+            count += 1;
+            
+            if count >= cols {
+                container = container.child(row);
+                row = h_flex().gap_6();
+                count = 0;
+            }
+        }
+        
+        if count > 0 {
+            container = container.child(row);
+        }
+        
+        container
+    }
+    
+    fn render_new_project(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        let project_name_empty = self.new_project_name.is_empty();
+        let project_name_display = if project_name_empty {
+            "Enter project name..."
+        } else {
+            &self.new_project_name
+        };
+        let project_path_display = self.new_project_path.as_ref()
+            .and_then(|p| p.to_str())
+            .unwrap_or("Click Browse to select location...");
+        
+        v_flex()
+            .size_full()
+            .p_12()
+            .gap_6()
+            .child(
+                div()
+                    .text_2xl()
+                    .font_bold()
+                    .text_color(theme.foreground)
+                    .child("Create New Project")
+            )
+            .child(gpui_component::divider::Divider::horizontal())
+            .child(
+                v_flex()
+                    .max_w(px(600.))
+                    .gap_6()
+                    .p_6()
+                    .border_1()
+                    .border_color(theme.border)
+                    .rounded_lg()
+                    .bg(theme.sidebar)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .font_semibold()
+                                    .text_color(theme.foreground)
+                                    .child("Project Name")
+                            )
+                            .child(
+                                div()
+                                    .px_3()
+                                    .py_2()
+                                    .border_1()
+                                    .border_color(theme.border)
+                                    .rounded_md()
+                                    .bg(theme.background)
+                                    .text_sm()
+                                    .text_color(theme.foreground)
+                                    .child(project_name_display)
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme.muted_foreground)
+                                    .child("Note: Use the text input component when available")
+                            )
+                    )
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .font_semibold()
+                                    .text_color(theme.foreground)
+                                    .child("Project Location")
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .px_3()
+                                            .py_2()
+                                            .border_1()
+                                            .border_color(theme.border)
+                                            .rounded_md()
+                                            .bg(theme.background)
+                                            .text_sm()
+                                            .text_color(theme.muted_foreground)
+                                            .child(project_path_display)
+                                    )
+                                    .child(
+                                        Button::new("browse-location")
+                                            .label("Browse...")
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.browse_project_location(cx);
+                                            }))
+                                    )
+                            )
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(theme.muted_foreground)
+                            .child("A new folder will be created with your project name in the selected location.")
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .justify_end()
+                            .mt_4()
+                            .child(
+                                Button::new("cancel-new-project")
+                                    .label("Cancel")
+                                    .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.view = EntryScreenView::Recent;
+                                        this.new_project_name.clear();
+                                        this.new_project_path = None;
+                                        cx.notify();
+                                    }))
+                            )
+                            .child(
+                                Button::new("create-new-project")
+                                    .label("Create Project")
+                                    .icon(IconName::Plus)
+                                    .with_variant(gpui_component::button::ButtonVariant::Primary)
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        if !this.new_project_name.is_empty() {
+                                            this.create_new_project(window, cx);
+                                        }
+                                    }))
+                            )
+                    )
+            )
+    }
+    
+    fn render_clone_git(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        let git_url_display = if self.git_repo_url.is_empty() {
+            "Enter Git repository URL..."
+        } else {
+            self.git_repo_url.as_str()
+        };
+        let progress_message = self.clone_progress.as_ref()
+            .map(|p| {
+                let prog = p.lock();
+                (prog.message.clone(), prog.current, prog.total, prog.error.clone())
+            });
+        
+        v_flex()
+            .size_full()
+            .p_12()
+            .gap_6()
+            .child(
+                div()
+                    .text_2xl()
+                    .font_bold()
+                    .text_color(theme.foreground)
+                    .child("Clone from Git Repository")
+            )
+            .child(gpui_component::divider::Divider::horizontal())
+            .child(
+                v_flex()
+                    .max_w(px(600.))
+                    .gap_6()
+                    .p_6()
+                    .border_1()
+                    .border_color(theme.border)
+                    .rounded_lg()
+                    .bg(theme.sidebar)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .font_semibold()
+                                    .text_color(theme.foreground)
+                                    .child("Repository URL")
+                            )
+                            .child(
+                                div()
+                                    .px_3()
+                                    .py_2()
+                                    .border_1()
+                                    .border_color(theme.border)
+                                    .rounded_md()
+                                    .bg(theme.background)
+                                    .text_sm()
+                                    .text_color(theme.foreground)
+                                    .child(git_url_display)
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme.muted_foreground)
+                                    .child("Enter the Git repository URL (HTTPS or SSH)")
+                            )
+                    )
+                    .children(if let Some((message, current, total, error)) = progress_message {
+                        Some(
+                            v_flex()
+                                .gap_3()
                                 .p_4()
-                                .border_t_1()
-                                .border_color(theme.border)
+                                .border_1()
+                                .border_color(theme.primary)
+                                .rounded_md()
+                                .bg(theme.background)
                                 .child(
-                                    Button::new(SharedString::from(format!("create-{}", template_name)))
-                                        .label("Create Project")
-                                        .icon(IconName::Plus)
-                                        .with_variant(gpui_component::button::ButtonVariant::Primary)
-                                        .on_click(cx.listener(move |this, _, window, cx| {
-                                            this.clone_template(&template_clone, window, cx);
-                                        }))
+                                    div()
+                                        .font_semibold()
+                                        .text_color(theme.foreground)
+                                        .child("Cloning Repository...")
                                 )
-                        );
-                    
-                    row = row.child(card);
-                    count += 1;
-                    
-                    if count == 3 {
-                        container = container.child(row);
-                        row = h_flex().gap_6();
-                        count = 0;
-                    }
-                }
-                
-                // Add remaining items if any
-                if count > 0 {
-                    container = container.child(row);
-                }
-                
-                container
-            })
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(theme.muted_foreground)
+                                        .child(message)
+                                )
+                                .child(
+                                    Progress::new()
+                                        .value(if total > 0 {
+                                            (current as f32 / total as f32) * 100.0
+                                        } else {
+                                            0.0
+                                        })
+                                )
+                                .children(error.map(|e| {
+                                    div()
+                                        .text_sm()
+                                        .text_color(theme.muted_foreground)
+                                        .child(e)
+                                }))
+                        )
+                    } else {
+                        None
+                    })
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .justify_end()
+                            .mt_4()
+                            .child(
+                                Button::new("cancel-clone")
+                                    .label("Cancel")
+                                    .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.view = EntryScreenView::Recent;
+                                        this.git_repo_url.clear();
+                                        cx.notify();
+                                    }))
+                            )
+                            .child(
+                                Button::new("clone-repo")
+                                    .label("Clone Repository")
+                                    .icon(IconName::GitHub)
+                                    .with_variant(gpui_component::button::ButtonVariant::Primary)
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        if !this.git_repo_url.is_empty() && this.clone_progress.is_none() {
+                                            let url = this.git_repo_url.clone();
+                                            let name = url.split('/').last()
+                                                .unwrap_or("repository")
+                                                .replace(".git", "");
+                                            this.clone_git_repo(url, name, window, cx);
+                                        }
+                                    }))
+                            )
+                    )
+            )
     }
 }
