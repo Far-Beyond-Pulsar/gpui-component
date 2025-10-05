@@ -197,9 +197,6 @@ impl PulsarApp {
             .iter()
             .enumerate()
             .find_map(|(ix, editor)| {
-                if !editor.is_valid(cx) {
-                    return None;
-                }
                 editor
                     .read(cx)
                     .current_class_path
