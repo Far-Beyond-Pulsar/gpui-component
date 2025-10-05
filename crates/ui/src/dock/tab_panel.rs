@@ -319,8 +319,10 @@ impl TabPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let entity_id = panel.view().entity_id();
         self.detach_panel(panel, window, cx);
         self.remove_self_if_empty(window, cx);
+        cx.emit(PanelEvent::TabClosed(entity_id));
         cx.emit(PanelEvent::ZoomOut);
         cx.emit(PanelEvent::LayoutChanged);
     }

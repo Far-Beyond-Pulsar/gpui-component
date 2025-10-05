@@ -98,7 +98,9 @@ impl PulsarApp {
         cx.subscribe_in(&file_manager_drawer, window, Self::on_file_selected)
             .detach();
 
-        // No need to subscribe to panel events - we'll check entity validity when needed
+        // Subscribe to PanelEvent on center_tabs to handle tab close and cleanup
+        cx.subscribe_in(&center_tabs, window, Self::on_tab_panel_event)
+            .detach();
 
         Self {
             dock_area,
@@ -128,6 +130,21 @@ impl PulsarApp {
         });
 
         cx.notify();
+    }
+
+    fn on_tab_panel_event(
+        &mut self,
+        _tabs: &TabPanel,
+        event: &PanelEvent,
+        _cx: &mut Context<Self>,
+    ) {
+        match event {
+            &PanelEvent::TabClosed(entity_id) => {
+                self.blueprint_editors
+                    .retain(|e| e.entity_id() != entity_id);
+            }
+            _ => {}
+        }
     }
 
     fn on_file_selected(
@@ -179,6 +196,9 @@ impl PulsarApp {
             .iter()
             .enumerate()
             .find_map(|(ix, editor)| {
+                if !editor.is_alive(cx) {
+                    return None;
+                }
                 editor
                     .read(cx)
                     .current_class_path

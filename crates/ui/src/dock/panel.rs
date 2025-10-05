@@ -14,6 +14,7 @@ pub enum PanelEvent {
     ZoomIn,
     ZoomOut,
     LayoutChanged,
+    TabClosed(EntityId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
