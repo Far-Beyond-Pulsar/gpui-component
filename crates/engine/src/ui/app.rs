@@ -173,10 +173,42 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Check if a blueprint editor for this class is already open
+        let already_open = self
+            .blueprint_editors
+            .iter()
+            .enumerate()
+            .find_map(|(ix, editor)| {
+                editor
+                    .read(cx)
+                    .current_class_path
+                    .as_ref()
+                    .map(|p| p == &class_path)
+                    .unwrap_or(false)
+                    .then_some(ix)
+            });
+
+        if let Some(_ix) = already_open {
+            // Tab is already open. Focusing programmatically is not possible due to TabPanel API.
+            // User must click the tab to focus it.
+            return;
+        }
+
         self.next_tab_id += 1;
 
-        // Create a new blueprint editor panel
-        let blueprint_editor = cx.new(|cx| BlueprintEditorPanel::new(window, cx));
+        // Create a new blueprint editor panel and set its class path and tab title
+        let class_name = class_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Blueprint")
+            .to_string();
+
+        let blueprint_editor = cx.new(|cx| {
+            let mut panel = BlueprintEditorPanel::new(window, cx);
+            panel.current_class_path = Some(class_path.clone());
+            panel.tab_title = Some(class_name.clone());
+            panel
+        });
 
         // Load the blueprint from the class path
         let graph_save_path = class_path.join("graph_save.json");
@@ -189,7 +221,7 @@ impl PulsarApp {
             });
         }
 
-        // Add the tab
+        // Add the tab (Entity<BlueprintEditorPanel> implements all required traits)
         self.center_tabs.update(cx, |tabs, cx| {
             tabs.add_panel(Arc::new(blueprint_editor.clone()), window, cx);
         });
