@@ -189,11 +189,15 @@ impl PulsarApp {
             });
 
         if let Some(ix) = already_open {
-            // Focus the existing tab (Level Editor is always at index 0)
-            self.center_tabs.update(cx, |tabs, cx| {
-                // +1 because Level Editor is always the first tab
-                tabs.set_active_tab(ix + 1, window, cx);
-            });
+            // Focus the correct tab by matching entity_id in TabPanel using the public getter
+            if let Some(editor_entity) = self.blueprint_editors.get(ix) {
+                let target_id = editor_entity.entity_id();
+                self.center_tabs.update(cx, |tabs, cx| {
+                    if let Some(tab_ix) = tabs.index_of_panel_by_entity_id(target_id) {
+                        tabs.set_active_tab(tab_ix, window, cx);
+                    }
+                });
+            }
             return;
         }
 

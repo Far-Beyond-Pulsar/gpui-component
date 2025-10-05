@@ -164,6 +164,13 @@ impl TabPanel {
         }
     }
 
+    /// Returns the index of the panel with the given entity_id, or None if not found.
+    pub fn index_of_panel_by_entity_id(&self, entity_id: gpui::EntityId) -> Option<usize> {
+        self.panels
+            .iter()
+            .position(|p| p.view().entity_id() == entity_id)
+    }
+
     /// Mark the TabPanel as being used in Tiles.
     pub(super) fn set_in_tiles(&mut self, in_tiles: bool) {
         self.in_tiles = in_tiles;
