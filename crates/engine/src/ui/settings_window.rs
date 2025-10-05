@@ -15,7 +15,8 @@ pub struct SettingsWindow {
         let props = crate::ui::settings_screen::SettingsScreenProps {
             config_path: config_path.clone(),
         };
-        let settings_screen = cx.new(|_cx| SettingsScreen::new(props));
+        let app_ref = cx.app();
+        let settings_screen = cx.new(|_cx| SettingsScreen::new(props, app_ref));
 
         Self {
             settings_screen: Some(settings_screen),

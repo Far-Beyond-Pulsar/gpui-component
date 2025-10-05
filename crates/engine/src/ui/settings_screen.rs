@@ -27,9 +27,9 @@ pub struct SettingsScreen {
 }
 
 impl SettingsScreen {
-    pub fn new(props: SettingsScreenProps) -> Self {
+    pub fn new(props: SettingsScreenProps, cx: &App) -> Self {
         let settings = EngineSettings::load(&props.config_path);
-        let theme_names = ThemeRegistry::global()
+        let theme_names = ThemeRegistry::global(cx)
             .sorted_themes()
             .iter()
             .map(|theme| theme.name.to_string())
@@ -165,12 +165,12 @@ impl gpui::ActionImpl for SelectThemeAction {
         if let Some(screen) = cx.entity_mut::<SettingsScreen>() {
             screen.selected_theme = self.theme_name.clone();
             // Apply theme immediately
-            if let Some(theme) = ThemeRegistry::global(cx)
+            if let Some(theme) = ThemeRegistry::global(cx.app())
                 .themes()
                 .get(&self.theme_name)
                 .cloned()
             {
-                Theme::global_mut(cx).apply_config(&theme);
+                Theme::global_mut(cx.app()).apply_config(&theme);
             }
             cx.notify();
         }
