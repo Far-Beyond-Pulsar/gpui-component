@@ -177,8 +177,9 @@ impl PulsarApp {
     }
 
     fn toggle_drawer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.drawer_open = !self.drawer_open;
-        cx.notify();
+    let _ = window; // Silence unused variable warning
+    self.drawer_open = !self.drawer_open;
+    cx.notify();
     }
 
     fn on_toggle_file_manager(
@@ -253,7 +254,7 @@ impl PulsarApp {
         }
 
         // Add the tab (Entity<BlueprintEditorPanel> implements all required traits)
-        self.center_tabs.update(cx, |tabs, cx| {
+        self.center_tabs.update(cx, |tabs, window, cx| {
             tabs.add_panel(Arc::new(blueprint_editor.clone()), window, cx);
         });
 
@@ -320,21 +321,22 @@ impl Render for PulsarApp {
         cx.bind_keys([KeyBinding::new("ctrl-comma", OpenSettingsWindow, None)]);
 
         // Handle OpenSettingsWindow action
-        cx.on_action(|_action: &OpenSettingsWindow, window, cx| {
-            if self.settings_window.is_none() {
+        cx.on_action::<OpenSettingsWindow, _>(|this: &mut PulsarApp, _action: &OpenSettingsWindow, window: &mut Window, cx: &mut Context<PulsarApp>| {
+            if this.settings_window.is_none() {
                 let settings = cx.new(|cx| crate::ui::settings_window::SettingsWindow::new());
-                self.settings_window = Some(settings);
+                this.settings_window = Some(settings);
+                let entity = cx.entity();
 
-                window.open_modal(cx, |modal, window, cx| {
+                window.open_modal(cx, move |modal, window, cx| {
                     // Configure the modal with the settings window as its child
                     modal
                         .title("Settings")
                         .child(settings.clone())
-                        .on_close(cx.listener(|app, _, window, cx| {
-                            // Clear the settings window reference on close
-                            app.settings_window = None;
-                        }));
-                    modal
+                        .on_close(move |_, _, cx| {
+                            cx.update_entity(&entity, |app, _, _| {
+                                app.settings_window = None;
+                            });
+                        })
                 });
             }
         });
