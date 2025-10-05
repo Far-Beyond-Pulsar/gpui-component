@@ -21,6 +21,10 @@ impl EntryWindow {
             entry_screen: None,
         }
     }
+
+    pub fn entry_screen(&self) -> Option<&Entity<EntryScreen>> {
+        self.entry_screen.as_ref()
+    }
 }
 
 impl EventEmitter<ProjectSelected> for EntryWindow {}

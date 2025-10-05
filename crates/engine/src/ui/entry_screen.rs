@@ -290,7 +290,7 @@ impl EntryScreen {
         self.recent_projects.save(&self.recent_projects_path);
         
         eprintln!("DEBUG: Emitting ProjectSelected event");
-        cx.app().emit(crate::ui::project_selector::ProjectSelected { path });
+        cx.emit(crate::ui::project_selector::ProjectSelected { path });
         eprintln!("DEBUG: ProjectSelected event emitted");
     }
     

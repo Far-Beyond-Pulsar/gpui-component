@@ -46,6 +46,7 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        eprintln!("DEBUG: PulsarApp::new_with_project called with path: {:?}", project_path);
         Self::new_internal(Some(project_path), window, cx)
     }
 

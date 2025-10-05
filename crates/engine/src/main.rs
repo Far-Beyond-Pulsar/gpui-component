@@ -135,47 +135,34 @@ fn main() {
             ..Default::default()
         };
 
-        // Create the entry view before opening the window so we can subscribe to it
-        let entry_view = cx.new(|cx| EntryWindow::new_placeholder(cx));
-
         let entry_window = cx
             .open_window(entry_options, |window, cx| {
-                // Initialize the entry window now that we have the window
-                entry_view.update(cx, |view, cx| {
-                    *view = EntryWindow::new(window, cx);
-                });
+                let entry_view = cx.new(|cx| EntryWindow::new(window, cx));
+
+                // Subscribe to project selection events inside the window
+                if let Some(entry_screen) = entry_view.read(cx).entry_screen().cloned() {
+                    cx.subscribe(&entry_screen, move |_entry, event: &ProjectSelected, cx| {
+                        let project_path = event.path.clone();
+
+                        eprintln!("DEBUG: Subscription called with path: {:?}", project_path);
+
+                        // Close the entry window
+                        window.close();
+
+                        // Open the main engine window with the selected project
+                        open_engine_window(project_path, cx);
+                    })
+                    .detach();
+                }
 
                 cx.new(|cx| Root::new(entry_view.clone().into(), window, cx))
             })
             .expect("failed to open entry window");
-
-        entry_window
-            .update(cx, |_, window, _| {
-                window.activate_window();
-                window.set_window_title("Pulsar - Select Project");
-            })
-            .expect("failed to update entry window");
-
-        // Subscribe to project selection events at the app level
-        let window_handle = entry_window;
-        cx.subscribe(&entry_view, move |_entry, event: &ProjectSelected, cx| {
-            let project_path = event.path.clone();
-
-            // Open the main engine window with the selected project
-            open_engine_window(project_path, cx);
-
-            // Close the entry window
-            window_handle
-                .update(cx, |_, window, _| {
-                    window.remove_window();
-                })
-                .ok();
-        })
-        .detach();
     });
 }
 
 fn open_engine_window(project_path: PathBuf, cx: &mut App) {
+    eprintln!("DEBUG: open_engine_window called with path: {:?}", project_path);
     let mut window_size = size(px(1200.), px(800.));
     if let Some(display) = cx.primary_display() {
         let display_size = display.bounds().size;
@@ -202,10 +189,13 @@ fn open_engine_window(project_path: PathBuf, cx: &mut App) {
 
     let window = cx
         .open_window(options, |window, cx| {
+            eprintln!("DEBUG: Creating PulsarApp");
             let view = cx.new(|cx| PulsarApp::new_with_project(project_path.clone(), window, cx));
             cx.new(|cx| Root::new(view.into(), window, cx))
         })
         .expect("failed to open engine window");
+
+    eprintln!("DEBUG: Engine window opened");
 
     window
         .update(cx, |_, window, _| {
@@ -213,6 +203,8 @@ fn open_engine_window(project_path: PathBuf, cx: &mut App) {
             window.set_window_title("Pulsar Engine");
         })
         .expect("failed to update engine window");
+
+    eprintln!("DEBUG: Engine window activated");
 }
 
 fn open_settings_window(cx: &mut App) {
