@@ -33,7 +33,13 @@ pub fn init(cx: &mut App) {
     let json = std::fs::read_to_string(STATE_FILE).unwrap_or(String::default());
     tracing::info!("Load themes...");
     let state = serde_json::from_str::<State>(&json).unwrap_or_default();
-    let themes_dir = PathBuf::from("../../themes");
+    let themes_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("themes");
+    println!("Themes dir: {}", themes_dir.display());
     if let Err(err) = ThemeRegistry::watch_dir(themes_dir, cx, move |cx| {
         if let Some(theme) = ThemeRegistry::global(cx)
             .themes()
@@ -43,7 +49,9 @@ pub fn init(cx: &mut App) {
             Theme::global_mut(cx).apply_config(&theme);
         }
     }) {
-        tracing::error!("Failed to watch themes directory: {}", err);
+        println!("Failed to watch themes directory: {}", err);
+    } else {
+        println!("Watching themes directory successfully");
     }
 
     if let Some(scrollbar_show) = state.scrollbar_show {

@@ -20,29 +20,17 @@ pub struct SettingsScreen {
     settings: EngineSettings,
     /// Path to config file
     config_path: PathBuf,
-    /// List of available theme names
-    theme_names: Vec<String>,
     /// Currently selected theme (may be unsaved)
     selected_theme: String,
 }
 
 impl SettingsScreen {
-    pub fn new(props: SettingsScreenProps, cx: &App) -> Self {
+    pub fn new(props: SettingsScreenProps, _cx: &App) -> Self {
         let settings = EngineSettings::load(&props.config_path);
-        let theme_names = ThemeRegistry::global(cx)
-            .sorted_themes()
-            .iter()
-            .map(|theme| theme.name.to_string())
-            .collect::<Vec<_>>();
-        let selected_theme = if theme_names.contains(&settings.active_theme) {
-            settings.active_theme.clone()
-        } else {
-            cx.theme().theme_name().to_string()
-        };
+        let selected_theme = settings.active_theme.clone();
         Self {
             settings,
             config_path: props.config_path,
-            theme_names,
             selected_theme,
         }
     }
@@ -51,13 +39,23 @@ impl SettingsScreen {
 impl Render for SettingsScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
+        let theme_names: Vec<String> = ThemeRegistry::global(cx)
+            .sorted_themes()
+            .iter()
+            .map(|t| t.name.to_string())
+            .collect();
+
+        // Update selected_theme if it's not in the current list
+        if !theme_names.contains(&self.selected_theme) {
+            self.selected_theme = cx.theme().theme_name().to_string();
+        }
 
         v_flex()
             .size_full()
             .bg(theme.background)
             .p_8()
             .gap_8()
-            .on_action(cx.listener(|screen, action, cx| {
+            .on_action(cx.listener(|screen, action: &SelectThemeAction, w: &mut gpui::Window, cx| {
                 screen.selected_theme = action.theme_name.to_string();
                 if let Some(theme_config) = ThemeRegistry::global(cx).themes().get(&action.theme_name).cloned() {
                     Theme::global_mut(cx).apply_config(&theme_config);
@@ -83,7 +81,7 @@ impl Render for SettingsScreen {
                         Button::new("close-settings")
                             .ghost()
                             .icon(IconName::Close)
-                            .on_click(cx.listener(|_screen, _, window, cx| {
+                            .on_click(cx.listener(|_screen, _, window: &mut gpui::Window, cx| {
                                 window.remove_window();
                                 cx.notify();
                             }))
@@ -112,9 +110,9 @@ impl Render for SettingsScreen {
                                     .label(&self.selected_theme)
                                     .icon(IconName::Palette)
                                     .popup_menu({
-                                        let theme_names = self.theme_names.clone();
+                                        let theme_names = theme_names.clone();
                                         let selected = self.selected_theme.clone();
-                                        move |menu, cx| {
+                                        move |menu, w: &mut gpui::Window, cx| {
                                             let mut menu = menu.scrollable().max_h(px(400.));
                                             for name in &theme_names {
                                                 let is_selected = name == &selected;
@@ -135,7 +133,7 @@ impl Render for SettingsScreen {
                                 Button::new("save-theme")
                                     .primary()
                                     .label("Save")
-                                    .on_click(cx.listener(|screen, _, cx| {
+                                    .on_click(cx.listener(|screen, _, window: &mut gpui::Window, cx| {
                                         screen.settings.active_theme = screen.selected_theme.clone();
                                         screen.settings.save(&screen.config_path);
                                         cx.notify();
