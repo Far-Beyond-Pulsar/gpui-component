@@ -1,4 +1,4 @@
-use gpui::{prelude::*, Animation, AnimationExt as _, KeyBinding, *};
+use gpui::{prelude::*, KeyBinding, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
@@ -7,7 +7,7 @@ use gpui_component::{
 use schemars::JsonSchema;
 use serde::Deserialize;
 use std::path::PathBuf;
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use super::{
     editors::EditorType,
@@ -320,15 +320,24 @@ impl Render for PulsarApp {
         cx.bind_keys([KeyBinding::new("ctrl-comma", OpenSettingsWindow, None)]);
 
         // Handle OpenSettingsWindow action
-        cx.on_action(
-            cx.listener(|app, _action: &OpenSettingsWindow, window, cx| {
-                if app.settings_window.is_none() {
-                    let settings = cx.new(|cx| crate::ui::settings_window::SettingsWindow::new());
-                    app.settings_window = Some(settings);
-                    window.open_modal(cx, |modal, window, cx| modal.child(settings.clone()));
-                }
-            }),
-        );
+        cx.on_action(|_action: &OpenSettingsWindow, window, cx| {
+            if self.settings_window.is_none() {
+                let settings = cx.new(|cx| crate::ui::settings_window::SettingsWindow::new());
+                self.settings_window = Some(settings);
+
+                window.open_modal(cx, |modal, window, cx| {
+                    // Configure the modal with the settings window as its child
+                    modal
+                        .title("Settings")
+                        .child(settings.clone())
+                        .on_close(cx.listener(|app, _, window, cx| {
+                            // Clear the settings window reference on close
+                            app.settings_window = None;
+                        }));
+                    modal
+                });
+            }
+        });
 
         {
             // Prepare overlay layers as siblings, not children of main content
