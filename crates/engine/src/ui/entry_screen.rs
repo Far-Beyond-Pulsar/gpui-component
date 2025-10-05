@@ -262,7 +262,6 @@ impl Render for EntryScreen {
                                                     let icon = icon_name;
                                                     let name = name_str.to_string();
                                                     let desc = desc_str.to_string();
-                                                    let btn_id = btn_id_str.to_string();
                                                     
                                                     let card = v_flex()
                                                         .h_full()
@@ -286,7 +285,7 @@ impl Render for EntryScreen {
                                                         )
                                                         .child(div().text_color(theme.muted_foreground).text_sm().child(desc.clone()))
                                                         .child(
-                                                            Button::new(btn_id)
+                                                            Button::new(SharedString::from(btn_id_str.to_string()))
                                                                 .label("Details")
                                                                 .icon(IconName::ArrowRight)
                                                                 .tooltip("Show template details and config")
