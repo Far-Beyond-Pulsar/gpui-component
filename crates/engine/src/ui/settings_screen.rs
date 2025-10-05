@@ -34,7 +34,11 @@ impl SettingsScreen {
             .iter()
             .map(|theme| theme.name.to_string())
             .collect::<Vec<_>>();
-        let selected_theme = settings.active_theme.clone();
+        let selected_theme = if theme_names.contains(&settings.active_theme) {
+            settings.active_theme.clone()
+        } else {
+            cx.theme().theme_name().to_string()
+        };
         Self {
             settings,
             config_path: props.config_path,
@@ -53,6 +57,14 @@ impl Render for SettingsScreen {
             .bg(theme.background)
             .p_8()
             .gap_8()
+            .on_action(cx.listener(|screen, action, cx| {
+                screen.selected_theme = action.theme_name.to_string();
+                if let Some(theme_config) = ThemeRegistry::global(cx).themes().get(&action.theme_name).cloned() {
+                    Theme::global_mut(cx).apply_config(&theme_config);
+                    cx.refresh_windows();
+                }
+                cx.notify();
+            }))
             .child(
                 h_flex()
                     .items_center()
@@ -102,17 +114,17 @@ impl Render for SettingsScreen {
                                     .popup_menu({
                                         let theme_names = self.theme_names.clone();
                                         let selected = self.selected_theme.clone();
-                                        move |menu, window, cx| {
+                                        move |menu, cx| {
                                             let mut menu = menu.scrollable().max_h(px(400.));
                                             for name in &theme_names {
-                                                let is_selected = *name == selected;
+                                                let is_selected = name == &selected;
                                                 // Use a custom Action type for theme selection
 
-                                                                                                menu = menu.menu_with_check(
-                                                                                                    name.clone(),
-                                                                                                    is_selected,
-                                                                                                    Box::new(SelectThemeAction::new(name.clone())),
-                                                                                                );
+                                                menu = menu.menu_with_check(
+                                                    name.clone(),
+                                                    is_selected,
+                                                    Box::new(SelectThemeAction::new(SharedString::from(name.clone()))),
+                                                );
 
                                             }
                                             menu
@@ -123,7 +135,7 @@ impl Render for SettingsScreen {
                                 Button::new("save-theme")
                                     .primary()
                                     .label("Save")
-                                    .on_click(cx.listener(|screen, _, _, cx| {
+                                    .on_click(cx.listener(|screen, _, cx| {
                                         screen.settings.active_theme = screen.selected_theme.clone();
                                         screen.settings.save(&screen.config_path);
                                         cx.notify();
@@ -150,11 +162,11 @@ impl Render for SettingsScreen {
 #[derive(Clone, PartialEq, Eq, gpui::Action)]
 #[action(namespace = ui, no_json)]
 struct SelectThemeAction {
-    theme_name: String,
+    theme_name: SharedString,
 }
 
 impl SelectThemeAction {
-    pub fn new(theme_name: String) -> Self {
+    pub fn new(theme_name: SharedString) -> Self {
         Self { theme_name }
     }
 }

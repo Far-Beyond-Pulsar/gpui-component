@@ -33,7 +33,8 @@ pub fn init(cx: &mut App) {
     let json = std::fs::read_to_string(STATE_FILE).unwrap_or(String::default());
     tracing::info!("Load themes...");
     let state = serde_json::from_str::<State>(&json).unwrap_or_default();
-    if let Err(err) = ThemeRegistry::watch_dir(PathBuf::from("./themes"), cx, move |cx| {
+    let themes_dir = PathBuf::from("../../themes");
+    if let Err(err) = ThemeRegistry::watch_dir(themes_dir, cx, move |cx| {
         if let Some(theme) = ThemeRegistry::global(cx)
             .themes()
             .get(&state.theme)
@@ -90,6 +91,7 @@ impl Render for ThemeSwitcher {
                     ThemeRegistry::global(cx).themes().get(&theme_name).cloned()
                 {
                     Theme::global_mut(cx).apply_config(&theme_config);
+                    cx.refresh_windows();
                 }
                 cx.notify();
             }))

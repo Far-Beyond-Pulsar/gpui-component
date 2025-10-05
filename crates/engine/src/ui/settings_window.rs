@@ -6,13 +6,7 @@ pub struct SettingsWindow {
     settings_screen: Option<Entity<SettingsScreen>>,
 }
 
-impl SettingsWindow {
-    pub fn new() -> Self {
-        Self {
-            settings_screen: None,
-        }
-    }
-}
+impl SettingsWindow {}
 
 impl Render for SettingsWindow {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {

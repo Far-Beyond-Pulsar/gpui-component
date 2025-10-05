@@ -37,10 +37,16 @@ pub struct SelectFont(usize);
 #[action(namespace = story, no_json)]
 pub struct SelectRadius(usize);
 
+#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
+#[action(namespace = pulsar)]
+pub struct OpenSettings;
+
+use directories::ProjectDirs;
 use std::path::PathBuf;
 use ui::app::PulsarApp;
 use ui::entry_screen::ProjectSelected;
 use ui::entry_window::EntryWindow;
+use ui::settings_screen::{SettingsScreen, SettingsScreenProps};
 
 fn main() {
     // Note: Node metadata is now loaded lazily from pulsar_std when needed
@@ -100,6 +106,11 @@ fn main() {
 
     app.run(move |cx| {
         gpui_component::init(cx);
+
+        cx.bind_keys([KeyBinding::new("ctrl-,", OpenSettings, None)]);
+        cx.on_action(|_: &OpenSettings, cx| {
+            open_settings_window(cx);
+        });
 
         cx.activate(true);
 
@@ -200,4 +211,49 @@ fn open_engine_window(project_path: PathBuf, cx: &mut App) {
             window.set_window_title("Pulsar Engine");
         })
         .expect("failed to update engine window");
+}
+
+fn open_settings_window(cx: &mut App) {
+    let proj_dirs = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
+        .expect("Could not determine app data directory");
+    let appdata_dir = proj_dirs.data_dir();
+    let config_dir = appdata_dir.join("configs");
+    let config_file = config_dir.join("engine.toml");
+
+    let window_bounds = Bounds::centered(None, size(px(800.), px(600.)), cx);
+
+    let options = WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(window_bounds)),
+        titlebar: None,
+        window_min_size: Some(Size {
+            width: px(600.),
+            height: px(400.),
+        }),
+        kind: WindowKind::Normal,
+        #[cfg(target_os = "linux")]
+        window_background: WindowBackgroundAppearance::Transparent,
+        #[cfg(target_os = "linux")]
+        window_decorations: Some(WindowDecorations::Client),
+        ..Default::default()
+    };
+
+    let window = cx
+        .open_window(options, |window, cx| {
+            let settings_screen = SettingsScreen::new(
+                SettingsScreenProps {
+                    config_path: config_file.clone(),
+                },
+                cx,
+            );
+            let settings_entity = cx.new(|_| settings_screen);
+            cx.new(|cx| Root::new(settings_entity.into(), window, cx))
+        })
+        .expect("failed to open settings window");
+
+    window
+        .update(cx, |_, window, _| {
+            window.activate_window();
+            window.set_window_title("Pulsar - Settings");
+        })
+        .expect("failed to update settings window");
 }

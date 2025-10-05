@@ -1,4 +1,3 @@
-Pulsar-Native\test_game\Cargo.toml
 [package]
 name = "mygame"
 version = "0.1.0"
@@ -12,4 +11,4 @@ categories = ["game-engines", "multimedia", "graphics"]
 readme = "README.md"
 
 [dependencies]
-workspace.pulsar_engine
+pulsar_std = { path = "../crates/pulsar_std" }
