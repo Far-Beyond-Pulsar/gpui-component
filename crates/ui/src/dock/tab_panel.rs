@@ -705,8 +705,10 @@ impl TabPanel {
                     active = false;
                 }
 
-                Some(
-                    Tab::empty()
+                Some({
+                    // Add close button to all tabs except Level Editor
+                    let is_level_editor = panel.panel_name(cx) == "Level Editor";
+                    let tab = Tab::empty()
                         .map(|this| {
                             if let Some(tab_name) = panel.tab_name(cx) {
                                 this.child(tab_name)
@@ -753,8 +755,24 @@ impl TabPanel {
                                     },
                                 ))
                             })
-                        }),
-                )
+                        });
+                    if !is_level_editor {
+                        tab.suffix(
+                            Button::new(("close-tab", ix))
+                                .icon(IconName::Close)
+                                .ghost()
+                                .xsmall()
+                                .on_click(cx.listener({
+                                    let panel = panel.clone();
+                                    move |this, _, window, cx| {
+                                        this.remove_panel(panel.clone(), window, cx);
+                                    }
+                                })),
+                        )
+                    } else {
+                        tab
+                    }
+                })
             }))
             .last_empty_space(
                 // empty space to allow move to last tab right
