@@ -884,16 +884,23 @@ impl EntryScreen {
     
     fn render_new_project(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
-        let project_name_empty = self.new_project_name.is_empty();
-        let project_name_display = if project_name_empty {
-            "Enter project name..."
+        let project_name_owned = self.new_project_name.clone();
+        let project_name_empty = project_name_owned.is_empty();
+        let project_name_display: String = if project_name_empty {
+            "Enter project name...".to_string()
         } else {
-            &self.new_project_name
+            project_name_owned.clone()
         };
         let project_path_display = self.new_project_path.as_ref()
             .and_then(|p| p.to_str())
-            .unwrap_or("Click Browse to select location...");
-        
+            .unwrap_or("Click Browse to select location...")
+            .to_string();
+
+        // Clone/copy data needed in UI so no reference to self escapes
+        let new_project_name = self.new_project_name.clone();
+        let project_name_display_owned = project_name_display.clone();
+        let project_path_display_owned = project_path_display.clone();
+
         v_flex()
             .size_full()
             .p_12()
@@ -934,7 +941,7 @@ impl EntryScreen {
                                     .bg(theme.background)
                                     .text_sm()
                                     .text_color(theme.foreground)
-                                    .child(project_name_display)
+                                    .child(project_name_display_owned)
                             )
                             .child(
                                 div()
@@ -966,7 +973,7 @@ impl EntryScreen {
                                             .bg(theme.background)
                                             .text_sm()
                                             .text_color(theme.muted_foreground)
-                                            .child(project_path_display)
+                                            .child(project_path_display_owned)
                                     )
                                     .child(
                                         Button::new("browse-location")
@@ -1004,8 +1011,8 @@ impl EntryScreen {
                                     .label("Create Project")
                                     .icon(IconName::Plus)
                                     .with_variant(gpui_component::button::ButtonVariant::Primary)
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        if !this.new_project_name.is_empty() {
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        if !new_project_name.is_empty() {
                                             this.create_new_project(window, cx);
                                         }
                                     }))
