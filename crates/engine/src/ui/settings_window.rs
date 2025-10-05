@@ -6,16 +6,24 @@ pub struct SettingsWindow {
     settings_screen: Option<Entity<SettingsScreen>>,
 }
 
-impl SettingsWindow {
+
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        // You may want to pass the config path here if needed
+
+        // Pass SettingsScreenProps as required by SettingsScreen::new
         let config_path = EngineSettings::default_path().expect("No config path found");
-        let settings_screen = cx.new(|_cx| SettingsScreen::new(config_path.clone()));
+
+        let props = crate::ui::settings_screen::SettingsScreenProps {
+            config_path: config_path.clone(),
+        };
+        let settings_screen = cx.new(|_cx| SettingsScreen::new(props));
 
         Self {
             settings_screen: Some(settings_screen),
+
         }
+
     }
+
 
     pub fn new_placeholder(_cx: &mut Context<Self>) -> Self {
         Self {

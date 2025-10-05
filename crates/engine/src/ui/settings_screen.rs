@@ -1,8 +1,10 @@
 use crate::settings::EngineSettings;
 use gpui::*;
+use gpui_component::label::Label;
+use gpui_component::menu::popup_menu::PopupMenuExt;
 use gpui_component::{
-    button::Button, h_flex, popup_menu::PopupMenuExt, v_flex, ActiveTheme, Icon, IconName, Theme,
-    ThemeRegistry,
+    button::{Button, ButtonVariants},
+    h_flex, v_flex, ActiveTheme, Icon, IconName, Theme, ThemeRegistry,
 };
 use std::path::PathBuf;
 
@@ -61,11 +63,9 @@ impl Render for SettingsScreen {
                             .text_color(theme.accent)
                     )
                     .child(
-                        div()
-                            .text_2xl()
-                            .font_bold()
+                        Label::new("Settings")
+                            .with_size(gpui_component::Size::XLarge)
                             .text_color(theme.foreground)
-                            .child("Settings")
                     )
                     .child(
                         Button::new("close-settings")
@@ -81,11 +81,9 @@ impl Render for SettingsScreen {
                 v_flex()
                     .gap_6()
                     .child(
-                        div()
-                            .text_lg()
-                            .font_semibold()
+                        Label::new("Theme")
+                            .with_size(gpui_component::Size::Large)
                             .text_color(theme.foreground)
-                            .child("Theme")
                     )
                     .child(
                         h_flex()
@@ -104,28 +102,18 @@ impl Render for SettingsScreen {
                                     .popup_menu({
                                         let theme_names = self.theme_names.clone();
                                         let selected = self.selected_theme.clone();
-                                        move |menu, _, cx| {
+                                        move |menu, window, cx| {
                                             let mut menu = menu.scrollable().max_h(px(400.));
                                             for name in &theme_names {
                                                 let is_selected = *name == selected;
+                                                // Use a custom Action type for theme selection
                                                 menu = menu.menu_with_check(
                                                     name.clone(),
                                                     is_selected,
-                                                    Box::new(name.clone()),
+                                                    Box::new(SelectThemeAction(name.clone())),
                                                 );
                                             }
-                                            menu.on_menu(cx.listener(|screen, name: &String, _, cx| {
-                                                screen.selected_theme = name.clone();
-                                                // Apply theme immediately
-                                                if let Some(theme) = ThemeRegistry::global(cx)
-                                                    .themes()
-                                                    .get(name)
-                                                    .cloned()
-                                                {
-                                                    Theme::global_mut(cx).apply_config(&theme);
-                                                }
-                                                cx.notify();
-                                            }))
+                                            menu
                                         }
                                     })
                             )
@@ -154,5 +142,25 @@ impl Render for SettingsScreen {
                     .text_color(theme.muted_foreground)
                     .child("More settings coming soon...")
             )
+    }
+}
+
+/// Custom Action for theme selection in the popup menu
+struct SelectThemeAction(String);
+
+impl gpui::Action for SelectThemeAction {
+    fn boxed_clone(&self) -> Box<dyn gpui::Action> {
+        Box::new(Self(self.0.clone()))
+    }
+    fn perform(&self, window: &mut Window, cx: &mut App) {
+        // Find the settings screen and update the selected theme
+        if let Some(screen) = cx.entity_mut::<SettingsScreen>() {
+            screen.selected_theme = self.0.clone();
+            // Apply theme immediately
+            if let Some(theme) = ThemeRegistry::global(cx).themes().get(&self.0).cloned() {
+                Theme::global_mut(cx).apply_config(&theme);
+            }
+            cx.notify();
+        }
     }
 }
