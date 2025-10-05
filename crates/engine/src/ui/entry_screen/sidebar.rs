@@ -1,9 +1,9 @@
 use gpui::{prelude::*, Axis, MouseButton, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex,
+    h_flex,
     input::{InputState, TextInput},
-    ActiveTheme as _, Icon, IconName, StyledExt,
+    v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
 };
 
 use super::models::CardItem;
@@ -20,7 +20,10 @@ pub fn render_sidebar<V: 'static>(
 ) -> impl IntoElement {
     let shadow = vec![gpui::BoxShadow {
         color: Hsla::black().opacity(0.1),
-        offset: Point { x: px(-4.), y: px(0.) },
+        offset: Point {
+            x: px(-4.),
+            y: px(0.),
+        },
         blur_radius: px(16.),
         spread_radius: px(0.),
     }];
@@ -32,39 +35,43 @@ pub fn render_sidebar<V: 'static>(
         .border_l_1()
         .border_color(cx.theme().border)
         .shadow(shadow)
-        .on_mouse_down(MouseButton::Left, cx.listener(|_view, _event, _window, cx| {
-            // Stop propagation to prevent clicks from falling through to background
-            cx.stop_propagation();
-        }))
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|_view, _event, _window, cx| {
+                // Stop propagation to prevent clicks from falling through to background
+                cx.stop_propagation();
+            }),
+        )
+        .on_mouse_up(
+            MouseButton::Left,
+            cx.listener(|_view, _event, _window, cx| {
+                // Stop propagation for mouse up as well
+                cx.stop_propagation();
+            }),
+        )
         .on_mouse_move(cx.listener(|_view, _event, _window, cx| {
             // Stop propagation for mouse moves as well
             cx.stop_propagation();
         }))
         .child(render_sidebar_header(on_close, cx))
         .child(
-            div()
-                .flex_1()
-                .overflow_y_hidden()
-                .child(
+            div().flex_1().overflow_y_hidden().child(
+                v_flex().w_full().scrollable(Axis::Vertical).child(
                     v_flex()
-                        .w_full()
-                        .scrollable(Axis::Vertical)
-                        .child(
-                            v_flex()
-                                .px_6()
-                                .pb_6()
-                                .gap_6()
-                                .child(render_sidebar_preview(card, cx))
-                                .child(render_sidebar_info(card, cx))
-                                .child(render_sidebar_form(
-                                    project_name_input,
-                                    project_path_input,
-                                    on_browse,
-                                    cx,
-                                ))
-                                .child(render_sidebar_action(card, on_action, cx))
-                        )
-                )
+                        .px_6()
+                        .pb_6()
+                        .gap_6()
+                        .child(render_sidebar_preview(card, cx))
+                        .child(render_sidebar_info(card, cx))
+                        .child(render_sidebar_form(
+                            project_name_input,
+                            project_path_input,
+                            on_browse,
+                            cx,
+                        ))
+                        .child(render_sidebar_action(card, on_action, cx)),
+                ),
+            ),
         )
 }
 
@@ -90,13 +97,13 @@ fn render_sidebar_header<V: 'static>(
                 .text_lg()
                 .font_bold()
                 .text_color(theme.foreground)
-                .child("Project Details")
+                .child("Project Details"),
         )
         .child(
             Button::new("close-sidebar")
                 .ghost()
                 .icon(IconName::Close)
-                .on_click(cx.listener(on_close))
+                .on_click(cx.listener(on_close)),
         )
 }
 
@@ -130,7 +137,7 @@ fn render_sidebar_preview<V: 'static>(card: &CardItem, cx: &mut Context<V>) -> i
         .child(
             Icon::new(icon)
                 .size(px(64.))
-                .text_color(theme.foreground.opacity(0.3))
+                .text_color(theme.foreground.opacity(0.3)),
         )
 }
 
@@ -147,14 +154,14 @@ fn render_sidebar_info<V: 'static>(card: &CardItem, cx: &mut Context<V>) -> impl
                 .text_xl()
                 .font_bold()
                 .text_color(theme.foreground)
-                .child(card.name().to_string())
+                .child(card.name().to_string()),
         )
         .child(
             div()
                 .text_sm()
                 .line_height(rems(1.5))
                 .text_color(theme.muted_foreground)
-                .child(card.description().to_string())
+                .child(card.description().to_string()),
         )
         .children(if has_tags {
             Some(
@@ -174,7 +181,7 @@ fn render_sidebar_info<V: 'static>(card: &CardItem, cx: &mut Context<V>) -> impl
                             .font_medium()
                             .text_color(theme.primary)
                             .child(tag.to_string())
-                    }))
+                    })),
             )
         } else {
             None
@@ -228,7 +235,7 @@ fn render_form_field<V: 'static>(
                 .text_sm()
                 .font_semibold()
                 .text_color(theme.foreground)
-                .child(label_text)
+                .child(label_text),
         )
         .child(
             h_flex()
@@ -240,7 +247,7 @@ fn render_form_field<V: 'static>(
                         .ghost()
                         .icon(IconName::Folder)
                         .on_click(cx.listener(on_browse_fn))
-                }))
+                })),
         )
 }
 

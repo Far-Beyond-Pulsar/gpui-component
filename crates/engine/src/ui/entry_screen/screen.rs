@@ -16,8 +16,8 @@ pub struct EntryScreen {
     selected_card: Option<usize>,
     project_name_input: Entity<InputState>,
     project_path_input: Entity<InputState>,
+    search_input: Entity<InputState>,
     pending_path_update: Option<String>,
-    search_query: String,
     git_url_input: Entity<InputState>,
     show_git_clone_dialog: bool,
 }
@@ -30,15 +30,16 @@ impl EntryScreen {
             selected_card: None,
             project_name_input: cx.new(|cx| InputState::new(window, cx)),
             project_path_input: cx.new(|cx| InputState::new(window, cx)),
+            search_input: cx
+                .new(|cx| InputState::new(window, cx).placeholder("Search templates...")),
             git_url_input: cx.new(|cx| InputState::new(window, cx)),
             pending_path_update: None,
-            search_query: String::new(),
             show_git_clone_dialog: false,
         }
     }
 
-    fn get_cards(&self) -> Vec<CardItem> {
-        let search_lower = self.search_query.to_lowercase();
+    fn get_cards(&self, cx: &Context<Self>) -> Vec<CardItem> {
+        let search_lower = self.search_input.read(cx).text().to_string().to_lowercase();
 
         match self.active_tab {
             EntryTab::Manage => self
@@ -370,42 +371,34 @@ impl EntryScreen {
         v_flex()
             .gap_4()
             .child(
-                h_flex()
-                    .items_center()
-                    .justify_between()
-                    .child(
-                        v_flex()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_3xl()
-                                    .font_bold()
-                                    .text_color(cx.theme().foreground)
-                                    .child(match self.active_tab {
-                                        EntryTab::Manage => "Recent Projects",
-                                        EntryTab::Create => "Create New Project",
-                                    }),
-                            )
-                            .child(
-                                div()
-                                    .text_base()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(match self.active_tab {
-                                        EntryTab::Manage => {
-                                            "Open a recent project or select a folder"
-                                        }
-                                        EntryTab::Create => {
-                                            "Choose a template or start from scratch"
-                                        }
-                                    }),
-                            ),
-                    )
+                h_flex().items_center().justify_between().child(
+                    v_flex()
+                        .gap_2()
+                        .child(
+                            div()
+                                .text_3xl()
+                                .font_bold()
+                                .text_color(cx.theme().foreground)
+                                .child(match self.active_tab {
+                                    EntryTab::Manage => "Recent Projects",
+                                    EntryTab::Create => "Create New Project",
+                                }),
+                        )
+                        .child(
+                            div()
+                                .text_base()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(match self.active_tab {
+                                    EntryTab::Manage => "Open a recent project or select a folder",
+                                    EntryTab::Create => "Choose a template or start from scratch",
+                                }),
+                        ),
+                ),
             )
             .child(
                 // Search bar
                 div().w(px(400.)).child(
-                    div()
-                        .flex()
+                    h_flex()
                         .items_center()
                         .gap_2()
                         .px_3()
@@ -419,42 +412,18 @@ impl EntryScreen {
                                 .size(px(16.))
                                 .text_color(cx.theme().muted_foreground),
                         )
-                        .child(
-                            div().flex_1().child(
-                                gpui::div()
-                                    .w_full()
-                                    .text_color(cx.theme().foreground)
-                                    .on_key_down(cx.listener(
-                                        |screen, event: &KeyDownEvent, _, cx| {
-                                            if let Some(text) =
-                                                event.keystroke.key.strip_prefix("char:")
-                                            {
-                                                screen.search_query.push_str(text);
-                                                cx.notify();
-                                            } else if event.keystroke.key == "backspace" {
-                                                screen.search_query.pop();
-                                                cx.notify();
-                                            }
-                                        },
-                                    ))
-                                    .child(if self.search_query.is_empty() {
-                                        div()
-                                            .text_sm()
-                                            .text_color(cx.theme().muted_foreground)
-                                            .child("Search templates...")
-                                    } else {
-                                        div().text_sm().child(self.search_query.clone())
-                                    }),
-                            ),
-                        )
-                        .when(!self.search_query.is_empty(), |this| {
+                        .child(TextInput::new(&self.search_input))
+                        .when(self.search_input.read(cx).text().len() > 0, |this| {
                             this.child(
                                 Button::new("clear-search")
                                     .small()
                                     .ghost()
                                     .icon(IconName::Close)
-                                    .on_click(cx.listener(|screen, _, _, cx| {
-                                        screen.search_query.clear();
+                                    .on_click(cx.listener(|screen, _, window, cx| {
+                                        screen.search_input.update(cx, |input, cx| {
+                                            input.set_value("", window, cx);
+                                            input.focus(window, cx);
+                                        });
                                         cx.notify();
                                     })),
                             )
@@ -656,7 +625,7 @@ impl Render for EntryScreen {
             });
         }
 
-        let cards = self.get_cards();
+        let cards = self.get_cards(cx);
         let show_sidebar = self.selected_card.is_some();
         let show_git_dialog = self.show_git_clone_dialog;
 
@@ -718,10 +687,10 @@ impl Render for EntryScreen {
                         div()
                             .id("entry-screen-content")
                             .flex_1()
-                            .overflow_y_hidden()
                             .child(
                                 v_flex()
                                     .w_full()
+                                    .h_full()
                                     .scrollable(Axis::Vertical)
                                     .child(
                                         v_flex()
@@ -749,6 +718,12 @@ impl Render for EntryScreen {
                         .on_mouse_down(MouseButton::Left, cx.listener(|screen, _, _, cx| {
                             screen.selected_card = None;
                             cx.notify();
+                        }))
+                        .on_mouse_up(MouseButton::Left, cx.listener(|_screen, _event, _window, cx| {
+                            cx.stop_propagation();
+                        }))
+                        .on_mouse_move(cx.listener(|_screen, _event, _window, cx| {
+                            cx.stop_propagation();
                         }))
                 )
                 .children(
