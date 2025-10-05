@@ -1,27 +1,41 @@
 import subprocess
 import keyboard
 import psutil
+import sys
+
+Pulsar = None
 
 CargoCommand="cargo run --release -p pulsar_engine"
-Pulsar = None
-ER_Active=True
+ALTCargoCommand="cargo run -p pulsar_engine"
+
+States = {"Altcommand":False,"Active":True,"DebugMode":True}
 
 ## Main Program - Handling Pulsar EXEC ##
 
+def CheckActive():
+    global States
+    return not States["Active"]
+
 def Start():
-    Pulsar=subprocess.Popen(CargoCommand,shell=True)
+    global States
+    global Pulsar
+    Logtype=States["DebugMode"] and sys.stdout or subprocess.DEVNULL
+    Command=States["Altcommand"] and CargoCommand or ALTCargoCommand
+    Pulsar=subprocess.Popen(Command,shell=True,stdout=Logtype,stderr=Logtype)
+    print(States["Altcommand"] and "Building Pulsar(Cargo) (Slow But Fast)" or "Building Pulsar(Cargo) (Fast But Slow)")
     return Pulsar
 
 def StopCargo():
-    global ER_Active
-    if not ER_Active: return
-    for proc in psutil.process_iter(['name']):
-        if proc.info['name'] == "cargo.exe":
-            proc.terminate()
+    if CheckActive(): return
+    try:
+        for proc in psutil.process_iter(['name']):
+            if proc.info['name'] == "cargo.exe":
+                proc.terminate()
+    except:
+        print("An error has occurred, cannot stop cargo, maybe its admin or not running?")
 
 def Restart():
-    global ER_Active
-    if not ER_Active: return
+    if CheckActive(): return
     global Pulsar
     StopCargo()
     Start()
@@ -29,18 +43,27 @@ def Restart():
 
 ## Control Hooks ##
 
-def SwitchActiveState():
-    global ER_Active
-    print("Easy-run Active Control: "+str(ER_Active))
-    ER_Active=not ER_Active
-    return ER_Active
+def EditState(packet):
+    global States
+    Token=packet[0]
+    Value=packet[1]
+    if Value=="@Switch":
+        States[Token]=not States[Token]
+    else:
+        States[Token]=Value
+    print(Token+" Has been Updated To: "+str(States[Token]))
+    return States[Token]
 
 def Hook_Keyboard():
     Controls={
         "ctrl+r":[Restart,"Restart Pulsar."],
         "alt+o":[StopCargo,"Close Pulsar."],
-        "alt+g":[SwitchActiveState,"Toggles Easy-run Controls."]
+        "alt+g":[lambda: EditState(["Active","@Switch"]),"Toggles Easy-run Controls."],
+        "alt+t":[lambda: EditState(["Altcommand","@Switch"]),"Toggles Fast Compile But Heavy performance loss."],
+        "alt+d":[lambda: EditState(["DebugMode","@Switch"]),"Toggles Output for Pulsar Building."],
+        "alt+Y":[lambda: print(States),"Dump Current States."]
     }
+    print("---")
     print("Control Mappings:")
     for Key,ControlMapping in Controls.items():
         try:
@@ -48,13 +71,16 @@ def Hook_Keyboard():
             print(Key+":"+ControlMapping[1])
         except Exception as ControlError:
             print("Control Compile Error: "+str(ControlError))
+    print("---")
 
 ## Main Starter ##
 def Main():
+    print("-- Easy Run --")
     Hook_Keyboard()
     Start()
     keyboard.wait("alt+c")
     print("Easy-Runner Signing off.")
     StopCargo()
 
-Main()
+if __name__ == "__main__":
+    Main()

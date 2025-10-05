@@ -7,3 +7,4 @@ edition = "2021"
 pulsar_macros = { path = "../pulsar_macros" }
 linkme = "0.3"
 rand = "0.8"
+rlua = "0.20" 
