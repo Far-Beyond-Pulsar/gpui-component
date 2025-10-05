@@ -1,7 +1,7 @@
 use crate::settings::EngineSettings;
 use gpui::*;
 use gpui_component::{
-    button::Button, h_flex, popup_menu::PopupMenuExt, v_flex, ActiveTheme, IconName, Theme,
+    button::Button, h_flex, popup_menu::PopupMenuExt, v_flex, ActiveTheme, Icon, IconName, Theme,
     ThemeRegistry,
 };
 use std::path::PathBuf;
