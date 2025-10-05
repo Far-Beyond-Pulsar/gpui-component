@@ -107,11 +107,13 @@ impl Render for SettingsScreen {
                                             for name in &theme_names {
                                                 let is_selected = *name == selected;
                                                 // Use a custom Action type for theme selection
-                                                menu = menu.menu_with_check(
-                                                    name.clone(),
-                                                    is_selected,
-                                                    Box::new(SelectThemeAction(name.clone())),
-                                                );
+
+                                                                                                menu = menu.menu_with_check(
+                                                                                                    name.clone(),
+                                                                                                    is_selected,
+                                                                                                    Box::new(SelectThemeAction::new(name.clone())),
+                                                                                                );
+
                                             }
                                             menu
                                         }
@@ -144,20 +146,30 @@ impl Render for SettingsScreen {
             )
     }
 }
-
 /// Custom Action for theme selection in the popup menu
-struct SelectThemeAction(String);
+#[derive(Clone, PartialEq, Eq, gpui::Action)]
+#[action(namespace = ui, no_json)]
+struct SelectThemeAction {
+    theme_name: String,
+}
 
-impl gpui::Action for SelectThemeAction {
-    fn boxed_clone(&self) -> Box<dyn gpui::Action> {
-        Box::new(Self(self.0.clone()))
+impl SelectThemeAction {
+    pub fn new(theme_name: String) -> Self {
+        Self { theme_name }
     }
-    fn perform(&self, window: &mut Window, cx: &mut App) {
+}
+
+impl gpui::ActionImpl for SelectThemeAction {
+    fn perform(&self, _window: &mut Window, cx: &mut App) {
         // Find the settings screen and update the selected theme
         if let Some(screen) = cx.entity_mut::<SettingsScreen>() {
-            screen.selected_theme = self.0.clone();
+            screen.selected_theme = self.theme_name.clone();
             // Apply theme immediately
-            if let Some(theme) = ThemeRegistry::global(cx).themes().get(&self.0).cloned() {
+            if let Some(theme) = ThemeRegistry::global(cx)
+                .themes()
+                .get(&self.theme_name)
+                .cloned()
+            {
                 Theme::global_mut(cx).apply_config(&theme);
             }
             cx.notify();
