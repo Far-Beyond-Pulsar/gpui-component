@@ -1,7 +1,7 @@
 use crate::settings::EngineSettings;
 use gpui::*;
 use gpui_component::label::Label;
-use gpui_component::menu::popup_menu::PopupMenuExt;
+use gpui_component::PopupMenuExt;
 use gpui_component::{
     button::{Button, ButtonVariants},
     h_flex, v_flex, ActiveTheme, Icon, IconName, Theme, ThemeRegistry,
@@ -156,23 +156,5 @@ struct SelectThemeAction {
 impl SelectThemeAction {
     pub fn new(theme_name: String) -> Self {
         Self { theme_name }
-    }
-}
-
-impl gpui::ActionImpl for SelectThemeAction {
-    fn perform(&self, _window: &mut Window, cx: &mut App) {
-        // Find the settings screen and update the selected theme
-        if let Some(screen) = cx.entity_mut::<SettingsScreen>() {
-            screen.selected_theme = self.theme_name.clone();
-            // Apply theme immediately
-            if let Some(theme) = ThemeRegistry::global(cx.app())
-                .themes()
-                .get(&self.theme_name)
-                .cloned()
-            {
-                Theme::global_mut(cx).apply_config(&theme);
-            }
-            cx.notify();
-        }
     }
 }
