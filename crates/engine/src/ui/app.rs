@@ -188,9 +188,12 @@ impl PulsarApp {
                     .then_some(ix)
             });
 
-        if let Some(_ix) = already_open {
-            // Tab is already open. Focusing programmatically is not possible due to TabPanel API.
-            // User must click the tab to focus it.
+        if let Some(ix) = already_open {
+            // Focus the existing tab (Level Editor is always at index 0)
+            self.center_tabs.update(cx, |tabs, cx| {
+                // +1 because Level Editor is always the first tab
+                tabs.set_active_tab(ix + 1, window, cx);
+            });
             return;
         }
 

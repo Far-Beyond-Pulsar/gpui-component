@@ -389,6 +389,7 @@ impl BlueprintEditorPanel {
             graph,
             resizable_state,
             current_class_path: None,
+            tab_title: None,
             dragging_node: None,
             drag_offset: Point::new(0.0, 0.0),
             initial_drag_positions: std::collections::HashMap::new(),

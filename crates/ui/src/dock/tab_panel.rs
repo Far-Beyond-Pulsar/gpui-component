@@ -189,7 +189,8 @@ impl TabPanel {
         }
     }
 
-    fn set_active_ix(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+    /// Public method to set the active tab by index.
+    pub fn set_active_tab(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         if ix == self.active_ix {
             return;
         }
@@ -253,7 +254,7 @@ impl TabPanel {
         self.panels.push(panel);
         // set the active panel to the new panel
         if active {
-            self.set_active_ix(self.panels.len() - 1, window, cx);
+            self.set_active_tab(self.panels.len() - 1, window, cx);
         }
         cx.emit(PanelEvent::LayoutChanged);
         cx.notify();
@@ -299,7 +300,7 @@ impl TabPanel {
         }
 
         self.panels.insert(ix, panel);
-        self.set_active_ix(ix, window, cx);
+        self.set_active_tab(ix, window, cx);
         cx.emit(PanelEvent::LayoutChanged);
         cx.notify();
     }
@@ -326,7 +327,7 @@ impl TabPanel {
         let panel_view = panel.view();
         self.panels.retain(|p| p.view() != panel_view);
         if self.active_ix >= self.panels.len() {
-            self.set_active_ix(self.panels.len().saturating_sub(1), window, cx)
+            self.set_active_tab(self.panels.len().saturating_sub(1), window, cx)
         }
     }
 
@@ -721,7 +722,7 @@ impl TabPanel {
                             let is_collapsed = self.collapsed;
                             let dock_area = self.dock_area.clone();
                             move |view, _, window, cx| {
-                                view.set_active_ix(ix, window, cx);
+                                view.set_active_tab(ix, window, cx);
 
                                 // Open dock if clicked on the collapsed bottom dock
                                 if is_bottom_dock && is_collapsed {
