@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use crate::recent_projects::{RecentProject, RecentProjectsList};
 use std::sync::Arc;
 use parking_lot::Mutex;
+use crate::OpenSettings;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum EntryScreenView {
@@ -513,6 +514,9 @@ impl EntryScreen {
                     .label("")
                     .tooltip("Settings")
                     .with_variant(gpui_component::button::ButtonVariant::Ghost)
+                    .on_click(cx.listener(|_, _, window, cx| {
+                        window.dispatch_action(Box::new(OpenSettings), cx);
+                    }))
             )
     }
     
