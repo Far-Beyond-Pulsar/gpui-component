@@ -228,7 +228,7 @@ fn open_settings_window(cx: &mut App) {
             height: px(400.),
         }),
         kind: WindowKind::Normal,
-        window_decorations: Some(gpui::WindowDecorations::Server),
+        window_decorations: Some(gpui::WindowDecorations::Client),
         #[cfg(target_os = "linux")]
         window_background: gpui::WindowBackgroundAppearance::Transparent,
         ..Default::default()

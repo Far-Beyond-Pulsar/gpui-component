@@ -3,7 +3,7 @@ use crate::ui::settings_screen::{SettingsScreen, SettingsScreenProps};
 use gpui::*;
 use gpui_component::{
     button::{Button, ButtonVariants},
-    h_flex, v_flex, Icon, IconName, TitleBar, ActiveTheme,
+    h_flex, v_flex, Icon, IconName, ActiveTheme,
 };
 use std::path::PathBuf;
 
@@ -40,7 +40,15 @@ impl Render for SettingsWindow {
             .size_full()
             .bg(theme.background)
             .child(
-                TitleBar::new()
+                // Custom titlebar matching the app style
+                h_flex()
+                    .h(px(40.))
+                    .bg(theme.background)
+                    .border_b_1()
+                    .border_color(theme.border)
+                    .px_4()
+                    .items_center()
+                    .justify_between()
                     .child(
                         h_flex()
                             .items_center()
