@@ -11,7 +11,8 @@ use std::{sync::Arc, time::Duration};
 
 use super::{
     editors::EditorType,
-    entry_screen::{EntryScreen, ProjectSelected},
+    entry_screen::EntryScreen,
+    project_selector::ProjectSelected,
     file_manager_drawer::{FileManagerDrawer, FileSelected, FileType},
     menu::AppTitleBar,
     panels::{BlueprintEditorPanel, LevelEditorPanel, ScriptEditorPanel},
@@ -88,7 +89,6 @@ impl PulsarApp {
         // Create entry screen only if no project path is provided
         let entry_screen = if project_path.is_none() {
             let screen = cx.new(|cx| EntryScreen::new(window, cx));
-            cx.subscribe(&screen, Self::on_project_selected).detach();
             Some(screen)
         } else {
             None

@@ -6,6 +6,7 @@ mod assets;
 mod compiler;
 mod graph;
 mod ui;
+mod recent_projects;
 
 pub use assets::Assets;
 use serde::Deserialize;
@@ -44,7 +45,7 @@ pub struct OpenSettings;
 use directories::ProjectDirs;
 use std::path::PathBuf;
 use ui::app::PulsarApp;
-use ui::entry_screen::ProjectSelected;
+use ui::project_selector::ProjectSelected;
 use ui::entry_window::EntryWindow;
 use ui::settings_screen::{SettingsScreen, SettingsScreenProps};
 
@@ -231,10 +232,9 @@ fn open_settings_window(cx: &mut App) {
             height: px(400.),
         }),
         kind: WindowKind::Normal,
+        window_decorations: Some(gpui::WindowDecorations::Server),
         #[cfg(target_os = "linux")]
-        window_background: WindowBackgroundAppearance::Transparent,
-        #[cfg(target_os = "linux")]
-        window_decorations: Some(WindowDecorations::Client),
+        window_background: gpui::WindowBackgroundAppearance::Transparent,
         ..Default::default()
     };
 
