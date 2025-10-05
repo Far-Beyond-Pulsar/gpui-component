@@ -7,14 +7,14 @@
 //! - **Function nodes**: Generate function calls with exec chain
 //! - **Control flow nodes**: Inline function body with substitutions
 
-use std::collections::{HashMap, HashSet};
-use crate::graph::{GraphDescription, NodeInstance, ConnectionType};
 use super::{
-    node_metadata::{NodeMetadata, NodeType},
+    ast_utils,
     data_resolver::DataResolver,
     execution_routing::ExecutionRouting,
-    ast_utils,
+    node_metadata::{NodeMetadata, NodeType},
 };
+use crate::graph::{ConnectionType, GraphDescription, NodeInstance};
+use std::collections::{HashMap, HashSet};
 
 /// Variable metadata for code generation
 #[derive(Debug, Clone)]
@@ -65,7 +65,8 @@ impl<'a> CodeGenerator<'a> {
     /// Generate code for an event entry point
     pub fn generate_event_function(&mut self, event_node: &NodeInstance) -> Result<String, String> {
         // Get event node metadata
-        let node_meta = self.metadata
+        let node_meta = self
+            .metadata
             .get(&event_node.node_type)
             .ok_or_else(|| format!("Unknown event node type: {}", event_node.node_type))?;
 
@@ -79,7 +80,9 @@ impl<'a> CodeGenerator<'a> {
         let mut body = String::new();
 
         // Follow execution chain from event's "Body" output
-        let connected_nodes = self.exec_routing.get_connected_nodes(&event_node.id, "Body");
+        let connected_nodes = self
+            .exec_routing
+            .get_connected_nodes(&event_node.id, "Body");
         for target_id in connected_nodes {
             if let Some(target_node) = self.graph.nodes.get(target_id) {
                 self.generate_exec_chain(target_node, &mut body, 1)?;
@@ -92,7 +95,7 @@ impl<'a> CodeGenerator<'a> {
         // Add imports and function definition
         // Include vars import for accessing class variables
         Ok(format!(
-            "{}\nuse pulsar_std::*;\nuse super::vars::*;\n\npub fn {}() {{\n{}}}\n",
+            "{}\nuse pulsar_std::*;\nuse super::super::vars::*;\n\npub fn {}() {{\n{}}}\n",
             header, fn_name, body
         ))
     }
@@ -140,7 +143,8 @@ impl<'a> CodeGenerator<'a> {
             return self.generate_setter_node(node, output, indent_level);
         }
 
-        let node_meta = self.metadata
+        let node_meta = self
+            .metadata
             .get(&node.node_type)
             .ok_or_else(|| format!("Unknown node type: {}", node.node_type))?;
 
@@ -184,7 +188,8 @@ impl<'a> CodeGenerator<'a> {
 
         if has_return {
             // Store result in variable
-            let result_var = self.data_resolver
+            let result_var = self
+                .data_resolver
                 .get_result_variable(&node.id)
                 .ok_or_else(|| format!("No result variable for node: {}", node.id))?;
 
@@ -230,19 +235,34 @@ impl<'a> CodeGenerator<'a> {
 
         // Build exec_output replacements
         let mut exec_replacements = HashMap::new();
-        eprintln!("[CODEGEN] Building exec replacements for control flow node '{}'", node.node_type);
-        eprintln!("[CODEGEN] Node has {} exec outputs: {:?}", node_meta.exec_outputs.len(), node_meta.exec_outputs);
+        eprintln!(
+            "[CODEGEN] Building exec replacements for control flow node '{}'",
+            node.node_type
+        );
+        eprintln!(
+            "[CODEGEN] Node has {} exec outputs: {:?}",
+            node_meta.exec_outputs.len(),
+            node_meta.exec_outputs
+        );
 
         for exec_pin in node_meta.exec_outputs.iter() {
             let connected = self.exec_routing.get_connected_nodes(&node.id, exec_pin);
-            eprintln!("[CODEGEN] Exec pin '{}' has {} connected nodes: {:?}", exec_pin, connected.len(), connected);
+            eprintln!(
+                "[CODEGEN] Exec pin '{}' has {} connected nodes: {:?}",
+                exec_pin,
+                connected.len(),
+                connected
+            );
 
             let mut exec_code = String::new();
             let mut local_visited = self.visited.clone();
 
             for next_node_id in connected {
                 if let Some(next_node) = self.graph.nodes.get(next_node_id) {
-                    eprintln!("[CODEGEN] Generating code for connected node '{}'", next_node.node_type);
+                    eprintln!(
+                        "[CODEGEN] Generating code for connected node '{}'",
+                        next_node.node_type
+                    );
                     // Create a sub-generator with local visited set
                     let mut sub_gen = CodeGenerator {
                         metadata: self.metadata,
@@ -258,17 +278,25 @@ impl<'a> CodeGenerator<'a> {
                 }
             }
 
-            eprintln!("[CODEGEN] Exec pin '{}' replacement code: '{}'", exec_pin, exec_code.trim());
+            eprintln!(
+                "[CODEGEN] Exec pin '{}' replacement code: '{}'",
+                exec_pin,
+                exec_code.trim()
+            );
             exec_replacements.insert(exec_pin.to_string(), exec_code.trim().to_string());
         }
 
-        eprintln!("[CODEGEN] Final exec_replacements map: {:?}", exec_replacements);
+        eprintln!(
+            "[CODEGEN] Final exec_replacements map: {:?}",
+            exec_replacements
+        );
 
         // Build parameter substitutions
         let mut param_substitutions = HashMap::new();
         for param in node_meta.params.iter() {
-            let value = self.data_resolver
-                .generate_input_expression(&node.id, &param.name, self.graph)?;
+            let value =
+                self.data_resolver
+                    .generate_input_expression(&node.id, &param.name, self.graph)?;
             param_substitutions.insert(param.name.to_string(), value);
         }
 
@@ -298,8 +326,9 @@ impl<'a> CodeGenerator<'a> {
         let mut args = Vec::new();
 
         for param in node_meta.params.iter() {
-            let value = self.data_resolver
-                .generate_input_expression(&node.id, &param.name, self.graph)?;
+            let value =
+                self.data_resolver
+                    .generate_input_expression(&node.id, &param.name, self.graph)?;
             args.push(value);
         }
 
@@ -316,15 +345,20 @@ impl<'a> CodeGenerator<'a> {
         let indent = "    ".repeat(indent_level);
 
         // Extract variable name from node type (remove "set_" prefix)
-        let var_name = node.node_type.strip_prefix("set_")
+        let var_name = node
+            .node_type
+            .strip_prefix("set_")
             .ok_or_else(|| format!("Invalid setter node type: {}", node.node_type))?;
 
         // Get the value to set from the "value" input pin
-        let value_expr = self.data_resolver
+        let value_expr = self
+            .data_resolver
             .generate_input_expression(&node.id, "value", self.graph)?;
 
         // Get variable type to determine Cell vs RefCell
-        let var_type = self.variables.get(var_name)
+        let var_type = self
+            .variables
+            .get(var_name)
             .ok_or_else(|| format!("Variable '{}' not found in variable definitions", var_name))?;
 
         // Determine if this is a Copy type (uses Cell) or not (uses RefCell)
@@ -363,7 +397,23 @@ impl<'a> CodeGenerator<'a> {
 
     /// Check if a type is Copy (uses Cell) or not (uses RefCell)
     fn is_copy_type(type_str: &str) -> bool {
-        matches!(type_str, "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "bool" | "char" | "usize" | "isize" | "i8" | "i16" | "u8" | "u16")
+        matches!(
+            type_str,
+            "i32"
+                | "i64"
+                | "u32"
+                | "u64"
+                | "f32"
+                | "f64"
+                | "bool"
+                | "char"
+                | "usize"
+                | "isize"
+                | "i8"
+                | "i16"
+                | "u8"
+                | "u16"
+        )
     }
 }
 
@@ -396,12 +446,20 @@ pub fn generate_program(
         .collect();
 
     if event_nodes.is_empty() {
-        return Err("No event nodes found in graph - add a 'main' or 'begin_play' event".to_string());
+        return Err(
+            "No event nodes found in graph - add a 'main' or 'begin_play' event".to_string(),
+        );
     }
 
     // Generate each event function
     for event_node in event_nodes {
-        let mut generator = CodeGenerator::new(metadata, data_resolver, exec_routing, graph, variables.clone());
+        let mut generator = CodeGenerator::new(
+            metadata,
+            data_resolver,
+            exec_routing,
+            graph,
+            variables.clone(),
+        );
         let event_code = generator.generate_event_function(event_node)?;
         code.push_str(&event_code);
         code.push_str("\n");

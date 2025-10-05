@@ -183,7 +183,7 @@ pub fn less_than(a: i64, b: i64) -> bool {
 /// # Print String
 /// Prints a string to the console with [DEBUG] prefix.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
-pub fn print_string(message: String) {
+pub fn print_string(message: &str) {
     println!("[DEBUG] {}", message);
 }
 
