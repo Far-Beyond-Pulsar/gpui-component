@@ -197,7 +197,7 @@ impl PulsarApp {
             .iter()
             .enumerate()
             .find_map(|(ix, editor)| {
-                if !editor.is_alive(cx) {
+                if !editor.is_valid(cx) {
                     return None;
                 }
                 editor
