@@ -148,6 +148,7 @@ impl ThemeRegistry {
     }
 
     fn init_default_themes(&mut self) {
+        println!("Loading default themes");
         let default_themes: Vec<ThemeConfig> = serde_json::from_str::<ThemeSet>(DEFAULT_THEME)
             .expect("failed to parse default theme.")
             .themes;
@@ -166,6 +167,7 @@ impl ThemeRegistry {
                 (name, Rc::clone(theme))
             })
             .collect();
+        println!("Loaded {} default themes", self.themes.len());
     }
 
     fn _watch_themes_dir(themes_dir: PathBuf, cx: &mut App) -> anyhow::Result<()> {
@@ -217,20 +219,29 @@ impl ThemeRegistry {
 
     /// Reload themes from the `themes_dir`.
     fn reload(&mut self) -> Result<()> {
+        println!("Reloading themes from {}", self.themes_dir.display());
         let mut themes = vec![];
 
         if self.themes_dir.exists() {
+            println!("Themes dir exists");
             for entry in fs::read_dir(&self.themes_dir)? {
                 let entry = entry?;
                 let path = entry.path();
                 if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("json") {
+                    println!("Loading theme file: {}", path.display());
                     let file_content = fs::read_to_string(path.clone())?;
 
                     match serde_json::from_str::<ThemeSet>(&file_content) {
                         Ok(theme_set) => {
+                            println!(
+                                "Loaded theme set '{}' with {} themes",
+                                theme_set.name,
+                                theme_set.themes.len()
+                            );
                             themes.extend(theme_set.themes);
                         }
                         Err(e) => {
+                            println!("Failed to parse {}: {}", path.display(), e);
                             tracing::error!(
                                 "ignored invalid theme file: {}, {}",
                                 path.display(),
@@ -240,6 +251,8 @@ impl ThemeRegistry {
                     }
                 }
             }
+        } else {
+            println!("Themes dir does not exist");
         }
 
         self.themes.clear();
@@ -258,6 +271,7 @@ impl ThemeRegistry {
                 .insert(theme.name.clone(), Rc::new(theme.clone()));
         }
 
+        println!("Total themes loaded: {}", self.themes.len());
         Ok(())
     }
 }
