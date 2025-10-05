@@ -170,7 +170,7 @@ impl gpui::ActionImpl for SelectThemeAction {
                 .get(&self.theme_name)
                 .cloned()
             {
-                Theme::global_mut(cx.app()).apply_config(&theme);
+                Theme::global_mut(cx).apply_config(&theme);
             }
             cx.notify();
         }
