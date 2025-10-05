@@ -1,7 +1,7 @@
 use crate::settings::EngineSettings;
 use gpui::*;
 use gpui_component::label::Label;
-use gpui_component::PopupMenuExt;
+use gpui_component::menu::popup_menu::PopupMenuExt;
 use gpui_component::{
     button::{Button, ButtonVariants},
     h_flex, v_flex, ActiveTheme, Icon, IconName, Theme, ThemeRegistry,
@@ -64,7 +64,7 @@ impl Render for SettingsScreen {
                     )
                     .child(
                         Label::new("Settings")
-                            .with_size(gpui_component::Size::XLarge)
+                            .text_2xl()
                             .text_color(theme.foreground)
                     )
                     .child(
@@ -82,7 +82,7 @@ impl Render for SettingsScreen {
                     .gap_6()
                     .child(
                         Label::new("Theme")
-                            .with_size(gpui_component::Size::Large)
+                            .text_lg()
                             .text_color(theme.foreground)
                     )
                     .child(
