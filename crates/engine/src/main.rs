@@ -44,7 +44,7 @@ pub struct OpenSettings;
 use directories::ProjectDirs;
 use std::path::PathBuf;
 use ui::app::PulsarApp;
-use ui::entry_screen::ProjectSelected;
+use ui::project_selector::ProjectSelected;
 use ui::entry_window::EntryWindow;
 use ui::settings_screen::{SettingsScreen, SettingsScreenProps};
 
