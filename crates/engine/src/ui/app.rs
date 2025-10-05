@@ -254,7 +254,7 @@ impl PulsarApp {
         }
 
         // Add the tab (Entity<BlueprintEditorPanel> implements all required traits)
-        self.center_tabs.update(cx, |tabs, window, cx| {
+        self.center_tabs.update(cx, |tabs, cx| {
             tabs.add_panel(Arc::new(blueprint_editor.clone()), window, cx);
         });
 
@@ -321,23 +321,25 @@ impl Render for PulsarApp {
         cx.bind_keys([KeyBinding::new("ctrl-comma", OpenSettingsWindow, None)]);
 
         // Handle OpenSettingsWindow action
-        cx.on_action::<OpenSettingsWindow, _>(|this: &mut PulsarApp, _action: &OpenSettingsWindow, window: &mut Window, cx: &mut Context<PulsarApp>| {
-            if this.settings_window.is_none() {
-                let settings = cx.new(|cx| crate::ui::settings_window::SettingsWindow::new());
-                this.settings_window = Some(settings);
-                let entity = cx.entity();
+        cx.on_action(|this: &mut PulsarApp, action: &dyn std::any::Any, _phase, window: &mut Window, cx: &mut Context<PulsarApp>| {
+            if let Some(_action) = action.downcast_ref::<OpenSettingsWindow>() {
+                if this.settings_window.is_none() {
+                    let settings = cx.new(|cx| crate::ui::settings_window::SettingsWindow::new());
+                    this.settings_window = Some(settings);
+                    let entity = cx.entity();
 
-                window.open_modal(cx, move |modal, window, cx| {
-                    // Configure the modal with the settings window as its child
-                    modal
-                        .title("Settings")
-                        .child(settings.clone())
-                        .on_close(move |_, _, cx| {
-                            cx.update_entity(&entity, |app, _, _| {
-                                app.settings_window = None;
-                            });
-                        })
-                });
+                    window.open_modal(cx, move |modal, window, cx| {
+                        // Configure the modal with the settings window as its child
+                        modal
+                            .title("Settings")
+                            .child(settings.clone())
+                            .on_close(move |_, _, cx| {
+                                cx.update_entity(&entity, |app, _| {
+                                    app.settings_window = None;
+                                });
+                            })
+                    });
+                }
             }
         });
 
