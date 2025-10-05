@@ -6,6 +6,7 @@ use gpui_component::{
     button::{Button, ButtonVariants},
     h_flex, v_flex, ActiveTheme, Icon, IconName, Theme, ThemeRegistry, StyledExt,
     scroll::ScrollbarAxis,
+    switch::Switch,
 };
 use std::path::PathBuf;
 
@@ -64,9 +65,9 @@ impl Render for SettingsScreen {
             "Editor",
             IconName::Code,
             vec![
-                self.render_placeholder_setting("Font Size", "Configure the editor font size", cx),
-                self.render_placeholder_setting("Line Numbers", "Show or hide line numbers", cx),
-                self.render_placeholder_setting("Word Wrap", "Enable or disable word wrapping", cx),
+                self.render_font_size_setting(cx),
+                self.render_line_numbers_setting(cx),
+                self.render_word_wrap_setting(cx),
             ],
             cx
         );
@@ -75,9 +76,9 @@ impl Render for SettingsScreen {
             "Project",
             IconName::Folder,
             vec![
-                self.render_placeholder_setting("Default Project Path", "Set the default location for new projects", cx),
-                self.render_placeholder_setting("Auto-save", "Configure automatic saving behavior", cx),
-                self.render_placeholder_setting("Backup Settings", "Manage project backup preferences", cx),
+                self.render_default_project_path_setting(cx),
+                self.render_auto_save_setting(cx),
+                self.render_backup_setting(cx),
             ],
             cx
         );
@@ -86,9 +87,9 @@ impl Render for SettingsScreen {
             "Advanced",
             IconName::Settings,
             vec![
-                self.render_placeholder_setting("Performance", "Optimize engine performance settings", cx),
-                self.render_placeholder_setting("Debugging", "Configure debugging and logging options", cx),
-                self.render_placeholder_setting("Extensions", "Manage engine extensions and plugins", cx),
+                self.render_performance_setting(cx),
+                self.render_debugging_setting(cx),
+                self.render_extensions_setting(cx),
             ],
             cx
         );
@@ -272,6 +273,480 @@ impl SettingsScreen {
                             .text_color(theme.muted_foreground)
                             .max_w(px(300.))
                             .child("Theme changes are applied instantly, but only saved when you click Save.")
+                    )
+            )
+            .into_any_element()
+    }
+
+    fn render_font_size_setting(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+
+        v_flex()
+            .gap_3()
+            .pt_4()
+            .border_t_1()
+            .border_color(theme.border)
+            .child(
+                Label::new("Font Size")
+                    .text_base()
+                    .text_color(theme.foreground)
+                    .font_weight(gpui::FontWeight::MEDIUM)
+            )
+            .child(
+                Label::new("Set the font size for the editor")
+                    .text_sm()
+                    .text_color(theme.muted_foreground)
+            )
+            .child(
+                h_flex()
+                    .gap_4()
+                    .items_center()
+                    .child(
+                        Label::new(format!("{:.1}", self.settings.editor.font_size))
+                            .text_sm()
+                            .text_color(theme.foreground)
+                            .bg(theme.background)
+                            .border_1()
+                            .border_color(theme.border)
+                            .rounded(px(4.))
+                            .p_2()
+                    )
+                    .child(
+                        Button::new("save-font-size")
+                            .primary()
+                            .label("Save")
+                            .on_click(cx.listener(|screen, _, _window, cx| {
+                                screen.settings.save(&screen.config_path);
+                                cx.notify();
+                            }))
+                    )
+            )
+            .into_any_element()
+    }
+
+    fn render_line_numbers_setting(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+
+        v_flex()
+            .gap_3()
+            .pt_4()
+            .border_t_1()
+            .border_color(theme.border)
+            .child(
+                Label::new("Line Numbers")
+                    .text_base()
+                    .text_color(theme.foreground)
+                    .font_weight(gpui::FontWeight::MEDIUM)
+            )
+            .child(
+                Label::new("Show or hide line numbers in the editor")
+                    .text_sm()
+                    .text_color(theme.muted_foreground)
+            )
+            .child(
+                h_flex()
+                    .gap_4()
+                    .items_center()
+                    .child(
+                        Switch::new("line-numbers-switch")
+                            .checked(self.settings.editor.show_line_numbers)
+                            .on_click(cx.listener(|screen, _, _window, cx| {
+                                screen.settings.editor.show_line_numbers = !screen.settings.editor.show_line_numbers;
+                                cx.notify();
+                            }))
+                    )
+                    .child(
+                        Label::new(if self.settings.editor.show_line_numbers { "Enabled" } else { "Disabled" })
+                            .text_sm()
+                            .text_color(theme.foreground)
+                    )
+                    .child(
+                        Button::new("save-line-numbers")
+                            .primary()
+                            .label("Save")
+                            .on_click(cx.listener(|screen, _, _window, cx| {
+                                screen.settings.save(&screen.config_path);
+                                cx.notify();
+                            }))
+                    )
+            )
+            .into_any_element()
+    }
+
+    fn render_word_wrap_setting(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+
+        v_flex()
+            .gap_3()
+            .pt_4()
+            .border_t_1()
+            .border_color(theme.border)
+            .child(
+                Label::new("Word Wrap")
+                    .text_base()
+                    .text_color(theme.foreground)
+                    .font_weight(gpui::FontWeight::MEDIUM)
+            )
+            .child(
+                Label::new("Enable or disable automatic word wrapping")
+                    .text_sm()
+                    .text_color(theme.muted_foreground)
+            )
+            .child(
+                h_flex()
+                    .gap_4()
+                    .items_center()
+                    .child(
+                        Switch::new("word-wrap-switch")
+                            .checked(self.settings.editor.word_wrap)
+                            .on_click(cx.listener(|screen, _, _window, cx| {
+                                screen.settings.editor.word_wrap = !screen.settings.editor.word_wrap;
+                                cx.notify();
+                            }))
+                    )
+                    .child(
+                        Label::new(if self.settings.editor.word_wrap { "Enabled" } else { "Disabled" })
+                            .text_sm()
+                            .text_color(theme.foreground)
+                    )
+                    .child(
+                        Button::new("save-word-wrap")
+                            .primary()
+                            .label("Save")
+                            .on_click(cx.listener(|screen, _, _window, cx| {
+                                screen.settings.save(&screen.config_path);
+                                cx.notify();
+                            }))
+                    )
+            )
+            .into_any_element()
+    }
+
+    fn render_default_project_path_setting(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+
+        v_flex()
+            .gap_3()
+            .pt_4()
+            .border_t_1()
+            .border_color(theme.border)
+            .child(
+                Label::new("Default Project Path")
+                    .text_base()
+                    .text_color(theme.foreground)
+                    .font_weight(gpui::FontWeight::MEDIUM)
+            )
+            .child(
+                Label::new("Set the default directory for new projects")
+                    .text_sm()
+                    .text_color(theme.muted_foreground)
+            )
+            .child(
+                h_flex()
+                    .gap_4()
+                    .items_center()
+                    .child(
+                        Label::new(self.settings.project.default_project_path.as_deref().unwrap_or("Not set").to_string())
+                            .text_sm()
+                            .text_color(theme.foreground)
+                            .bg(theme.background)
+                            .border_1()
+                            .border_color(theme.border)
+                            .rounded(px(4.))
+                            .p_2()
+                    )
+                    .child(
+                        Button::new("browse-project-path")
+                            .ghost()
+                            .label("Browse")
+                            .icon(IconName::Folder)
+                            .on_click(cx.listener(|_this, _, _window, cx| {
+                                // TODO: Implement folder picker
+                                cx.notify();
+                            }))
+                    )
+                    .child(
+                        Button::new("save-project-path")
+                            .primary()
+                            .label("Save")
+                            .on_click(cx.listener(|screen, _, _window, cx| {
+                                screen.settings.save(&screen.config_path);
+                                cx.notify();
+                            }))
+                    )
+            )
+            .into_any_element()
+    }
+
+    fn render_auto_save_setting(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+
+        v_flex()
+            .gap_3()
+            .pt_4()
+            .border_t_1()
+            .border_color(theme.border)
+            .child(
+                Label::new("Auto Save")
+                    .text_base()
+                    .text_color(theme.foreground)
+                    .font_weight(gpui::FontWeight::MEDIUM)
+            )
+            .child(
+                Label::new("Automatically save project changes")
+                    .text_sm()
+                    .text_color(theme.muted_foreground)
+            )
+            .child(
+                h_flex()
+                    .gap_4()
+                    .items_center()
+                    .child(
+                        Switch::new("auto-save-switch")
+                            .checked(self.settings.project.auto_save_interval > 0)
+                            .on_click(cx.listener(|screen, _, _window, cx| {
+                                if screen.settings.project.auto_save_interval > 0 {
+                                    screen.settings.project.auto_save_interval = 0;
+                                } else {
+                                    screen.settings.project.auto_save_interval = 30; // Default 30 seconds
+                                }
+                                cx.notify();
+                            }))
+                    )
+                    .child(
+                        Label::new(if self.settings.project.auto_save_interval > 0 { "Enabled" } else { "Disabled" })
+                            .text_sm()
+                            .text_color(theme.foreground)
+                    )
+                    .child(
+                        Label::new(format!("Interval: {} seconds", self.settings.project.auto_save_interval))
+                            .text_sm()
+                            .text_color(theme.muted_foreground)
+                            .bg(theme.background)
+                            .border_1()
+                            .border_color(theme.border)
+                            .rounded(px(4.))
+                            .p_2()
+                    )
+                    .child(
+                        Label::new("seconds")
+                            .text_sm()
+                            .text_color(theme.muted_foreground)
+                    )
+                    .child(
+                        Button::new("save-auto-save")
+                            .primary()
+                            .label("Save")
+                            .on_click(cx.listener(|screen, _, _window, cx| {
+                                screen.settings.save(&screen.config_path);
+                                cx.notify();
+                            }))
+                    )
+            )
+            .into_any_element()
+    }
+
+    fn render_backup_setting(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+
+        v_flex()
+            .gap_3()
+            .pt_4()
+            .border_t_1()
+            .border_color(theme.border)
+            .child(
+                Label::new("Backup Settings")
+                    .text_base()
+                    .text_color(theme.foreground)
+                    .font_weight(gpui::FontWeight::MEDIUM)
+            )
+            .child(
+                Label::new("Configure automatic project backups")
+                    .text_sm()
+                    .text_color(theme.muted_foreground)
+            )
+            .child(
+                h_flex()
+                    .gap_4()
+                    .items_center()
+                    .child(
+                        Switch::new("backup-enabled-switch")
+                            .checked(self.settings.project.enable_backups)
+                            .on_click(cx.listener(|screen, _, _window, cx| {
+                                screen.settings.project.enable_backups = !screen.settings.project.enable_backups;
+                                cx.notify();
+                            }))
+                    )
+                    .child(
+                        Label::new(if self.settings.project.enable_backups { "Enabled" } else { "Disabled" })
+                            .text_sm()
+                            .text_color(theme.foreground)
+                    )
+                    .child(
+                        Label::new("Backups are automatically created when saving projects")
+                            .text_sm()
+                            .text_color(theme.muted_foreground)
+                    )
+                    .child(
+                        Button::new("save-backup")
+                            .primary()
+                            .label("Save")
+                            .on_click(cx.listener(|screen, _, _window, cx| {
+                                screen.settings.save(&screen.config_path);
+                                cx.notify();
+                            }))
+                    )
+            )
+            .into_any_element()
+    }
+
+    fn render_performance_setting(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+
+        v_flex()
+            .gap_3()
+            .pt_4()
+            .border_t_1()
+            .border_color(theme.border)
+            .child(
+                Label::new("Performance Settings")
+                    .text_base()
+                    .text_color(theme.foreground)
+                    .font_weight(gpui::FontWeight::MEDIUM)
+            )
+            .child(
+                Label::new("Configure performance-related options")
+                    .text_sm()
+                    .text_color(theme.muted_foreground)
+            )
+            .child(
+                v_flex()
+                    .gap_3()
+                    .child(
+                        Label::new(format!("Performance Level: {}", self.settings.advanced.performance_level))
+                            .text_sm()
+                            .text_color(theme.foreground)
+                            .bg(theme.background)
+                            .border_1()
+                            .border_color(theme.border)
+                            .rounded(px(4.))
+                            .p_2()
+                    )
+                    .child(
+                        Label::new("Higher levels may improve performance but use more resources")
+                            .text_sm()
+                            .text_color(theme.muted_foreground)
+                    )
+                    .child(
+                        Button::new("save-performance")
+                            .primary()
+                            .label("Save")
+                            .on_click(cx.listener(|screen, _, _window, cx| {
+                                screen.settings.save(&screen.config_path);
+                                cx.notify();
+                            }))
+                    )
+            )
+            .into_any_element()
+    }
+
+    fn render_debugging_setting(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+
+        v_flex()
+            .gap_3()
+            .pt_4()
+            .border_t_1()
+            .border_color(theme.border)
+            .child(
+                Label::new("Debugging Options")
+                    .text_base()
+                    .text_color(theme.foreground)
+                    .font_weight(gpui::FontWeight::MEDIUM)
+            )
+            .child(
+                Label::new("Configure debugging and development features")
+                    .text_sm()
+                    .text_color(theme.muted_foreground)
+            )
+            .child(
+                v_flex()
+                    .gap_3()
+                    .child(
+                        h_flex()
+                            .gap_4()
+                            .items_center()
+                            .child(
+                                Switch::new("debug-logging-switch")
+                                    .checked(self.settings.advanced.debug_logging)
+                                    .on_click(cx.listener(|screen, _, _window, cx| {
+                                        screen.settings.advanced.debug_logging = !screen.settings.advanced.debug_logging;
+                                        cx.notify();
+                                    }))
+                            )
+                            .child(
+                                Label::new("Debug Logging")
+                                    .text_sm()
+                                    .text_color(theme.foreground)
+                            )
+                    )
+                    .child(
+                        h_flex()
+                            .gap_4()
+                            .items_center()
+                            .child(
+                                Switch::new("experimental-features-switch")
+                                    .checked(self.settings.advanced.experimental_features)
+                                    .on_click(cx.listener(|screen, _, _window, cx| {
+                                        screen.settings.advanced.experimental_features = !screen.settings.advanced.experimental_features;
+                                        cx.notify();
+                                    }))
+                            )
+                            .child(
+                                Label::new("Experimental Features")
+                                    .text_sm()
+                                    .text_color(theme.foreground)
+                            )
+                    )
+                    .child(
+                        Button::new("save-debugging")
+                            .primary()
+                            .label("Save")
+                            .on_click(cx.listener(|screen, _, _window, cx| {
+                                screen.settings.save(&screen.config_path);
+                                cx.notify();
+                            }))
+                    )
+            )
+            .into_any_element()
+    }
+
+    fn render_extensions_setting(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+
+        v_flex()
+            .gap_3()
+            .pt_4()
+            .border_t_1()
+            .border_color(theme.border)
+            .child(
+                Label::new("Extensions")
+                    .text_base()
+                    .text_color(theme.foreground)
+                    .font_weight(gpui::FontWeight::MEDIUM)
+            )
+            .child(
+                Label::new("Manage installed extensions and plugins")
+                    .text_sm()
+                    .text_color(theme.muted_foreground)
+            )
+            .child(
+                v_flex()
+                    .gap_3()
+                    .child(
+                        Label::new("Extension management features are coming soon")
+                            .text_sm()
+                            .text_color(theme.muted_foreground)
                     )
             )
             .into_any_element()

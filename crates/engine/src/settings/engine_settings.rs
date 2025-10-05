@@ -7,13 +7,84 @@ use std::path::{Path, PathBuf};
 pub struct EngineSettings {
     /// The currently active theme (by name).
     pub active_theme: String,
-    // TODO: Other settings can be added here.
+    /// Editor settings
+    pub editor: EditorSettings,
+    /// Project settings
+    pub project: ProjectSettings,
+    /// Advanced settings
+    pub advanced: AdvancedSettings,
+}
+
+/// Editor-specific settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EditorSettings {
+    /// Font size for the editor
+    pub font_size: f32,
+    /// Whether to show line numbers
+    pub show_line_numbers: bool,
+    /// Whether to enable word wrapping
+    pub word_wrap: bool,
+}
+
+/// Project-specific settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectSettings {
+    /// Default path for new projects
+    pub default_project_path: Option<String>,
+    /// Auto-save interval in seconds (0 = disabled)
+    pub auto_save_interval: u32,
+    /// Whether to create backups
+    pub enable_backups: bool,
+}
+
+/// Advanced settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdvancedSettings {
+    /// Performance optimization level (0-2, higher = more aggressive)
+    pub performance_level: u8,
+    /// Enable debug logging
+    pub debug_logging: bool,
+    /// Enable experimental features
+    pub experimental_features: bool,
 }
 
 impl Default for EngineSettings {
     fn default() -> Self {
         Self {
-            active_theme: "default".to_string(),
+            active_theme: "Default Light".to_string(),
+            editor: EditorSettings::default(),
+            project: ProjectSettings::default(),
+            advanced: AdvancedSettings::default(),
+        }
+    }
+}
+
+impl Default for EditorSettings {
+    fn default() -> Self {
+        Self {
+            font_size: 14.0,
+            show_line_numbers: true,
+            word_wrap: false,
+        }
+    }
+}
+
+impl Default for ProjectSettings {
+    fn default() -> Self {
+        Self {
+            default_project_path: None,
+            auto_save_interval: 300, // 5 minutes
+            enable_backups: true,
+        }
+    }
+}
+
+impl Default for AdvancedSettings {
+    fn default() -> Self {
+        Self {
+            performance_level: 1,
+            debug_logging: false,
+            experimental_features: false,
         }
     }
 }
