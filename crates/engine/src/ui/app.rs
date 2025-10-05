@@ -1,4 +1,4 @@
-use gpui::{prelude::*, Animation, AnimationExt as _, *};
+use gpui::{prelude::*, Animation, AnimationExt as _, KeyBinding, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
@@ -22,6 +22,10 @@ use super::{
 #[action(namespace = pulsar_app)]
 pub struct ToggleFileManager;
 
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize)]
+#[action(namespace = pulsar_app)]
+pub struct OpenSettingsWindow;
+
 pub struct PulsarApp {
     dock_area: Entity<DockArea>,
     project_path: Option<PathBuf>,
@@ -33,6 +37,7 @@ pub struct PulsarApp {
     script_editor: Option<Entity<ScriptEditorPanel>>,
     blueprint_editors: Vec<Entity<BlueprintEditorPanel>>,
     next_tab_id: usize,
+    settings_window: Option<Entity<crate::ui::settings_window::SettingsWindow>>,
 }
 
 impl PulsarApp {
@@ -112,6 +117,7 @@ impl PulsarApp {
             script_editor,
             blueprint_editors,
             next_tab_id: 1,
+            settings_window: None,
         }
     }
 
@@ -310,96 +316,89 @@ impl Render for PulsarApp {
 
         let drawer_open = self.drawer_open;
 
-        v_flex()
-            .size_full()
-            .bg(cx.theme().background)
-            .on_action(cx.listener(Self::on_toggle_file_manager))
-            .child(
-                // Menu bar
-                {
-                    let title_bar = cx.new(|cx| AppTitleBar::new("Pulsar Engine", window, cx));
-                    title_bar.clone()
-                },
-            )
-            .child(
-                // Main dock area with overlay
-                div()
-                    .flex_1()
-                    .relative()
-                    .child(self.dock_area.clone())
-                    .when(drawer_open, |this| {
-                        this.child(
-                            // Overlay background
-                            div()
-                                .absolute()
-                                .top_0()
-                                .left_0()
-                                .size_full()
-                                .bg(Hsla::black().opacity(0.3))
-                                .on_mouse_down(
-                                    MouseButton::Left,
-                                    cx.listener(|app, _, window, cx| {
-                                        app.drawer_open = false;
-                                        cx.notify();
-                                    }),
-                                ),
+        // Bind ctrl+, to OpenSettingsWindow action globally
+        cx.bind_keys([KeyBinding::new("ctrl-comma", OpenSettingsWindow, None)]);
+
+        // Handle OpenSettingsWindow action
+        cx.on_action(
+            cx.listener(|app, _action: &OpenSettingsWindow, window, cx| {
+                if app.settings_window.is_none() {
+                    let settings =
+                        cx.new(|cx| crate::ui::settings_window::SettingsWindow::new(window, cx));
+                    app.settings_window = Some(settings);
+                    window.open_modal(cx, |modal, _, _| modal.child(settings.clone()));
+                }
+            }),
+        );
+
+        {
+            // Prepare overlay layers as siblings, not children of main content
+            let drawer_layer = gpui_component::Root::render_drawer_layer(window, cx);
+            let modal_layer = gpui_component::Root::render_modal_layer(window, cx);
+            let notification_layer = gpui_component::Root::render_notification_layer(window, cx);
+
+            div()
+                .size_full()
+                .child(
+                    v_flex()
+                        .size_full()
+                        .bg(cx.theme().background)
+                        .on_action(cx.listener(Self::on_toggle_file_manager))
+                        .child(
+                            // Menu bar
+                            {
+                                let title_bar =
+                                    cx.new(|cx| AppTitleBar::new("Pulsar Engine", window, cx));
+                                title_bar.clone()
+                            },
                         )
                         .child(
-                            // Drawer at bottom
-                            div()
-                                .absolute()
-                                .bottom_0()
-                                .left_0()
-                                .right_0()
-                                .h(px(300.))
-                                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                                .child(self.file_manager_drawer.clone())
-                                .with_animation(
-                                    "slide-up",
-                                    Animation::new(Duration::from_secs_f64(0.2)),
-                                    |this, delta| this.bottom(px(-300.) + delta * px(300.)),
-                                ),
+                            // Main dock area
+                            div().flex_1().relative().child(self.dock_area.clone()),
                         )
-                    }),
-            )
-            .child(
-                // Footer with drawer toggle
-                h_flex()
-                    .w_full()
-                    .h(px(32.))
-                    .px_2()
-                    .items_center()
-                    .justify_between()
-                    .bg(cx.theme().sidebar)
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .child(
-                        // Left side - drawer toggle button
-                        Button::new("toggle-drawer")
-                            .ghost()
-                            .icon(if drawer_open {
-                                IconName::ChevronDown
-                            } else {
-                                IconName::ChevronUp
-                            })
-                            .label("Project Files")
-                            .on_click(cx.listener(|app, _, window, cx| {
-                                app.toggle_drawer(window, cx);
-                            })),
-                    )
-                    .child(
-                        // Right side - project path
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .children(
-                                self.project_path
-                                    .as_ref()
-                                    .map(|path| path.display().to_string()),
-                            ),
-                    ),
-            )
-            .into_any_element()
+                        .child(
+                            // Footer with drawer toggle
+                            h_flex()
+                                .w_full()
+                                .h(px(32.))
+                                .px_2()
+                                .items_center()
+                                .justify_between()
+                                .bg(cx.theme().sidebar)
+                                .border_t_1()
+                                .border_color(cx.theme().border)
+                                .child(
+                                    // Left side - drawer toggle button
+                                    Button::new("toggle-drawer")
+                                        .ghost()
+                                        .icon(if drawer_open {
+                                            IconName::ChevronDown
+                                        } else {
+                                            IconName::ChevronUp
+                                        })
+                                        .label("Project Files")
+                                        .on_click(cx.listener(|app, _, window, cx| {
+                                            app.toggle_drawer(window, cx);
+                                        })),
+                                )
+                                .child(
+                                    // Right side - project path
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .children(
+                                            self.project_path
+                                                .as_ref()
+                                                .map(|path| path.display().to_string()),
+                                        ),
+                                ),
+                        ),
+                )
+                .children(drawer_layer)
+                .children(modal_layer)
+                .children(notification_layer)
+                .into_any_element()
+        }
     }
 }
 
