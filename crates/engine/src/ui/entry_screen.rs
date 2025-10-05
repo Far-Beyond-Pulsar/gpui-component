@@ -747,8 +747,8 @@ impl EntryScreen {
                     .mb_4()
                     .child("Choose a template to start your project. Templates are cloned from Git with full progress tracking.")
             )
-            .when(has_progress, |this| {
-                this.child(
+            .children(if has_progress {
+                Some(
                     v_flex()
                         .gap_4()
                         .p_6()
@@ -770,6 +770,8 @@ impl EntryScreen {
                         )
                         .child(Progress::new().value(50.0))
                 )
+            } else {
+                None
             })
             .child(self.render_template_grid(templates, cols, cx))
     }
