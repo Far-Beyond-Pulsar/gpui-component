@@ -47,7 +47,7 @@ use std::path::PathBuf;
 use ui::app::PulsarApp;
 use ui::project_selector::ProjectSelected;
 use ui::entry_window::EntryWindow;
-use ui::settings_screen::{SettingsScreen, SettingsScreenProps};
+use ui::settings_window::SettingsWindow;
 
 fn main() {
     // Note: Node metadata is now loaded lazily from pulsar_std when needed
@@ -236,14 +236,7 @@ fn open_settings_window(cx: &mut App) {
 
     let window = cx
         .open_window(options, |window, cx| {
-            let settings_screen = SettingsScreen::new(
-                SettingsScreenProps {
-                    config_path: config_file.clone(),
-                },
-                cx,
-            );
-            let settings_entity = cx.new(|_| settings_screen);
-            cx.new(|cx| Root::new(settings_entity.into(), window, cx))
+            cx.new(|cx| SettingsWindow::new(window, cx))
         })
         .expect("failed to open settings window");
 
