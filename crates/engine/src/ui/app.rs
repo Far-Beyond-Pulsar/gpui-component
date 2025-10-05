@@ -333,18 +333,17 @@ impl Render for PulsarApp {
                         modal
                             .title("Settings")
                             .child(settings.clone())
-                            .on_close(move |_, _, cx| {
+                            .on_close(move |modal, _, cx| {
                                 cx.update_entity(&entity, |app, _| {
                                     app.settings_window = None;
                                 });
+                                modal
                             })
                     });
                 }
             }
         });
-
-        {
-            // Prepare overlay layers as siblings, not children of main content
+        // Prepare overlay layers as siblings, not children of main content
             let drawer_layer = gpui_component::Root::render_drawer_layer(window, cx);
             let modal_layer = gpui_component::Root::render_modal_layer(window, cx);
             let notification_layer = gpui_component::Root::render_notification_layer(window, cx);
@@ -410,7 +409,6 @@ impl Render for PulsarApp {
                 .children(modal_layer)
                 .children(notification_layer)
                 .into_any_element()
-        }
     }
 }
 
