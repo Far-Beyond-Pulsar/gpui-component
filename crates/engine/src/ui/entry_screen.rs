@@ -133,7 +133,7 @@ impl Render for EntryScreen {
                                                 )
                                                 .child(div().text_color(theme.muted_foreground).text_sm().child(proj_path.clone()))
                                                 .child(
-                                                    Button::new(format!("details-{}", proj_path).as_str())
+                                                    Button::new(SharedString::from(format!("details-{}", proj_path)))
                                                         .label("Details")
                                                         .icon(IconName::ArrowRight)
                                                         .tooltip("Show project details")
@@ -262,7 +262,6 @@ impl Render for EntryScreen {
                                                     let icon = icon_name;
                                                     let name = name_str.to_string();
                                                     let desc = desc_str.to_string();
-                                                    let btn_id = btn_id_str.to_string();
                                                     
                                                     let card = v_flex()
                                                         .h_full()
@@ -286,7 +285,7 @@ impl Render for EntryScreen {
                                                         )
                                                         .child(div().text_color(theme.muted_foreground).text_sm().child(desc.clone()))
                                                         .child(
-                                                            Button::new(btn_id)
+                                                            Button::new(SharedString::from(btn_id_str.to_string()))
                                                                 .label("Details")
                                                                 .icon(IconName::ArrowRight)
                                                                 .tooltip("Show template details and config")
@@ -299,6 +298,7 @@ impl Render for EntryScreen {
                                                                         let desc = desc.clone();
                                                                         <Window as ContextModal>::open_drawer_at(window, Placement::Right, cx, move |drawer, _window, _cx| {
                                                                             let name_for_button = name.clone();
+                                                                            let desc = desc.clone();
                                                                             drawer
                                                                                 .title(format!("{} Template", name))
                                                                                 .child(
