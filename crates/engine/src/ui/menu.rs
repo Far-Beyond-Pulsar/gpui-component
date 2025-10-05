@@ -1,12 +1,18 @@
 use std::rc::Rc;
 
 use gpui::{
-    actions, div, prelude::FluentBuilder as _, px, Action, AnyElement, App, AppContext, ClickEvent, Context, Corner,
-    Entity, FocusHandle, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _,
-    Render, SharedString, Styled as _, Subscription, Window,
+    actions, div, prelude::FluentBuilder as _, px, Action, AnyElement, App, AppContext, ClickEvent,
+    Context, Corner, Entity, FocusHandle, InteractiveElement as _, IntoElement, MouseButton,
+    ParentElement as _, Render, SharedString, Styled as _, Subscription, Window,
 };
 use gpui_component::{
-    badge::Badge, button::{Button, ButtonVariants as _}, h_flex, locale, popup_menu::PopupMenuExt as _, scroll::ScrollbarShow, set_locale, ActiveTheme as _, ContextModal as _, IconName, PixelsExt, Sizable as _, Theme, ThemeMode, TitleBar
+    badge::Badge,
+    button::{Button, ButtonVariants as _},
+    h_flex, locale,
+    popup_menu::PopupMenuExt as _,
+    scroll::ScrollbarShow,
+    set_locale, ActiveTheme as _, ContextModal as _, IconName, PixelsExt, Sizable as _, Theme,
+    ThemeMode, TitleBar,
 };
 
 use crate::{themes::ThemeSwitcher, SelectFont, SelectLocale, SelectRadius, SelectScrollbarShow};
@@ -147,7 +153,7 @@ impl Render for AppTitleBar {
                     .items_center()
                     .gap_4()
                     .child(self.title.clone())
-                    .child(self.main_menu.clone())
+                    .child(self.main_menu.clone()),
             )
             .child(
                 div()
@@ -255,15 +261,21 @@ impl Render for MainMenu {
                     .ghost()
                     .small()
                     .popup_menu(|this, window, cx| {
-                        this
-                            .menu_with_icon("New File", IconName::PagePlus, Box::new(NewFile))
-                            .menu_with_icon("New Project", IconName::FolderPlus, Box::new(NewProject))
+                        this.menu_with_icon("New File", IconName::PagePlus, Box::new(NewFile))
+                            .menu_with_icon(
+                                "New Project",
+                                IconName::FolderPlus,
+                                Box::new(NewProject),
+                            )
                             .separator()
                             .menu_with_icon("Open File", IconName::FolderOpen, Box::new(OpenFile))
-                            .menu_with_icon("Open Folder", IconName::FolderOpen, Box::new(OpenFolder))
+                            .menu_with_icon(
+                                "Open Folder",
+                                IconName::FolderOpen,
+                                Box::new(OpenFolder),
+                            )
                             .submenu("Open Recent", window, cx, |menu, _, _| {
-                                menu
-                                    .menu("project1.rs", Box::new(OpenRecent))
+                                menu.menu("project1.rs", Box::new(OpenRecent))
                                     .menu("project2.rs", Box::new(OpenRecent))
                                     .separator()
                                     .menu("Clear Recent", Box::new(OpenRecent))
@@ -276,7 +288,7 @@ impl Render for MainMenu {
                             .menu("Close File", Box::new(CloseFile))
                             .menu("Close Folder", Box::new(CloseFolder))
                             .menu("Close All", Box::new(CloseAll))
-                    })
+                    }),
             )
             // Edit Menu
             .child(
@@ -285,8 +297,7 @@ impl Render for MainMenu {
                     .ghost()
                     .small()
                     .popup_menu(|this, window, cx| {
-                        this
-                            .menu("Undo", Box::new(Undo))
+                        this.menu("Undo", Box::new(Undo))
                             .menu("Redo", Box::new(Redo))
                             .separator()
                             .menu_with_icon("Cut", IconName::Scissor, Box::new(Cut))
@@ -298,7 +309,7 @@ impl Render for MainMenu {
                             .menu_with_icon("Find", IconName::Search, Box::new(Find))
                             .menu("Find & Replace", Box::new(FindReplace))
                             .menu("Find in Files", Box::new(FindInFiles))
-                    })
+                    }),
             )
             // Selection Menu
             .child(
@@ -307,8 +318,7 @@ impl Render for MainMenu {
                     .ghost()
                     .small()
                     .popup_menu(|this, window, cx| {
-                        this
-                            .menu("Select Line", Box::new(SelectLine))
+                        this.menu("Select Line", Box::new(SelectLine))
                             .menu("Select Word", Box::new(SelectWord))
                             .separator()
                             .menu("Expand Selection", Box::new(ExpandSelection))
@@ -316,7 +326,7 @@ impl Render for MainMenu {
                             .separator()
                             .menu("Add Cursor Above", Box::new(AddCursorAbove))
                             .menu("Add Cursor Below", Box::new(AddCursorBelow))
-                    })
+                    }),
             )
             // Build Menu
             .child(
@@ -325,15 +335,14 @@ impl Render for MainMenu {
                     .ghost()
                     .small()
                     .popup_menu(|this, window, cx| {
-                        this
-                            .menu_with_icon("Build", IconName::Tools, Box::new(Build))
+                        this.menu_with_icon("Build", IconName::Tools, Box::new(Build))
                             .menu("Rebuild", Box::new(Rebuild))
                             .menu("Clean", Box::new(Clean))
                             .separator()
                             .menu("Build & Run", Box::new(BuildAndRun))
                             .separator()
                             .menu("Run Tests", Box::new(RunTests))
-                    })
+                    }),
             )
             // View Menu
             .child(
@@ -342,8 +351,7 @@ impl Render for MainMenu {
                     .ghost()
                     .small()
                     .popup_menu(|this, window, cx| {
-                        this
-                            .menu_with_check("Explorer", true, Box::new(ToggleExplorer))
+                        this.menu_with_check("Explorer", true, Box::new(ToggleExplorer))
                             .menu_with_check("Terminal", true, Box::new(ToggleTerminal))
                             .menu_with_check("Output", false, Box::new(ToggleOutput))
                             .menu_with_check("Problems", false, Box::new(ToggleProblems))
@@ -353,7 +361,7 @@ impl Render for MainMenu {
                             .menu("Reset Zoom", Box::new(ResetZoom))
                             .separator()
                             .menu("Toggle Fullscreen", Box::new(ToggleFullscreen))
-                    })
+                    }),
             )
             // Go Menu
             .child(
@@ -362,8 +370,7 @@ impl Render for MainMenu {
                     .ghost()
                     .small()
                     .popup_menu(|this, window, cx| {
-                        this
-                            .menu("Go to File", Box::new(GoToFile))
+                        this.menu("Go to File", Box::new(GoToFile))
                             .menu("Go to Line", Box::new(GoToLine))
                             .menu("Go to Symbol", Box::new(GoToSymbol))
                             .separator()
@@ -372,7 +379,7 @@ impl Render for MainMenu {
                             .separator()
                             .menu("Go Back", Box::new(GoBack))
                             .menu("Go Forward", Box::new(GoForward))
-                    })
+                    }),
             )
             // Run Menu
             .child(
@@ -381,14 +388,13 @@ impl Render for MainMenu {
                     .ghost()
                     .small()
                     .popup_menu(|this, window, cx| {
-                        this
-                            .menu_with_icon("Run Project", IconName::Play, Box::new(RunProject))
+                        this.menu_with_icon("Run Project", IconName::Play, Box::new(RunProject))
                             .menu_with_icon("Debug Project", IconName::Bug, Box::new(DebugProject))
                             .menu("Run without Debugging", Box::new(RunWithoutDebugging))
                             .separator()
                             .menu("Stop Debugging", Box::new(StopDebugging))
                             .menu("Restart Debugging", Box::new(RestartDebugging))
-                    })
+                    }),
             )
             // Terminal Menu
             .child(
@@ -397,12 +403,15 @@ impl Render for MainMenu {
                     .ghost()
                     .small()
                     .popup_menu(|this, window, cx| {
-                        this
-                            .menu_with_icon("New Terminal", IconName::SquareTerminal, Box::new(NewTerminal))
-                            .menu("Split Terminal", Box::new(SplitTerminal))
-                            .separator()
-                            .menu("Clear Terminal", Box::new(ClearTerminal))
-                    })
+                        this.menu_with_icon(
+                            "New Terminal",
+                            IconName::SquareTerminal,
+                            Box::new(NewTerminal),
+                        )
+                        .menu("Split Terminal", Box::new(SplitTerminal))
+                        .separator()
+                        .menu("Clear Terminal", Box::new(ClearTerminal))
+                    }),
             )
             // Help Menu
             .child(
@@ -411,14 +420,17 @@ impl Render for MainMenu {
                     .ghost()
                     .small()
                     .popup_menu(|this, window, cx| {
-                        this
-                            .menu("Show Commands", Box::new(ShowCommands))
+                        this.menu("Show Commands", Box::new(ShowCommands))
                             .separator()
                             .link_with_icon("Documentation", IconName::BookOpen, "https://docs.rs")
-                            .link_with_icon("Report Issue", IconName::GitHub, "https://github.com/issues")
+                            .link_with_icon(
+                                "Report Issue",
+                                IconName::GitHub,
+                                "https://github.com/issues",
+                            )
                             .separator()
                             .menu_with_icon("About", IconName::InfoCircle, Box::new(AboutApp))
-                    })
+                    }),
             )
     }
 }

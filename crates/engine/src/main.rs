@@ -1,12 +1,11 @@
+use crate::settings::EngineSettings;
 use gpui::*;
-use gpui_component::{
-    Root,
-};
+use gpui_component::Root;
 
-mod compiler;
 mod assets;
-mod ui;
+mod compiler;
 mod graph;
+mod ui;
 
 pub use assets::Assets;
 use serde::Deserialize;
@@ -15,12 +14,12 @@ use serde::Deserialize;
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // pub mod renderer;
+pub mod settings;
 pub mod themes;
 
 use gpui::Action;
 use gpui::SharedString;
 use gpui_component::scroll::ScrollbarShow;
-
 
 #[derive(Action, Clone, PartialEq, Eq, Deserialize)]
 #[action(namespace = story, no_json)]
@@ -38,15 +37,64 @@ pub struct SelectFont(usize);
 #[action(namespace = story, no_json)]
 pub struct SelectRadius(usize);
 
-use ui::app::PulsarApp;
-use ui::entry_window::EntryWindow;
-use ui::entry_screen::ProjectSelected;
 use std::path::PathBuf;
+use ui::app::PulsarApp;
+use ui::entry_screen::ProjectSelected;
+use ui::entry_window::EntryWindow;
 
 fn main() {
     // Note: Node metadata is now loaded lazily from pulsar_std when needed
     println!("Pulsar Engine - Visual Programming Environment");
     println!("Using macro-based node system from pulsar_std");
+
+    // --- THEME EXTRACTION & SETTINGS INIT ---
+    use directories::ProjectDirs;
+    use std::fs;
+    use std::path::Path;
+
+    // Determine app data directory
+    let proj_dirs = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
+        .expect("Could not determine app data directory");
+    let appdata_dir = proj_dirs.data_dir();
+    let themes_dir = appdata_dir.join("themes");
+    let config_dir = appdata_dir.join("configs");
+    let config_file = config_dir.join("engine.toml");
+
+    // Extract bundled themes if not present
+    if !themes_dir.exists() {
+        if let Err(e) = fs::create_dir_all(&themes_dir) {
+            eprintln!("Failed to create themes directory: {e}");
+        } else {
+            // Copy all themes from project themes/ to appdata_dir/themes/
+            let project_themes_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .unwrap()
+                .join("themes");
+            if let Ok(entries) = fs::read_dir(&project_themes_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_file() {
+                        if let Some(name) = path.file_name() {
+                            let dest = themes_dir.join(name);
+                            let _ = fs::copy(&path, &dest);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Create default config if not present
+    if !config_file.exists() {
+        if let Err(e) = fs::create_dir_all(&config_dir) {
+            eprintln!("Failed to create config directory: {e}");
+        }
+        let default_settings = EngineSettings::default();
+        default_settings.save(&config_file);
+    }
+
+    // Load settings
+    let mut engine_settings = EngineSettings::load(&config_file);
 
     let app = Application::new().with_assets(Assets);
 
@@ -101,13 +149,16 @@ fn main() {
             let project_path = event.path.clone();
 
             // Close the entry window
-            window_handle.update(cx, |_, window, _| {
-                window.remove_window();
-            }).ok();
+            window_handle
+                .update(cx, |_, window, _| {
+                    window.remove_window();
+                })
+                .ok();
 
             // Open the main engine window with the selected project
             open_engine_window(project_path, cx);
-        }).detach();
+        })
+        .detach();
     });
 }
 

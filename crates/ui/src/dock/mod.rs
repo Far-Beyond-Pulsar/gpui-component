@@ -950,6 +950,9 @@ impl DockArea {
                         .detach();
                         cx.emit(DockEvent::LayoutChanged);
                     }
+                    PanelEvent::TabClosed(_) => {
+                        // Do nothing for TabClosed
+                    }
                 },
             );
 

@@ -1,23 +1,20 @@
-use gpui::{prelude::*, Animation, AnimationExt as _, *};
+use gpui::{prelude::*, KeyBinding, *};
 use gpui_component::{
-    dock::{DockArea, DockItem, Panel, PanelEvent},
-    button::{Button, ButtonVariant, ButtonVariants as _},
-    v_flex, h_flex, ActiveTheme as _, Icon, IconName, Placement, StyledExt,
+    button::{Button, ButtonVariants as _},
+    dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
+    h_flex, v_flex, ActiveTheme as _, ContextModal, IconName, StyledExt,
 };
-use std::{sync::Arc, time::Duration};
-use std::path::PathBuf;
-use serde::Deserialize;
 use schemars::JsonSchema;
+use serde::Deserialize;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use super::{
     editors::EditorType,
-    menu::AppTitleBar,
-    panels::{
-        LevelEditorPanel, ScriptEditorPanel, BlueprintEditorPanel,
-        MaterialEditorPanel,
-    },
     entry_screen::{EntryScreen, ProjectSelected},
     file_manager_drawer::{FileManagerDrawer, FileSelected, FileType},
+    menu::AppTitleBar,
+    panels::{BlueprintEditorPanel, LevelEditorPanel, ScriptEditorPanel},
 };
 
 // Action to toggle the file manager drawer
@@ -25,13 +22,22 @@ use super::{
 #[action(namespace = pulsar_app)]
 pub struct ToggleFileManager;
 
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize)]
+#[action(namespace = pulsar_app)]
+pub struct OpenSettingsWindow;
+
 pub struct PulsarApp {
     dock_area: Entity<DockArea>,
     project_path: Option<PathBuf>,
     entry_screen: Option<Entity<EntryScreen>>,
     file_manager_drawer: Entity<FileManagerDrawer>,
     drawer_open: bool,
-    blueprint_editor: Entity<BlueprintEditorPanel>,
+    // Tab management
+    center_tabs: Entity<TabPanel>,
+    script_editor: Option<Entity<ScriptEditorPanel>>,
+    blueprint_editors: Vec<Entity<BlueprintEditorPanel>>,
+    next_tab_id: usize,
+    settings_window: Option<Entity<crate::ui::settings_window::SettingsWindow>>,
 }
 
 impl PulsarApp {
@@ -39,28 +45,28 @@ impl PulsarApp {
         Self::new_internal(None, window, cx)
     }
 
-    pub fn new_with_project(project_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new_with_project(
+        project_path: PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         Self::new_internal(Some(project_path), window, cx)
     }
 
-    fn new_internal(project_path: Option<PathBuf>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    fn new_internal(
+        project_path: Option<PathBuf>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let dock_area = cx.new(|cx| DockArea::new("main-dock", Some(1), window, cx));
-
-        // Create the initial editor panels using modular components
-        let level_editor = cx.new(|cx| LevelEditorPanel::new(window, cx));
-        let script_editor = cx.new(|cx| ScriptEditorPanel::new(window, cx));
-        let blueprint_editor = cx.new(|cx| BlueprintEditorPanel::new(window, cx));
-        let material_editor = cx.new(|cx| MaterialEditorPanel::new(window, cx));
-
-        // Set up the center area with tabs for all editors
         let weak_dock = dock_area.downgrade();
-        let center_tabs = DockItem::tabs(
-            vec![
-                Arc::new(level_editor.clone()),
-                Arc::new(script_editor),
-                Arc::new(blueprint_editor.clone()),
-                Arc::new(material_editor),
-            ],
+
+        // Only create level editor by default
+        let level_editor = cx.new(|cx| LevelEditorPanel::new(window, cx));
+
+        // Set up the dock area with the level editor tab
+        let center_dock_item = DockItem::tabs(
+            vec![Arc::new(level_editor.clone())],
             Some(0),
             &weak_dock,
             window,
@@ -68,8 +74,19 @@ impl PulsarApp {
         );
 
         dock_area.update(cx, |dock, cx| {
-            dock.set_center(center_tabs, window, cx);
+            dock.set_center(center_dock_item, window, cx);
         });
+
+        // Get the center TabPanel for dynamic tab management
+        let center_tabs = if let DockItem::Tabs { view, .. } = dock_area.read(cx).items() {
+            view.clone()
+        } else {
+            panic!("Expected tabs dock item");
+        };
+
+        // Initialize editor tracking
+        let script_editor = None;
+        let blueprint_editors = Vec::new();
 
         // Create entry screen only if no project path is provided
         let entry_screen = if project_path.is_none() {
@@ -81,8 +98,14 @@ impl PulsarApp {
         };
 
         // Create file manager drawer with the project path if provided
-        let file_manager_drawer = cx.new(|cx| FileManagerDrawer::new(project_path.clone(), window, cx));
-        cx.subscribe_in(&file_manager_drawer, window, Self::on_file_selected).detach();
+        let file_manager_drawer =
+            cx.new(|cx| FileManagerDrawer::new(project_path.clone(), window, cx));
+        cx.subscribe_in(&file_manager_drawer, window, Self::on_file_selected)
+            .detach();
+
+        // Subscribe to PanelEvent on center_tabs to handle tab close and cleanup
+        cx.subscribe_in(&center_tabs, window, Self::on_tab_panel_event)
+            .detach();
 
         Self {
             dock_area,
@@ -90,7 +113,11 @@ impl PulsarApp {
             entry_screen,
             file_manager_drawer,
             drawer_open: false,
-            blueprint_editor,
+            center_tabs,
+            script_editor,
+            blueprint_editors,
+            next_tab_id: 1,
+            settings_window: None,
         }
     }
 
@@ -111,6 +138,22 @@ impl PulsarApp {
         cx.notify();
     }
 
+    fn on_tab_panel_event(
+        &mut self,
+        _tabs: &Entity<TabPanel>,
+        event: &PanelEvent,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) {
+        match event {
+            PanelEvent::TabClosed(entity_id) => {
+                self.blueprint_editors
+                    .retain(|e| e.entity_id() != *entity_id);
+            }
+            _ => {}
+        }
+    }
+
     fn on_file_selected(
         &mut self,
         _drawer: &Entity<FileManagerDrawer>,
@@ -120,30 +163,148 @@ impl PulsarApp {
     ) {
         match event.file_type {
             FileType::Class => {
-                // Load the class's graph_save.json into the blueprint editor
-                let graph_save_path = event.path.join("graph_save.json");
-                if graph_save_path.exists() {
-                    self.blueprint_editor.update(cx, |editor, cx| {
-                        if let Err(e) = editor.load_blueprint(graph_save_path.to_str().unwrap(), window, cx) {
-                            eprintln!("Failed to load blueprint: {}", e);
-                        }
-                    });
-                    // Close the drawer after opening a file
-                    self.drawer_open = false;
-                    cx.notify();
-                }
+                self.open_blueprint_tab(event.path.clone(), window, cx);
+            }
+            FileType::Script => {
+                self.open_script_tab(event.path.clone(), window, cx);
             }
             _ => {}
         }
-    }
 
-    fn toggle_drawer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.drawer_open = !self.drawer_open;
+        // Close the drawer after opening a file
+        self.drawer_open = false;
         cx.notify();
     }
 
-    fn on_toggle_file_manager(&mut self, _action: &ToggleFileManager, window: &mut Window, cx: &mut Context<Self>) {
+    fn toggle_drawer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    let _ = window; // Silence unused variable warning
+    self.drawer_open = !self.drawer_open;
+    cx.notify();
+    }
+
+    fn on_toggle_file_manager(
+        &mut self,
+        _: &ToggleFileManager,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.toggle_drawer(window, cx);
+    }
+
+    /// Open a blueprint editor tab for the given class path
+    fn open_blueprint_tab(
+        &mut self,
+        class_path: PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Check if a blueprint editor for this class is already open
+        let already_open = self
+            .blueprint_editors
+            .iter()
+            .enumerate()
+            .find_map(|(ix, editor)| {
+                editor
+                    .read(cx)
+                    .current_class_path
+                    .as_ref()
+                    .map(|p| p == &class_path)
+                    .unwrap_or(false)
+                    .then_some(ix)
+            });
+
+        if let Some(ix) = already_open {
+            // Focus the correct tab by matching entity_id in TabPanel using the public getter
+            if let Some(editor_entity) = self.blueprint_editors.get(ix) {
+                let target_id = editor_entity.entity_id();
+                self.center_tabs.update(cx, |tabs, cx| {
+                    if let Some(tab_ix) = tabs.index_of_panel_by_entity_id(target_id) {
+                        tabs.set_active_tab(tab_ix, window, cx);
+                    }
+                });
+            }
+            return;
+        }
+
+        self.next_tab_id += 1;
+
+        // Create a new blueprint editor panel and set its class path and tab title
+        let class_name = class_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Blueprint")
+            .to_string();
+
+        let blueprint_editor = cx.new(|cx| {
+            let mut panel = BlueprintEditorPanel::new(window, cx);
+            panel.current_class_path = Some(class_path.clone());
+            panel.tab_title = Some(class_name.clone());
+            panel
+        });
+
+        // Load the blueprint from the class path
+        let graph_save_path = class_path.join("graph_save.json");
+        if graph_save_path.exists() {
+            blueprint_editor.update(cx, |editor, cx| {
+                if let Err(e) = editor.load_blueprint(graph_save_path.to_str().unwrap(), window, cx)
+                {
+                    eprintln!("Failed to load blueprint: {}", e);
+                }
+            });
+        }
+
+        // Add the tab (Entity<BlueprintEditorPanel> implements all required traits)
+        self.center_tabs.update(cx, |tabs, cx| {
+            tabs.add_panel(Arc::new(blueprint_editor.clone()), window, cx);
+        });
+
+        // Store the blueprint editor reference
+        self.blueprint_editors.push(blueprint_editor);
+    }
+
+    /// Open or focus the script editor tab
+    fn open_script_tab(&mut self, file_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        // Check if script editor already exists
+        if let Some(script_editor) = &self.script_editor {
+            // Script editor already exists, open the file in it
+            script_editor.update(cx, |editor, cx| {
+                editor.open_file(file_path, window, cx);
+            });
+            return;
+        }
+
+        // Create new script editor tab
+        let script_editor = cx.new(|cx| ScriptEditorPanel::new(window, cx));
+
+        // Open the specific file
+        script_editor.update(cx, |editor, cx| {
+            editor.open_file(file_path, window, cx);
+        });
+
+        // Add the tab
+        self.center_tabs.update(cx, |tabs, cx| {
+            tabs.add_panel(Arc::new(script_editor.clone()), window, cx);
+        });
+
+        // Store the script editor reference
+        self.script_editor = Some(script_editor);
+    }
+
+    /// Open a path in the appropriate editor
+    pub fn open_path(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        if path.is_dir() {
+            // Check if it's a blueprint class (contains graph_save.json)
+            if path.join("graph_save.json").exists() {
+                self.open_blueprint_tab(path, window, cx);
+            }
+        } else if let Some(extension) = path.extension() {
+            match extension.to_str() {
+                Some("rs") | Some("js") | Some("ts") | Some("py") | Some("lua") => {
+                    self.open_script_tab(path, window, cx);
+                }
+                _ => {}
+            }
+        }
     }
 }
 
@@ -156,89 +317,98 @@ impl Render for PulsarApp {
 
         let drawer_open = self.drawer_open;
 
-        v_flex()
-            .size_full()
-            .bg(cx.theme().background)
-            .on_action(cx.listener(Self::on_toggle_file_manager))
-            .child(
-                // Menu bar
-                {
-                    let title_bar = cx.new(|cx| AppTitleBar::new("Pulsar Engine", window, cx));
-                    title_bar.clone()
+        // Bind ctrl+, to OpenSettingsWindow action globally
+        cx.bind_keys([KeyBinding::new("ctrl-comma", OpenSettingsWindow, None)]);
+
+        // Handle OpenSettingsWindow action
+        cx.on_action(|this: &mut PulsarApp, action: &dyn std::any::Any, _phase, window: &mut Window, cx: &mut Context<PulsarApp>| {
+            if let Some(_action) = action.downcast_ref::<OpenSettingsWindow>() {
+                if this.settings_window.is_none() {
+                    let settings = cx.new(|cx| crate::ui::settings_window::SettingsWindow::new());
+                    this.settings_window = Some(settings);
+                    let entity = cx.entity();
+
+                    window.open_modal(cx, move |modal, window, cx| {
+                        // Configure the modal with the settings window as its child
+                        modal
+                            .title("Settings")
+                            .child(settings.clone())
+                            .on_close(move |modal, _, cx| {
+                                cx.update_entity(&entity, |app, _| {
+                                    app.settings_window = None;
+                                });
+                                modal
+                            })
+                    });
                 }
-            )
-            .child(
-                // Main dock area with overlay
-                div()
-                    .flex_1()
-                    .relative()
-                    .child(self.dock_area.clone())
-                    .when(drawer_open, |this| {
-                        this.child(
-                            // Overlay background
-                            div()
-                                .absolute()
-                                .top_0()
-                                .left_0()
-                                .size_full()
-                                .bg(Hsla::black().opacity(0.3))
-                                .on_mouse_down(MouseButton::Left, cx.listener(|app, _, window, cx| {
-                                    app.drawer_open = false;
-                                    cx.notify();
-                                }))
+            }
+        });
+        // Prepare overlay layers as siblings, not children of main content
+            let drawer_layer = gpui_component::Root::render_drawer_layer(window, cx);
+            let modal_layer = gpui_component::Root::render_modal_layer(window, cx);
+            let notification_layer = gpui_component::Root::render_notification_layer(window, cx);
+
+            div()
+                .size_full()
+                .child(
+                    v_flex()
+                        .size_full()
+                        .bg(cx.theme().background)
+                        .on_action(cx.listener(Self::on_toggle_file_manager))
+                        .child(
+                            // Menu bar
+                            {
+                                let title_bar =
+                                    cx.new(|cx| AppTitleBar::new("Pulsar Engine", window, cx));
+                                title_bar.clone()
+                            },
                         )
                         .child(
-                            // Drawer at bottom
-                            div()
-                                .absolute()
-                                .bottom_0()
-                                .left_0()
-                                .right_0()
-                                .h(px(300.))
-                                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                                .child(self.file_manager_drawer.clone())
-                                .with_animation(
-                                    "slide-up",
-                                    Animation::new(Duration::from_secs_f64(0.2)),
-                                    |this, delta| {
-                                        this.bottom(px(-300.) + delta * px(300.))
-                                    },
-                                )
+                            // Main dock area
+                            div().flex_1().relative().child(self.dock_area.clone()),
                         )
-                    })
-            )
-            .child(
-                // Footer with drawer toggle
-                h_flex()
-                    .w_full()
-                    .h(px(32.))
-                    .px_2()
-                    .items_center()
-                    .justify_between()
-                    .bg(cx.theme().sidebar)
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .child(
-                        // Left side - drawer toggle button
-                        Button::new("toggle-drawer")
-                            .ghost()
-                            .icon(if drawer_open { IconName::ChevronDown } else { IconName::ChevronUp })
-                            .label("Project Files")
-                            .on_click(cx.listener(|app, _, window, cx| {
-                                app.toggle_drawer(window, cx);
-                            }))
-                    )
-                    .child(
-                        // Right side - project path
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .children(self.project_path.as_ref().map(|path| {
-                                path.display().to_string()
-                            }))
-                    )
-            )
-            .into_any_element()
+                        .child(
+                            // Footer with drawer toggle
+                            h_flex()
+                                .w_full()
+                                .h(px(32.))
+                                .px_2()
+                                .items_center()
+                                .justify_between()
+                                .bg(cx.theme().sidebar)
+                                .border_t_1()
+                                .border_color(cx.theme().border)
+                                .child(
+                                    // Left side - drawer toggle button
+                                    Button::new("toggle-drawer")
+                                        .ghost()
+                                        .icon(if drawer_open {
+                                            IconName::ChevronDown
+                                        } else {
+                                            IconName::ChevronUp
+                                        })
+                                        .label("Project Files")
+                                        .on_click(cx.listener(|app, _, window, cx| {
+                                            app.toggle_drawer(window, cx);
+                                        })),
+                                )
+                                .child(
+                                    // Right side - project path
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .children(
+                                            self.project_path
+                                                .as_ref()
+                                                .map(|path| path.display().to_string()),
+                                        ),
+                                ),
+                        ),
+                )
+                .children(drawer_layer)
+                .children(modal_layer)
+                .children(notification_layer)
+                .into_any_element()
     }
 }
 
@@ -255,11 +425,7 @@ impl EditorPanel {
         }
     }
 
-    pub fn view(
-        editor_type: EditorType,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Entity<Self> {
+    pub fn view(editor_type: EditorType, window: &mut Window, cx: &mut App) -> Entity<Self> {
         cx.new(|cx| Self::new(editor_type, window, cx))
     }
 }
@@ -270,7 +436,9 @@ impl Panel for EditorPanel {
     }
 
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
-        div().child(self.editor_type.display_name()).into_any_element()
+        div()
+            .child(self.editor_type.display_name())
+            .into_any_element()
     }
 
     fn dump(&self, _cx: &App) -> gpui_component::dock::PanelState {
@@ -317,15 +485,15 @@ impl EditorPanel {
                                     .text_lg()
                                     .font_semibold()
                                     .text_color(cx.theme().foreground)
-                                    .child(self.editor_type.display_name())
+                                    .child(self.editor_type.display_name()),
                             )
                             .child(
                                 div()
                                     .text_sm()
                                     .text_color(cx.theme().muted_foreground)
-                                    .child(self.editor_type.description())
-                            )
-                    )
+                                    .child(self.editor_type.description()),
+                            ),
+                    ),
             )
             .child(
                 // Content
@@ -333,7 +501,7 @@ impl EditorPanel {
                     .flex_1()
                     .p_4()
                     .overflow_hidden()
-                    .child(self.render_specific_editor(cx))
+                    .child(self.render_specific_editor(cx)),
             )
     }
 
@@ -360,7 +528,7 @@ impl EditorPanel {
                     .border_color(cx.theme().border)
                     .rounded(cx.theme().radius)
                     .p_3()
-                    .child("Scene Hierarchy")
+                    .child("Scene Hierarchy"),
             )
             .child(
                 // Center - 3D Viewport
@@ -386,16 +554,16 @@ impl EditorPanel {
                                     .flex()
                                     .items_center()
                                     .justify_center()
-                                    .child("🎮")
+                                    .child("🎮"),
                             )
                             .child(
                                 div()
                                     .text_lg()
                                     .font_semibold()
                                     .text_color(cx.theme().foreground)
-                                    .child("3D Viewport")
-                            )
-                    )
+                                    .child("3D Viewport"),
+                            ),
+                    ),
             )
             .child(
                 // Right panel - Properties
@@ -407,7 +575,7 @@ impl EditorPanel {
                     .border_color(cx.theme().border)
                     .rounded(cx.theme().radius)
                     .p_3()
-                    .child("Properties")
+                    .child("Properties"),
             )
     }
 
@@ -425,7 +593,7 @@ impl EditorPanel {
                     .border_color(cx.theme().border)
                     .rounded(cx.theme().radius)
                     .p_3()
-                    .child("File Explorer")
+                    .child("File Explorer"),
             )
             .child(
                 // Center - Code Editor
@@ -437,7 +605,7 @@ impl EditorPanel {
                     .border_color(cx.theme().border)
                     .rounded(cx.theme().radius)
                     .p_4()
-                    .child("Code Editor Area")
+                    .child("Code Editor Area"),
             )
             .child(
                 // Right panel - Output/Terminal
@@ -449,7 +617,7 @@ impl EditorPanel {
                     .border_color(cx.theme().border)
                     .rounded(cx.theme().radius)
                     .p_3()
-                    .child("Terminal")
+                    .child("Terminal"),
             )
     }
 
@@ -466,7 +634,7 @@ impl EditorPanel {
                     .border_color(cx.theme().border)
                     .rounded(cx.theme().radius)
                     .p_3()
-                    .child("Node Library")
+                    .child("Node Library"),
             )
             .child(
                 div()
@@ -479,33 +647,28 @@ impl EditorPanel {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child("Visual Node Graph")
+                    .child("Visual Node Graph"),
             )
     }
 
     fn render_placeholder_editor(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .flex_1()
-            .flex()
-            .items_center()
-            .justify_center()
-            .child(
-                v_flex()
-                    .items_center()
-                    .gap_4()
-                    .child(
-                        div()
-                            .text_lg()
-                            .font_semibold()
-                            .text_color(cx.theme().foreground)
-                            .child(format!("{} Editor", self.editor_type.display_name()))
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("Coming soon...")
-                    )
-            )
+        div().flex_1().flex().items_center().justify_center().child(
+            v_flex()
+                .items_center()
+                .gap_4()
+                .child(
+                    div()
+                        .text_lg()
+                        .font_semibold()
+                        .text_color(cx.theme().foreground)
+                        .child(format!("{} Editor", self.editor_type.display_name())),
+                )
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child("Coming soon..."),
+                ),
+        )
     }
 }

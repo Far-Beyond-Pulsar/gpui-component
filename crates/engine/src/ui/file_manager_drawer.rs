@@ -1,15 +1,16 @@
 use gpui::*;
 use gpui_component::{
     button::{Button, ButtonVariant, ButtonVariants as _},
-    resizable::{h_resizable, resizable_panel, ResizableState},
     context_menu::ContextMenuExt,
+    h_flex,
+    input::{InputState, TextInput},
     popup_menu::PopupMenu,
-    input::{TextInput, InputState},
-    h_flex, v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
+    resizable::{h_resizable, resizable_panel, ResizableState},
+    v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
 };
-use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 use gpui::Axis;
 
@@ -55,7 +56,7 @@ pub struct CancelRename;
 #[derive(Clone, Debug, PartialEq)]
 pub enum FileType {
     Folder,
-    Class,      // A folder containing graph_save.json
+    Class, // A folder containing graph_save.json
     Script,
     Other,
 }
@@ -177,16 +178,18 @@ impl FileManagerDrawer {
         let rename_input_state = cx.new(|cx| InputState::new(window, cx));
 
         // Subscribe to input events to handle Enter key for committing rename
-        cx.subscribe(&rename_input_state, |drawer, _input, event: &gpui_component::input::InputEvent, cx| {
-            match event {
+        cx.subscribe(
+            &rename_input_state,
+            |drawer, _input, event: &gpui_component::input::InputEvent, cx| match event {
                 gpui_component::input::InputEvent::PressEnter { .. } => {
                     if drawer.renaming_item.is_some() {
                         cx.dispatch_action(&CommitRename);
                     }
                 }
                 _ => {}
-            }
-        }).detach();
+            },
+        )
+        .detach();
 
         Self {
             folder_tree: project_path.as_ref().and_then(|p| FolderNode::from_path(p)),
@@ -246,8 +249,8 @@ impl FileManagerDrawer {
 
     fn handle_item_click(&mut self, item: &FileItem, cx: &mut Context<Self>) {
         match &item.file_type {
-            FileType::Class => {
-                // Emit event to open this class in BP editor
+            FileType::Class | FileType::Script => {
+                // Emit event to open this class in BP editor or script in script editor
                 cx.emit(FileSelected {
                     path: item.path.clone(),
                     file_type: item.file_type.clone(),
@@ -301,7 +304,8 @@ impl FileManagerDrawer {
              //\n\
              // This file contains the visual blueprint graph for this class.\n\
              // EDITING THE JSON STRUCTURE COULD BREAK THE EDITOR - BE CAREFUL\n\n",
-            now.format("%Y-%m-%d %H:%M:%S"), version
+            now.format("%Y-%m-%d %H:%M:%S"),
+            version
         );
 
         let empty_graph = crate::graph::GraphDescription {
@@ -351,7 +355,12 @@ impl FileManagerDrawer {
         self.start_rename(new_path, window, cx);
     }
 
-    fn on_delete_item(&mut self, action: &DeleteItem, _window: &mut Window, cx: &mut Context<Self>) {
+    fn on_delete_item(
+        &mut self,
+        action: &DeleteItem,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let item_path = std::path::Path::new(&action.item_path);
 
         // TODO: Add confirmation dialog
@@ -376,7 +385,11 @@ impl FileManagerDrawer {
 
     fn on_rename_item(&mut self, action: &RenameItem, window: &mut Window, cx: &mut Context<Self>) {
         let item_path = std::path::Path::new(&action.item_path);
-        if let Some(file_name) = item_path.file_name().and_then(|n| n.to_str()).map(|s| s.to_string()) {
+        if let Some(file_name) = item_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|s| s.to_string())
+        {
             self.renaming_item = Some(item_path.to_path_buf());
             self.rename_input_state.update(cx, |state, cx| {
                 state.set_value(&file_name, window, cx);
@@ -386,7 +399,11 @@ impl FileManagerDrawer {
     }
 
     fn start_rename(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(file_name) = path.file_name().and_then(|n| n.to_str()).map(|s| s.to_string()) {
+        if let Some(file_name) = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|s| s.to_string())
+        {
             self.renaming_item = Some(path);
             self.rename_input_state.update(cx, |state, cx| {
                 state.set_value(&file_name, window, cx);
@@ -398,7 +415,13 @@ impl FileManagerDrawer {
     fn commit_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(old_path) = &self.renaming_item {
             // Get text as string
-            let new_name = self.rename_input_state.read(cx).text().to_string().trim().to_string();
+            let new_name = self
+                .rename_input_state
+                .read(cx)
+                .text()
+                .to_string()
+                .trim()
+                .to_string();
             if new_name.is_empty() {
                 self.cancel_rename(cx);
                 return;
@@ -433,15 +456,30 @@ impl FileManagerDrawer {
         cx.notify();
     }
 
-    fn on_commit_rename(&mut self, _action: &CommitRename, window: &mut Window, cx: &mut Context<Self>) {
+    fn on_commit_rename(
+        &mut self,
+        _action: &CommitRename,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.commit_rename(window, cx);
     }
 
-    fn on_cancel_rename(&mut self, _action: &CancelRename, _window: &mut Window, cx: &mut Context<Self>) {
+    fn on_cancel_rename(
+        &mut self,
+        _action: &CancelRename,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.cancel_rename(cx);
     }
 
-    fn render_folder_tree_node(&self, node: &FolderNode, depth: usize, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_folder_tree_node(
+        &self,
+        node: &FolderNode,
+        depth: usize,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let indent = depth * 16;
         let icon = if node.is_class {
             IconName::Component
@@ -475,22 +513,37 @@ impl FileManagerDrawer {
             .w_full()
             .child(
                 div()
-                    .id(SharedString::from(format!("tree-item-{}", node.path.display())))
+                    .id(SharedString::from(format!(
+                        "tree-item-{}",
+                        node.path.display()
+                    )))
                     .w_full()
                     .context_menu(move |menu, _window, _cx| {
-                        menu.menu("New Folder", Box::new(NewFolder {
-                            folder_path: path_for_menu.to_string_lossy().to_string()
-                        }))
-                        .menu("New Class", Box::new(NewClass {
-                            folder_path: path_for_menu.to_string_lossy().to_string()
-                        }))
+                        menu.menu(
+                            "New Folder",
+                            Box::new(NewFolder {
+                                folder_path: path_for_menu.to_string_lossy().to_string(),
+                            }),
+                        )
+                        .menu(
+                            "New Class",
+                            Box::new(NewClass {
+                                folder_path: path_for_menu.to_string_lossy().to_string(),
+                            }),
+                        )
                         .separator()
-                        .menu("Rename", Box::new(RenameItem {
-                            item_path: path_for_menu.to_string_lossy().to_string()
-                        }))
-                        .menu("Delete", Box::new(DeleteItem {
-                            item_path: path_for_menu.to_string_lossy().to_string()
-                        }))
+                        .menu(
+                            "Rename",
+                            Box::new(RenameItem {
+                                item_path: path_for_menu.to_string_lossy().to_string(),
+                            }),
+                        )
+                        .menu(
+                            "Delete",
+                            Box::new(DeleteItem {
+                                item_path: path_for_menu.to_string_lossy().to_string(),
+                            }),
+                        )
                     })
                     .child(
                         button
@@ -504,44 +557,35 @@ impl FileManagerDrawer {
                                 h_flex()
                                     .gap_2()
                                     .items_center()
-                                    .child(
-                                        Icon::new(icon)
-                                            .size(px(14.))
-                                            .text_color(if node.is_class {
-                                                cx.theme().primary
-                                            } else {
-                                                cx.theme().muted_foreground
-                                            })
-                                    )
-                                    .child(
-                                        if self.renaming_item.as_ref() == Some(&node.path) {
-                                            div()
-                                                .text_sm()
-                                                .child(
-                                                    TextInput::new(&self.rename_input_state)
-                                                        .appearance(false)
-                                                        .w_full()
-                                                )
-                                                .into_any_element()
+                                    .child(Icon::new(icon).size(px(14.)).text_color(
+                                        if node.is_class {
+                                            cx.theme().primary
                                         } else {
-                                            div()
-                                                .text_sm()
-                                                .child(node.name.clone())
-                                                .into_any_element()
-                                        }
-                                    )
-                            )
-                    )
+                                            cx.theme().muted_foreground
+                                        },
+                                    ))
+                                    .child(if self.renaming_item.as_ref() == Some(&node.path) {
+                                        div()
+                                            .text_sm()
+                                            .child(
+                                                TextInput::new(&self.rename_input_state)
+                                                    .appearance(false)
+                                                    .w_full(),
+                                            )
+                                            .into_any_element()
+                                    } else {
+                                        div().text_sm().child(node.name.clone()).into_any_element()
+                                    }),
+                            ),
+                    ),
             )
             .children(if node.expanded && !node.is_class {
                 Some(
-                    v_flex()
-                        .w_full()
-                        .children(
-                            node.children.iter().map(|child| {
-                                self.render_folder_tree_node(child, depth + 1, cx)
-                            })
-                        )
+                    v_flex().w_full().children(
+                        node.children
+                            .iter()
+                            .map(|child| self.render_folder_tree_node(child, depth + 1, cx)),
+                    ),
                 )
             } else {
                 None
@@ -562,52 +606,79 @@ impl FileManagerDrawer {
 
         // Grid item with icon on top, text below
         div()
-            .id(SharedString::from(format!("content-item-{}", item.path.display())))
+            .id(SharedString::from(format!(
+                "content-item-{}",
+                item.path.display()
+            )))
             .w(px(100.))
             .p_2()
             .context_menu(move |menu, _window, _cx| {
                 let path_str = item_path.to_string_lossy().to_string();
                 match item_type {
-                    FileType::Folder => {
-                        menu.menu("New Folder", Box::new(NewFolder {
-                            folder_path: path_str.clone()
-                        }))
-                        .menu("New Class", Box::new(NewClass {
-                            folder_path: path_str.clone()
-                        }))
+                    FileType::Folder => menu
+                        .menu(
+                            "New Folder",
+                            Box::new(NewFolder {
+                                folder_path: path_str.clone(),
+                            }),
+                        )
+                        .menu(
+                            "New Class",
+                            Box::new(NewClass {
+                                folder_path: path_str.clone(),
+                            }),
+                        )
                         .separator()
-                        .menu("Rename", Box::new(RenameItem {
-                            item_path: path_str.clone()
-                        }))
-                        .menu("Delete", Box::new(DeleteItem {
-                            item_path: path_str.clone()
-                        }))
-                    }
-                    FileType::Class => {
-                        menu.separator()
-                        .menu("Rename", Box::new(RenameItem {
-                            item_path: path_str.clone()
-                        }))
-                        .menu("Delete", Box::new(DeleteItem {
-                            item_path: path_str.clone()
-                        }))
-                    }
-                    _ => {
-                        menu.menu("Rename", Box::new(RenameItem {
-                            item_path: path_str.clone()
-                        }))
-                        .menu("Delete", Box::new(DeleteItem {
-                            item_path: path_str.clone()
-                        }))
-                    }
+                        .menu(
+                            "Rename",
+                            Box::new(RenameItem {
+                                item_path: path_str.clone(),
+                            }),
+                        )
+                        .menu(
+                            "Delete",
+                            Box::new(DeleteItem {
+                                item_path: path_str.clone(),
+                            }),
+                        ),
+                    FileType::Class => menu
+                        .separator()
+                        .menu(
+                            "Rename",
+                            Box::new(RenameItem {
+                                item_path: path_str.clone(),
+                            }),
+                        )
+                        .menu(
+                            "Delete",
+                            Box::new(DeleteItem {
+                                item_path: path_str.clone(),
+                            }),
+                        ),
+                    _ => menu
+                        .menu(
+                            "Rename",
+                            Box::new(RenameItem {
+                                item_path: path_str.clone(),
+                            }),
+                        )
+                        .menu(
+                            "Delete",
+                            Box::new(DeleteItem {
+                                item_path: path_str.clone(),
+                            }),
+                        ),
                 }
             })
             .child(
                 div()
                     .cursor_pointer()
-                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, _, _, cx| {
-                        drawer.handle_item_click(&item_clone, cx);
-                    }))
+                    .on_mouse_down(
+                        gpui::MouseButton::Left,
+                        cx.listener(move |drawer, _, _, cx| {
+                            drawer.handle_item_click(&item_clone, cx);
+                        }),
+                    )
                     .child(
                         v_flex()
                             .gap_2()
@@ -615,38 +686,34 @@ impl FileManagerDrawer {
                             .hover(|this| this.bg(cx.theme().muted.opacity(0.5)))
                             .rounded(cx.theme().radius)
                             .p_2()
-                            .child(
-                                Icon::new(icon)
-                                    .size(px(48.))
-                                    .text_color(match &item.file_type {
-                                        FileType::Class => cx.theme().primary,
-                                        FileType::Folder => cx.theme().accent,
-                                        _ => cx.theme().muted_foreground,
-                                    })
-                            )
-                            .child(
-                                if self.renaming_item.as_ref() == Some(&item.path) {
-                                    div()
-                                        .text_xs()
-                                        .text_center()
-                                        .w_full()
-                                        .child(
-                                            TextInput::new(&self.rename_input_state)
-                                                .appearance(false)
-                                                .w_full()
-                                        )
-                                        .into_any_element()
-                                } else {
-                                    div()
-                                        .text_xs()
-                                        .text_center()
-                                        .w_full()
-                                        .overflow_hidden()
-                                        .child(item.name.clone())
-                                        .into_any_element()
-                                }
-                            )
-                    )
+                            .child(Icon::new(icon).size(px(48.)).text_color(
+                                match &item.file_type {
+                                    FileType::Class => cx.theme().primary,
+                                    FileType::Folder => cx.theme().accent,
+                                    _ => cx.theme().muted_foreground,
+                                },
+                            ))
+                            .child(if self.renaming_item.as_ref() == Some(&item.path) {
+                                div()
+                                    .text_xs()
+                                    .text_center()
+                                    .w_full()
+                                    .child(
+                                        TextInput::new(&self.rename_input_state)
+                                            .appearance(false)
+                                            .w_full(),
+                                    )
+                                    .into_any_element()
+                            } else {
+                                div()
+                                    .text_xs()
+                                    .text_center()
+                                    .w_full()
+                                    .overflow_hidden()
+                                    .child(item.name.clone())
+                                    .into_any_element()
+                            }),
+                    ),
             )
     }
 }
@@ -698,119 +765,116 @@ impl Render for FileManagerDrawer {
                                                     .text_sm()
                                                     .font_semibold()
                                                     .text_color(cx.theme().foreground)
-                                                    .child("Folders")
-                                            )
+                                                    .child("Folders"),
+                                            ),
                                     )
                                     .child(
                                         // Tree content with scrolling
-                                        div()
-                                            .flex_1()
-                                            .overflow_hidden()
-                                            .p_1()
-                                            .child(
-                                                div()
-                                                    .size_full()
-                                                    .scrollable(Axis::Vertical)
-                                                    .child(
-                                                        if let Some(tree) = &self.folder_tree {
-                                                            v_flex()
-                                                                .w_full()
-                                                                .children(
-                                                                    tree.children.iter().map(|child| {
-                                                                        self.render_folder_tree_node(child, 0, cx)
-                                                                    })
+                                        div().flex_1().overflow_hidden().p_1().child(
+                                            div().size_full().scrollable(Axis::Vertical).child(
+                                                if let Some(tree) = &self.folder_tree {
+                                                    v_flex()
+                                                        .w_full()
+                                                        .children(tree.children.iter().map(
+                                                            |child| {
+                                                                self.render_folder_tree_node(
+                                                                    child, 0, cx,
                                                                 )
-                                                                .into_any_element()
-                                                        } else {
-                                                            div()
-                                                                .p_4()
-                                                                .text_sm()
-                                                                .text_color(cx.theme().muted_foreground)
-                                                                .child("No project loaded")
-                                                                .into_any_element()
-                                                        }
-                                                    )
-                                            )
-                                    )
-                            )
+                                                            },
+                                                        ))
+                                                        .into_any_element()
+                                                } else {
+                                                    div()
+                                                        .p_4()
+                                                        .text_sm()
+                                                        .text_color(cx.theme().muted_foreground)
+                                                        .child("No project loaded")
+                                                        .into_any_element()
+                                                },
+                                            ),
+                                        ),
+                                    ),
+                            ),
                     )
                     .child(
-                        resizable_panel()
-                            .child(
-                                v_flex()
-                                    .size_full()
-                                    .child(
-                                        // Content header
-                                        h_flex()
-                                            .w_full()
-                                            .p_2()
-                                            .border_b_1()
-                                            .border_color(cx.theme().border)
-                                            .items_center()
-                                            .justify_between()
-                                            .child(
-                                                div()
-                                                    .text_sm()
-                                                    .font_semibold()
-                                                    .text_color(cx.theme().foreground)
-                                                    .children(self.selected_folder.as_ref().and_then(|p| {
-                                                        p.file_name().and_then(|n| n.to_str()).map(|s| s.to_string())
-                                                    }))
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_xs()
-                                                    .text_color(cx.theme().muted_foreground)
-                                                    .child(format!("{} items", contents.len()))
-                                            )
-                                    )
-                                    .child(
-                                        // Content grid with scrolling
+                        resizable_panel().child(
+                            v_flex()
+                                .size_full()
+                                .child(
+                                    // Content header
+                                    h_flex()
+                                        .w_full()
+                                        .p_2()
+                                        .border_b_1()
+                                        .border_color(cx.theme().border)
+                                        .items_center()
+                                        .justify_between()
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_semibold()
+                                                .text_color(cx.theme().foreground)
+                                                .children(self.selected_folder.as_ref().and_then(
+                                                    |p| {
+                                                        p.file_name()
+                                                            .and_then(|n| n.to_str())
+                                                            .map(|s| s.to_string())
+                                                    },
+                                                )),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child(format!("{} items", contents.len())),
+                                        ),
+                                )
+                                .child(
+                                    // Content grid with scrolling
+                                    div().flex_1().overflow_hidden().p_3().child({
+                                        let selected_folder_for_menu = self.selected_folder.clone();
                                         div()
-                                            .flex_1()
-                                            .overflow_hidden()
-                                            .p_3()
-                                            .child({
-                                                let selected_folder_for_menu = self.selected_folder.clone();
-                                                div()
-                                                    .id("content-area-wrapper")
-                                                    .size_full()
-                                                    .context_menu(move |menu, _window, _cx| {
-                                                        if let Some(folder) = &selected_folder_for_menu {
-                                                            let folder_str = folder.to_string_lossy().to_string();
-                                                            menu.menu("New Folder", Box::new(NewFolder {
-                                                                folder_path: folder_str.clone()
-                                                            }))
-                                                            .menu("New Class", Box::new(NewClass {
-                                                                folder_path: folder_str.clone()
-                                                            }))
-                                                            .menu("New File", Box::new(NewFile {
-                                                                folder_path: folder_str.clone()
-                                                            }))
-                                                        } else {
-                                                            menu
-                                                        }
-                                                    })
-                                                    .child(
-                                                        div()
-                                                            .size_full()
-                                                            .scrollable(Axis::Vertical)
-                                                            .child(
-                                                                h_flex()
-                                                                    .w_full()
-                                                                    .flex_wrap()
-                                                                    .gap_2()
-                                                                    .children(
-                                                                        contents.iter().map(|item| {
-                                                                            self.render_content_item(item, cx)
-                                                                        })
-                                                                    )
-                                                            )
+                                            .id("content-area-wrapper")
+                                            .size_full()
+                                            .context_menu(move |menu, _window, _cx| {
+                                                if let Some(folder) = &selected_folder_for_menu {
+                                                    let folder_str =
+                                                        folder.to_string_lossy().to_string();
+                                                    menu.menu(
+                                                        "New Folder",
+                                                        Box::new(NewFolder {
+                                                            folder_path: folder_str.clone(),
+                                                        }),
                                                     )
+                                                    .menu(
+                                                        "New Class",
+                                                        Box::new(NewClass {
+                                                            folder_path: folder_str.clone(),
+                                                        }),
+                                                    )
+                                                    .menu(
+                                                        "New File",
+                                                        Box::new(NewFile {
+                                                            folder_path: folder_str.clone(),
+                                                        }),
+                                                    )
+                                                } else {
+                                                    menu
+                                                }
                                             })
-                                    )
-                            )
-                    )
+                                            .child(
+                                                div().size_full().scrollable(Axis::Vertical).child(
+                                                    h_flex().w_full().flex_wrap().gap_2().children(
+                                                        contents.iter().map(|item| {
+                                                            self.render_content_item(item, cx)
+                                                        }),
+                                                    ),
+                                                ),
+                                            )
+                                    }),
+                                ),
+                        ),
+                    ),
             )
     }
 }

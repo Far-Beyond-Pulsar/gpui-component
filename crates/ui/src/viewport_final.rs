@@ -1,7 +1,36 @@
 use gpui::{
-    div, px, App, AppContext, Bounds, Context, Corners, DismissEvent, Element, ElementId, Entity, EventEmitter, FocusHandle, Focusable, GlobalElementId, InspectorElementId, InteractiveElement, IntoElement, LayoutId, ParentElement as _, Pixels, Point, Render, RenderImage, Size, StatefulInteractiveElement, Style, Styled as _, Window, Task
+    div,
+    px,
+    App,
+    AppContext,
+    Bounds,
+    Context,
+    Corners,
+    DismissEvent,
+    Element,
+    ElementId,
+    Entity,
+    EventEmitter,
+    FocusHandle,
+    Focusable,
+    GlobalElementId,
+    InspectorElementId,
+    InteractiveElement,
+    IntoElement,
+    LayoutId,
+    ParentElement as _,
+    Pixels,
+    Point,
+    Render,
+    RenderImage,
+    Size,
+    StatefulInteractiveElement,
+    Style,
+    Styled as _,
+    Window,
+    Task,
 };
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, AtomicUsize, Ordering}};
+use std::sync::{ Arc, Mutex, atomic::{ AtomicBool, AtomicUsize, Ordering } };
 use image::ImageBuffer;
 use futures::FutureExt;
 
@@ -94,12 +123,12 @@ impl Framebuffer {
             origin: Point { x: px(x as f32), y: px(y as f32) },
             size: Size { width: px(1.0), height: px(1.0) },
         };
-        
+
         self.dirty_rect = Some(match self.dirty_rect {
             None => pixel_bounds,
             Some(existing) => existing.union(&pixel_bounds),
         });
-        
+
         self.generation += 1;
     }
 
@@ -123,7 +152,7 @@ impl DoubleBuffer {
     pub fn new(width: u32, height: u32) -> Self {
         let buffer_0 = Arc::new(Mutex::new(Framebuffer::new(width, height)));
         let buffer_1 = Arc::new(Mutex::new(Framebuffer::new(width, height)));
-        
+
         Self {
             current_front: AtomicUsize::new(0),
             buffer_0,
@@ -190,7 +219,7 @@ impl Element for ViewportElement {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
-        cx: &mut App,
+        cx: &mut App
     ) -> (LayoutId, Self::RequestLayoutState) {
         let mut style = Style::default();
         style.size = Size::full(); // This tells the element to take full available space
@@ -205,7 +234,7 @@ impl Element for ViewportElement {
         _bounds: Bounds<Pixels>,
         _request_layout: &mut Self::RequestLayoutState,
         _window: &mut Window,
-        _cx: &mut App,
+        _cx: &mut App
     ) -> Self::PrepaintState {
         // Nothing to do
     }
@@ -218,16 +247,10 @@ impl Element for ViewportElement {
         _request_layout: &mut Self::RequestLayoutState,
         _prepaint: &mut Self::PrepaintState,
         window: &mut Window,
-        _cx: &mut App,
+        _cx: &mut App
     ) {
         if let Some(ref texture) = self.texture {
-            let _ = window.paint_image(
-                bounds,
-                Corners::all(px(0.0)),
-                texture.clone(),
-                0,
-                false,
-            );
+            let _ = window.paint_image(bounds, Corners::all(px(0.0)), texture.clone(), 0, false);
         }
     }
 }
@@ -259,18 +282,18 @@ impl Viewport {
     /// Updates GPU texture ONLY if needed - zero memory operations on UI thread
     fn update_texture_if_needed(&mut self) -> Option<Arc<RenderImage>> {
         let ui_start = std::time::Instant::now();
-        
+
         // Try to get pre-made texture (zero-copy)
         let texture = {
             let grab_start = std::time::Instant::now();
             let mut shared = self.shared_texture.lock().unwrap();
             let texture = shared.take(); // Zero-copy take
             let grab_time = grab_start.elapsed();
-            
+
             if self.debug_enabled && grab_time.as_micros() > 50 {
                 println!("[VIEWPORT-UI] Texture grab: {}μs", grab_time.as_micros());
             }
-            
+
             if self.debug_enabled {
                 if texture.is_some() {
                     println!("[VIEWPORT-UI] Got texture from background task");
@@ -278,15 +301,15 @@ impl Viewport {
                     println!("[VIEWPORT-UI] No texture available from background task");
                 }
             }
-            
+
             texture
         };
-        
+
         let total_ui_time = ui_start.elapsed();
         if self.debug_enabled && total_ui_time.as_micros() > 100 {
             println!("[VIEWPORT-UI] Total UI time: {}μs", total_ui_time.as_micros());
         }
-        
+
         texture
     }
 }
@@ -294,20 +317,20 @@ impl Viewport {
 impl Drop for Viewport {
     fn drop(&mut self) {
         println!("[VIEWPORT] Dropping viewport, cleaning up resources...");
-        
+
         // Signal shutdown to background task
         if let Some(sender) = self.shutdown_sender.take() {
             let _ = sender.try_send(());
             println!("[VIEWPORT] Shutdown signal sent");
         }
-        
+
         // Cancel background task if it exists
         if let Some(task) = self.task_handle.take() {
             // GPUI tasks are cancelled by dropping them
             drop(task);
             println!("[VIEWPORT] Background task dropped");
         }
-        
+
         // Clear shared texture to break Arc cycles
         if let Ok(mut shared) = self.shared_texture.lock() {
             *shared = None;
@@ -327,10 +350,10 @@ impl EventEmitter<DismissEvent> for Viewport {}
 impl Render for Viewport {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let paint_start = std::time::Instant::now();
-        
+
         // Get ready texture with zero operations on UI thread
         let texture = self.update_texture_if_needed();
-        
+
         let paint_time = paint_start.elapsed();
         if self.debug_enabled && paint_time.as_micros() > 200 {
             println!("[VIEWPORT-UI] Paint time: {}μs", paint_time.as_micros());
@@ -349,18 +372,18 @@ impl Render for Viewport {
 pub fn create_viewport_with_background_rendering<V: 'static>(
     initial_width: u32,
     initial_height: u32,
-    cx: &mut Context<V>,
+    cx: &mut Context<V>
 ) -> (Entity<Viewport>, Arc<DoubleBuffer>, RefreshHook) {
     println!("[VIEWPORT] Creating zero-copy viewport {}x{}", initial_width, initial_height);
-    
+
     let double_buffer = Arc::new(DoubleBuffer::new(initial_width, initial_height));
-    
+
     // Channel for refresh notifications - bounded to prevent memory leaks
     let (refresh_sender, refresh_receiver) = smol::channel::bounded::<()>(1);
-    
+
     // Shutdown channel for cleanup
     let (shutdown_sender, shutdown_receiver) = smol::channel::bounded::<()>(1);
-    
+
     let viewport = cx.new(|cx| Viewport {
         double_buffer: Arc::clone(&double_buffer),
         shared_texture: Arc::new(Mutex::new(None)),
@@ -375,11 +398,11 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
 
     let processing_flag = Arc::new(AtomicBool::new(false));
     let processing_flag_clone = Arc::clone(&processing_flag);
-    
+
     // Memory tracking for debugging
     let refresh_count = Arc::new(AtomicUsize::new(0));
     let refresh_count_clone = Arc::clone(&refresh_count);
-    
+
     let refresh_hook: RefreshHook = Arc::new(move || {
         // Skip if already processing to prevent queue buildup
         if processing_flag_clone.load(Ordering::Relaxed) {
@@ -388,12 +411,12 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
             }
             return;
         }
-        
+
         let count = refresh_count_clone.fetch_add(1, Ordering::Relaxed);
         if cfg!(debug_assertions) && count % 100 == 0 {
             println!("[VIEWPORT-BG] Refresh count: {}", count);
         }
-        
+
         let send_result = refresh_sender.try_send(()); // Non-blocking send
         if send_result.is_ok() {
             if cfg!(debug_assertions) {
@@ -401,7 +424,11 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
             }
         } else {
             if cfg!(debug_assertions) {
-                println!("[VIEWPORT-BG] Failed to send refresh signal: {:?} ({})", send_result, count);
+                println!(
+                    "[VIEWPORT-BG] Failed to send refresh signal: {:?} ({})",
+                    send_result,
+                    count
+                );
             }
         }
     });
@@ -414,10 +441,9 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
     // Use GPUI async task that can properly notify the viewport entity
     viewport.update(cx, |viewport, cx| {
         let task = cx.spawn(async move |viewport_entity, cx| {
-        
-        loop {
-            // Use select! to listen for both refresh and shutdown signals
-            futures::select! {
+            loop {
+                // Use select! to listen for both refresh and shutdown signals
+                futures::select! {
                 refresh_result = refresh_receiver.recv().fuse() => {
                     match refresh_result {
                         Ok(()) => {
@@ -425,115 +451,117 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
                             
                             let process_start = std::time::Instant::now();
                     
-                    // Drain ALL pending refresh signals to prevent accumulation
-                    let mut drained_count = 0;
-                    while refresh_receiver.try_recv().is_ok() {
-                        drained_count += 1;
-                    }
-                    if debug_enabled && drained_count > 0 {
-                        println!("[VIEWPORT-BG] Drained {} pending refresh signals", drained_count);
-                    }
-                    
-                    // Get front buffer data (ALREADY in RGBA8 format)
-                    let texture_result = {
-                        let front_buffer = buffer_ref.get_front_buffer();
-                        let buffer_guard = match front_buffer.lock() {
-                            Ok(guard) => guard,
-                            Err(_) => {
-                                processing_flag_ref.store(false, Ordering::Relaxed);
-                                continue;
+                            // Drain ALL pending refresh signals to prevent accumulation
+                            let mut drained_count = 0;
+                            while refresh_receiver.try_recv().is_ok() {
+                                drained_count += 1;
                             }
-                        };
-                        
-                        // Skip invalid dimensions
-                        if buffer_guard.width == 0 || buffer_guard.height == 0 {
-                            processing_flag_ref.store(false, Ordering::Relaxed);
-                            continue;
-                        }
-                        
-                        // ZERO CONVERSION - create image::Frame from RGBA8 data
-                        let texture_create_start = std::time::Instant::now();
-                        
-                        // Create an image::Frame from our RGBA8 buffer
-                        let rgba_image = match ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(
-                            buffer_guard.width,
-                            buffer_guard.height,
-                            buffer_guard.buffer.clone(),
-                        ) {
-                            Some(img) => img,
-                            None => {
-                                processing_flag_ref.store(false, Ordering::Relaxed);
-                                continue;
+                            if debug_enabled && drained_count > 0 {
+                                println!("[VIEWPORT-BG] Drained {} pending refresh signals", drained_count);
                             }
-                        };
-                        
-                        let frame = image::Frame::new(rgba_image);
-                        let texture = Arc::new(RenderImage::new(vec![frame]));
-                        
-                        let texture_create_time = texture_create_start.elapsed();
-                        let dimensions = (buffer_guard.width, buffer_guard.height);
-                        
-                        if debug_enabled {
-                            println!("[VIEWPORT-BG] Zero-copy texture: create={}μs ({}x{})",
-                                texture_create_time.as_micros(),
-                                dimensions.0,
-                                dimensions.1);
-                        }
-                        
-                        texture
-                    };
-                    
-                    // Update the viewport entity and store texture + trigger re-render (like GPML canvas)
-                    let update_result = viewport_entity.update(cx, |viewport, cx| {
-                        // Store completed texture in the viewport's shared_texture
-                        // Clear old texture before storing new one to prevent accumulation
-                        {
-                            let mut shared = viewport.shared_texture.lock().unwrap();
-                            if shared.is_some() && debug_enabled {
-                                println!("[VIEWPORT-BG] Replacing existing texture");
+
+                            // Get front buffer data (ALREADY in RGBA8 format)
+                            let texture_result = {
+                                let front_buffer = buffer_ref.get_front_buffer();
+                                let buffer_guard = match front_buffer.lock() {
+                                    Ok(guard) => guard,
+                                    Err(_) => {
+                                        processing_flag_ref.store(false, Ordering::Relaxed);
+                                        continue;
+                                    }
+                                };
+
+                                // Skip invalid dimensions
+                                if buffer_guard.width == 0 || buffer_guard.height == 0 {
+                                    processing_flag_ref.store(false, Ordering::Relaxed);
+                                    continue;
+                                }
+
+                                // ZERO CONVERSION - create image::Frame from RGBA8 data
+                                let texture_create_start = std::time::Instant::now();
+
+                                // Create an image::Frame from our RGBA8 buffer
+                                let rgba_image = match ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(
+                                    buffer_guard.width,
+                                    buffer_guard.height,
+                                    buffer_guard.buffer.clone(), // Clone the buffer for safety
+                                ) {
+                                    Some(img) => img,
+                                    None => {
+                                        processing_flag_ref.store(false, Ordering::Relaxed);
+                                        continue;
+                                    }
+                                };
+
+                                let frame = image::Frame::new(rgba_image);
+                                let texture = Arc::new(RenderImage::new(vec![frame]));
+
+                                let texture_create_time = texture_create_start.elapsed();
+                                let dimensions = (buffer_guard.width, buffer_guard.height);
+
+                                drop(buffer_guard); // Release lock ASAP
+
+                                if debug_enabled {
+                                    println!("[VIEWPORT-BG] Zero-copy texture: create={}μs ({}x{})",
+                                        texture_create_time.as_micros(),
+                                        dimensions.0,
+                                        dimensions.1);
+                                }
+
+                                texture
+                            };
+
+                            // Update the viewport entity and store texture + trigger re-render (like GPML canvas)
+                            let update_result = viewport_entity.update(cx, |viewport, cx| {
+                                // Store completed texture in the viewport's shared_texture
+                                // Clear old texture before storing new one to prevent accumulation
+                                {
+                                    let mut shared = viewport.shared_texture.lock().unwrap();
+                                    if shared.is_some() && debug_enabled {
+                                        println!("[VIEWPORT-BG] Replacing existing texture");
+                                    }
+                                    *shared = Some(texture_result);
+                                }
+
+                                // Viewport has new texture available, trigger re-render
+                                cx.notify();
+                            });
+
+                            if let Err(e) = update_result {
+                                println!("[VIEWPORT-BG] Failed to update viewport entity: {:?}", e);
+                                // Break out if viewport entity is gone
+                                break;
                             }
-                            *shared = Some(texture_result);
-                        }
-                        
-                        // Viewport has new texture available, trigger re-render
-                        cx.notify();
-                    });
-                    
-                    if let Err(e) = update_result {
-                        println!("[VIEWPORT-BG] Failed to update viewport entity: {:?}", e);
-                        // Break out if viewport entity is gone
-                        break;
-                    }
-                    
-                    let total_time = process_start.elapsed();
-                    if debug_enabled {
-                        println!("[VIEWPORT-BG] Total process time: {}μs", total_time.as_micros());
-                    }
-                            
-                            processing_flag_ref.store(false, Ordering::Relaxed);
+
+                            let total_time = process_start.elapsed();
+                            if debug_enabled {
+                                println!("[VIEWPORT-BG] Total process time: {}μs", total_time.as_micros());
+                            }
+
+                                    processing_flag_ref.store(false, Ordering::Relaxed);
+                                },
+                                Err(_) => {
+                                    // Channel closed, exit the task
+                                    println!("[VIEWPORT-BG] Refresh channel closed, exiting background task");
+                                    break;
+                                }
+                            }
                         },
-                        Err(_) => {
-                            // Channel closed, exit the task
-                            println!("[VIEWPORT-BG] Refresh channel closed, exiting background task");
-                            break;
-                        }
-                    }
-                },
-                shutdown_result = shutdown_receiver.recv().fuse() => {
-                    match shutdown_result {
-                        Ok(()) | Err(_) => {
-                            // Shutdown signal received or channel closed
-                            println!("[VIEWPORT-BG] Shutdown signal received, exiting background task");
-                            break;
+                        shutdown_result = shutdown_receiver.recv().fuse() => {
+                            match shutdown_result {
+                                Ok(()) | Err(_) => {
+                                    // Shutdown signal received or channel closed
+                                    println!("[VIEWPORT-BG] Shutdown signal received, exiting background task");
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
+                println!("[VIEWPORT-BG] Background task exiting, cleaning up...");
             }
-        }
-        
-        println!("[VIEWPORT-BG] Background task exiting, cleaning up...");
-        });
-        
+        );
+
         // Store the task handle for proper cleanup
         viewport.task_handle = Some(task);
     });

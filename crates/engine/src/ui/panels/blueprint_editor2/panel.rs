@@ -1,19 +1,23 @@
-use gpui::*;
-use gpui::prelude::FluentBuilder;
-use gpui_component::{
-    context_menu::ContextMenuExt, dock::{Panel, PanelEvent}, input::{InputEvent, InputState}, resizable::{h_resizable, resizable_panel, ResizableState}, v_flex, ActiveTheme as _, PixelsExt, StyledExt
-};
 use crate::graph::PinInstance;
+use gpui::prelude::FluentBuilder;
+use gpui::*;
+use gpui_component::{
+    context_menu::ContextMenuExt,
+    dock::{Panel, PanelEvent},
+    input::{InputEvent, InputState},
+    resizable::{h_resizable, resizable_panel, ResizableState},
+    v_flex, ActiveTheme as _, PixelsExt, StyledExt,
+};
 use smol::Timer;
 use std::time::Duration;
 
-use super::*;
-use super::toolbar::ToolbarRenderer;
+use super::hoverable_tooltip::HoverableTooltip;
+use super::node_creation_menu::{NodeCreationEvent, NodeCreationMenu};
 use super::node_graph::NodeGraphRenderer;
 use super::properties::PropertiesRenderer;
-use super::node_creation_menu::{NodeCreationMenu, NodeCreationEvent};
-use super::hoverable_tooltip::HoverableTooltip;
-use crate::graph::{GraphDescription, DataType as GraphDataType};
+use super::toolbar::ToolbarRenderer;
+use super::*;
+use crate::graph::{DataType as GraphDataType, GraphDescription};
 
 // Constants for node creation menu dimensions
 // These must match the values in node_creation_menu.rs
@@ -26,6 +30,8 @@ pub struct BlueprintEditorPanel {
     resizable_state: Entity<ResizableState>,
     // Current class path (for saving/compiling)
     pub current_class_path: Option<std::path::PathBuf>,
+    // Tab title for display in the UI
+    pub tab_title: Option<String>,
     // Drag state
     pub dragging_node: Option<String>,
     pub drag_offset: Point<f32>,
@@ -59,14 +65,15 @@ pub struct BlueprintEditorPanel {
     // Variable creation state
     pub is_creating_variable: bool,
     pub variable_name_input: Entity<gpui_component::input::InputState>,
-    pub variable_type_dropdown: Entity<gpui_component::dropdown::DropdownState<Vec<super::variables::TypeItem>>>,
+    pub variable_type_dropdown:
+        Entity<gpui_component::dropdown::DropdownState<Vec<super::variables::TypeItem>>>,
     // Variable drag state
     pub dragging_variable: Option<super::variables::VariableDrag>,
     pub variable_drop_menu_position: Option<Point<f32>>,
     // Comment state
     pub dragging_comment: Option<String>, // Comment ID being dragged
     pub resizing_comment: Option<(String, ResizeHandle)>, // (comment ID, handle being dragged)
-    pub editing_comment: Option<String>, // Comment ID being edited
+    pub editing_comment: Option<String>,  // Comment ID being edited
     pub comment_text_input: Entity<gpui_component::input::InputState>,
     // Store subscriptions to keep them alive
     pub subscriptions: Vec<gpui::Subscription>,
@@ -208,7 +215,10 @@ impl BlueprintEditorPanel {
 
         // Function node: print (true path)
         let mut print_true_props = std::collections::HashMap::new();
-        print_true_props.insert("message".to_string(), "Result is greater than 3! ✓".to_string());
+        print_true_props.insert(
+            "message".to_string(),
+            "Result is greater than 3! ✓".to_string(),
+        );
 
         nodes.push(BlueprintNode {
             id: "print_true".to_string(),
@@ -379,6 +389,7 @@ impl BlueprintEditorPanel {
             graph,
             resizable_state,
             current_class_path: None,
+            tab_title: None,
             dragging_node: None,
             drag_offset: Point::new(0.0, 0.0),
             initial_drag_positions: std::collections::HashMap::new(),
@@ -401,16 +412,10 @@ impl BlueprintEditorPanel {
             class_variables: Vec::new(),
             is_creating_variable: false,
             variable_name_input: cx.new(|cx| {
-                gpui_component::input::InputState::new(window, cx)
-                    .placeholder("Variable name...")
+                gpui_component::input::InputState::new(window, cx).placeholder("Variable name...")
             }),
             variable_type_dropdown: cx.new(|cx| {
-                gpui_component::dropdown::DropdownState::new(
-                    Vec::new(),
-                    None,
-                    window,
-                    cx,
-                )
+                gpui_component::dropdown::DropdownState::new(Vec::new(), None, window, cx)
             }),
             dragging_variable: None,
             variable_drop_menu_position: None,
@@ -418,13 +423,10 @@ impl BlueprintEditorPanel {
             resizing_comment: None,
             editing_comment: None,
             comment_text_input: cx.new(|cx| {
-                gpui_component::input::InputState::new(window, cx)
-                    .placeholder("Comment text...")
+                gpui_component::input::InputState::new(window, cx).placeholder("Comment text...")
             }),
             subscriptions: Vec::<gpui::Subscription>::new(),
         };
-
-
 
         result
     }
@@ -441,10 +443,11 @@ impl BlueprintEditorPanel {
         &self.focus_handle
     }
 
-
-
     pub fn add_node(&mut self, node: BlueprintNode, cx: &mut Context<Self>) {
-        println!("Adding node: {} at position {:?}", node.title, node.position);
+        println!(
+            "Adding node: {} at position {:?}",
+            node.title, node.position
+        );
         self.graph.nodes.push(node);
         cx.notify();
     }
@@ -460,7 +463,9 @@ impl BlueprintEditorPanel {
 
     /// Compile and save events to class directory structure
     pub fn compile_to_class_directory(&self) -> Result<(), String> {
-        let class_path = self.current_class_path.as_ref()
+        let class_path = self
+            .current_class_path
+            .as_ref()
             .ok_or("No class loaded - cannot compile")?;
 
         // Save variables and generate vars module first
@@ -473,7 +478,10 @@ impl BlueprintEditorPanel {
             .map_err(|e| format!("Failed to create events directory: {}", e))?;
 
         // Find all event nodes in the graph
-        let event_nodes: Vec<_> = self.graph.nodes.iter()
+        let event_nodes: Vec<_> = self
+            .graph
+            .nodes
+            .iter()
             .filter(|node| node.node_type == super::NodeType::Event)
             .collect();
 
@@ -487,18 +495,28 @@ impl BlueprintEditorPanel {
             .map_err(|e| format!("Failed to get node metadata: {}", e))?;
 
         // Build variables HashMap from class_variables
-        let variables: std::collections::HashMap<String, String> = self.class_variables.iter()
+        let variables: std::collections::HashMap<String, String> = self
+            .class_variables
+            .iter()
             .map(|v| (v.name.clone(), v.var_type.clone()))
             .collect();
 
-        let data_resolver = crate::compiler::data_resolver::DataResolver::build_with_variables(&graph_description, &metadata, variables.clone())?;
-        let exec_routing = crate::compiler::execution_routing::ExecutionRouting::build_from_graph(&graph_description);
+        let data_resolver = crate::compiler::data_resolver::DataResolver::build_with_variables(
+            &graph_description,
+            &metadata,
+            variables.clone(),
+        )?;
+        let exec_routing = crate::compiler::execution_routing::ExecutionRouting::build_from_graph(
+            &graph_description,
+        );
 
         let mut mod_exports = Vec::new();
 
         for event_node in &event_nodes {
             // Find the graph node for this event
-            let graph_event = graph_description.nodes.values()
+            let graph_event = graph_description
+                .nodes
+                .values()
                 .find(|n| n.id == event_node.id)
                 .ok_or(format!("Event node {} not found in graph", event_node.id))?;
 
@@ -521,7 +539,11 @@ impl BlueprintEditorPanel {
                 .map_err(|e| format!("Failed to write {}: {}", event_file.display(), e))?;
 
             mod_exports.push(event_name.clone());
-            println!("Compiled event '{}' to {}", event_node.title, event_file.display());
+            println!(
+                "Compiled event '{}' to {}",
+                event_node.title,
+                event_file.display()
+            );
         }
 
         // Create mod.rs that re-exports all events with header
@@ -542,7 +564,8 @@ impl BlueprintEditorPanel {
             version
         );
 
-        let mod_exports_str = mod_exports.iter()
+        let mod_exports_str = mod_exports
+            .iter()
             .map(|name| format!("pub mod {};\npub use {}::*;", name, name))
             .collect::<Vec<_>>()
             .join("\n");
@@ -568,7 +591,10 @@ impl BlueprintEditorPanel {
             let mut node_instance = NodeInstance::new(
                 &bp_node.id,
                 &self.get_node_type_from_blueprint(&bp_node)?,
-                Position { x: bp_node.position.x, y: bp_node.position.y }
+                Position {
+                    x: bp_node.position.x,
+                    y: bp_node.position.y,
+                },
             );
 
             // Convert pins
@@ -600,16 +626,15 @@ impl BlueprintEditorPanel {
         // Convert connections
         for connection in &self.graph.connections {
             // Determine connection type based on source pin's data type
-            let conn_type = self.graph.nodes.iter()
+            let conn_type = self
+                .graph
+                .nodes
+                .iter()
                 .find(|n| n.id == connection.from_node_id)
-                .and_then(|node| {
-                    node.outputs.iter().find(|p| p.id == connection.from_pin_id)
-                })
-                .map(|pin| {
-                    match &pin.data_type {
-                        GraphDataType::Execution => ConnectionType::Execution,
-                        _ => ConnectionType::Data,
-                    }
+                .and_then(|node| node.outputs.iter().find(|p| p.id == connection.from_pin_id))
+                .map(|pin| match &pin.data_type {
+                    GraphDataType::Execution => ConnectionType::Execution,
+                    _ => ConnectionType::Data,
                 })
                 .unwrap_or(ConnectionType::Data);
 
@@ -663,8 +688,7 @@ impl BlueprintEditorPanel {
 
         let content = format!("{}{}", header, json);
 
-        std::fs::write(file_path, content)
-            .map_err(|e| format!("Failed to write file: {}", e))?;
+        std::fs::write(file_path, content).map_err(|e| format!("Failed to write file: {}", e))?;
 
         // Also save variables when saving the blueprint
         if self.current_class_path.is_some() {
@@ -675,7 +699,12 @@ impl BlueprintEditorPanel {
     }
 
     /// Load a graph from a JSON file
-    pub fn load_blueprint(&mut self, file_path: &str, window: &mut gpui::Window, cx: &mut Context<Self>) -> Result<(), String> {
+    pub fn load_blueprint(
+        &mut self,
+        file_path: &str,
+        window: &mut gpui::Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
         let content = std::fs::read_to_string(file_path)
             .map_err(|e| format!("Failed to read file: {}", e))?;
 
@@ -686,8 +715,8 @@ impl BlueprintEditorPanel {
             .collect::<Vec<_>>()
             .join("\n");
 
-        let graph_description: crate::graph::GraphDescription = serde_json::from_str(&json)
-            .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+        let graph_description: crate::graph::GraphDescription =
+            serde_json::from_str(&json).map_err(|e| format!("Failed to parse JSON: {}", e))?;
 
         // Convert back to blueprint format
         self.graph = self.convert_from_graph_description(&graph_description, window, cx)?;
@@ -710,7 +739,7 @@ impl BlueprintEditorPanel {
         &mut self,
         graph_desc: &crate::graph::GraphDescription,
         window: &mut gpui::Window,
-        cx: &mut gpui::Context<Self>
+        cx: &mut gpui::Context<Self>,
     ) -> Result<BlueprintGraph, String> {
         let mut nodes = Vec::new();
         let mut connections = Vec::new();
@@ -728,7 +757,13 @@ impl BlueprintEditorPanel {
 
             let (title, icon, description, node_type, color) = if definition_id == "reroute" {
                 // Special handling for reroute nodes
-                ("Reroute".to_string(), "•".to_string(), "Reroute node for organizing connections".to_string(), NodeType::Reroute, None)
+                (
+                    "Reroute".to_string(),
+                    "•".to_string(),
+                    "Reroute node for organizing connections".to_string(),
+                    NodeType::Reroute,
+                    None,
+                )
             } else if let Some(def) = node_def {
                 let category = node_definitions.get_category_for_node(&def.id);
                 let node_type = match category.map(|c| c.name.as_str()) {
@@ -738,10 +773,22 @@ impl BlueprintEditorPanel {
                     Some("Object") => NodeType::Object,
                     _ => NodeType::Logic,
                 };
-                (def.name.clone(), def.icon.clone(), def.description.clone(), node_type, def.color.clone())
+                (
+                    def.name.clone(),
+                    def.icon.clone(),
+                    def.description.clone(),
+                    node_type,
+                    def.color.clone(),
+                )
             } else {
                 // Fallback if definition not found
-                (definition_id.replace('_', " "), "⚙️".to_string(), String::new(), NodeType::Logic, None)
+                (
+                    definition_id.replace('_', " "),
+                    "⚙️".to_string(),
+                    String::new(),
+                    NodeType::Logic,
+                    None,
+                )
             };
 
             let bp_node = BlueprintNode {
@@ -752,39 +799,51 @@ impl BlueprintEditorPanel {
                 node_type,
                 position: Point::new(node_instance.position.x, node_instance.position.y),
                 size: Size::new(150.0, 100.0),
-                inputs: node_instance.inputs.iter().map(|pin_inst| {
-                    let pin = &pin_inst.pin;
-                    Pin {
-                        id: pin_inst.id.clone(),
-                        name: pin.name.clone(),
-                        pin_type: match pin.pin_type {
-                            crate::graph::PinType::Input => PinType::Input,
-                            crate::graph::PinType::Output => PinType::Output,
-                        },
-                        data_type: pin.data_type.clone(),
-                    }
-                }).collect(),
-                outputs: node_instance.outputs.iter().map(|pin_inst| {
-                    let pin = &pin_inst.pin;
-                    Pin {
-                        id: pin_inst.id.clone(),
-                        name: pin.name.clone(),
-                        pin_type: match pin.pin_type {
-                            crate::graph::PinType::Input => PinType::Input,
-                            crate::graph::PinType::Output => PinType::Output,
-                        },
-                        data_type: pin.data_type.clone(),
-                    }
-                }).collect(),
-                properties: node_instance.properties.iter().map(|(k, v)| {
-                    let value_str = match v {
-                        crate::graph::PropertyValue::String(s) => s.clone(),
-                        crate::graph::PropertyValue::Number(n) => n.to_string(),
-                        crate::graph::PropertyValue::Boolean(b) => b.to_string(),
-                        _ => "".to_string(),
-                    };
-                    (k.clone(), value_str)
-                }).collect(),
+                inputs: node_instance
+                    .inputs
+                    .iter()
+                    .map(|pin_inst| {
+                        let pin = &pin_inst.pin;
+                        Pin {
+                            id: pin_inst.id.clone(),
+                            name: pin.name.clone(),
+                            pin_type: match pin.pin_type {
+                                crate::graph::PinType::Input => PinType::Input,
+                                crate::graph::PinType::Output => PinType::Output,
+                            },
+                            data_type: pin.data_type.clone(),
+                        }
+                    })
+                    .collect(),
+                outputs: node_instance
+                    .outputs
+                    .iter()
+                    .map(|pin_inst| {
+                        let pin = &pin_inst.pin;
+                        Pin {
+                            id: pin_inst.id.clone(),
+                            name: pin.name.clone(),
+                            pin_type: match pin.pin_type {
+                                crate::graph::PinType::Input => PinType::Input,
+                                crate::graph::PinType::Output => PinType::Output,
+                            },
+                            data_type: pin.data_type.clone(),
+                        }
+                    })
+                    .collect(),
+                properties: node_instance
+                    .properties
+                    .iter()
+                    .map(|(k, v)| {
+                        let value_str = match v {
+                            crate::graph::PropertyValue::String(s) => s.clone(),
+                            crate::graph::PropertyValue::Number(n) => n.to_string(),
+                            crate::graph::PropertyValue::Boolean(b) => b.to_string(),
+                            _ => "".to_string(),
+                        };
+                        (k.clone(), value_str)
+                    })
+                    .collect(),
                 is_selected: false,
                 description,
                 color,
@@ -808,9 +867,9 @@ impl BlueprintEditorPanel {
         // Ensure all comments have a color_picker_state
         for comment in &mut comments {
             if comment.color_picker_state.is_none() {
-                comment.color_picker_state = Some(cx.new(|cx| {
-                    gpui_component::color_picker::ColorPickerState::new(window, cx)
-                }));
+                comment.color_picker_state = Some(
+                    cx.new(|cx| gpui_component::color_picker::ColorPickerState::new(window, cx)),
+                );
             }
         }
 
@@ -821,17 +880,24 @@ impl BlueprintEditorPanel {
                 let subscription = cx.subscribe_in(
                     picker_state,
                     window,
-                    move |this: &mut BlueprintEditorPanel, _picker, event: &gpui_component::color_picker::ColorPickerEvent, _window, cx| {
-                        if let gpui_component::color_picker::ColorPickerEvent::Change(Some(color)) = event {
-                            if let Some(comment) = this.graph.comments.iter_mut().find(|c| c.id == comment_id) {
+                    move |this: &mut BlueprintEditorPanel,
+                          _picker,
+                          event: &gpui_component::color_picker::ColorPickerEvent,
+                          _window,
+                          cx| {
+                        if let gpui_component::color_picker::ColorPickerEvent::Change(Some(color)) =
+                            event
+                        {
+                            if let Some(comment) =
+                                this.graph.comments.iter_mut().find(|c| c.id == comment_id)
+                            {
                                 comment.color = *color;
                                 cx.notify();
                             }
                         }
-                    }
+                    },
                 );
                 // Store the subscription to keep it alive
-
             }
         }
 
@@ -849,15 +915,15 @@ impl BlueprintEditorPanel {
 
     // Conversion function no longer needed since we use the unified DataType system
 
-
     pub fn start_drag(&mut self, node_id: String, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
-        print!("Starting drag for node {} at mouse position {:?}", node_id, mouse_pos);
+        print!(
+            "Starting drag for node {} at mouse position {:?}",
+            node_id, mouse_pos
+        );
         if let Some(node) = self.graph.nodes.iter().find(|n| n.id == node_id) {
             self.dragging_node = Some(node_id.clone());
-            self.drag_offset = Point::new(
-                mouse_pos.x - node.position.x,
-                mouse_pos.y - node.position.y,
-            );
+            self.drag_offset =
+                Point::new(mouse_pos.x - node.position.x, mouse_pos.y - node.position.y);
 
             // Store initial positions of all selected nodes for multi-node dragging
             self.initial_drag_positions.clear();
@@ -865,13 +931,17 @@ impl BlueprintEditorPanel {
             // If the dragged node is selected, drag all selected nodes
             if self.graph.selected_nodes.contains(&node_id) {
                 for selected_id in &self.graph.selected_nodes {
-                    if let Some(selected_node) = self.graph.nodes.iter().find(|n| n.id == *selected_id) {
-                        self.initial_drag_positions.insert(selected_id.clone(), selected_node.position);
+                    if let Some(selected_node) =
+                        self.graph.nodes.iter().find(|n| n.id == *selected_id)
+                    {
+                        self.initial_drag_positions
+                            .insert(selected_id.clone(), selected_node.position);
                     }
                 }
             } else {
                 // If dragging a non-selected node, just drag that one
-                self.initial_drag_positions.insert(node_id.clone(), node.position);
+                self.initial_drag_positions
+                    .insert(node_id.clone(), node.position);
             }
 
             // Close any open tooltips when starting drag
@@ -899,10 +969,8 @@ impl BlueprintEditorPanel {
                 // Move all nodes that were selected when dragging started
                 for (node_id, initial_position) in &self.initial_drag_positions {
                     if let Some(node) = self.graph.nodes.iter_mut().find(|n| n.id == *node_id) {
-                        node.position = Point::new(
-                            initial_position.x + delta.x,
-                            initial_position.y + delta.y,
-                        );
+                        node.position =
+                            Point::new(initial_position.x + delta.x, initial_position.y + delta.y);
                     }
                 }
 
@@ -1058,14 +1126,22 @@ impl BlueprintEditorPanel {
             cx.subscribe_in(
                 picker_state,
                 window,
-                move |this: &mut BlueprintEditorPanel, _picker, event: &gpui_component::color_picker::ColorPickerEvent, _window, cx| {
-                    if let gpui_component::color_picker::ColorPickerEvent::Change(Some(color)) = event {
-                        if let Some(comment) = this.graph.comments.iter_mut().find(|c| c.id == comment_id) {
+                move |this: &mut BlueprintEditorPanel,
+                      _picker,
+                      event: &gpui_component::color_picker::ColorPickerEvent,
+                      _window,
+                      cx| {
+                    if let gpui_component::color_picker::ColorPickerEvent::Change(Some(color)) =
+                        event
+                    {
+                        if let Some(comment) =
+                            this.graph.comments.iter_mut().find(|c| c.id == comment_id)
+                        {
                             comment.color = *color;
                             cx.notify();
                         }
                     }
-                }
+                },
             );
         }
 
@@ -1091,9 +1167,9 @@ impl BlueprintEditorPanel {
         self.graph.nodes.retain(|n| n.id != node_id);
 
         // Remove any connections involving this node
-        self.graph.connections.retain(|conn| {
-            conn.from_node_id != node_id && conn.to_node_id != node_id
-        });
+        self.graph
+            .connections
+            .retain(|conn| conn.from_node_id != node_id && conn.to_node_id != node_id);
 
         // Remove from selected nodes
         self.graph.selected_nodes.retain(|id| *id != node_id);
@@ -1118,17 +1194,25 @@ impl BlueprintEditorPanel {
 
     pub fn disconnect_pin(&mut self, node_id: String, pin_id: String, cx: &mut Context<Self>) {
         self.graph.connections.retain(|conn| {
-            !(conn.from_node_id == node_id && conn.from_pin_id == pin_id) &&
-            !(conn.to_node_id == node_id && conn.to_pin_id == pin_id)
+            !(conn.from_node_id == node_id && conn.from_pin_id == pin_id)
+                && !(conn.to_node_id == node_id && conn.to_pin_id == pin_id)
         });
         cx.notify();
     }
 
-    pub fn start_connection_drag_from_pin(&mut self, node_id: String, pin_id: String, cx: &mut Context<Self>) {
+    pub fn start_connection_drag_from_pin(
+        &mut self,
+        node_id: String,
+        pin_id: String,
+        cx: &mut Context<Self>,
+    ) {
         // Find the pin to get its data type
         if let Some(node) = self.graph.nodes.iter().find(|n| n.id == node_id) {
             if let Some(pin) = node.outputs.iter().find(|p| p.id == pin_id) {
-                println!("Starting connection drag from pin {} on node {}", pin_id, node_id);
+                println!(
+                    "Starting connection drag from pin {} on node {}",
+                    pin_id, node_id
+                );
                 self.dragging_connection = Some(ConnectionDrag {
                     from_node_id: node_id,
                     from_pin_id: pin_id,
@@ -1150,46 +1234,71 @@ impl BlueprintEditorPanel {
         }
     }
 
-
     pub fn cancel_connection_drag(&mut self, cx: &mut Context<Self>) {
         self.dragging_connection = None;
         cx.notify();
     }
 
-    pub fn set_connection_target(&mut self, target: Option<(String, String)>, cx: &mut Context<Self>) {
+    pub fn set_connection_target(
+        &mut self,
+        target: Option<(String, String)>,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(ref mut drag) = self.dragging_connection {
             drag.target_pin = target;
             cx.notify();
         }
     }
 
-    pub fn complete_connection_on_pin(&mut self, node_id: String, pin_id: String, cx: &mut Context<Self>) {
+    pub fn complete_connection_on_pin(
+        &mut self,
+        node_id: String,
+        pin_id: String,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(drag) = self.dragging_connection.take() {
             // Find the target pin to check compatibility
             if let Some(node) = self.graph.nodes.iter().find(|n| n.id == node_id) {
                 if let Some(pin) = node.inputs.iter().find(|p| p.id == pin_id) {
                     // Check if compatible and not same node
                     // Use is_compatible_with to allow Any type to match with everything
-                    if drag.from_pin_type.is_compatible_with(&pin.data_type) && drag.from_node_id != node_id {
-                        let is_execution_pin = pin.data_type == GraphDataType::from_type_str("execution");
+                    if drag.from_pin_type.is_compatible_with(&pin.data_type)
+                        && drag.from_node_id != node_id
+                    {
+                        let is_execution_pin =
+                            pin.data_type == GraphDataType::from_type_str("execution");
 
                         // Check if source or target is a reroute node
-                        let source_is_reroute = self.graph.nodes.iter().any(|n| n.id == drag.from_node_id && n.node_type == NodeType::Reroute);
-                        let target_is_reroute = self.graph.nodes.iter().any(|n| n.id == node_id && n.node_type == NodeType::Reroute);
+                        let source_is_reroute =
+                            self.graph.nodes.iter().any(|n| {
+                                n.id == drag.from_node_id && n.node_type == NodeType::Reroute
+                            });
+                        let target_is_reroute = self
+                            .graph
+                            .nodes
+                            .iter()
+                            .any(|n| n.id == node_id && n.node_type == NodeType::Reroute);
 
                         // Remove old connections based on pin and node types
                         if is_execution_pin || source_is_reroute || target_is_reroute {
                             // For execution pins, reroute outputs, remove existing connections from source
                             if is_execution_pin || source_is_reroute {
-                                println!("Removing old connection from source {}:{}", drag.from_node_id, drag.from_pin_id);
+                                println!(
+                                    "Removing old connection from source {}:{}",
+                                    drag.from_node_id, drag.from_pin_id
+                                );
                                 self.graph.connections.retain(|conn| {
-                                    !(conn.from_node_id == drag.from_node_id && conn.from_pin_id == drag.from_pin_id)
+                                    !(conn.from_node_id == drag.from_node_id
+                                        && conn.from_pin_id == drag.from_pin_id)
                                 });
                             }
 
                             // For execution pins, reroute inputs, or regular inputs, remove existing connections to target
                             if is_execution_pin || target_is_reroute {
-                                println!("Removing old connection to target {}:{}", node_id, pin_id);
+                                println!(
+                                    "Removing old connection to target {}:{}",
+                                    node_id, pin_id
+                                );
                                 self.graph.connections.retain(|conn| {
                                     !(conn.to_node_id == node_id && conn.to_pin_id == pin_id)
                                 });
@@ -1199,14 +1308,19 @@ impl BlueprintEditorPanel {
                         // For non-reroute, non-execution data pins, apply standard single-input rule
                         if !is_execution_pin && !target_is_reroute {
                             // Remove any existing connection to this input pin (move connection behavior)
-                            println!("Removing old data connection to target {}:{}", node_id, pin_id);
+                            println!(
+                                "Removing old data connection to target {}:{}",
+                                node_id, pin_id
+                            );
                             self.graph.connections.retain(|conn| {
                                 !(conn.to_node_id == node_id && conn.to_pin_id == pin_id)
                             });
                         }
 
-                        println!("Creating connection from {}:{} to {}:{}",
-                                 drag.from_node_id, drag.from_pin_id, node_id, pin_id);
+                        println!(
+                            "Creating connection from {}:{} to {}:{}",
+                            drag.from_node_id, drag.from_pin_id, node_id, pin_id
+                        );
 
                         // Create the new connection
                         let connection = super::Connection {
@@ -1223,9 +1337,17 @@ impl BlueprintEditorPanel {
                         if source_is_reroute || target_is_reroute {
                             // Propagate the non-Any type through the reroute chain
                             if target_is_reroute {
-                                self.propagate_reroute_types(node_id.clone(), drag.from_pin_type.clone(), cx);
+                                self.propagate_reroute_types(
+                                    node_id.clone(),
+                                    drag.from_pin_type.clone(),
+                                    cx,
+                                );
                             } else if source_is_reroute {
-                                self.propagate_reroute_types(drag.from_node_id.clone(), pin.data_type.clone(), cx);
+                                self.propagate_reroute_types(
+                                    drag.from_node_id.clone(),
+                                    pin.data_type.clone(),
+                                    cx,
+                                );
                             }
                         }
                     } else {
@@ -1238,7 +1360,12 @@ impl BlueprintEditorPanel {
     }
 
     // Node creation menu methods
-    pub fn show_node_creation_menu(&mut self, position: Point<f32>, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn show_node_creation_menu(
+        &mut self,
+        position: Point<f32>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.node_creation_menu.is_some() {
             self.dismiss_node_creation_menu(cx);
         }
@@ -1247,14 +1374,20 @@ impl BlueprintEditorPanel {
         let adjusted_position = self.calculate_menu_position(position, window);
 
         // Create the search input state that the menu will use
-        let search_input_state = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("Search nodes...")
-        });
+        let search_input_state =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Search nodes..."));
 
         // Get weak reference to self for the menu
         let panel_weak = cx.entity().downgrade();
 
-        let menu = cx.new(|cx| NodeCreationMenu::new(adjusted_position, search_input_state.clone(), panel_weak, cx));
+        let menu = cx.new(|cx| {
+            NodeCreationMenu::new(
+                adjusted_position,
+                search_input_state.clone(),
+                panel_weak,
+                cx,
+            )
+        });
         // Subscribe to the menu events
         cx.subscribe(&menu, Self::on_node_creation_event).detach();
         self.node_creation_menu = Some(menu);
@@ -1263,7 +1396,11 @@ impl BlueprintEditorPanel {
     }
 
     /// Calculate smart menu positioning to prevent off-screen placement
-    fn calculate_menu_position(&self, requested_position: Point<f32>, window: &Window) -> Point<f32> {
+    fn calculate_menu_position(
+        &self,
+        requested_position: Point<f32>,
+        window: &Window,
+    ) -> Point<f32> {
         // Get actual window viewport size
         let window_bounds = window.bounds();
         let viewport_width = window_bounds.size.width.as_f32();
@@ -1322,7 +1459,13 @@ impl BlueprintEditorPanel {
     }
 
     // Hoverable tooltip methods
-    pub fn show_hoverable_tooltip(&mut self, content: String, position: Point<f32>, _window: &mut Window, cx: &mut Context<Self>) {
+    pub fn show_hoverable_tooltip(
+        &mut self,
+        content: String,
+        position: Point<f32>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         // Store pending tooltip and start timer
         self.pending_tooltip = Some((content.clone(), position));
 
@@ -1336,12 +1479,15 @@ impl BlueprintEditorPanel {
                     // Only show if we still have a pending tooltip (user hasn't moved away)
                     if let Some((pending_content, pending_pos)) = panel.pending_tooltip.take() {
                         let pixel_pos = Point::new(px(pending_pos.x), px(pending_pos.y));
-                        panel.hoverable_tooltip = Some(HoverableTooltip::new(pending_content, pixel_pos, cx));
+                        panel.hoverable_tooltip =
+                            Some(HoverableTooltip::new(pending_content, pixel_pos, cx));
                         cx.notify();
                     }
                 });
-            }).ok();
-        }).detach();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     pub fn hide_hoverable_tooltip(&mut self, cx: &mut Context<Self>) {
@@ -1377,19 +1523,22 @@ impl BlueprintEditorPanel {
 
     /// Check if a screen position is inside the node creation menu bounds
     pub fn is_position_inside_menu(&self, screen_pos: Point<f32>) -> bool {
-        if let (Some(_), Some(position)) = (&self.node_creation_menu, &self.node_creation_menu_position) {
+        if let (Some(_), Some(position)) =
+            (&self.node_creation_menu, &self.node_creation_menu_position)
+        {
             let menu_left = position.x;
             let menu_top = position.y;
             let menu_right = menu_left + NODE_MENU_WIDTH;
             let menu_bottom = menu_top + NODE_MENU_MAX_HEIGHT;
 
-            screen_pos.x >= menu_left && screen_pos.x <= menu_right &&
-            screen_pos.y >= menu_top && screen_pos.y <= menu_bottom
+            screen_pos.x >= menu_left
+                && screen_pos.x <= menu_right
+                && screen_pos.y >= menu_top
+                && screen_pos.y <= menu_bottom
         } else {
             false
         }
     }
-
 
     // Panning methods
     pub fn start_panning(&mut self, start_pos: Point<f32>, cx: &mut Context<Self>) {
@@ -1437,9 +1586,9 @@ impl BlueprintEditorPanel {
             &self.graph,
         );
 
-    // Swap scroll direction: invert the zoom factor mapping so wheel delta
-    // signs produce the opposite zoom direction than before.
-    let zoom_factor = if delta_y > 0.0 { 1.1 } else { 0.9 };
+        // Swap scroll direction: invert the zoom factor mapping so wheel delta
+        // signs produce the opposite zoom direction than before.
+        let zoom_factor = if delta_y > 0.0 { 1.1 } else { 0.9 };
         let new_zoom = (self.graph.zoom_level * zoom_factor).clamp(0.1, 3.0);
 
         // Use an equivalent delta-based formula that is numerically stable and avoids
@@ -1476,7 +1625,8 @@ impl BlueprintEditorPanel {
         self.graph.zoom_level = new_zoom;
         self.graph.pan_offset = new_pan_offset;
 
-        let screen_after = super::node_graph::NodeGraphRenderer::graph_to_screen_pos(focus_graph_pos, &self.graph);
+        let screen_after =
+            super::node_graph::NodeGraphRenderer::graph_to_screen_pos(focus_graph_pos, &self.graph);
         let diff_x = screen_after.x - screen.x;
         let diff_y = screen_after.y - screen.y;
 
@@ -1517,7 +1667,12 @@ impl BlueprintEditorPanel {
         cx.notify();
     }
 
-    pub fn start_selection_drag(&mut self, start_pos: Point<f32>, add_to_selection: bool, cx: &mut Context<Self>) {
+    pub fn start_selection_drag(
+        &mut self,
+        start_pos: Point<f32>,
+        add_to_selection: bool,
+        cx: &mut Context<Self>,
+    ) {
         self.selection_start = Some(start_pos);
         self.selection_end = Some(start_pos);
 
@@ -1573,8 +1728,10 @@ impl BlueprintEditorPanel {
                 let node_bottom = node.position.y + node.size.height;
 
                 // Check if node intersects with selection box
-                let intersects = !(node_right < min_x || node_left > max_x ||
-                                  node_bottom < min_y || node_top > max_y);
+                let intersects = !(node_right < min_x
+                    || node_left > max_x
+                    || node_bottom < min_y
+                    || node_top > max_y);
 
                 if intersects {
                     if !self.graph.selected_nodes.contains(&node.id) {
@@ -1590,22 +1747,35 @@ impl BlueprintEditorPanel {
     }
 
     pub fn delete_selected_nodes(&mut self, cx: &mut Context<Self>) {
-        println!("[DELETE] Selected nodes count: {}", self.graph.selected_nodes.len());
-        println!("[DELETE] Selected node IDs: {:?}", self.graph.selected_nodes);
+        println!(
+            "[DELETE] Selected nodes count: {}",
+            self.graph.selected_nodes.len()
+        );
+        println!(
+            "[DELETE] Selected node IDs: {:?}",
+            self.graph.selected_nodes
+        );
 
         if !self.graph.selected_nodes.is_empty() {
             let node_count_before = self.graph.nodes.len();
 
             // Remove selected nodes
-            self.graph.nodes.retain(|node| !self.graph.selected_nodes.contains(&node.id));
+            self.graph
+                .nodes
+                .retain(|node| !self.graph.selected_nodes.contains(&node.id));
 
             let node_count_after = self.graph.nodes.len();
-            println!("[DELETE] Deleted {} nodes ({} -> {})", node_count_before - node_count_after, node_count_before, node_count_after);
+            println!(
+                "[DELETE] Deleted {} nodes ({} -> {})",
+                node_count_before - node_count_after,
+                node_count_before,
+                node_count_after
+            );
 
             // Remove connections involving deleted nodes
             self.graph.connections.retain(|connection| {
-                !self.graph.selected_nodes.contains(&connection.from_node_id) &&
-                !self.graph.selected_nodes.contains(&connection.to_node_id)
+                !self.graph.selected_nodes.contains(&connection.from_node_id)
+                    && !self.graph.selected_nodes.contains(&connection.to_node_id)
             });
 
             // Clear selection
@@ -1618,12 +1788,22 @@ impl BlueprintEditorPanel {
 
     /// Handle click on empty space - detects double-clicks on connections to create reroute nodes
     /// Returns true if a double-click was handled
-    pub fn handle_empty_space_click(&mut self, graph_pos: Point<f32>, cx: &mut Context<Self>) -> bool {
+    pub fn handle_empty_space_click(
+        &mut self,
+        graph_pos: Point<f32>,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let now = std::time::Instant::now();
-        let is_double_click = if let (Some(last_time), Some(last_pos)) = (self.last_click_time, self.last_click_pos) {
+        let is_double_click = if let (Some(last_time), Some(last_pos)) =
+            (self.last_click_time, self.last_click_pos)
+        {
             let time_diff = now.duration_since(last_time).as_millis();
-            let pos_diff = ((graph_pos.x - last_pos.x).powi(2) + (graph_pos.y - last_pos.y).powi(2)).sqrt();
-            println!("[REROUTE] Double-click check: time_diff={}ms, pos_diff={:.2}px", time_diff, pos_diff);
+            let pos_diff =
+                ((graph_pos.x - last_pos.x).powi(2) + (graph_pos.y - last_pos.y).powi(2)).sqrt();
+            println!(
+                "[REROUTE] Double-click check: time_diff={}ms, pos_diff={:.2}px",
+                time_diff, pos_diff
+            );
             time_diff < 500 && pos_diff < 50.0 // 500ms and 50 pixels threshold (relaxed)
         } else {
             false
@@ -1697,12 +1877,23 @@ impl BlueprintEditorPanel {
     fn find_connection_near_point(&self, point: Point<f32>) -> Option<super::Connection> {
         const CLICK_THRESHOLD: f32 = 30.0; // pixels (increased for easier clicking)
 
-        println!("[REROUTE] Checking {} connections", self.graph.connections.len());
+        println!(
+            "[REROUTE] Checking {} connections",
+            self.graph.connections.len()
+        );
 
         for connection in &self.graph.connections {
             // Get the from and to positions
-            let from_node = self.graph.nodes.iter().find(|n| n.id == connection.from_node_id)?;
-            let to_node = self.graph.nodes.iter().find(|n| n.id == connection.to_node_id)?;
+            let from_node = self
+                .graph
+                .nodes
+                .iter()
+                .find(|n| n.id == connection.from_node_id)?;
+            let to_node = self
+                .graph
+                .nodes
+                .iter()
+                .find(|n| n.id == connection.to_node_id)?;
 
             // Calculate pin positions (simplified - using node centers for now)
             let from_pos = Point::new(
@@ -1726,7 +1917,13 @@ impl BlueprintEditorPanel {
     }
 
     /// Check if a point is near a bezier curve
-    fn is_point_near_bezier(&self, point: Point<f32>, from: Point<f32>, to: Point<f32>, threshold: f32) -> bool {
+    fn is_point_near_bezier(
+        &self,
+        point: Point<f32>,
+        from: Point<f32>,
+        to: Point<f32>,
+        threshold: f32,
+    ) -> bool {
         // Sample the bezier curve and check distance to each sample
         let distance = (to.x - from.x).abs();
         let control_offset = (distance * 0.4).max(50.0).min(150.0);
@@ -1737,7 +1934,8 @@ impl BlueprintEditorPanel {
         for i in 0..=20 {
             let t = i as f32 / 20.0;
             let curve_point = self.bezier_point(from, control1, control2, to, t);
-            let dist = ((point.x - curve_point.x).powi(2) + (point.y - curve_point.y).powi(2)).sqrt();
+            let dist =
+                ((point.x - curve_point.x).powi(2) + (point.y - curve_point.y).powi(2)).sqrt();
             if dist < threshold {
                 return true;
             }
@@ -1747,7 +1945,14 @@ impl BlueprintEditorPanel {
     }
 
     /// Calculate a point on a cubic bezier curve
-    fn bezier_point(&self, p0: Point<f32>, p1: Point<f32>, p2: Point<f32>, p3: Point<f32>, t: f32) -> Point<f32> {
+    fn bezier_point(
+        &self,
+        p0: Point<f32>,
+        p1: Point<f32>,
+        p2: Point<f32>,
+        p3: Point<f32>,
+        t: f32,
+    ) -> Point<f32> {
         let u = 1.0 - t;
         let tt = t * t;
         let uu = u * u;
@@ -1761,15 +1966,30 @@ impl BlueprintEditorPanel {
     }
 
     /// Get the data type of a connection
-    fn get_connection_data_type(&self, connection: &super::Connection) -> Option<crate::graph::DataType> {
-        let from_node = self.graph.nodes.iter().find(|n| n.id == connection.from_node_id)?;
-        let output_pin = from_node.outputs.iter().find(|p| p.id == connection.from_pin_id)?;
+    fn get_connection_data_type(
+        &self,
+        connection: &super::Connection,
+    ) -> Option<crate::graph::DataType> {
+        let from_node = self
+            .graph
+            .nodes
+            .iter()
+            .find(|n| n.id == connection.from_node_id)?;
+        let output_pin = from_node
+            .outputs
+            .iter()
+            .find(|p| p.id == connection.from_pin_id)?;
         Some(output_pin.data_type.clone())
     }
 
     /// Propagate data types through connected reroute nodes
     /// When a typed connection is made to/from a reroute node, all connected reroute nodes should adopt that type
-    fn propagate_reroute_types(&mut self, start_node_id: String, data_type: crate::graph::DataType, _cx: &mut Context<Self>) {
+    fn propagate_reroute_types(
+        &mut self,
+        start_node_id: String,
+        data_type: crate::graph::DataType,
+        _cx: &mut Context<Self>,
+    ) {
         use std::collections::{HashSet, VecDeque};
 
         // Skip propagation for Any type (already typeless)
@@ -1803,14 +2023,24 @@ impl BlueprintEditorPanel {
                     for connection in &self.graph.connections {
                         if connection.from_node_id == node_id {
                             // Check if target is a reroute node
-                            if let Some(target_node) = self.graph.nodes.iter().find(|n| n.id == connection.to_node_id) {
+                            if let Some(target_node) = self
+                                .graph
+                                .nodes
+                                .iter()
+                                .find(|n| n.id == connection.to_node_id)
+                            {
                                 if target_node.node_type == NodeType::Reroute {
                                     queue.push_back(connection.to_node_id.clone());
                                 }
                             }
                         } else if connection.to_node_id == node_id {
                             // Check if source is a reroute node
-                            if let Some(source_node) = self.graph.nodes.iter().find(|n| n.id == connection.from_node_id) {
+                            if let Some(source_node) = self
+                                .graph
+                                .nodes
+                                .iter()
+                                .find(|n| n.id == connection.from_node_id)
+                            {
                                 if source_node.node_type == NodeType::Reroute {
                                     queue.push_back(connection.from_node_id.clone());
                                 }
@@ -1830,8 +2060,7 @@ impl BlueprintEditorPanel {
 
         // Create a new empty input state
         self.variable_name_input = cx.new(|cx| {
-            gpui_component::input::InputState::new(window, cx)
-                .placeholder("Variable name...")
+            gpui_component::input::InputState::new(window, cx).placeholder("Variable name...")
         });
 
         // Populate dropdown with available types
@@ -1857,8 +2086,17 @@ impl BlueprintEditorPanel {
 
     /// Complete variable creation - add the variable to the class
     pub fn complete_creating_variable(&mut self, cx: &mut Context<Self>) {
-        let name = self.variable_name_input.read(cx).text().to_string().trim().to_string();
-        let selected_type = self.variable_type_dropdown.read(cx).selected_value()
+        let name = self
+            .variable_name_input
+            .read(cx)
+            .text()
+            .to_string()
+            .trim()
+            .to_string();
+        let selected_type = self
+            .variable_type_dropdown
+            .read(cx)
+            .selected_value()
             .map(|v| v.to_string())
             .unwrap_or_else(|| "i32".to_string());
 
@@ -1918,7 +2156,9 @@ impl BlueprintEditorPanel {
 
     /// Save variables to vars_save.json
     pub fn save_variables_to_class(&self) -> Result<(), String> {
-        let class_path = self.current_class_path.as_ref()
+        let class_path = self
+            .current_class_path
+            .as_ref()
             .ok_or_else(|| "No class currently loaded".to_string())?;
 
         let vars_file = class_path.join("vars_save.json");
@@ -1934,7 +2174,9 @@ impl BlueprintEditorPanel {
 
     /// Generate vars/mod.rs from current variables
     pub fn generate_vars_module(&self) -> Result<(), String> {
-        let class_path = self.current_class_path.as_ref()
+        let class_path = self
+            .current_class_path
+            .as_ref()
             .ok_or_else(|| "No class currently loaded".to_string())?;
 
         let vars_dir = class_path.join("vars");
@@ -1946,9 +2188,25 @@ impl BlueprintEditorPanel {
         code.push_str("//! DO NOT EDIT MANUALLY - YOUR CHANGES WILL BE OVERWRITTEN\n\n");
 
         // Check if we need RefCell
-        let needs_refcell = self.class_variables.iter().any(|v|
-            !matches!(v.var_type.as_str(), "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "bool" | "char" | "usize" | "isize" | "i8" | "i16" | "u8" | "u16")
-        );
+        let needs_refcell = self.class_variables.iter().any(|v| {
+            !matches!(
+                v.var_type.as_str(),
+                "i32"
+                    | "i64"
+                    | "u32"
+                    | "u64"
+                    | "f32"
+                    | "f64"
+                    | "bool"
+                    | "char"
+                    | "usize"
+                    | "isize"
+                    | "i8"
+                    | "i16"
+                    | "u8"
+                    | "u16"
+            )
+        });
 
         code.push_str("use std::cell::Cell;\n");
         if needs_refcell {
@@ -1972,7 +2230,23 @@ impl BlueprintEditorPanel {
             };
 
             // Determine if we should use Cell or RefCell based on type
-            let use_cell = matches!(var.var_type.as_str(), "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "bool" | "char" | "usize" | "isize" | "i8" | "i16" | "u8" | "u16");
+            let use_cell = matches!(
+                var.var_type.as_str(),
+                "i32"
+                    | "i64"
+                    | "u32"
+                    | "u64"
+                    | "f32"
+                    | "f64"
+                    | "bool"
+                    | "char"
+                    | "usize"
+                    | "isize"
+                    | "i8"
+                    | "i16"
+                    | "u8"
+                    | "u16"
+            );
 
             if use_cell {
                 code.push_str(&format!(
@@ -1999,11 +2273,13 @@ impl BlueprintEditorPanel {
     }
 
     /// Start dragging a variable from the variables panel
-    pub fn start_dragging_variable(&mut self, var_name: String, var_type: String, cx: &mut Context<Self>) {
-        self.dragging_variable = Some(super::variables::VariableDrag {
-            var_name,
-            var_type,
-        });
+    pub fn start_dragging_variable(
+        &mut self,
+        var_name: String,
+        var_type: String,
+        cx: &mut Context<Self>,
+    ) {
+        self.dragging_variable = Some(super::variables::VariableDrag { var_name, var_type });
         cx.notify();
     }
 
@@ -2023,7 +2299,13 @@ impl BlueprintEditorPanel {
     }
 
     /// Create a getter node for a variable at the specified position
-    pub fn create_getter_node(&mut self, var_name: String, var_type: String, position: Point<f32>, cx: &mut Context<Self>) {
+    pub fn create_getter_node(
+        &mut self,
+        var_name: String,
+        var_type: String,
+        position: Point<f32>,
+        cx: &mut Context<Self>,
+    ) {
         let node_id = format!("get_{}_node_{}", var_name, uuid::Uuid::new_v4());
 
         let node = BlueprintNode {
@@ -2052,7 +2334,13 @@ impl BlueprintEditorPanel {
     }
 
     /// Create a setter node for a variable at the specified position
-    pub fn create_setter_node(&mut self, var_name: String, var_type: String, position: Point<f32>, cx: &mut Context<Self>) {
+    pub fn create_setter_node(
+        &mut self,
+        var_name: String,
+        var_type: String,
+        position: Point<f32>,
+        cx: &mut Context<Self>,
+    ) {
         let node_id = format!("set_{}_node_{}", var_name, uuid::Uuid::new_v4());
 
         let node = BlueprintNode {
@@ -2100,10 +2388,19 @@ impl BlueprintEditorPanel {
         position: Point<f32>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        use gpui_component::{button::{Button, ButtonVariants as _}, v_flex};
+        use gpui_component::{
+            button::{Button, ButtonVariants as _},
+            v_flex,
+        };
 
-        let var_name = var_drag.as_ref().map(|v| v.var_name.clone()).unwrap_or_default();
-        let var_type = var_drag.as_ref().map(|v| v.var_type.clone()).unwrap_or_default();
+        let var_name = var_drag
+            .as_ref()
+            .map(|v| v.var_name.clone())
+            .unwrap_or_default();
+        let var_type = var_drag
+            .as_ref()
+            .map(|v| v.var_type.clone())
+            .unwrap_or_default();
 
         let get_var_name = var_name.clone();
         let get_var_type = var_type.clone();
@@ -2124,26 +2421,35 @@ impl BlueprintEditorPanel {
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
                     .p_1()
-                    .child(format!("Variable: {}", var_name))
+                    .child(format!("Variable: {}", var_name)),
             )
             .child(
                 Button::new("get-variable")
                     .ghost()
                     .label(format!("Get {}", get_var_name))
                     .on_click(cx.listener(move |panel, _, _, cx| {
-                        panel.create_getter_node(get_var_name.clone(), get_var_type.clone(), position, cx);
-                    }))
+                        panel.create_getter_node(
+                            get_var_name.clone(),
+                            get_var_type.clone(),
+                            position,
+                            cx,
+                        );
+                    })),
             )
             .child(
                 Button::new("set-variable")
                     .ghost()
                     .label(format!("Set {}", set_var_name))
                     .on_click(cx.listener(move |panel, _, _, cx| {
-                        panel.create_setter_node(set_var_name.clone(), set_var_type.clone(), position, cx);
-                    }))
+                        panel.create_setter_node(
+                            set_var_name.clone(),
+                            set_var_type.clone(),
+                            position,
+                            cx,
+                        );
+                    })),
             )
     }
-
 }
 
 impl Panel for BlueprintEditorPanel {
@@ -2152,7 +2458,11 @@ impl Panel for BlueprintEditorPanel {
     }
 
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
-        div().child("Blueprint Editor").into_any_element()
+        if let Some(title) = &self.tab_title {
+            div().child(title.clone()).into_any_element()
+        } else {
+            div().child("Blueprint Editor").into_any_element()
+        }
     }
 
     fn dump(&self, _cx: &App) -> gpui_component::dock::PanelState {
@@ -2193,50 +2503,49 @@ impl Render for BlueprintEditorPanel {
             }))
             .child(ToolbarRenderer::render(self, cx))
             .child(
-                div()
-                    .flex_1()
-                    .child(
-                        h_resizable("blueprint-editor-panels", self.resizable_state.clone())
-                            .child(
-                                resizable_panel()
-                                    .size(px(280.))
-                                    .size_range(px(200.)..px(400.))
-                                    .child(
-                                        div()
-                                            .size_full()
-                                            .bg(cx.theme().sidebar)
-                                            .border_1()
-                                            .border_color(cx.theme().border)
-                                            .rounded(cx.theme().radius)
-                                            .p_2()
-                                            .child(super::variables::VariablesRenderer::render(self, cx))
-                                    )
-                            )
-                            .child(
-                                resizable_panel()
-                                    .child(
-                                        div()
-                                            .size_full()
-                                            .p_2()
-                                            .child(NodeGraphRenderer::render(self, cx))
-                                    )
-                            )
-                            .child(
-                                resizable_panel()
-                                    .size(px(320.))
-                                    .size_range(px(250.)..px(500.))
-                                    .child(
-                                        div()
-                                            .size_full()
-                                            .bg(cx.theme().sidebar)
-                                            .border_1()
-                                            .border_color(cx.theme().border)
-                                            .rounded(cx.theme().radius)
-                                            .p_2()
-                                            .child(PropertiesRenderer::render(self, cx))
-                                    )
-                            )
-                    )
+                div().flex_1().child(
+                    h_resizable("blueprint-editor-panels", self.resizable_state.clone())
+                        .child(
+                            resizable_panel()
+                                .size(px(280.))
+                                .size_range(px(200.)..px(400.))
+                                .child(
+                                    div()
+                                        .size_full()
+                                        .bg(cx.theme().sidebar)
+                                        .border_1()
+                                        .border_color(cx.theme().border)
+                                        .rounded(cx.theme().radius)
+                                        .p_2()
+                                        .child(super::variables::VariablesRenderer::render(
+                                            self, cx,
+                                        )),
+                                ),
+                        )
+                        .child(
+                            resizable_panel().child(
+                                div()
+                                    .size_full()
+                                    .p_2()
+                                    .child(NodeGraphRenderer::render(self, cx)),
+                            ),
+                        )
+                        .child(
+                            resizable_panel()
+                                .size(px(320.))
+                                .size_range(px(250.)..px(500.))
+                                .child(
+                                    div()
+                                        .size_full()
+                                        .bg(cx.theme().sidebar)
+                                        .border_1()
+                                        .border_color(cx.theme().border)
+                                        .rounded(cx.theme().radius)
+                                        .p_2()
+                                        .child(PropertiesRenderer::render(self, cx)),
+                                ),
+                        ),
+                ),
             )
             .when_some(self.node_creation_menu.clone(), |this, menu| {
                 // Position the menu at the cursor location
@@ -2247,11 +2556,7 @@ impl Render for BlueprintEditorPanel {
                         .top_0()
                         .left_0()
                         .size_full()
-                        .child(
-                            div()
-                                .absolute()
-                                .child(menu_entity)
-                        )
+                        .child(div().absolute().child(menu_entity)),
                 )
             })
             .when_some(self.hoverable_tooltip.clone(), |this, tooltip| {
@@ -2264,10 +2569,11 @@ impl Render for BlueprintEditorPanel {
                         .size_full()
                         .on_mouse_move(cx.listener(|panel, event: &MouseMoveEvent, _window, cx| {
                             // Check if mouse is outside tooltip and hide if so
-                            let mouse_pos = Point::new(event.position.x.as_f32(), event.position.y.as_f32());
+                            let mouse_pos =
+                                Point::new(event.position.x.as_f32(), event.position.y.as_f32());
                             panel.check_tooltip_hover(mouse_pos, cx);
                         }))
-                        .child(tooltip)
+                        .child(tooltip),
                 )
             })
             .when_some(self.variable_drop_menu_position, |this, position| {
@@ -2279,17 +2585,20 @@ impl Render for BlueprintEditorPanel {
                         .top_0()
                         .left_0()
                         .size_full()
-                        .on_mouse_down(gpui::MouseButton::Left, cx.listener(|panel, _event, _window, cx| {
-                            // Click outside menu cancels it
-                            panel.cancel_dragging_variable(cx);
-                        }))
+                        .on_mouse_down(
+                            gpui::MouseButton::Left,
+                            cx.listener(|panel, _event, _window, cx| {
+                                // Click outside menu cancels it
+                                panel.cancel_dragging_variable(cx);
+                            }),
+                        )
                         .child(
                             div()
                                 .absolute()
                                 .left(px(position.x))
                                 .top(px(position.y))
-                                .child(self.render_variable_drop_menu(var_drag, position, cx))
-                        )
+                                .child(self.render_variable_drop_menu(var_drag, position, cx)),
+                        ),
                 )
             })
     }

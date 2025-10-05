@@ -164,6 +164,13 @@ impl TabPanel {
         }
     }
 
+    /// Returns the index of the panel with the given entity_id, or None if not found.
+    pub fn index_of_panel_by_entity_id(&self, entity_id: gpui::EntityId) -> Option<usize> {
+        self.panels
+            .iter()
+            .position(|p| p.view().entity_id() == entity_id)
+    }
+
     /// Mark the TabPanel as being used in Tiles.
     pub(super) fn set_in_tiles(&mut self, in_tiles: bool) {
         self.in_tiles = in_tiles;
@@ -189,7 +196,8 @@ impl TabPanel {
         }
     }
 
-    fn set_active_ix(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+    /// Public method to set the active tab by index.
+    pub fn set_active_tab(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         if ix == self.active_ix {
             return;
         }
@@ -253,7 +261,7 @@ impl TabPanel {
         self.panels.push(panel);
         // set the active panel to the new panel
         if active {
-            self.set_active_ix(self.panels.len() - 1, window, cx);
+            self.set_active_tab(self.panels.len() - 1, window, cx);
         }
         cx.emit(PanelEvent::LayoutChanged);
         cx.notify();
@@ -299,7 +307,7 @@ impl TabPanel {
         }
 
         self.panels.insert(ix, panel);
-        self.set_active_ix(ix, window, cx);
+        self.set_active_tab(ix, window, cx);
         cx.emit(PanelEvent::LayoutChanged);
         cx.notify();
     }
@@ -311,8 +319,10 @@ impl TabPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let entity_id = panel.view().entity_id();
         self.detach_panel(panel, window, cx);
         self.remove_self_if_empty(window, cx);
+        cx.emit(PanelEvent::TabClosed(entity_id));
         cx.emit(PanelEvent::ZoomOut);
         cx.emit(PanelEvent::LayoutChanged);
     }
@@ -326,7 +336,7 @@ impl TabPanel {
         let panel_view = panel.view();
         self.panels.retain(|p| p.view() != panel_view);
         if self.active_ix >= self.panels.len() {
-            self.set_active_ix(self.panels.len().saturating_sub(1), window, cx)
+            self.set_active_tab(self.panels.len().saturating_sub(1), window, cx)
         }
     }
 
@@ -705,8 +715,10 @@ impl TabPanel {
                     active = false;
                 }
 
-                Some(
-                    Tab::empty()
+                Some({
+                    // Add close button to all tabs except Level Editor
+                    let is_level_editor = panel.panel_name(cx) == "Level Editor";
+                    let tab = Tab::empty()
                         .map(|this| {
                             if let Some(tab_name) = panel.tab_name(cx) {
                                 this.child(tab_name)
@@ -719,7 +731,7 @@ impl TabPanel {
                             let is_collapsed = self.collapsed;
                             let dock_area = self.dock_area.clone();
                             move |view, _, window, cx| {
-                                view.set_active_ix(ix, window, cx);
+                                view.set_active_tab(ix, window, cx);
 
                                 // Open dock if clicked on the collapsed bottom dock
                                 if is_bottom_dock && is_collapsed {
@@ -753,8 +765,24 @@ impl TabPanel {
                                     },
                                 ))
                             })
-                        }),
-                )
+                        });
+                    if !is_level_editor {
+                        tab.suffix(
+                            Button::new(("close-tab", ix))
+                                .icon(IconName::Close)
+                                .ghost()
+                                .xsmall()
+                                .on_click(cx.listener({
+                                    let panel = panel.clone();
+                                    move |this, _, window, cx| {
+                                        this.remove_panel(panel.clone(), window, cx);
+                                    }
+                                })),
+                        )
+                    } else {
+                        tab
+                    }
+                })
             }))
             .last_empty_space(
                 // empty space to allow move to last tab right
