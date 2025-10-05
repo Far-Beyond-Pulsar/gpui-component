@@ -99,10 +99,13 @@ impl EntryScreen {
         }
     }
     
-    fn calculate_columns(&self, _width: Pixels) -> usize {
-        // For now, use a fixed responsive column count
-        // In production, read actual window width properly
-        3 // Default to 3 columns
+    fn calculate_columns(&self, width: Pixels) -> usize {
+        // Minimum card width (320px) + gap (6px) = 326px per column
+        // Calculate how many columns fit in the available width
+        let card_width_with_gap = px(326.); // 320px card + 6px gap
+        let columns = (width / card_width_with_gap).floor() as usize;
+        // Ensure at least 1 column, maximum reasonable number
+        columns.max(1).min(6)
     }
     
     fn open_folder_dialog(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -602,7 +605,8 @@ impl EntryScreen {
             let is_git = project.is_git;
             
             let card = v_flex()
-                .w(px(320.))
+                .flex_1()
+                .min_w(px(280.))
                 .h(px(240.))
                 .border_1()
                 .border_color(theme.border)
@@ -802,7 +806,8 @@ impl EntryScreen {
             let template_category = template.category.clone();
             
             let card = v_flex()
-                .w(px(320.))
+                .flex_1()
+                .min_w(px(280.))
                 .h(px(300.))
                 .border_1()
                 .border_color(theme.border)

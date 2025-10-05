@@ -141,14 +141,17 @@ fn main() {
 
                 // Subscribe to project selection events inside the window
                 if let Some(entry_screen) = entry_view.read(cx).entry_screen().cloned() {
-                    let window_id = window.window_id();
                     cx.subscribe(&entry_screen, move |_entry, event: &ProjectSelected, cx| {
                         let project_path = event.path.clone();
 
                         eprintln!("DEBUG: Subscription called with path: {:?}", project_path);
 
                         // Close the entry window
-                        cx.app_mut().remove_window(window_id);
+                        if let Some(active_window) = cx.active_window() {
+                            let _ = active_window.update(cx, |_, window, _cx| {
+                                window.remove_window();
+                            });
+                        }
 
                         // Open the main engine window with the selected project
                         open_engine_window(project_path, cx);
