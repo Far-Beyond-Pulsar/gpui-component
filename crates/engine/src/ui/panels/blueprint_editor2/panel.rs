@@ -1112,6 +1112,7 @@ impl BlueprintEditorPanel {
 
     pub fn create_comment_at_center(&mut self, window: &mut gpui::Window, cx: &mut Context<Self>) {
         // Create a new comment at the center of the current view
+        // TODO: This should NOT be hardcoded
         let center_screen = Point::new(1920.0 / 2.0, 1080.0 / 2.0); // Center of typical view
         let center_graph = super::node_graph::NodeGraphRenderer::screen_to_graph_pos(
             gpui::Point::new(px(center_screen.x), px(center_screen.y)),
@@ -1179,7 +1180,7 @@ impl BlueprintEditorPanel {
 
     pub fn copy_node(&mut self, node_id: String, _cx: &mut Context<Self>) {
         // For now, just store in a simple static location
-        // In a real implementation, this would use the system clipboard
+        // TODO: We should use the system clipboard
         if let Some(node) = self.graph.nodes.iter().find(|n| n.id == node_id) {
             // TODO: Store node in clipboard
             println!("Copied node: {}", node.title);
