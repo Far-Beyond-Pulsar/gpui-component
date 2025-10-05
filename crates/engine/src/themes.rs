@@ -9,7 +9,12 @@ use gpui_component::{
     scroll::ScrollbarShow,
     ActiveTheme, IconName, Sizable, Theme, ThemeRegistry,
 };
+use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
+
+#[derive(RustEmbed)]
+#[folder = "../../themes"]
+struct EmbeddedThemes;
 
 const STATE_FILE: &str = "target/state.json";
 
@@ -33,12 +38,28 @@ pub fn init(cx: &mut App) {
     let json = std::fs::read_to_string(STATE_FILE).unwrap_or(String::default());
     tracing::info!("Load themes...");
     let state = serde_json::from_str::<State>(&json).unwrap_or_default();
-    let themes_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("themes");
+
+    // Get app data directory
+    let proj_dirs = directories::ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
+        .expect("Could not determine app data directory");
+    let app_data_dir = proj_dirs.data_dir();
+    let themes_dir = app_data_dir.join("themes");
+
+    // Extract embedded themes if not already done
+    if !themes_dir.exists() || !themes_dir.join("default.json").exists() {
+        println!("Extracting embedded themes to {}", themes_dir.display());
+        std::fs::create_dir_all(&themes_dir).expect("Failed to create themes directory");
+        for file in EmbeddedThemes::iter() {
+            let file_path = themes_dir.join(file.as_ref());
+            println!("Extracting theme file: {}", file.as_ref());
+            let data = EmbeddedThemes::get(&file).unwrap();
+            std::fs::write(&file_path, data.data).expect("Failed to write theme file");
+        }
+        println!("Embedded themes extracted");
+    } else {
+        println!("Embedded themes already extracted");
+    }
+
     println!("Themes dir: {}", themes_dir.display());
     if let Err(err) = ThemeRegistry::watch_dir(themes_dir, cx, move |cx| {
         if let Some(theme) = ThemeRegistry::global(cx)
