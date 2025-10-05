@@ -103,6 +103,12 @@ impl PulsarApp {
         // Subscribe to PanelEvent on center_tabs to handle tab close and cleanup
         cx.subscribe_in(&center_tabs, window, Self::on_tab_panel_event)
             .detach();
+        
+        // Subscribe to ProjectSelected events from entry screen or project selector
+        if let Some(screen) = &entry_screen {
+            cx.subscribe_in(screen, window, Self::on_project_selected)
+                .detach();
+        }
 
         Self {
             dock_area,
@@ -119,8 +125,9 @@ impl PulsarApp {
 
     fn on_project_selected(
         &mut self,
-        _selector: Entity<EntryScreen>,
+        _selector: &Entity<EntryScreen>,
         event: &ProjectSelected,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.project_path = Some(event.path.clone());
@@ -131,6 +138,8 @@ impl PulsarApp {
             drawer.set_project_path(event.path.clone(), cx);
         });
 
+
+        println!("Project selected: {:?}", event.path);
         cx.notify();
     }
 

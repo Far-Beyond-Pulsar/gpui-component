@@ -59,6 +59,7 @@ pub struct EntryScreen {
     new_project_path: Option<PathBuf>,
     git_repo_url: String,
     search_query: String,
+    launched: bool,
 }
 
 impl EntryScreen {
@@ -94,6 +95,7 @@ impl EntryScreen {
             new_project_path: None,
             git_repo_url: String::new(),
             search_query: String::new(),
+            launched: false,
         }
     }
     
@@ -263,6 +265,11 @@ impl EntryScreen {
     }
     
     fn launch_project(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        if self.launched {
+            return;
+        }
+        self.launched = true;
+        
         eprintln!("DEBUG: launch_project called with path: {:?}", path);
         
         let project_name = path.file_name()
@@ -283,7 +290,7 @@ impl EntryScreen {
         self.recent_projects.save(&self.recent_projects_path);
         
         eprintln!("DEBUG: Emitting ProjectSelected event");
-        cx.emit(crate::ui::project_selector::ProjectSelected { path });
+        cx.app().emit(crate::ui::project_selector::ProjectSelected { path });
         eprintln!("DEBUG: ProjectSelected event emitted");
     }
     

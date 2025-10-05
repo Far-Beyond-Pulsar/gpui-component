@@ -161,15 +161,15 @@ fn main() {
         cx.subscribe(&entry_view, move |_entry, event: &ProjectSelected, cx| {
             let project_path = event.path.clone();
 
+            // Open the main engine window with the selected project
+            open_engine_window(project_path, cx);
+
             // Close the entry window
             window_handle
                 .update(cx, |_, window, _| {
                     window.remove_window();
                 })
                 .ok();
-
-            // Open the main engine window with the selected project
-            open_engine_window(project_path, cx);
         })
         .detach();
     });
