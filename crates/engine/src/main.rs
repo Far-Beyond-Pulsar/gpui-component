@@ -147,7 +147,7 @@ fn main() {
                         eprintln!("DEBUG: Subscription called with path: {:?}", project_path);
 
                         // Close the entry window
-                        window.close();
+                        window.remove_window();
 
                         // Open the main engine window with the selected project
                         open_engine_window(project_path, cx);
