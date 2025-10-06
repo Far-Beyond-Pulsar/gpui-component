@@ -274,6 +274,14 @@ impl TextEditor {
             .on_click(cx.listener(|this, ix: &usize, window, cx| {
                 this.set_active_file(*ix, window, cx);
             }))
+            .font_family("monospace")
+            .font(gpui::Font {
+                family: "Jetbrains Mono".to_string().into(),
+                weight: gpui::FontWeight::NORMAL,
+                style: gpui::FontStyle::Normal,
+                features: gpui::FontFeatures::default(),
+                fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["monospace".to_string()])),
+            })
             .children(
                 self.open_files.iter().enumerate().map(|(index, open_file)| {
                     let filename = open_file.path.file_name()

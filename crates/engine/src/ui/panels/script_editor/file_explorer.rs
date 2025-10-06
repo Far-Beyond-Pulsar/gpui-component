@@ -347,6 +347,14 @@ impl FileExplorer {
             .relative()
             .size_full()
             .overflow_hidden()
+            .font_family("monospace")
+            .font(gpui::Font {
+                family: "Jetbrains Mono".to_string().into(),
+                weight: gpui::FontWeight::NORMAL,
+                style: gpui::FontStyle::Normal,
+                features: gpui::FontFeatures::default(),
+                fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["monospace".to_string()])),
+            })
             .child(
                 // Visible items container with absolute positioning for virtualization
                 div()
