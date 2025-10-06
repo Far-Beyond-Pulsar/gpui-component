@@ -1,0 +1,534 @@
+/// Global Rust Analyzer Manager for the Pulsar Engine
+/// Manages a single rust-analyzer instance for the entire project
+
+use anyhow::{anyhow, Result};
+use gpui::{App, Context, Entity, EventEmitter, Task, Window};
+use serde_json::{json, Value};
+use std::path::PathBuf;
+use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
+use std::io::{BufRead, BufReader, Write};
+use std::time::{Duration, Instant};
+use std::thread;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum AnalyzerStatus {
+    Idle,
+    Starting,
+    Indexing { progress: f32, message: String },
+    Ready,
+    Error(String),
+    Stopped,
+}
+
+#[derive(Clone, Debug)]
+pub enum AnalyzerEvent {
+    StatusChanged(AnalyzerStatus),
+    IndexingProgress { progress: f32, message: String },
+    Ready,
+    Error(String),
+}
+
+pub struct RustAnalyzerManager {
+    /// Path to rust-analyzer executable
+    analyzer_path: PathBuf,
+    /// Current workspace root
+    workspace_root: Option<PathBuf>,
+    /// LSP process handle (wrapped in Arc for thread safety)
+    process: Arc<Mutex<Option<Child>>>,
+    /// Process stdin handle (separate for thread safety)
+    stdin: Arc<Mutex<Option<std::process::ChildStdin>>>,
+    /// Current status
+    status: AnalyzerStatus,
+    /// Whether the manager is initialized
+    initialized: bool,
+    /// Last indexing update
+    last_update: Option<Instant>,
+    /// Number of requests sent
+    request_id: Arc<Mutex<i64>>,
+    /// Progress tracking from LSP
+    indexing_progress: Arc<Mutex<(f32, String)>>,
+}
+
+impl EventEmitter<AnalyzerEvent> for RustAnalyzerManager {}
+
+impl RustAnalyzerManager {
+    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let analyzer_path = Self::find_or_use_bundled_analyzer();
+        
+        println!("🔧 Rust Analyzer Manager initialized");
+        println!("   Using: {:?}", analyzer_path);
+        
+        Self {
+            analyzer_path,
+            workspace_root: None,
+            process: Arc::new(Mutex::new(None)),
+            stdin: Arc::new(Mutex::new(None)),
+            status: AnalyzerStatus::Idle,
+            initialized: false,
+            last_update: None,
+            request_id: Arc::new(Mutex::new(0)),
+            indexing_progress: Arc::new(Mutex::new((0.0, "Idle".to_string()))),
+        }
+    }
+
+    /// Find rust-analyzer in PATH or use bundled version
+    fn find_or_use_bundled_analyzer() -> PathBuf {
+        // Try to find in PATH first
+        let candidates = vec![
+            "rust-analyzer.exe",
+            "rust-analyzer",
+        ];
+
+        for candidate in &candidates {
+            if let Ok(output) = Command::new(candidate).arg("--version").output() {
+                if output.status.success() {
+                    let version_output = String::from_utf8_lossy(&output.stdout);
+                    println!("✓ Found system rust-analyzer: {}", candidate);
+                    println!("   Version: {}", version_output.trim());
+                    return PathBuf::from(candidate);
+                }
+            }
+        }
+
+        // Check cargo bin directory
+        if let Ok(home) = std::env::var("CARGO_HOME") {
+            let cargo_bin = PathBuf::from(home).join("bin").join("rust-analyzer.exe");
+            if cargo_bin.exists() {
+                println!("✓ Found rust-analyzer in cargo bin: {:?}", cargo_bin);
+                return cargo_bin;
+            }
+        }
+
+        if let Ok(home) = std::env::var("USERPROFILE") {
+            let cargo_bin = PathBuf::from(home).join(".cargo").join("bin").join("rust-analyzer.exe");
+            if cargo_bin.exists() {
+                println!("✓ Found rust-analyzer in user cargo bin: {:?}", cargo_bin);
+                return cargo_bin;
+            }
+        }
+
+        // Fallback to rust-analyzer command (may not exist)
+        println!("⚠️  rust-analyzer not found in standard locations");
+        println!("   Will attempt to use 'rust-analyzer' from PATH");
+        PathBuf::from("rust-analyzer")
+    }
+
+    /// Start rust-analyzer for the given workspace
+    pub fn start(&mut self, workspace_root: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        println!("🚀 Starting rust-analyzer for: {:?}", workspace_root);
+        
+        self.workspace_root = Some(workspace_root.clone());
+        self.status = AnalyzerStatus::Starting;
+        cx.emit(AnalyzerEvent::StatusChanged(AnalyzerStatus::Starting));
+        cx.notify();
+
+        // Stop existing process if any
+        self.stop_internal();
+
+        // Spawn async task to start the process
+        let analyzer_path = self.analyzer_path.clone();
+        let process_arc = self.process.clone();
+        let stdin_arc = self.stdin.clone();
+        let request_id_arc = self.request_id.clone();
+        let progress_arc = self.indexing_progress.clone();
+        
+        cx.spawn_in(window, async move |manager, cx| {
+            // Clone values needed after the spawn_process_blocking call
+            let workspace_root_for_init = workspace_root.clone();
+            let stdin_arc_for_init = stdin_arc.clone();
+            let request_id_arc_for_init = request_id_arc.clone();
+            
+            // Spawn the process in the background
+            let spawn_result = std::thread::spawn(move || {
+                Self::spawn_process_blocking(&analyzer_path, &workspace_root, process_arc.clone(), stdin_arc.clone())
+            }).join();
+            
+            match spawn_result {
+                Ok(Ok(())) => {
+                    println!("✓ rust-analyzer process spawned successfully");
+                    
+                    // Initialize the LSP session after a short delay
+                    thread::sleep(Duration::from_millis(500));
+                    
+                    if let Err(e) = Self::send_initialize_request(
+                        &workspace_root_for_init,
+                        stdin_arc_for_init,
+                        request_id_arc_for_init,
+                    ) {
+                        eprintln!("❌ Failed to initialize LSP: {}", e);
+                        manager.update_in(cx, |manager, _window, cx| {
+                            manager.status = AnalyzerStatus::Error(e.to_string());
+                            cx.emit(AnalyzerEvent::Error(e.to_string()));
+                            cx.notify();
+                        }).ok();
+                    } else {
+                        // Update to indexing status
+                        manager.update_in(cx, |manager, _window, cx| {
+                            manager.status = AnalyzerStatus::Indexing {
+                                progress: 0.0,
+                                message: "Initializing...".to_string(),
+                            };
+                            manager.initialized = true;
+                            cx.emit(AnalyzerEvent::StatusChanged(manager.status.clone()));
+                            cx.notify();
+                        }).ok();
+                        
+                        // Start progress monitoring in a separate thread
+                        let manager_weak = manager.clone();
+                        thread::spawn(move || {
+                            Self::monitor_progress_blocking(manager_weak, progress_arc);
+                        });
+                    }
+                }
+                Ok(Err(e)) => {
+                    eprintln!("❌ Failed to spawn rust-analyzer: {}", e);
+                    manager.update_in(cx, |manager, _window, cx| {
+                        manager.status = AnalyzerStatus::Error(e.to_string());
+                        cx.emit(AnalyzerEvent::Error(e.to_string()));
+                        cx.notify();
+                    }).ok();
+                }
+                Err(e) => {
+                    eprintln!("❌ Thread panic while spawning rust-analyzer: {:?}", e);
+                    manager.update_in(cx, |manager, _window, cx| {
+                        manager.status = AnalyzerStatus::Error("Thread panic".to_string());
+                        cx.emit(AnalyzerEvent::Error("Thread panic".to_string()));
+                        cx.notify();
+                    }).ok();
+                }
+            }
+        }).detach();
+    }
+
+    fn spawn_process_blocking(
+        analyzer_path: &PathBuf,
+        workspace_root: &PathBuf,
+        process_arc: Arc<Mutex<Option<Child>>>,
+        stdin_arc: Arc<Mutex<Option<std::process::ChildStdin>>>,
+    ) -> Result<()> {
+        println!("Spawning rust-analyzer process...");
+        println!("  Binary: {:?}", analyzer_path);
+        println!("  Workspace: {:?}", workspace_root);
+        
+        let mut child = Command::new(analyzer_path)
+            .current_dir(workspace_root)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| anyhow!("Failed to spawn: {}", e))?;
+        
+        let pid = child.id();
+        println!("✓ rust-analyzer process spawned (PID: {})", pid);
+        
+        // Take stdin for our use
+        let stdin = child.stdin.take().ok_or_else(|| anyhow!("Failed to take stdin"))?;
+        
+        // Monitor stderr in a thread
+        if let Some(stderr) = child.stderr.take() {
+            thread::spawn(move || {
+                let reader = BufReader::new(stderr);
+                for line in reader.lines().flatten() {
+                    eprintln!("[rust-analyzer stderr] {}", line);
+                }
+                eprintln!("❌ rust-analyzer stderr stream ended");
+            });
+        }
+        
+        // Monitor stdout for LSP messages in a thread
+        if let Some(stdout) = child.stdout.take() {
+            thread::spawn(move || {
+                let reader = BufReader::new(stdout);
+                let mut lines_iter = reader.lines();
+                
+                while let Some(Ok(line)) = lines_iter.next() {
+                    // LSP messages start with Content-Length header
+                    if line.starts_with("Content-Length:") {
+                        if let Some(len_str) = line.strip_prefix("Content-Length: ") {
+                            if let Ok(content_len) = len_str.trim().parse::<usize>() {
+                                // Read empty line
+                                if let Some(Ok(_)) = lines_iter.next() {
+                                    // Read the JSON content
+                                    let mut content = String::new();
+                                    let mut bytes_read = 0;
+                                    
+                                    while bytes_read < content_len {
+                                        if let Some(Ok(chunk)) = lines_iter.next() {
+                                            content.push_str(&chunk);
+                                            content.push('\n');
+                                            bytes_read += chunk.len() + 1;
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    
+                                    // Parse and handle the LSP message
+                                    if let Ok(msg) = serde_json::from_str::<Value>(&content) {
+                                        Self::handle_lsp_message(&msg);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                println!("❌ rust-analyzer stdout stream ended");
+            });
+        }
+        
+        // Monitor process health
+        let process_arc_monitor = process_arc.clone();
+        thread::spawn(move || {
+            loop {
+                thread::sleep(Duration::from_secs(2));
+                
+                let mut process_lock = match process_arc_monitor.lock() {
+                    Ok(lock) => lock,
+                    Err(_) => break,
+                };
+                
+                if let Some(child) = process_lock.as_mut() {
+                    match child.try_wait() {
+                        Ok(Some(status)) => {
+                            eprintln!("❌ rust-analyzer exited unexpectedly (status: {:?})", status);
+                            *process_lock = None;
+                            break;
+                        }
+                        Ok(None) => {
+                            // Still running
+                        }
+                        Err(e) => {
+                            eprintln!("❌ Error checking rust-analyzer status: {}", e);
+                            break;
+                        }
+                    }
+                } else {
+                    break;
+                }
+            }
+        });
+        
+        // Store the process and stdin
+        {
+            let mut process_lock = process_arc.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+            *process_lock = Some(child);
+        }
+        {
+            let mut stdin_lock = stdin_arc.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+            *stdin_lock = Some(stdin);
+        }
+        
+        Ok(())
+    }
+
+    fn send_initialize_request(
+        workspace_root: &PathBuf,
+        stdin_arc: Arc<Mutex<Option<std::process::ChildStdin>>>,
+        request_id_arc: Arc<Mutex<i64>>,
+    ) -> Result<()> {
+        let uri = format!("file:///{}", workspace_root.display().to_string().replace("\\", "/").trim_start_matches('/'));
+        
+        let mut req_id = request_id_arc.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+        *req_id += 1;
+        let id = *req_id;
+        drop(req_id);
+
+        let init_request = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "initialize",
+            "params": {
+                "processId": std::process::id(),
+                "rootUri": uri,
+                "capabilities": {
+                    "textDocument": {
+                        "completion": {
+                            "completionItem": {
+                                "snippetSupport": true
+                            }
+                        }
+                    }
+                },
+                "initializationOptions": {
+                    "checkOnSave": {
+                        "command": "clippy"
+                    }
+                }
+            }
+        });
+
+        let mut stdin_lock = stdin_arc.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+        if let Some(stdin) = stdin_lock.as_mut() {
+            let content = serde_json::to_string(&init_request)?;
+            let message = format!("Content-Length: {}\r\n\r\n{}", content.len(), content);
+            
+            stdin.write_all(message.as_bytes())?;
+            stdin.flush()?;
+            
+            println!("✓ Sent initialize request to rust-analyzer");
+            
+            // Send initialized notification
+            let initialized_notification = json!({
+                "jsonrpc": "2.0",
+                "method": "initialized",
+                "params": {}
+            });
+            
+            let content = serde_json::to_string(&initialized_notification)?;
+            let message = format!("Content-Length: {}\r\n\r\n{}", content.len(), content);
+            
+            stdin.write_all(message.as_bytes())?;
+            stdin.flush()?;
+            
+            println!("✓ Sent initialized notification");
+        } else {
+            return Err(anyhow!("stdin not available"));
+        }
+
+        Ok(())
+    }
+
+    fn handle_lsp_message(msg: &Value) {
+        // Handle different types of LSP messages
+        if let Some(method) = msg.get("method").and_then(|m| m.as_str()) {
+            match method {
+                "$/progress" => {
+                    // Handle progress notifications
+                    if let Some(params) = msg.get("params") {
+                        println!("📊 Progress: {:?}", params);
+                    }
+                }
+                "window/workDoneProgress/create" => {
+                    println!("📊 Work done progress created");
+                }
+                _ => {
+                    // println!("📨 LSP notification: {}", method);
+                }
+            }
+        } else if let Some(_id) = msg.get("id") {
+            // Response to a request
+            if let Some(result) = msg.get("result") {
+                println!("✓ LSP response received");
+            } else if let Some(error) = msg.get("error") {
+                eprintln!("❌ LSP error: {:?}", error);
+            }
+        }
+    }
+
+    fn monitor_progress_blocking(
+        manager: gpui::WeakEntity<Self>,
+        progress_arc: Arc<Mutex<(f32, String)>>,
+    ) {
+        // Simulate progress updates (in production, parse actual LSP progress notifications)
+        for i in 0..=10 {
+            thread::sleep(Duration::from_secs(1));
+            
+            let progress = (i as f32) / 10.0;
+            let message = match i {
+                0..=2 => "Parsing crates...".to_string(),
+                3..=5 => "Building type information...".to_string(),
+                6..=8 => "Indexing symbols...".to_string(),
+                9 => "Finalizing...".to_string(),
+                _ => "Ready".to_string(),
+            };
+            
+            {
+                let mut progress_lock = progress_arc.lock().unwrap();
+                *progress_lock = (progress, message.clone());
+            }
+            
+            // Can't directly update from a thread, so just update the shared state
+            // The UI will poll this or we emit events through a channel
+            println!("📊 Progress: {:.0}% - {}", progress * 100.0, message);
+            
+            if progress >= 1.0 {
+                println!("✅ rust-analyzer indexing complete");
+                break;
+            }
+        }
+    }
+
+    /// Stop rust-analyzer
+    pub fn stop(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        println!("🛑 Stopping rust-analyzer");
+        self.stop_internal();
+        self.status = AnalyzerStatus::Stopped;
+        cx.emit(AnalyzerEvent::StatusChanged(AnalyzerStatus::Stopped));
+        cx.notify();
+    }
+
+    fn stop_internal(&mut self) {
+        // Close stdin first
+        {
+            let mut stdin_lock = self.stdin.lock().unwrap();
+            *stdin_lock = None;
+        }
+        
+        // Then kill the process
+        let mut process_lock = self.process.lock().unwrap();
+        if let Some(mut child) = process_lock.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+            println!("✓ rust-analyzer process terminated");
+        }
+        self.initialized = false;
+    }
+
+    /// Restart rust-analyzer
+    pub fn restart(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        println!("🔄 Restarting rust-analyzer");
+        if let Some(workspace) = self.workspace_root.clone() {
+            self.stop(window, cx);
+            // Give it a moment to clean up
+            thread::sleep(Duration::from_millis(500));
+            self.start(workspace, window, cx);
+        }
+    }
+
+    /// Get current status
+    pub fn status(&self) -> &AnalyzerStatus {
+        &self.status
+    }
+
+    /// Check if analyzer is running
+    pub fn is_running(&self) -> bool {
+        matches!(
+            self.status,
+            AnalyzerStatus::Starting
+                | AnalyzerStatus::Indexing { .. }
+                | AnalyzerStatus::Ready
+        )
+    }
+
+    /// Update progress from the background thread (called from UI thread)
+    pub fn update_progress_from_thread(&mut self, cx: &mut Context<Self>) {
+        let progress_lock = self.indexing_progress.lock().unwrap();
+        let (progress, message) = progress_lock.clone();
+        drop(progress_lock);
+        
+        // Only update if we're currently in an indexing state
+        if matches!(self.status, AnalyzerStatus::Indexing { .. }) {
+            if progress >= 1.0 {
+                self.status = AnalyzerStatus::Ready;
+                cx.emit(AnalyzerEvent::Ready);
+                cx.notify();
+            } else if progress > 0.0 {
+                self.status = AnalyzerStatus::Indexing {
+                    progress,
+                    message: message.clone(),
+                };
+                cx.emit(AnalyzerEvent::IndexingProgress {
+                    progress,
+                    message,
+                });
+                cx.notify();
+            }
+        }
+    }
+}
+
+impl Drop for RustAnalyzerManager {
+    fn drop(&mut self) {
+        self.stop_internal();
+    }
+}

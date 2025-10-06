@@ -264,7 +264,7 @@ impl TextEditor {
         });
 
         // Set up autocomplete for the file
-        let workspace_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let workspace_root = std::env::current_dir().ok();
         input_state.update(cx, |state, cx| {
             super::setup_autocomplete_for_file(
                 state,

@@ -16,6 +16,7 @@ use super::{
     file_manager_drawer::{FileManagerDrawer, FileSelected, FileType},
     menu::AppTitleBar,
     panels::{BlueprintEditorPanel, LevelEditorPanel, ScriptEditorPanel},
+    problems_drawer::ProblemsDrawer,
     rust_analyzer_manager::{RustAnalyzerManager, AnalyzerEvent, AnalyzerStatus},
 };
 
@@ -24,12 +25,19 @@ use super::{
 #[action(namespace = pulsar_app)]
 pub struct ToggleFileManager;
 
+// Action to toggle the problems drawer
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = pulsar_app)]
+pub struct ToggleProblems;
+
 pub struct PulsarApp {
     dock_area: Entity<DockArea>,
     project_path: Option<PathBuf>,
     entry_screen: Option<Entity<EntryScreen>>,
     file_manager_drawer: Entity<FileManagerDrawer>,
     drawer_open: bool,
+    problems_drawer: Entity<ProblemsDrawer>,
+    problems_drawer_open: bool,
     // Tab management
     center_tabs: Entity<TabPanel>,
     script_editor: Option<Entity<ScriptEditorPanel>>,
@@ -52,6 +60,16 @@ impl PulsarApp {
     ) -> Self {
         eprintln!("DEBUG: PulsarApp::new_with_project called with path: {:?}", project_path);
         Self::new_internal(Some(project_path), window, cx)
+    }
+
+    /// Get the global rust analyzer manager
+    pub fn rust_analyzer(&self) -> &Entity<RustAnalyzerManager> {
+        &self.rust_analyzer
+    }
+
+    /// Get the current workspace root
+    pub fn workspace_root(&self) -> Option<&PathBuf> {
+        self.project_path.as_ref()
     }
 
     fn new_internal(
@@ -105,6 +123,9 @@ impl PulsarApp {
         cx.subscribe_in(&file_manager_drawer, window, Self::on_file_selected)
             .detach();
 
+        // Create problems drawer
+        let problems_drawer = cx.new(|cx| ProblemsDrawer::new(window, cx));
+
         // Create rust analyzer manager
         let rust_analyzer = cx.new(|cx| RustAnalyzerManager::new(window, cx));
         cx.subscribe_in(&rust_analyzer, window, Self::on_analyzer_event).detach();
@@ -132,6 +153,8 @@ impl PulsarApp {
             entry_screen,
             file_manager_drawer,
             drawer_open: false,
+            problems_drawer,
+            problems_drawer_open: false,
             center_tabs,
             script_editor,
             blueprint_editors,
@@ -244,6 +267,11 @@ impl PulsarApp {
         cx.notify();
     }
 
+    fn toggle_problems(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        self.problems_drawer_open = !self.problems_drawer_open;
+        cx.notify();
+    }
+
     fn on_toggle_file_manager(
         &mut self,
         _: &ToggleFileManager,
@@ -251,6 +279,15 @@ impl PulsarApp {
         cx: &mut Context<Self>,
     ) {
         self.toggle_drawer(window, cx);
+    }
+
+    fn on_toggle_problems(
+        &mut self,
+        _: &ToggleProblems,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.toggle_problems(window, cx);
     }
 
     /// Open a blueprint editor tab for the given class path
@@ -377,17 +414,24 @@ impl PulsarApp {
 
 impl Render for PulsarApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Update rust-analyzer progress if indexing
+        self.rust_analyzer.update(cx, |analyzer, cx| {
+            analyzer.update_progress_from_thread(cx);
+        });
+        
         // Show entry screen if no project is loaded
         if let Some(screen) = &self.entry_screen {
             return screen.clone().into_any_element();
         }
 
         let drawer_open = self.drawer_open;
+        let problems_open = self.problems_drawer_open;
 
         v_flex()
             .size_full()
             .bg(cx.theme().background)
             .on_action(cx.listener(Self::on_toggle_file_manager))
+            .on_action(cx.listener(Self::on_toggle_problems))
             .child(
                 // Menu bar
                 {
@@ -396,14 +440,14 @@ impl Render for PulsarApp {
                 },
             )
             .child(
-                // Main dock area with overlay
+                // Main dock area with overlays
                 div()
                     .flex_1()
                     .relative()
                     .child(self.dock_area.clone())
                     .when(drawer_open, |this| {
                         this.child(
-                            // Overlay background
+                            // Overlay background for file manager
                             div()
                                 .absolute()
                                 .top_0()
@@ -419,7 +463,7 @@ impl Render for PulsarApp {
                                 ),
                         )
                         .child(
-                            // Drawer at bottom
+                            // File manager drawer at bottom
                             div()
                                 .absolute()
                                 .bottom_0()
@@ -434,21 +478,62 @@ impl Render for PulsarApp {
                                     |this, delta| this.bottom(px(-300.) + delta * px(300.)),
                                 ),
                         )
+                    })
+                    .when(problems_open, |this| {
+                        this.child(
+                            // Overlay background for problems
+                            div()
+                                .absolute()
+                                .top_0()
+                                .left_0()
+                                .size_full()
+                                .bg(Hsla::black().opacity(0.3))
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(|app, _, _window, cx| {
+                                        app.problems_drawer_open = false;
+                                        cx.notify();
+                                    }),
+                                ),
+                        )
+                        .child(
+                            // Problems drawer at bottom
+                            div()
+                                .absolute()
+                                .bottom_0()
+                                .left_0()
+                                .right_0()
+                                .h(px(300.))
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                .child(self.problems_drawer.clone())
+                                .with_animation(
+                                    "slide-up-problems",
+                                    Animation::new(Duration::from_secs_f64(0.2)),
+                                    |this, delta| this.bottom(px(-300.) + delta * px(300.)),
+                                ),
+                        )
                     }),
             )
             .child(
                 // Footer with rust analyzer status and controls
-                self.render_footer(drawer_open, cx)
+                self.render_footer(drawer_open, problems_open, cx)
             )
             .into_any_element()
     }
 }
 
 impl PulsarApp {
-    fn render_footer(&self, drawer_open: bool, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_footer(&self, drawer_open: bool, problems_open: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let analyzer = self.rust_analyzer.read(cx);
         let status = analyzer.status();
         let is_running = analyzer.is_running();
+        
+        let error_count = self.problems_drawer.read(cx).count_by_severity(
+            crate::ui::problems_drawer::DiagnosticSeverity::Error
+        );
+        let warning_count = self.problems_drawer.read(cx).count_by_severity(
+            crate::ui::problems_drawer::DiagnosticSeverity::Warning
+        );
         
         h_flex()
             .w_full()
@@ -460,21 +545,49 @@ impl PulsarApp {
             .border_t_1()
             .border_color(cx.theme().border)
             .child(
-                // Left side - drawer toggle button
-                Button::new("toggle-drawer")
-                    .ghost()
-                    .icon(if drawer_open {
-                        IconName::ChevronDown
-                    } else {
-                        IconName::ChevronUp
-                    })
-                    .label("Project Files")
-                    .on_click(cx.listener(|app, _, window, cx| {
-                        app.toggle_drawer(window, cx);
-                    })),
+                // Left side - drawer toggles
+                h_flex()
+                    .gap_2()
+                    .child(
+                        Button::new("toggle-drawer")
+                            .ghost()
+                            .icon(if drawer_open {
+                                IconName::ChevronDown
+                            } else {
+                                IconName::ChevronUp
+                            })
+                            .label("Project Files")
+                            .on_click(cx.listener(|app, _, window, cx| {
+                                app.toggle_drawer(window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("toggle-problems")
+                            .ghost()
+                            .when(error_count > 0, |btn| {
+                                btn.with_variant(gpui_component::button::ButtonVariant::Danger)
+                            })
+                            .when(error_count == 0 && warning_count > 0, |btn| {
+                                btn.with_variant(gpui_component::button::ButtonVariant::Primary)
+                            })
+                            .icon(if error_count > 0 {
+                                IconName::Close
+                            } else if warning_count > 0 {
+                                IconName::Anytype_dark
+                            } else {
+                                IconName::Info
+                            })
+                            .label(format!(
+                                "Problems ({})",
+                                error_count + warning_count
+                            ))
+                            .on_click(cx.listener(|app, _, window, cx| {
+                                app.toggle_problems(window, cx);
+                            })),
+                    )
             )
             .child(
-                // Rust Analyzer Section
+                // Center - Rust Analyzer Section
                 h_flex()
                     .flex_1()
                     .items_center()

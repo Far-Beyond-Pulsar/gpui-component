@@ -110,11 +110,19 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // If context menu is open, let it handle the action
+        // If context menu is open, accept the selected completion
         if self.is_context_menu_open(cx) {
-            return;
+            let handled = self.handle_action_for_context_menu(
+                Box::new(TabComplete),
+                window,
+                cx,
+            );
+            if handled {
+                return;
+            }
         }
 
+        // Otherwise, trigger completions
         // Get current cursor position
         let cursor = self.cursor();
         

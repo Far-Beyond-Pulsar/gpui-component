@@ -288,9 +288,10 @@ impl CompletionMenu {
             return false;
         }
 
-        cx.propagate();
-        if action.partial_eq(&input::Enter { secondary: false }) {
-            self.on_action_enter(window, cx);
+        // Use Tab to accept completions (like most editors)
+        if action.partial_eq(&super::super::tab_completion::TabComplete) {
+            self.on_action_tab(window, cx);
+            cx.stop_propagation(); // Prevent Tab from inserting a tab character
         } else if action.partial_eq(&input::Escape) {
             self.on_action_escape(window, cx);
         } else if action.partial_eq(&input::MoveUp) {
@@ -304,7 +305,7 @@ impl CompletionMenu {
         true
     }
 
-    fn on_action_enter(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn on_action_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(item) = self.list.read(cx).delegate().selected_item().cloned() else {
             return;
         };

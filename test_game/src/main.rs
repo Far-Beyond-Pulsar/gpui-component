@@ -3,5 +3,5 @@ pub mod classes;
 
 fn main() {
     engine_main::main();
-    classes::ExampleClass::events::main::main();
-}
+    classes::ExampleClass::events::main::main());
+}

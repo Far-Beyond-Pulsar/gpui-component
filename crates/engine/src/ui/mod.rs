@@ -5,6 +5,7 @@ pub mod entry_window;
 pub mod file_manager_drawer;
 pub mod menu;
 pub mod panels;
+pub mod problems_drawer;
 pub mod project_selector;
 pub mod rainbow_engine_final;
 pub mod rust_analyzer_manager;

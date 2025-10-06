@@ -140,7 +140,7 @@ fn main() {
             kind: WindowKind::Normal,
             #[cfg(target_os = "linux")]
             window_background: gpui::WindowBackgroundAppearance::Transparent,
-            #[cfg(target_os = "linux")]    
+            #[cfg(target_os = "linux")]
             window_decorations: Some(gpui::WindowDecorations::Client),
             ..Default::default()
         };

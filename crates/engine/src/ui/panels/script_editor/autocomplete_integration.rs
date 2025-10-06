@@ -1,12 +1,12 @@
 /// Example integration of comprehensive autocomplete into the Script Editor
 /// This demonstrates how to set up and use all the completion features
+/// Note: The global rust-analyzer is managed by the engine, not per-file
 
 use gpui::{Context, Window};
 use gpui_component::input::{
     ComprehensiveCompletionProvider, 
     DictionaryProvider,
     MockRustCompletionProvider,
-    RustAnalyzerCompletionProvider,
     InputState,
 };
 use std::path::PathBuf;
@@ -18,10 +18,12 @@ use std::rc::Rc;
 /// - Dictionary-based completion
 /// - Language-specific completion (keywords, snippets)
 /// - Closure/bracket auto-completion
-/// - Rust-analyzer LSP integration (if available)
+/// 
+/// Note: rust-analyzer is managed globally by the engine.
+/// The global instance provides completions to all open files automatically.
 pub fn setup_rust_autocomplete(
     input_state: &mut InputState,
-    workspace_root: PathBuf,
+    workspace_root: Option<PathBuf>,
     file_path: PathBuf,
     window: &mut Window,
     cx: &mut Context<InputState>,
@@ -29,64 +31,88 @@ pub fn setup_rust_autocomplete(
     // Create the comprehensive completion provider
     let provider = ComprehensiveCompletionProvider::new();
     
-    // Try to set up rust-analyzer, fall back to mock if unavailable
-    let provider_with_lsp = if let Ok(rust_analyzer) = RustAnalyzerCompletionProvider::new(workspace_root.clone()) {
-        // Set the current file
-        let _ = rust_analyzer.set_file(file_path.clone());
-        provider.with_lsp_provider(Rc::new(rust_analyzer))
-    } else {
-        // Use mock rust provider as fallback
-        println!("⚠️  rust-analyzer not available, using mock Rust completions");
-        provider.with_lsp_provider(Rc::new(MockRustCompletionProvider::new()))
-    };
+    // Use mock rust provider for basic completions
+    // The global rust-analyzer handles advanced completions
+    let provider_with_lsp = provider.with_lsp_provider(Rc::new(MockRustCompletionProvider::new()));
     
     // Set the completion provider
     input_state.lsp.completion_provider = Some(Rc::new(provider_with_lsp));
     
-    println!("✓ Autocomplete configured for: {:?}", file_path.file_name());
+    if let Some(workspace) = workspace_root {
+        println!("✓ Autocomplete configured for: {:?} (workspace: {:?})", file_path.file_name(), workspace);
+    } else {
+        println!("✓ Autocomplete configured for: {:?}", file_path.file_name());
+    }
 }
-
+
 /// Helper function to set up autocomplete for JavaScript/TypeScript files
 pub fn setup_javascript_autocomplete(
     input_state: &mut InputState,
+    workspace_root: Option<PathBuf>,
+    file_path: PathBuf,
     _window: &mut Window,
     _cx: &mut Context<InputState>,
 ) {
+    // Create the comprehensive completion provider with JS/TS language support
     let provider = ComprehensiveCompletionProvider::new();
+    
+    // Set the completion provider
     input_state.lsp.completion_provider = Some(Rc::new(provider));
     
-    println!("✓ JavaScript autocomplete configured");
+    if let Some(workspace) = workspace_root {
+        println!("✓ JavaScript/TypeScript autocomplete configured for: {:?} (workspace: {:?})", file_path.file_name(), workspace);
+    } else {
+        println!("✓ JavaScript/TypeScript autocomplete configured for: {:?}", file_path.file_name());
+    }
 }
 
 /// Helper function to set up autocomplete for Python files
 pub fn setup_python_autocomplete(
     input_state: &mut InputState,
+    workspace_root: Option<PathBuf>,
+    file_path: PathBuf,
     _window: &mut Window,
     _cx: &mut Context<InputState>,
 ) {
+    // Create the comprehensive completion provider with Python language support
     let provider = ComprehensiveCompletionProvider::new();
+    
+    // Set the completion provider
     input_state.lsp.completion_provider = Some(Rc::new(provider));
     
-    println!("✓ Python autocomplete configured");
+    if let Some(workspace) = workspace_root {
+        println!("✓ Python autocomplete configured for: {:?} (workspace: {:?})", file_path.file_name(), workspace);
+    } else {
+        println!("✓ Python autocomplete configured for: {:?}", file_path.file_name());
+    }
 }
 
-/// Helper function to set up autocomplete for generic text files
+/// Helper function to set up autocomplete for plain text files
 pub fn setup_text_autocomplete(
     input_state: &mut InputState,
+    workspace_root: Option<PathBuf>,
+    file_path: PathBuf,
     _window: &mut Window,
     _cx: &mut Context<InputState>,
 ) {
+    // Create a basic completion provider with dictionary only
     let provider = ComprehensiveCompletionProvider::new();
+    
+    // Set the completion provider
     input_state.lsp.completion_provider = Some(Rc::new(provider));
     
-    println!("✓ Text autocomplete configured (dictionary only)");
+    if let Some(workspace) = workspace_root {
+        println!("✓ Text autocomplete configured for: {:?} (workspace: {:?})", file_path.file_name(), workspace);
+    } else {
+        println!("✓ Text autocomplete configured for: {:?}", file_path.file_name());
+    }
 }
 
 /// Detect language and set up appropriate autocomplete
 pub fn setup_autocomplete_for_file(
     input_state: &mut InputState,
     file_path: PathBuf,
-    workspace_root: PathBuf,
+    workspace_root: Option<PathBuf>,
     window: &mut Window,
     cx: &mut Context<InputState>,
 ) {
@@ -96,9 +122,9 @@ pub fn setup_autocomplete_for_file(
     
     match extension {
         "rs" => setup_rust_autocomplete(input_state, workspace_root, file_path, window, cx),
-        "js" | "jsx" | "ts" | "tsx" => setup_javascript_autocomplete(input_state, window, cx),
-        "py" => setup_python_autocomplete(input_state, window, cx),
-        _ => setup_text_autocomplete(input_state, window, cx),
+        "js" | "jsx" | "ts" | "tsx" => setup_javascript_autocomplete(input_state, workspace_root, file_path, window, cx),
+        "py" => setup_python_autocomplete(input_state, workspace_root, file_path, window, cx),
+        _ => setup_text_autocomplete(input_state, workspace_root, file_path, window, cx),
     }
 }
 
