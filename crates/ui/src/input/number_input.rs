@@ -145,6 +145,7 @@ impl RenderOnce for NumberInput {
             .flex_1()
             .input_size(self.size)
             .px(self.size.input_px() / 2.)
+            .font_family("JetBrainsMono-Regular")
             .when(self.appearance, |this| {
                 this.bg(cx.theme().background)
                     .border_color(cx.theme().input)

@@ -275,7 +275,16 @@ impl Styled for TextInput {
 impl RenderOnce for TextInput {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         const LINE_HEIGHT: Rems = Rems(1.25);
-        let font = window.text_style().font();
+        
+        // Use monospace font for text editor (when multi-line with code)
+        // This provides better readability for code and consistent character width
+        let font = gpui::Font {
+            family: "JetBrainsMono-Regular".into(),
+            weight: gpui::FontWeight::default(),
+            style: gpui::FontStyle::Normal,
+            features: gpui::FontFeatures::default(),
+            fallbacks: None,
+        
         let font_size = window.text_style().font_size.to_pixels(window.rem_size());
 
         self.state.update(cx, |state, cx| {

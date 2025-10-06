@@ -450,6 +450,8 @@ impl NodeGraphRenderer {
                             div()
                                 .p(px(12.0 * panel.graph.zoom_level))
                                 .size_full()
+                                .font_family("JetBrainsMono-Regular")
+                                .font_weight(gpui::FontWeight::default())
                                 .child(
                                     gpui_component::input::TextInput::new(&panel.comment_text_input)
                                 )

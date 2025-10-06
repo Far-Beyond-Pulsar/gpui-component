@@ -1697,6 +1697,7 @@ impl BlueprintEditorPanel {
         }
     }
 
+    // TODO: Hot path, avoid alloc here
     pub fn end_selection_drag(&mut self, cx: &mut Context<Self>) {
         // If selection start and end are the same (or very close), it was a click, not a drag
         // Clear the selection in this case

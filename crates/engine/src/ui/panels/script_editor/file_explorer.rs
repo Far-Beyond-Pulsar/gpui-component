@@ -457,12 +457,6 @@ impl FileExplorer {
         let max_scroll_y = px(0.0);
         let min_scroll_y = -(total_height - viewport_height).max(px(0.0));
         
-        // Debug output
-        if self.visible_entries.len() > 10 {
-            println!("📊 Scroll clamp: total_height={:.0}px, viewport={:.0}px, range=[{:.0}, {:.0}]",
-                total_height, viewport_height, min_scroll_y, max_scroll_y);
-        }
-        
         // X: No horizontal scrolling needed, keep at 0
         let clamped_offset = gpui::point(
             px(0.0), // No horizontal scroll

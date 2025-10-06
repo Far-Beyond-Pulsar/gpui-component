@@ -1,15 +1,15 @@
-use std::fs;
-use std::path::PathBuf;
-use std::time::Instant;
 use gpui::*;
 use gpui_component::{
     button::{Button, ButtonVariants as _},
-    input::{InputState, TextInput, TabSize, OptimizedLineCache},
+    input::{InputState, TextInput, TabSize, InputEvent},
     tab::{Tab, TabBar},
     v_flex, h_flex,
     ActiveTheme as _, StyledExt, Sizable as _,
     IconName,
 };
+use std::path::PathBuf;
+use std::time::Instant;
+use std::fs;
 
 #[derive(Clone)]
 pub struct OpenFile {
@@ -27,6 +27,7 @@ pub struct TextEditor {
     /// Performance monitoring
     last_render_time: Option<Instant>,
     show_performance_stats: bool,
+    subscriptions: Vec<Subscription>,
 }
 
 impl TextEditor {
@@ -37,6 +38,7 @@ impl TextEditor {
             current_file_index: None,
             last_render_time: None,
             show_performance_stats: false, // Toggle with F12 or button
+            subscriptions: Vec::new(),
         }
     }
 
@@ -123,8 +125,8 @@ impl TextEditor {
         );
 
         let open_file = OpenFile {
-            path,
-            input_state,
+            path: path.clone(),
+            input_state: input_state.clone(),
             is_modified: false,
             lines_count,
             file_size,
@@ -132,6 +134,21 @@ impl TextEditor {
 
         self.open_files.push(open_file);
         self.current_file_index = Some(self.open_files.len() - 1);
+        
+        // Create subscription for this file
+        let subscription = cx.subscribe(&input_state, |this: &mut TextEditor, input_state_entity: Entity<InputState>, event: &InputEvent, cx: &mut Context<TextEditor>| {
+            if let InputEvent::Change = event {
+                // Find which file this corresponds to
+                if let Some(index) = this.open_files.iter().position(|f| f.input_state == input_state_entity) {
+                    if let Some(file) = this.open_files.get_mut(index) {
+                        file.is_modified = true;
+                        cx.notify();
+                    }
+                }
+            }
+        });
+        
+        self.subscriptions.push(subscription);
         
         // Log cache stats after opening
         if let Some(index) = self.current_file_index {
@@ -163,6 +180,10 @@ impl TextEditor {
             Some("sql") => "sql".to_string(),
             Some("log") => "text".to_string(),
             Some("txt") => "text".to_string(),
+            Some("yaml") | Some("yml") => "yaml".to_string(),
+            Some("xml") => "xml".to_string(),
+            Some("c") | Some("h") => "c".to_string(),
+            Some("cpp") | Some("hpp") | Some("cc") => "cpp".to_string(),
             _ => "text".to_string(),
         }
     }
@@ -222,7 +243,7 @@ impl TextEditor {
         }
     }
 
-    fn save_current_file(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> bool {
+    pub fn save_current_file(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> bool {
         if let Some(index) = self.current_file_index {
             if let Some(open_file) = self.open_files.get_mut(index) {
                 // Get content from input state
@@ -271,20 +292,6 @@ impl TextEditor {
                             h_flex()
                                 .items_center()
                                 .gap_2()
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .child(if open_file.is_modified {
-                                            format!("● {}", open_file.path.file_name()
-                                                .and_then(|name| name.to_str())
-                                                .unwrap_or("untitled"))
-                                        } else {
-                                            open_file.path.file_name()
-                                                .and_then(|name| name.to_str())
-                                                .unwrap_or("untitled")
-                                                .to_string()
-                                        })
-                                )
                                 .child(
                                     Button::new(("close", index))
                                         .icon(IconName::Close)

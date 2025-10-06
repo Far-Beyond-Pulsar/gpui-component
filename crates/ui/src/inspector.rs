@@ -434,7 +434,7 @@ impl Render for DivInspector {
                             v_flex()
                                 .flex_1()
                                 .gap_y_1()
-                                .font_family("Monaco")
+                                .font_family("JetBrainsMono-Regular")
                                 .text_size(px(12.))
                                 .child(TextInput::new(&self.rust_state.state).h_full())
                                 .when_some(self.rust_state.error.clone(), |this, err| {
@@ -462,7 +462,7 @@ impl Render for DivInspector {
                             v_flex()
                                 .flex_1()
                                 .gap_y_1()
-                                .font_family("Monaco")
+                                .font_family("JetBrainsMono-Regular")
                                 .text_size(px(12.))
                                 .child(TextInput::new(&self.json_state.state).h_full())
                                 .when_some(self.json_state.error.clone(), |this, err| {

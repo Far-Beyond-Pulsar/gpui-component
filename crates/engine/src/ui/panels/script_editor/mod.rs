@@ -15,6 +15,8 @@ use gpui_component::{
     ActiveTheme,
 };
 
+actions!(script_editor, [SaveCurrentFile]);
+
 pub struct ScriptEditor {
     focus_handle: FocusHandle,
     file_explorer: Entity<FileExplorer>,
@@ -27,6 +29,10 @@ pub struct ScriptEditor {
 
 impl ScriptEditor {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        cx.bind_keys([
+            KeyBinding::new("ctrl-s", SaveCurrentFile, Some("ScriptEditor")),
+        ]);
+
         let horizontal_resizable_state = ResizableState::new(cx);
         let vertical_resizable_state = ResizableState::new(cx);
 
@@ -62,6 +68,12 @@ impl ScriptEditor {
     pub fn toggle_terminal(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.terminal_visible = !self.terminal_visible;
         cx.notify();
+    }
+
+    fn save_current_file(&mut self, _action: &SaveCurrentFile, window: &mut Window, cx: &mut Context<Self>) {
+        self.text_editor.update(cx, |editor, cx| {
+            editor.save_current_file(window, cx);
+        });
     }
 }
 
@@ -99,6 +111,8 @@ impl Render for ScriptEditor {
         h_flex()
             .size_full()
             .bg(cx.theme().background)
+            .key_context("ScriptEditor")
+            .on_action(cx.listener(Self::save_current_file))
             .child(
                 h_resizable("script-editor-horizontal", self.horizontal_resizable_state.clone())
                     .child(

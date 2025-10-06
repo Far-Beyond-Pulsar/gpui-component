@@ -432,6 +432,7 @@ impl Render for SearchPanel {
                         div()
                             .flex_1()
                             .gap_1()
+                            .font_family("JetBrainsMono-Regular")
                             .child(
                                 TextInput::new(&self.search_input)
                                     .focus_bordered(false)
@@ -528,6 +529,7 @@ impl Render for SearchPanel {
                     h_flex()
                         .w_full()
                         .gap_2()
+                        .font_family("JetBrainsMono-Regular")
                         .child(
                             TextInput::new(&self.replace_input)
                                 .focus_bordered(false)

@@ -323,6 +323,7 @@ impl ColorPicker {
                     h_flex()
                         .gap_2()
                         .items_center()
+                        .font_family("JetBrainsMono-Regular")
                         .child(
                             div()
                                 .bg(hovered_color)

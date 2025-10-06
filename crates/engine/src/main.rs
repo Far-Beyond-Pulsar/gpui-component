@@ -106,6 +106,16 @@ fn main() {
     let app = Application::new().with_assets(Assets);
 
     app.run(move |cx| {
+        // Load custom fonts first
+        if let Some(font_data) = Assets::get("fonts/JetBrainsMono-Regular.ttf") {
+            match cx.text_system().add_fonts(vec![font_data.data]) {
+                Ok(_) => println!("Successfully loaded JetBrains Mono font"),
+                Err(e) => println!("Failed to load JetBrains Mono font: {:?}", e),
+            }
+        } else {
+            println!("Could not find JetBrains Mono font file");
+        }
+
         gpui_component::init(cx);
         crate::themes::init(cx);
 
