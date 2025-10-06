@@ -175,6 +175,7 @@ pub struct CompletionMenu {
     list: Entity<List<ContextMenuDelegate>>,
     open: bool,
     bounds: Bounds<Pixels>,
+    loading: bool, // Track if we're loading completions
 
     /// The offset of the first character that triggered the completion.
     pub(crate) trigger_start_offset: Option<usize>,
@@ -224,6 +225,7 @@ impl CompletionMenu {
                 editor,
                 list,
                 open: false,
+                loading: false,
                 trigger_start_offset: None,
                 query: SharedString::default(),
                 bounds: Bounds::default(),
@@ -262,6 +264,9 @@ impl CompletionMenu {
                     range = offset..offset;
                 }
 
+                // Strip LSP snippet syntax (like $0, $1, ${1:default}, etc.)
+                new_text = Self::strip_snippet_syntax(&new_text);
+
                 editor.replace_text_in_range_silent(
                     Some(editor.range_to_utf16(&range)),
                     &new_text,
@@ -276,6 +281,58 @@ impl CompletionMenu {
         .detach();
 
         self.hide(cx);
+    }
+
+    /// Strip LSP snippet syntax from completion text
+    /// Removes $0, $1, ${1:default}, etc.
+    fn strip_snippet_syntax(text: &str) -> String {
+        let mut result = String::with_capacity(text.len());
+        let mut chars = text.chars().peekable();
+        
+        while let Some(ch) = chars.next() {
+            if ch == '$' {
+                // Check if next char is a digit or {
+                match chars.peek() {
+                    Some('0'..='9') => {
+                        // Skip $N syntax
+                        chars.next();
+                        continue;
+                    }
+                    Some('{') => {
+                        // Skip ${N} or ${N:default} syntax
+                        chars.next(); // consume '{'
+                        let mut depth = 1;
+                        let mut in_default = false;
+                        let mut default_text = String::new();
+                        
+                        while depth > 0 {
+                            match chars.next() {
+                                Some('}') => {
+                                    depth -= 1;
+                                    if depth == 0 && in_default {
+                                        result.push_str(&default_text);
+                                    }
+                                }
+                                Some('{') => depth += 1,
+                                Some(':') if depth == 1 && !in_default => {
+                                    in_default = true;
+                                }
+                                Some(c) if in_default => {
+                                    default_text.push(c);
+                                }
+                                Some(_) => {} // Skip other characters in placeholder
+                                None => break,
+                            }
+                        }
+                        continue;
+                    }
+                    _ => {} // Not a snippet marker, treat as regular $
+                }
+            }
+            result.push(ch);
+        }
+        
+        result
     }
 
     pub(crate) fn handle_action(
@@ -359,6 +416,7 @@ impl CompletionMenu {
         let items = items.into();
         self.offset = offset;
         self.open = true;
+        self.loading = false; // Done loading since we have items
         self.list.update(cx, |this, cx| {
             let longest_ix = items
                 .iter()
@@ -375,6 +433,14 @@ impl CompletionMenu {
             this.set_item_to_measure_index(IndexPath::new(longest_ix), window, cx);
         });
 
+        cx.notify();
+    }
+
+    /// Show the menu in loading state while waiting for completions
+    pub(crate) fn show_loading(&mut self, offset: usize, cx: &mut Context<Self>) {
+        self.offset = offset;
+        self.open = true;
+        self.loading = true;
         cx.notify();
     }
 
@@ -400,6 +466,32 @@ impl Render for CompletionMenu {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.open {
             return Empty.into_any_element();
+        }
+
+        // Show loading state if we're loading
+        if self.loading {
+            let view = cx.entity();
+            let Some(pos) = self.origin(cx) else {
+                return Empty.into_any_element();
+            };
+
+            return deferred(
+                div()
+                    .absolute()
+                    .left(pos.x)
+                    .top(pos.y)
+                    .child(
+                        editor_popover("completion-loading", cx)
+                            .max_w(MAX_MENU_WIDTH)
+                            .child(
+                                div()
+                                    .p_2()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Loading completions...")
+                            )
+                    )
+            )
+            .into_any_element();
         }
 
         if self.list.read(cx).delegate().items.is_empty() {

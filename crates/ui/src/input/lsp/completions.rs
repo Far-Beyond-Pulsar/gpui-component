@@ -85,6 +85,11 @@ impl InputState {
             }
         };
 
+        // Show loading state immediately (non-blocking)
+        menu.update(cx, |menu, cx| {
+            menu.show_loading(new_offset, cx);
+        });
+
         let start_offset = menu.read(cx).trigger_start_offset.unwrap_or(start);
         if new_offset < start_offset {
             return;
