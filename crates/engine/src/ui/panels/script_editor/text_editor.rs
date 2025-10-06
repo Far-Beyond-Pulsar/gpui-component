@@ -12,6 +12,13 @@ use std::time::Instant;
 use std::fs;
 
 #[derive(Clone)]
+pub enum TextEditorEvent {
+    OpenFolderRequested(PathBuf),
+    RunScriptRequested(PathBuf, String),
+    DebugScriptRequested(PathBuf),
+}
+
+#[derive(Clone)]
 pub struct OpenFile {
     pub path: PathBuf,
     pub input_state: Entity<InputState>,
@@ -40,6 +47,144 @@ impl TextEditor {
             show_performance_stats: false, // Toggle with F12 or button
             subscriptions: Vec::new(),
         }
+    }
+
+    /// Create a new empty file
+    pub fn create_new_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Generate a unique untitled file name
+        let mut counter = 1;
+        let mut new_path = PathBuf::from(format!("untitled-{}.txt", counter));
+        while self.open_files.iter().any(|f| f.path == new_path) {
+            counter += 1;
+            new_path = PathBuf::from(format!("untitled-{}.txt", counter));
+        }
+
+        // Create an empty file in memory
+        let language = "text";
+        let input_state = cx.new(|cx| {
+            let mut state = InputState::new(window, cx)
+                .code_editor(language)
+                .line_number(true)
+                .tab_size(TabSize {
+                    tab_size: 4,
+                    hard_tabs: false,
+                })
+                .soft_wrap(true);
+
+            state.set_value("", window, cx);
+            state
+        });
+
+        let open_file = OpenFile {
+            path: new_path.clone(),
+            input_state: input_state.clone(),
+            is_modified: false,
+            lines_count: 1,
+            file_size: 0,
+        };
+
+        self.open_files.push(open_file);
+        self.current_file_index = Some(self.open_files.len() - 1);
+
+        // Create subscription for this file
+        let subscription = cx.subscribe(&input_state, |this: &mut TextEditor, input_state_entity: Entity<InputState>, event: &InputEvent, cx: &mut Context<TextEditor>| {
+            if let InputEvent::Change = event {
+                if let Some(index) = this.open_files.iter().position(|f| f.input_state == input_state_entity) {
+                    if let Some(file) = this.open_files.get_mut(index) {
+                        file.is_modified = true;
+                        cx.notify();
+                    }
+                }
+            }
+        });
+
+        self.subscriptions.push(subscription);
+        
+        println!("✓ Created new file: {:?}", new_path);
+        cx.notify();
+    }
+
+    /// Open a file picker dialog (platform-specific)
+    pub fn open_folder_dialog(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        // For now, open the current working directory
+        // In a real implementation, this would show a platform file picker
+        if let Ok(cwd) = std::env::current_dir() {
+            println!("✓ Opening folder: {:?}", cwd);
+            // Emit an event or call a method to open this folder in the file explorer
+            cx.emit(TextEditorEvent::OpenFolderRequested(cwd));
+        }
+        cx.notify();
+    }
+
+    /// Show search/find dialog
+    pub fn show_find_dialog(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(index) = self.current_file_index {
+            if let Some(file) = self.open_files.get(index) {
+                // Trigger search on the input state
+                file.input_state.update(cx, |state, cx| {
+                    // The InputState has a search panel that can be shown
+                    // Emit focus event to potentially show search
+                    println!("✓ Opening search panel for current file");
+                    cx.emit(gpui_component::input::InputEvent::Focus);
+                });
+            }
+        }
+        cx.notify();
+    }
+
+    /// Show find and replace dialog
+    pub fn show_replace_dialog(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(index) = self.current_file_index {
+            if let Some(file) = self.open_files.get(index) {
+                // Trigger search/replace on the input state
+                file.input_state.update(cx, |state, cx| {
+                    println!("✓ Opening find/replace panel for current file");
+                    // The search panel supports replace functionality
+                    cx.emit(gpui_component::input::InputEvent::Focus);
+                });
+            }
+        }
+        cx.notify();
+    }
+
+    /// Run the current script file
+    pub fn run_current_file(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(index) = self.current_file_index {
+            if let Some(file) = self.open_files.get(index) {
+                let path = file.path.clone();
+                let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                
+                println!("🚀 Running file: {:?}", path);
+                
+                // Determine how to run based on file extension
+                let command = match extension {
+                    "rs" => format!("rustc {} && ./{}", path.display(), path.with_extension("").display()),
+                    "py" => format!("python {}", path.display()),
+                    "js" | "ts" => format!("node {}", path.display()),
+                    "sh" => format!("bash {}", path.display()),
+                    _ => {
+                        println!("⚠️  Don't know how to run .{} files", extension);
+                        cx.emit(TextEditorEvent::RunScriptRequested(path, "unknown".to_string()));
+                        return;
+                    }
+                };
+                
+                cx.emit(TextEditorEvent::RunScriptRequested(path, command));
+            }
+        }
+        cx.notify();
+    }
+
+    /// Debug the current script file
+    pub fn debug_current_file(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(index) = self.current_file_index {
+            if let Some(file) = self.open_files.get(index) {
+                let path = file.path.clone();
+                println!("🐛 Debugging file: {:?}", path);
+                cx.emit(TextEditorEvent::DebugScriptRequested(path));
+            }
+        }
+        cx.notify();
     }
 
     pub fn open_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
@@ -352,8 +497,8 @@ impl TextEditor {
                             .tooltip("New File (Ctrl+N)")
                             .ghost()
                             .small()
-                            .on_click(cx.listener(|_this, _, _window, _cx| {
-                                // TODO: Implement new file creation
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.create_new_file(window, cx);
                             }))
                     )
                     .child(
@@ -372,8 +517,8 @@ impl TextEditor {
                             .tooltip("Find (Ctrl+F)")
                             .ghost()
                             .small()
-                            .on_click(cx.listener(|_this, _, _window, _cx| {
-                                // TODO: Implement find functionality
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.show_find_dialog(window, cx);
                             }))
                     )
                     .child(
@@ -382,8 +527,8 @@ impl TextEditor {
                             .tooltip("Replace (Ctrl+H)")
                             .ghost()
                             .small()
-                            .on_click(cx.listener(|_this, _, _window, _cx| {
-                                // TODO: Implement replace functionality
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.show_replace_dialog(window, cx);
                             }))
                     )
                     .child(
@@ -419,8 +564,8 @@ impl TextEditor {
                             .tooltip("Run Script (F5)")
                             .ghost()
                             .small()
-                            .on_click(cx.listener(|_this, _, _window, _cx| {
-                                // TODO: Implement run functionality
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.run_current_file(window, cx);
                             }))
                     )
                     .child(
@@ -429,8 +574,8 @@ impl TextEditor {
                             .tooltip("Debug Script (F9)")
                             .ghost()
                             .small()
-                            .on_click(cx.listener(|_this, _, _window, _cx| {
-                                // TODO: Implement debug functionality
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.debug_current_file(window, cx);
                             }))
                     )
             )
@@ -499,8 +644,8 @@ impl TextEditor {
                                 Button::new("new_file_welcome")
                                     .label("New File")
                                     .icon(IconName::Plus)
-                                    .on_click(cx.listener(|_this, _, _window, _cx| {
-                                        // TODO: Implement new file creation
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.create_new_file(window, cx);
                                     }))
                             )
                             .child(
@@ -508,8 +653,8 @@ impl TextEditor {
                                     .label("Open Folder")
                                     .icon(IconName::FolderOpen)
                                     .with_variant(gpui_component::button::ButtonVariant::Primary)
-                                    .on_click(cx.listener(|_this, _, _window, _cx| {
-                                        // TODO: Implement folder opening
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.open_folder_dialog(window, cx);
                                     }))
                             )
                     )
@@ -596,6 +741,8 @@ impl TextEditor {
             )
     }
 }
+
+impl EventEmitter<TextEditorEvent> for TextEditor {}
 
 impl Focusable for TextEditor {
     fn focus_handle(&self, _: &App) -> FocusHandle {

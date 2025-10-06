@@ -2,7 +2,7 @@ use gpui::{prelude::*, Animation, AnimationExt as _, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
-    h_flex, v_flex, ActiveTheme as _, IconName, StyledExt,
+    h_flex, v_flex, ActiveTheme as _, IconName, StyledExt, Sizable as _,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -16,6 +16,7 @@ use super::{
     file_manager_drawer::{FileManagerDrawer, FileSelected, FileType},
     menu::AppTitleBar,
     panels::{BlueprintEditorPanel, LevelEditorPanel, ScriptEditorPanel},
+    rust_analyzer_manager::{RustAnalyzerManager, AnalyzerEvent, AnalyzerStatus},
 };
 
 // Action to toggle the file manager drawer
@@ -34,6 +35,9 @@ pub struct PulsarApp {
     script_editor: Option<Entity<ScriptEditorPanel>>,
     blueprint_editors: Vec<Entity<BlueprintEditorPanel>>,
     next_tab_id: usize,
+    // Rust Analyzer
+    rust_analyzer: Entity<RustAnalyzerManager>,
+    analyzer_status_text: String,
 }
 
 impl PulsarApp {
@@ -101,6 +105,17 @@ impl PulsarApp {
         cx.subscribe_in(&file_manager_drawer, window, Self::on_file_selected)
             .detach();
 
+        // Create rust analyzer manager
+        let rust_analyzer = cx.new(|cx| RustAnalyzerManager::new(window, cx));
+        cx.subscribe_in(&rust_analyzer, window, Self::on_analyzer_event).detach();
+
+        // Start rust analyzer if we have a project
+        if let Some(ref project) = project_path {
+            rust_analyzer.update(cx, |analyzer, cx| {
+                analyzer.start(project.clone(), window, cx);
+            });
+        }
+
         // Subscribe to PanelEvent on center_tabs to handle tab close and cleanup
         cx.subscribe_in(&center_tabs, window, Self::on_tab_panel_event)
             .detach();
@@ -121,6 +136,44 @@ impl PulsarApp {
             script_editor,
             blueprint_editors,
             next_tab_id: 1,
+            rust_analyzer,
+            analyzer_status_text: "Idle".to_string(),
+        }
+    }
+
+    fn on_analyzer_event(
+        &mut self,
+        _manager: &Entity<RustAnalyzerManager>,
+        event: &AnalyzerEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match event {
+            AnalyzerEvent::StatusChanged(status) => {
+                self.analyzer_status_text = match status {
+                    AnalyzerStatus::Idle => "Idle".to_string(),
+                    AnalyzerStatus::Starting => "Starting...".to_string(),
+                    AnalyzerStatus::Indexing { progress, message } => {
+                        format!("Indexing: {} ({:.0}%)", message, progress * 100.0)
+                    }
+                    AnalyzerStatus::Ready => "Ready ✓".to_string(),
+                    AnalyzerStatus::Error(e) => format!("Error: {}", e),
+                    AnalyzerStatus::Stopped => "Stopped".to_string(),
+                };
+                cx.notify();
+            }
+            AnalyzerEvent::IndexingProgress { progress, message } => {
+                self.analyzer_status_text = format!("Indexing: {} ({:.0}%)", message, progress * 100.0);
+                cx.notify();
+            }
+            AnalyzerEvent::Ready => {
+                self.analyzer_status_text = "Ready ✓".to_string();
+                cx.notify();
+            }
+            AnalyzerEvent::Error(e) => {
+                self.analyzer_status_text = format!("Error: {}", e);
+                cx.notify();
+            }
         }
     }
 
@@ -128,7 +181,7 @@ impl PulsarApp {
         &mut self,
         _selector: &Entity<EntryScreen>,
         event: &ProjectSelected,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.project_path = Some(event.path.clone());
@@ -139,6 +192,10 @@ impl PulsarApp {
             drawer.set_project_path(event.path.clone(), cx);
         });
 
+        // Start rust analyzer for the project
+        self.rust_analyzer.update(cx, |analyzer, cx| {
+            analyzer.start(event.path.clone(), window, cx);
+        });
 
         println!("Project selected: {:?}", event.path);
         cx.notify();
@@ -380,43 +437,146 @@ impl Render for PulsarApp {
                     }),
             )
             .child(
-                // Footer with drawer toggle
-                h_flex()
-                    .w_full()
-                    .h(px(32.))
-                    .px_2()
-                    .items_center()
-                    .justify_between()
-                    .bg(cx.theme().sidebar)
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .child(
-                        // Left side - drawer toggle button
-                        Button::new("toggle-drawer")
-                            .ghost()
-                            .icon(if drawer_open {
-                                IconName::ChevronDown
-                            } else {
-                                IconName::ChevronUp
-                            })
-                            .label("Project Files")
-                            .on_click(cx.listener(|app, _, window, cx| {
-                                app.toggle_drawer(window, cx);
-                            })),
-                    )
-                    .child(
-                        // Right side - project path
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .children(
-                                self.project_path
-                                    .as_ref()
-                                    .map(|path| path.display().to_string()),
-                            ),
-                    ),
+                // Footer with rust analyzer status and controls
+                self.render_footer(drawer_open, cx)
             )
             .into_any_element()
+    }
+}
+
+impl PulsarApp {
+    fn render_footer(&self, drawer_open: bool, cx: &mut Context<Self>) -> impl IntoElement {
+        let analyzer = self.rust_analyzer.read(cx);
+        let status = analyzer.status();
+        let is_running = analyzer.is_running();
+        
+        h_flex()
+            .w_full()
+            .h(px(32.))
+            .px_2()
+            .items_center()
+            .gap_3()
+            .bg(cx.theme().sidebar)
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .child(
+                // Left side - drawer toggle button
+                Button::new("toggle-drawer")
+                    .ghost()
+                    .icon(if drawer_open {
+                        IconName::ChevronDown
+                    } else {
+                        IconName::ChevronUp
+                    })
+                    .label("Project Files")
+                    .on_click(cx.listener(|app, _, window, cx| {
+                        app.toggle_drawer(window, cx);
+                    })),
+            )
+            .child(
+                // Rust Analyzer Section
+                h_flex()
+                    .flex_1()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        // Analyzer status indicator
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_1p5()
+                            .child(
+                                // Status icon/spinner
+                                div()
+                                    .w(px(8.))
+                                    .h(px(8.))
+                                    .rounded_full()
+                                    .bg(match status {
+                                        AnalyzerStatus::Ready => Hsla {
+                                            h: 120.0,
+                                            s: 1.0,
+                                            l: 0.5,
+                                            a: 1.0,
+                                        },
+                                        AnalyzerStatus::Indexing { .. } | AnalyzerStatus::Starting => Hsla {
+                                            h: 60.0,
+                                            s: 1.0,
+                                            l: 0.5,
+                                            a: 1.0,
+                                        },
+                                        AnalyzerStatus::Error(_) => Hsla {
+                                            h: 0.0,
+                                            s: 1.0,
+                                            l: 0.5,
+                                            a: 1.0,
+                                        },
+                                        _ => cx.theme().muted_foreground,
+                                    })
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().foreground)
+                                    .child(format!("rust-analyzer: {}", self.analyzer_status_text))
+                            )
+                    )
+                    .when(is_running, |this| {
+                        this.child(
+                            // Stop button
+                            Button::new("stop-analyzer")
+                                .ghost()
+                                .icon(IconName::Close)
+                                .tooltip("Stop rust-analyzer")
+                                .on_click(cx.listener(|app, _, window, cx| {
+                                    app.rust_analyzer.update(cx, |analyzer, cx| {
+                                        analyzer.stop(window, cx);
+                                    });
+                                }))
+                        )
+                    })
+                    .when(!is_running, |this| {
+                        this.child(
+                            // Start/Restart button
+                            Button::new("start-analyzer")
+                                .ghost()
+                                .icon(IconName::ArrowRight)
+                                .tooltip("Start rust-analyzer")
+                                .on_click(cx.listener(|app, _, window, cx| {
+                                    if let Some(project) = app.project_path.clone() {
+                                        app.rust_analyzer.update(cx, |analyzer, cx| {
+                                            analyzer.start(project, window, cx);
+                                        });
+                                    }
+                                }))
+                        )
+                    })
+                    .child(
+                        // Restart button (always visible)
+                        Button::new("restart-analyzer")
+                            .ghost()
+                            .icon(IconName::Undo)
+                            .tooltip("Restart rust-analyzer")
+                            .when(!is_running, |btn| btn.opacity(0.5))
+                            .on_click(cx.listener(move |app, _, window, cx| {
+                                if is_running {
+                                    app.rust_analyzer.update(cx, |analyzer, cx| {
+                                        analyzer.restart(window, cx);
+                                    });
+                                }
+                            }))
+                    )
+            )
+            .child(
+                // Right side - project path
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .children(
+                        self.project_path
+                            .as_ref()
+                            .map(|path| path.display().to_string()),
+                    ),
+            )
     }
 }
 

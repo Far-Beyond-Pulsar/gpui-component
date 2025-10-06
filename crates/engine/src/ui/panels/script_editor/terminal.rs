@@ -75,7 +75,7 @@ impl TerminalTab {
         }
     }
 
-    fn navigate_history_up(&mut self, cx: &mut Context<Terminal>) {
+    fn navigate_history_up(&mut self, window: &mut Window, cx: &mut Context<Terminal>) {
         if self.command_history.is_empty() {
             return;
         }
@@ -93,14 +93,13 @@ impl TerminalTab {
 
         self.history_index = Some(new_index);
         let command = self.command_history[new_index].clone();
-        // For now, skip setting command history text since it needs window parameter
-        // TODO: Implement proper command history with actions
-        // self.command_input.update(cx, |input, cx| {
-        //     input.set_value(&command, cx);
-        // });
+        // Set the command history text in the input
+        self.command_input.update(cx, |input, cx| {
+            input.set_value(&command, window, cx);
+        });
     }
 
-    fn navigate_history_down(&mut self, cx: &mut Context<Terminal>) {
+    fn navigate_history_down(&mut self, window: &mut Window, cx: &mut Context<Terminal>) {
         if self.command_history.is_empty() {
             return;
         }
@@ -123,11 +122,10 @@ impl TerminalTab {
             None => String::new(),
         };
 
-        // For now, skip setting command history text since it needs window parameter
-        // TODO: Implement proper command history with actions
-        // self.command_input.update(cx, |input, cx| {
-        //     input.set_value(&command, cx);
-        // });
+        // Set the command history text in the input
+        self.command_input.update(cx, |input, cx| {
+            input.set_value(&command, window, cx);
+        });
     }
 }
 
@@ -144,25 +142,23 @@ impl Terminal {
         };
 
         // Subscribe to input events for the first tab
-        terminal.subscribe_to_tab_events(0, cx);
+        terminal.subscribe_to_tab_events(0, window, cx);
 
         terminal
     }
 
-    fn subscribe_to_tab_events(&mut self, tab_index: usize, cx: &mut Context<Self>) {
+    fn subscribe_to_tab_events(&mut self, tab_index: usize, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(tab) = self.tabs.get(tab_index) {
             let command_input = tab.command_input.clone();
+            let tab_index_copy = tab_index;
             cx.subscribe(&command_input, move |this, _input, event: &InputEvent, cx| {
                 match event {
                     InputEvent::PressEnter { .. } => {
                         if let Some(active_tab) = this.tabs.get_mut(this.active_tab_index) {
                             let command = active_tab.command_input.read(cx).text().to_string();
                             this.execute_command(command, cx);
-                            // For now, skip clearing input since it needs window parameter
-                            // TODO: Implement proper input clearing with actions
-                            // active_tab.command_input.update(cx, |input, cx| {
-                            //     input.set_value("", cx);
-                            // });
+                            // Note: Clearing input would need window context, which isn't available here
+                            // The input will be cleared on the next focus or user can clear manually
                         }
                     },
                     _ => {}
@@ -171,11 +167,21 @@ impl Terminal {
         }
     }
 
-    // TODO: Implement proper key handling using GPUI's action system
-    // For now, command history navigation is disabled until we implement actions
-    // fn handle_key_down(&mut self, event: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
-    //     // Key handling to be implemented with GPUI actions
-    // }
+    /// Handle key down for command history navigation
+    fn handle_key_down(&mut self, event: &gpui::KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if let Some(active_tab) = self.tabs.get_mut(self.active_tab_index) {
+            if event.keystroke.key == "up" && event.keystroke.modifiers == gpui::Modifiers::default() {
+                active_tab.navigate_history_up(window, cx);
+                cx.notify();
+                return true;
+            } else if event.keystroke.key == "down" && event.keystroke.modifiers == gpui::Modifiers::default() {
+                active_tab.navigate_history_down(window, cx);
+                cx.notify();
+                return true;
+            }
+        }
+        false
+    }
 
     pub fn toggle_visibility(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.is_visible = !self.is_visible;
@@ -194,7 +200,7 @@ impl Terminal {
         self.active_tab_index = self.tabs.len() - 1;
 
         // Subscribe to events for the new tab
-        self.subscribe_to_tab_events(self.active_tab_index, cx);
+        self.subscribe_to_tab_events(self.active_tab_index, window, cx);
 
         self.next_tab_id += 1;
         cx.notify();

@@ -7,6 +7,7 @@ pub mod menu;
 pub mod panels;
 pub mod project_selector;
 pub mod rainbow_engine_final;
+pub mod rust_analyzer_manager;
 pub mod settings_screen;
 pub mod settings_window;
 pub mod shared;
