@@ -1283,7 +1283,7 @@ impl NodeGraphRenderer {
 
         // Calculate pin position in container coordinates (same as mouse events)
         let node_screen_pos = Self::graph_to_screen_pos(node.position, graph);
-        let header_height = 40.0 * graph.zoom_level; // Scaled height of node header
+        let header_height = 60.0 * graph.zoom_level; // Adjusted: actual header with padding is ~60px
         let pin_size = 12.0 * graph.zoom_level; // Scaled size of pin
         let pin_gap = 4.0 * graph.zoom_level; // Gap between pin rows (matches render_node_pins)
         let pin_spacing = pin_size + pin_gap; // Total vertical spacing per pin row
