@@ -59,7 +59,11 @@ pub struct RustAnalyzerManager {
     request_id: Arc<Mutex<i64>>,
     /// Progress updates channel receiver
     progress_rx: Option<Receiver<ProgressUpdate>>,
+    /// Pending request callbacks
+    pending_requests: Arc<Mutex<HashMap<i64, std::sync::mpsc::Sender<serde_json::Value>>>>,
 }
+
+use std::collections::HashMap;
 
 impl EventEmitter<AnalyzerEvent> for RustAnalyzerManager {}
 
@@ -80,6 +84,7 @@ impl RustAnalyzerManager {
             last_update: None,
             request_id: Arc::new(Mutex::new(0)),
             progress_rx: None,
+            pending_requests: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -146,6 +151,7 @@ impl RustAnalyzerManager {
         let process_arc = self.process.clone();
         let stdin_arc = self.stdin.clone();
         let request_id_arc = self.request_id.clone();
+        let pending_requests_arc = self.pending_requests.clone();
 
         cx.spawn_in(window, async move |manager, cx| {
             // Spawn the process in a background thread
@@ -153,6 +159,7 @@ impl RustAnalyzerManager {
             let progress_tx_for_spawn = progress_tx.clone();
             let process_arc_clone = process_arc.clone();
             let stdin_arc_clone = stdin_arc.clone();
+            let pending_requests_clone = pending_requests_arc.clone();
             let spawn_result = std::thread::spawn(move || {
                 Self::spawn_process_blocking(
                     &analyzer_path,
@@ -160,6 +167,7 @@ impl RustAnalyzerManager {
                     process_arc_clone,
                     stdin_arc_clone,
                     progress_tx_for_spawn,
+                    pending_requests_clone,
                 )
             }).join();
 
@@ -228,6 +236,7 @@ impl RustAnalyzerManager {
         process_arc: Arc<Mutex<Option<Child>>>,
         stdin_arc: Arc<Mutex<Option<std::process::ChildStdin>>>,
         progress_tx: Sender<ProgressUpdate>,
+        pending_requests: Arc<Mutex<HashMap<i64, Sender<serde_json::Value>>>>,
     ) -> Result<()> {
         println!("Spawning rust-analyzer process...");
         println!("  Binary: {:?}", analyzer_path);
@@ -261,6 +270,7 @@ impl RustAnalyzerManager {
         // Monitor stdout for LSP messages in a thread
         if let Some(stdout) = child.stdout.take() {
             let progress_tx_stdout = progress_tx.clone();
+            let pending_requests_clone = Arc::clone(&pending_requests);
             thread::spawn(move || {
                 let mut reader = BufReader::new(stdout);
                 let mut buffer = String::new();
@@ -296,6 +306,39 @@ impl RustAnalyzerManager {
                     let mut content_buffer = vec![0u8; content_len];
                     if let Ok(_) = std::io::Read::read_exact(&mut reader, &mut content_buffer) {
                         if let Ok(content) = String::from_utf8(content_buffer) {
+                            // Try to parse as JSON first
+                            if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&content) {
+                                // Check if this is a response to a pending request
+                                if let Some(id) = msg.get("id").and_then(|id| id.as_i64()) {
+                                    if let Ok(mut pending) = pending_requests_clone.lock() {
+                                        if let Some(tx) = pending.remove(&id) {
+                                            let _ = tx.send(msg.clone());
+                                            continue; // Don't process as a notification
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Otherwise handle as notification/progress
+                            Self::handle_lsp_message(&content, &progress_tx_stdout);
+                        }
+                    }
+                }
+                eprintln!("❌ rust-analyzer stdout stream ended");
+            });
+        }
+                                // Check if this is a response to a pending request
+                                if let Some(id) = msg.get("id").and_then(|id| id.as_i64()) {
+                                    if let Ok(pending) = pending_requests.lock() {
+                                        if let Some(tx) = pending.get(&id) {
+                                            let _ = tx.send(msg.clone());
+                                            continue; // Don't process as a notification
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Otherwise handle as notification/progress
                             Self::handle_lsp_message(&content, &progress_tx_stdout);
                         }
                     }
@@ -431,6 +474,13 @@ impl RustAnalyzerManager {
     fn handle_lsp_message(content: &str, progress_tx: &Sender<ProgressUpdate>) {
         // Try to parse as JSON
         if let Ok(msg) = serde_json::from_str::<Value>(content) {
+            // Check if it's a response to a request
+            if let Some(id) = msg.get("id").and_then(|id| id.as_i64()) {
+                // This is a response - we handle it via the pending_requests mechanism
+                // The send_request method handles receiving responses via channels
+                return;
+            }
+            
             if let Some(method) = msg.get("method").and_then(|m| m.as_str()) {
                 match method {
                     "$/progress" => {
@@ -522,13 +572,6 @@ impl RustAnalyzerManager {
                         // Other notifications
                     }
                 }
-            } else if let Some(_id) = msg.get("id") {
-                // Response to a request
-                if let Some(_result) = msg.get("result") {
-                    println!("✓ LSP response received");
-                } else if let Some(error) = msg.get("error") {
-                    eprintln!("❌ LSP error: {:?}", error);
-                }
             }
         }
     }
@@ -581,6 +624,12 @@ impl RustAnalyzerManager {
         {
             let mut stdin_lock = self.stdin.lock().unwrap();
             *stdin_lock = None;
+        }
+
+        // Clear pending requests
+        {
+            let mut pending = self.pending_requests.lock().unwrap();
+            pending.clear();
         }
 
         // Then kill the process
@@ -731,6 +780,62 @@ impl RustAnalyzerManager {
             Ok(())
         } else {
             Err(anyhow!("stdin not available"))
+        }
+    }
+
+    /// Send a request to rust-analyzer and wait for response
+    pub fn send_request(&self, method: &str, params: Value) -> Result<Value> {
+        if !self.is_running() {
+            return Err(anyhow!("rust-analyzer is not running"));
+        }
+
+        // Generate request ID
+        let mut req_id = self.request_id.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+        *req_id += 1;
+        let id = *req_id;
+        drop(req_id);
+
+        // Create channel for this request's response
+        let (response_tx, response_rx) = channel();
+
+        // Register the pending request
+        {
+            let mut pending = self.pending_requests.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+            pending.insert(id, response_tx);
+        }
+
+        // Send the request
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params
+        });
+
+        let mut stdin_lock = self.stdin.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+        if let Some(stdin) = stdin_lock.as_mut() {
+            let content = serde_json::to_string(&request)?;
+            let message = format!("Content-Length: {}\r\n\r\n{}", content.len(), content);
+
+            stdin.write_all(message.as_bytes())?;
+            stdin.flush()?;
+        } else {
+            // Remove from pending since we failed
+            let mut pending = self.pending_requests.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+            pending.remove(&id);
+            return Err(anyhow!("stdin not available"));
+        }
+        drop(stdin_lock);
+
+        // Wait for response with timeout
+        match response_rx.recv_timeout(Duration::from_secs(5)) {
+            Ok(response) => Ok(response),
+            Err(e) => {
+                // Remove from pending on timeout
+                let mut pending = self.pending_requests.lock().map_err(|_| anyhow!("Lock error"))?;
+                pending.remove(&id);
+                Err(anyhow!("Request timeout: {}", e))
+            }
         }
     }
 
