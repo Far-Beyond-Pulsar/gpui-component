@@ -1,10 +1,12 @@
 mod file_explorer;
 mod text_editor;
 mod terminal;
+mod autocomplete_integration;
 
 pub use file_explorer::FileExplorer;
 pub use text_editor::TextEditor;
 pub use terminal::Terminal;
+pub use autocomplete_integration::*;
 
 use std::path::PathBuf;
 use gpui::{*, prelude::FluentBuilder};

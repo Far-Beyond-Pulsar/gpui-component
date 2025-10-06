@@ -8,11 +8,15 @@ mod code_actions;
 mod completions;
 mod definitions;
 mod hover;
+mod autocomplete;
+mod rust_analyzer;
 
 pub use code_actions::*;
 pub use completions::*;
 pub use definitions::*;
 pub use hover::*;
+pub use autocomplete::*;
+pub use rust_analyzer::*;
 
 /// LSP ServerCapabilities
 ///

@@ -118,6 +118,18 @@ impl TextEditor {
             state
         });
 
+        // Set up autocomplete for the file
+        let workspace_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        input_state.update(cx, |state, cx| {
+            super::setup_autocomplete_for_file(
+                state,
+                path.clone(),
+                workspace_root,
+                window,
+                cx,
+            );
+        });
+
         let setup_time = setup_start.elapsed();
         println!(
             "⚡ Editor setup completed in {:.2}ms",
@@ -158,6 +170,13 @@ impl TextEditor {
                     "📊 Line cache initialized - capacity: {} lines",
                     state.line_cache().len()
                 );
+                
+                // Log autocomplete configuration
+                if state.lsp.completion_provider.is_some() {
+                    println!("✓ Autocomplete enabled with comprehensive provider");
+                } else {
+                    println!("ℹ️  No autocomplete provider configured");
+                }
             }
         }
         

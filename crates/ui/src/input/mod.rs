@@ -14,6 +14,7 @@ pub(crate) mod popovers;
 mod rope_ext;
 mod search;
 mod state;
+mod tab_completion;
 mod text_input;
 mod text_wrapper;
 mod virtual_editor_utils;
@@ -27,6 +28,7 @@ pub use mode::TabSize;
 pub use number_input::{NumberInput, NumberInputEvent, StepAction};
 pub use otp_input::*;
 pub use state::*;
+pub use tab_completion::*;
 pub use text_input::*;
 pub use virtual_editor_utils::{VirtualEditorConfig, calculate_visible_range, calculate_content_size};
 
