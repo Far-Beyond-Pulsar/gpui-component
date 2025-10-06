@@ -284,6 +284,7 @@ impl RenderOnce for TextInput {
             style: gpui::FontStyle::Normal,
             features: gpui::FontFeatures::default(),
             fallbacks: None,
+        };
         
         let font_size = window.text_style().font_size.to_pixels(window.rem_size());
 
