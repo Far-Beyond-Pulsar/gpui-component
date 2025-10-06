@@ -274,9 +274,16 @@ impl FileExplorer {
     
     /// Get viewport height from last measured bounds, or use fallback
     fn get_viewport_height(&self) -> Pixels {
-        self.last_viewport_bounds
+        let height = self.last_viewport_bounds
             .map(|bounds| bounds.size.height)
-            .unwrap_or(px(600.0)) // Fallback for first render
+            .unwrap_or(px(600.0)); // Fallback for first render
+        
+        // Debug: print when using fallback
+        if self.last_viewport_bounds.is_none() {
+            println!("⚠️  Using fallback viewport height: 600px");
+        }
+        
+        height
     }
     
     /// Get viewport width from last measured bounds, or use fallback
@@ -296,9 +303,8 @@ impl FileExplorer {
         if size_changed {
             self.last_window_size = Some(window_size);
             // Estimate viewport bounds based on window size
-            // The file explorer typically takes up a portion of the left side
-            // We'll update this more accurately, but this gives us a reasonable estimate
-            let estimated_height = window_size.height * 0.8; // Account for header/footer
+            // Account for header (48px) and footer (36px) = 84px total chrome
+            let estimated_height = (window_size.height - px(84.0)).max(px(200.0));
             let estimated_width = px(250.0); // Typical sidebar width
             
             self.last_viewport_bounds = Some(Bounds {
@@ -450,6 +456,12 @@ impl FileExplorer {
         // Y: Can scroll from 0 (top) to -(total_height - viewport_height) (bottom)
         let max_scroll_y = px(0.0);
         let min_scroll_y = -(total_height - viewport_height).max(px(0.0));
+        
+        // Debug output
+        if self.visible_entries.len() > 10 {
+            println!("📊 Scroll clamp: total_height={:.0}px, viewport={:.0}px, range=[{:.0}, {:.0}]",
+                total_height, viewport_height, min_scroll_y, max_scroll_y);
+        }
         
         // X: No horizontal scrolling needed, keep at 0
         let clamped_offset = gpui::point(
