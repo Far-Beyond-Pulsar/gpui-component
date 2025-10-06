@@ -1171,10 +1171,18 @@ impl InputState {
 
     pub(super) fn indent_inline(
         &mut self,
-        _: &IndentInline,
+        action: &IndentInline,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Check if completion menu is open - if so, accept the completion instead
+        if self.is_context_menu_open(cx) {
+            if self.handle_action_for_context_menu(Box::new(action.clone()), window, cx) {
+                return;
+            }
+        }
+        
+        // Otherwise, perform normal indentation
         self.indent(false, window, cx);
     }
 

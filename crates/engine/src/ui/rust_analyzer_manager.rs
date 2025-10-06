@@ -28,6 +28,7 @@ pub enum AnalyzerEvent {
     IndexingProgress { progress: f32, message: String },
     Ready,
     Error(String),
+    Diagnostics(Vec<crate::ui::problems_drawer::Diagnostic>),
 }
 
 #[derive(Debug)]
@@ -36,6 +37,7 @@ enum ProgressUpdate {
     Ready,
     Error(String),
     ProcessExited(ExitStatus),
+    Diagnostics(Vec<crate::ui::problems_drawer::Diagnostic>),
 }
 
 pub struct RustAnalyzerManager {
@@ -464,6 +466,55 @@ impl RustAnalyzerManager {
                             }
                         }
                     }
+                    "textDocument/publishDiagnostics" => {
+                        // Handle diagnostic notifications
+                        if let Some(params) = msg.get("params") {
+                            if let Some(diagnostics_array) = params.get("diagnostics").and_then(|d| d.as_array()) {
+                                if let Some(uri) = params.get("uri").and_then(|u| u.as_str()) {
+                                    let mut diagnostics = Vec::new();
+                                    
+                                    for diag in diagnostics_array {
+                                        if let (Some(range), Some(message)) = (
+                                            diag.get("range"),
+                                            diag.get("message").and_then(|m| m.as_str())
+                                        ) {
+                                            if let (Some(start), Some(severity_num)) = (
+                                                range.get("start"),
+                                                diag.get("severity").and_then(|s| s.as_u64())
+                                            ) {
+                                                let line = start.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as usize + 1;
+                                                let column = start.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize + 1;
+                                                
+                                                let severity = match severity_num {
+                                                    1 => crate::ui::problems_drawer::DiagnosticSeverity::Error,
+                                                    2 => crate::ui::problems_drawer::DiagnosticSeverity::Warning,
+                                                    3 => crate::ui::problems_drawer::DiagnosticSeverity::Information,
+                                                    4 => crate::ui::problems_drawer::DiagnosticSeverity::Hint,
+                                                    _ => crate::ui::problems_drawer::DiagnosticSeverity::Information,
+                                                };
+                                                
+                                                let file_path = uri.trim_start_matches("file:///").replace("%20", " ");
+                                                
+                                                diagnostics.push(crate::ui::problems_drawer::Diagnostic {
+                                                    file_path,
+                                                    line,
+                                                    column,
+                                                    severity,
+                                                    message: message.to_string(),
+                                                    source: Some("rust-analyzer".to_string()),
+                                                });
+                                            }
+                                        }
+                                    }
+                                    
+                                    if !diagnostics.is_empty() {
+                                        println!("🔍 Received {} diagnostics for: {}", diagnostics.len(), uri);
+                                        let _ = progress_tx.send(ProgressUpdate::Diagnostics(diagnostics));
+                                    }
+                                }
+                            }
+                        }
+                    }
                     "window/workDoneProgress/create" => {
                         println!("📊 Work done progress created");
                     }
@@ -569,6 +620,120 @@ impl RustAnalyzerManager {
         )
     }
 
+    /// Send didOpen notification for a file
+    pub fn did_open_file(&self, file_path: &PathBuf, content: &str, language_id: &str) -> Result<()> {
+        if !self.is_running() {
+            return Ok(()); // Silently ignore if not running
+        }
+
+        let uri = self.path_to_uri(file_path);
+        let notification = json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": language_id,
+                    "version": 1,
+                    "text": content
+                }
+            }
+        });
+
+        self.send_notification(notification)
+    }
+
+    /// Send didChange notification for a file
+    pub fn did_change_file(&self, file_path: &PathBuf, content: &str, version: i32) -> Result<()> {
+        if !self.is_running() {
+            return Ok(()); // Silently ignore if not running
+        }
+
+        let uri = self.path_to_uri(file_path);
+        let notification = json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didChange",
+            "params": {
+                "textDocument": {
+                    "uri": uri,
+                    "version": version
+                },
+                "contentChanges": [{
+                    "text": content
+                }]
+            }
+        });
+
+        self.send_notification(notification)
+    }
+
+    /// Send didSave notification for a file (triggers re-analysis)
+    pub fn did_save_file(&self, file_path: &PathBuf, content: &str) -> Result<()> {
+        if !self.is_running() {
+            return Ok(()); // Silently ignore if not running
+        }
+
+        let uri = self.path_to_uri(file_path);
+        let notification = json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didSave",
+            "params": {
+                "textDocument": {
+                    "uri": uri
+                },
+                "text": content
+            }
+        });
+
+        println!("💾 Notifying rust-analyzer of file save: {:?}", file_path);
+        self.send_notification(notification)
+    }
+
+    /// Send didClose notification for a file
+    pub fn did_close_file(&self, file_path: &PathBuf) -> Result<()> {
+        if !self.is_running() {
+            return Ok(()); // Silently ignore if not running
+        }
+
+        let uri = self.path_to_uri(file_path);
+        let notification = json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didClose",
+            "params": {
+                "textDocument": {
+                    "uri": uri
+                }
+            }
+        });
+
+        self.send_notification(notification)
+    }
+
+    /// Convert a file path to a URI
+    fn path_to_uri(&self, path: &PathBuf) -> String {
+        let path_str = path.to_string_lossy().replace("\\", "/");
+        if path_str.starts_with("C:/") || path_str.starts_with("c:/") {
+            format!("file:///{}", path_str)
+        } else {
+            format!("file://{}", path_str)
+        }
+    }
+
+    /// Send a notification to rust-analyzer
+    fn send_notification(&self, notification: Value) -> Result<()> {
+        let mut stdin_lock = self.stdin.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+        if let Some(stdin) = stdin_lock.as_mut() {
+            let content = serde_json::to_string(&notification)?;
+            let message = format!("Content-Length: {}\r\n\r\n{}", content.len(), content);
+
+            stdin.write_all(message.as_bytes())?;
+            stdin.flush()?;
+            Ok(())
+        } else {
+            Err(anyhow!("stdin not available"))
+        }
+    }
+
     /// Update progress from the background thread (called from UI thread on each frame)
     pub fn update_progress_from_thread(&mut self, cx: &mut Context<Self>) {
         // Check for progress updates from the channel
@@ -601,6 +766,10 @@ impl RustAnalyzerManager {
                         self.initialized = false;
                         cx.emit(AnalyzerEvent::Error(error_msg));
                         cx.notify();
+                    }
+                    ProgressUpdate::Diagnostics(diagnostics) => {
+                        cx.emit(AnalyzerEvent::Diagnostics(diagnostics));
+                        // Don't notify here, let the app handle it
                     }
                 }
             }

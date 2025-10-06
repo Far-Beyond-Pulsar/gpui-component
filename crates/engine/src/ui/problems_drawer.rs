@@ -6,6 +6,7 @@ use gpui_component::{
     list::{List, ListDelegate},
     IndexPath, Selectable,
 };
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug)]
@@ -17,6 +18,15 @@ pub struct Diagnostic {
     pub message: String,
     pub source: Option<String>,
 }
+
+#[derive(Clone, Debug)]
+pub struct NavigateToDiagnostic {
+    pub file_path: PathBuf,
+    pub line: usize,
+    pub column: usize,
+}
+
+impl EventEmitter<NavigateToDiagnostic> for ProblemsDrawer {}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DiagnosticSeverity {
@@ -199,8 +209,20 @@ impl ListDelegate for ProblemsListDelegate {
             )
     }
 
-    fn confirm(&mut self, _secondary: bool, _window: &mut Window, _cx: &mut Context<List<Self>>) {
+    fn confirm(&mut self, _secondary: bool, _window: &mut Window, cx: &mut Context<List<Self>>) {
         // Handle clicking on a diagnostic to navigate to it
+        if let Some(index) = self.drawer.read(cx).selected_index {
+            if let Some(diagnostic) = self.diagnostics.get(index.row) {
+                let file_path = PathBuf::from(&diagnostic.file_path);
+                self.drawer.update(cx, |drawer, cx| {
+                    cx.emit(NavigateToDiagnostic {
+                        file_path,
+                        line: diagnostic.line,
+                        column: diagnostic.column,
+                    });
+                });
+            }
+        }
     }
 
     fn set_selected_index(

@@ -289,7 +289,9 @@ impl CompletionMenu {
         }
 
         // Use Tab to accept completions (like most editors)
-        if action.partial_eq(&super::super::tab_completion::TabComplete) {
+        // Both TabComplete and IndentInline should accept the completion
+        if action.partial_eq(&super::super::tab_completion::TabComplete) 
+            || action.partial_eq(&input::IndentInline) {
             self.on_action_tab(window, cx);
             cx.stop_propagation(); // Prevent Tab from inserting a tab character
         } else if action.partial_eq(&input::Escape) {

@@ -1,10 +1,10 @@
 mod file_explorer;
-mod text_editor;
+pub mod text_editor;
 mod terminal;
 mod autocomplete_integration;
 
 pub use file_explorer::FileExplorer;
-pub use text_editor::TextEditor;
+pub use text_editor::{TextEditor, TextEditorEvent};
 pub use terminal::Terminal;
 pub use autocomplete_integration::*;
 
@@ -41,6 +41,11 @@ impl ScriptEditor {
         let file_explorer = cx.new(|cx| FileExplorer::new(window, cx));
         let text_editor = cx.new(|cx| TextEditor::new(window, cx));
         let terminal = cx.new(|cx| Terminal::new(window, cx));
+
+        // Forward text editor events
+        cx.subscribe(&text_editor, |this: &mut Self, _editor, event: &TextEditorEvent, cx| {
+            cx.emit(event.clone());
+        }).detach();
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -103,6 +108,7 @@ impl Focusable for ScriptEditor {
 }
 
 impl EventEmitter<PanelEvent> for ScriptEditor {}
+impl EventEmitter<crate::ui::panels::script_editor::text_editor::TextEditorEvent> for ScriptEditor {}
 
 impl Render for ScriptEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

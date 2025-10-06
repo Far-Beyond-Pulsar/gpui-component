@@ -16,6 +16,9 @@ pub enum TextEditorEvent {
     OpenFolderRequested(PathBuf),
     RunScriptRequested(PathBuf, String),
     DebugScriptRequested(PathBuf),
+    FileOpened { path: PathBuf, content: String },
+    FileSaved { path: PathBuf, content: String },
+    FileClosed { path: PathBuf },
 }
 
 #[derive(Clone)]
@@ -307,6 +310,12 @@ impl TextEditor {
         
         self.subscriptions.push(subscription);
         
+        // Emit event so rust-analyzer can be notified
+        cx.emit(TextEditorEvent::FileOpened {
+            path: path.clone(),
+            content: content.clone(),
+        });
+        
         // Log cache stats after opening
         if let Some(index) = self.current_file_index {
             if let Some(file) = self.open_files.get(index) {
@@ -375,7 +384,13 @@ impl TextEditor {
 
     pub fn close_file(&mut self, index: usize, _window: &mut Window, cx: &mut Context<Self>) {
         if index < self.open_files.len() {
+            let file_path = self.open_files[index].path.clone();
             self.open_files.remove(index);
+
+            // Emit event so rust-analyzer can be notified
+            cx.emit(TextEditorEvent::FileClosed {
+                path: file_path,
+            });
 
             // Adjust current file index
             if let Some(current) = self.current_file_index {
@@ -416,6 +431,14 @@ impl TextEditor {
                 // Write to file
                 if let Ok(_) = fs::write(&open_file.path, content.as_str()) {
                     open_file.is_modified = false;
+                    println!("💾 File saved: {:?}", open_file.path);
+                    
+                    // Emit event so rust-analyzer can be notified
+                    cx.emit(TextEditorEvent::FileSaved {
+                        path: open_file.path.clone(),
+                        content: content.to_string(),
+                    });
+                    
                     cx.notify();
                     return true;
                 }

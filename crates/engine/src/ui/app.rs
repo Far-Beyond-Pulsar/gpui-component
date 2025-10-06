@@ -125,6 +125,7 @@ impl PulsarApp {
 
         // Create problems drawer
         let problems_drawer = cx.new(|cx| ProblemsDrawer::new(window, cx));
+        cx.subscribe_in(&problems_drawer, window, Self::on_navigate_to_diagnostic).detach();
 
         // Create rust analyzer manager
         let rust_analyzer = cx.new(|cx| RustAnalyzerManager::new(window, cx));
@@ -196,6 +197,12 @@ impl PulsarApp {
             AnalyzerEvent::Error(e) => {
                 self.analyzer_status_text = format!("Error: {}", e);
                 cx.notify();
+            }
+            AnalyzerEvent::Diagnostics(diagnostics) => {
+                // Update problems drawer with new diagnostics
+                self.problems_drawer.update(cx, |drawer, cx| {
+                    drawer.set_diagnostics(diagnostics.clone(), cx);
+                });
             }
         }
     }
@@ -290,6 +297,22 @@ impl PulsarApp {
         self.toggle_problems(window, cx);
     }
 
+    fn on_navigate_to_diagnostic(
+        &mut self,
+        _drawer: &Entity<ProblemsDrawer>,
+        event: &super::problems_drawer::NavigateToDiagnostic,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        println!("📂 Navigating to diagnostic: {:?} at line {}", event.file_path, event.line);
+        
+        // Open the file in the script editor
+        self.open_script_tab(event.file_path.clone(), window, cx);
+        
+        // TODO: Once the file is open, jump to the specific line and column
+        // This requires adding a method to the TextEditor to navigate to a position
+    }
+
     /// Open a blueprint editor tab for the given class path
     fn open_blueprint_tab(
         &mut self,
@@ -375,6 +398,9 @@ impl PulsarApp {
         // Create new script editor tab
         let script_editor = cx.new(|cx| ScriptEditorPanel::new(window, cx));
 
+        // Subscribe to text editor events to notify rust-analyzer
+        cx.subscribe_in(&script_editor, window, Self::on_text_editor_event).detach();
+
         // Open the specific file
         script_editor.update(cx, |editor, cx| {
             editor.open_file(file_path, window, cx);
@@ -387,6 +413,50 @@ impl PulsarApp {
 
         // Store the script editor reference
         self.script_editor = Some(script_editor);
+    }
+
+    fn on_text_editor_event(
+        &mut self,
+        _editor: &Entity<ScriptEditorPanel>,
+        event: &super::panels::TextEditorEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use super::panels::TextEditorEvent;
+        
+        match event {
+            TextEditorEvent::FileOpened { path, content } => {
+                // Notify rust-analyzer of file opening
+                if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    self.rust_analyzer.update(cx, |analyzer, cx| {
+                        if let Err(e) = analyzer.did_open_file(path, content, "rust") {
+                            eprintln!("Failed to notify rust-analyzer of file open: {}", e);
+                        }
+                    });
+                }
+            }
+            TextEditorEvent::FileSaved { path, content } => {
+                // Notify rust-analyzer of file save (triggers re-analysis)
+                if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    self.rust_analyzer.update(cx, |analyzer, cx| {
+                        if let Err(e) = analyzer.did_save_file(path, content) {
+                            eprintln!("Failed to notify rust-analyzer of file save: {}", e);
+                        }
+                    });
+                }
+            }
+            TextEditorEvent::FileClosed { path } => {
+                // Notify rust-analyzer of file closing
+                if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    self.rust_analyzer.update(cx, |analyzer, cx| {
+                        if let Err(e) = analyzer.did_close_file(path) {
+                            eprintln!("Failed to notify rust-analyzer of file close: {}", e);
+                        }
+                    });
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Open a path in the appropriate editor
