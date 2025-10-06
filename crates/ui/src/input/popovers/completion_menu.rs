@@ -293,7 +293,7 @@ impl CompletionMenu {
         if action.partial_eq(&super::super::tab_completion::TabComplete) 
             || action.partial_eq(&input::IndentInline) {
             self.on_action_tab(window, cx);
-            cx.stop_propagation(); // Prevent Tab from inserting a tab character
+            return true; // Return immediately to prevent any further action handling
         } else if action.partial_eq(&input::Escape) {
             self.on_action_escape(window, cx);
         } else if action.partial_eq(&input::MoveUp) {

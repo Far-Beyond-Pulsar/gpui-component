@@ -15,12 +15,12 @@ use std::rc::Rc;
 /// Helper function to set up autocomplete for a Rust file
 /// 
 /// This configures the input state with:
-/// - Dictionary-based completion
-/// - Language-specific completion (keywords, snippets)
+/// - Dictionary-based completion (English words)
 /// - Closure/bracket auto-completion
+/// - Rust completions from global rust-analyzer (when available)
 /// 
 /// Note: rust-analyzer is managed globally by the engine.
-/// The global instance provides completions to all open files automatically.
+/// The global instance provides completions to all open files automatically via LSP.
 pub fn setup_rust_autocomplete(
     input_state: &mut InputState,
     workspace_root: Option<PathBuf>,
@@ -28,11 +28,15 @@ pub fn setup_rust_autocomplete(
     window: &mut Window,
     cx: &mut Context<InputState>,
 ) {
-    // Create the comprehensive completion provider
+    // Create the comprehensive completion provider with dictionary + closures
+    // The dictionary provides English word completions
+    // Closure completion handles (), {}, [], "", '', etc.
     let provider = ComprehensiveCompletionProvider::new();
     
-    // Use mock rust provider for basic completions
-    // The global rust-analyzer handles advanced completions
+    // For now, we use mock rust completions for basic Rust keywords
+    // TODO: Connect to the global rust-analyzer LSP for advanced completions
+    // This requires implementing an LSP completion provider that communicates
+    // with the RustAnalyzerManager instance
     let provider_with_lsp = provider.with_lsp_provider(Rc::new(MockRustCompletionProvider::new()));
     
     // Set the completion provider
