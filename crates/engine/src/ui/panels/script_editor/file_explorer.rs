@@ -5,6 +5,7 @@ use gpui::{*, prelude::FluentBuilder};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     h_flex,
+    scroll::Scrollbar,
     ActiveTheme as _, StyledExt, Sizable as _,
     IconName, Icon,
 };
@@ -22,9 +23,16 @@ pub struct FileExplorer {
     focus_handle: FocusHandle,
     project_root: Option<PathBuf>,
     file_tree: Vec<FileEntry>,
+    /// Flattened list of visible entries (after applying expansion states)
+    visible_entries: Vec<usize>, // Indices into file_tree
     expanded_folders: HashMap<PathBuf, bool>,
     selected_file: Option<PathBuf>,
     last_opened_file: Option<PathBuf>,
+    /// Scroll state for virtualization
+    scroll_handle: ScrollHandle,
+    scroll_state: gpui_component::scroll::ScrollbarState,
+    /// Item height in pixels (fixed for all items)
+    item_height: Pixels,
 }
 
 impl FileExplorer {
@@ -33,9 +41,13 @@ impl FileExplorer {
             focus_handle: cx.focus_handle(),
             project_root: None,
             file_tree: Vec::new(),
+            visible_entries: Vec::new(),
             expanded_folders: HashMap::new(),
             selected_file: None,
             last_opened_file: None,
+            scroll_handle: ScrollHandle::new(),
+            scroll_state: gpui_component::scroll::ScrollbarState::default(),
+            item_height: px(28.0), // Fixed height for each item
         }
     }
 
@@ -49,9 +61,54 @@ impl FileExplorer {
 
     fn refresh_file_tree(&mut self, _cx: &mut Context<Self>) {
         self.file_tree.clear();
+        self.visible_entries.clear();
+        
         if let Some(root) = self.project_root.clone() {
             self.scan_directory(&root, 0);
+            self.rebuild_visible_entries();
         }
+        
+        // Clamp scroll after refresh (file tree may have changed)
+        let current_offset = self.scroll_handle.offset();
+        self.set_scroll_offset_clamped(current_offset);
+    }
+    
+    /// Rebuild the flat list of visible entries based on expansion states
+    fn rebuild_visible_entries(&mut self) {
+        self.visible_entries.clear();
+        
+        for (idx, entry) in self.file_tree.iter().enumerate() {
+            // Check if this entry should be visible based on parent expansion
+            if self.is_entry_visible(idx) {
+                self.visible_entries.push(idx);
+            }
+        }
+    }
+    
+    /// Check if an entry is visible (all parents are expanded)
+    fn is_entry_visible(&self, entry_idx: usize) -> bool {
+        let entry = &self.file_tree[entry_idx];
+        
+        // Root level is always visible
+        if entry.depth == 0 {
+            return true;
+        }
+        
+        // Check if parent is expanded
+        if let Some(parent_path) = entry.path.parent() {
+            // Find parent in file tree
+            for (idx, potential_parent) in self.file_tree.iter().enumerate() {
+                if idx >= entry_idx {
+                    break; // Parent must come before child
+                }
+                
+                if potential_parent.path == parent_path {
+                    return potential_parent.is_expanded && self.is_entry_visible(idx);
+                }
+            }
+        }
+        
+        false
     }
 
     fn scan_directory(&mut self, dir: &Path, depth: usize) {
@@ -108,10 +165,23 @@ impl FileExplorer {
 
     fn toggle_folder(&mut self, path: &Path, _window: &mut Window, cx: &mut Context<Self>) {
         let is_expanded = self.expanded_folders.get(path).copied().unwrap_or(false);
-        println!("Toggling folder {:?} from {} to {}", path, is_expanded, !is_expanded);
         self.expanded_folders.insert(path.to_path_buf(), !is_expanded);
+        
+        // Update the file tree entry
+        for entry in &mut self.file_tree {
+            if entry.path == path {
+                entry.is_expanded = !is_expanded;
+                break;
+            }
+        }
+        
+        // Rebuild the file tree to reflect expansion changes
         self.refresh_file_tree(cx);
-        println!("File tree now has {} entries", self.file_tree.len());
+        
+        // Clamp scroll offset after tree changes (number of visible entries changed)
+        let current_offset = self.scroll_handle.offset();
+        self.set_scroll_offset_clamped(current_offset);
+        
         cx.notify();
     }
 
@@ -178,32 +248,70 @@ impl FileExplorer {
             }
         }
     }
-
-
-    fn get_root_entries(&self) -> Vec<&FileEntry> {
-        self.file_tree.iter().filter(|entry| entry.depth == 0).collect()
-    }
-
-    fn get_children_of(&self, parent_path: &std::path::Path) -> Vec<&FileEntry> {
-        self.file_tree.iter()
-            .filter(|entry| {
-                entry.path.parent() == Some(parent_path) && entry.depth > 0
-            })
-            .collect()
+    
+    /// Calculate which entries are visible in the viewport (virtualization)
+    fn calculate_visible_range(&self, scroll_offset: Pixels) -> (usize, usize, Pixels) {
+        // Assume a reasonable viewport height (will be more accurate with measured bounds)
+        let viewport_height = px(600.0); // Conservative estimate
+        
+        // Convert to float for division
+        let scroll_f = -scroll_offset;
+        let item_height_f = self.item_height;
+        
+        let start_index = ((scroll_f / item_height_f).floor().max(0.0)) as usize;
+        let visible_count = ((viewport_height / item_height_f).ceil() as usize) + 4; // +4 for buffer
+        let end_index = (start_index + visible_count).min(self.visible_entries.len());
+        
+        (start_index, end_index, viewport_height)
     }
 
     fn render_file_tree_content(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let scroll_offset = self.scroll_handle.offset();
+        let (start_idx, end_idx, _viewport_height) = self.calculate_visible_range(scroll_offset.y);
+        
+        // Total height of all items
+        let total_height = self.item_height * self.visible_entries.len() as f32;
+        
+        // Offset for virtualization
+        let offset_y = self.item_height * start_idx as f32;
+        
         div()
-            .p_2()
-            .child(self.render_file_tree_items(&self.get_root_entries(), cx))
-    }
-
-    fn render_file_tree_items(&self, entries: &[&FileEntry], cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .flex()
-            .flex_col()
-            .children(
-                entries.iter().map(|entry| self.render_file_item(entry, cx))
+            .relative()
+            .size_full()
+            .overflow_hidden()
+            .child(
+                // Visible items container with absolute positioning for virtualization
+                div()
+                    .absolute()
+                    .top(offset_y + scroll_offset.y)
+                    .left(scroll_offset.x)
+                    .w_full()
+                    .flex()
+                    .flex_col()
+                    .children(
+                        (start_idx..end_idx)
+                            .filter_map(|visible_idx| {
+                                self.visible_entries.get(visible_idx)
+                                    .and_then(|&tree_idx| self.file_tree.get(tree_idx))
+                                    .map(|entry| self.render_file_item(entry, cx))
+                            })
+                    )
+            )
+            .child(
+                // Scrollbar overlay
+                div()
+                    .absolute()
+                    .top_0()
+                    .right_0()
+                    .bottom_0()
+                    .w(px(12.0))
+                    .child(
+                        Scrollbar::vertical(&self.scroll_state, &self.scroll_handle)
+                            .scroll_size(gpui::Size {
+                                width: px(250.0), // Approximate width
+                                height: total_height,
+                            })
+                    )
             )
     }
 
@@ -212,52 +320,66 @@ impl FileExplorer {
         let path = entry.path.clone();
         let is_directory = entry.is_directory;
         let icon = self.get_file_icon(entry);
+        let indent = px(entry.depth as f32 * 16.0); // 16px per depth level
 
         div()
             .flex()
-            .flex_col()
+            .items_center()
+            .gap_2()
+            .h(self.item_height)
+            .pl(indent + px(12.0))
+            .pr_3()
+            .rounded_md()
+            .when(is_selected, |style| style.bg(cx.theme().accent))
+            .when(!is_selected, |style| {
+                style.hover(|style| style.bg(cx.theme().accent.opacity(0.1)))
+            })
+            .cursor_pointer()
+            .child(Icon::new(icon).size_4())
             .child(
                 div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .px_3()
-                    .py_1()
-                    .rounded_md()
-                    .when(is_selected, |style| style.bg(cx.theme().accent))
-                    .when(!is_selected, |style| {
-                        style.hover(|style| style.bg(cx.theme().accent.opacity(0.1)))
-                    })
-                    .cursor_pointer()
-                    .child(Icon::new(icon).size_4())
-                    .child(
-                        div()
-                            .text_sm()
-                            .when(is_selected, |style| style.text_color(cx.theme().accent_foreground))
-                            .when(!is_selected, |style| style.text_color(cx.theme().foreground))
-                            .child(entry.name.clone())
-                    )
-                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, window, cx| {
-                        if is_directory {
-                            this.toggle_folder(&path, window, cx);
-                        } else {
-                            this.select_file(path.clone(), window, cx);
-                            this.open_file_in_editor(path.clone(), window, cx);
-                        }
-                    }))
+                    .text_sm()
+                    .when(is_selected, |style| style.text_color(cx.theme().accent_foreground))
+                    .when(!is_selected, |style| style.text_color(cx.theme().foreground))
+                    .child(entry.name.clone())
             )
-            .when(is_directory && entry.is_expanded, |container| {
-                let children = self.get_children_of(&entry.path);
-                if !children.is_empty() {
-                    container.child(
-                        div()
-                            .ml_4()
-                            .child(self.render_file_tree_items(&children, cx))
-                    )
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, window, cx| {
+                if is_directory {
+                    this.toggle_folder(&path, window, cx);
                 } else {
-                    container
+                    this.select_file(path.clone(), window, cx);
+                    this.open_file_in_editor(path.clone(), window, cx);
                 }
-            })
+            }))
+    }
+    
+    fn on_scroll_wheel(&mut self, event: &ScrollWheelEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        let delta = event.delta.pixel_delta(px(20.0));
+        let current_offset = self.scroll_handle.offset();
+        let new_offset = current_offset + delta;
+        
+        self.set_scroll_offset_clamped(new_offset);
+        cx.notify();
+    }
+    
+    /// Set scroll offset with bounds checking to prevent out-of-bounds scrolling
+    fn set_scroll_offset_clamped(&mut self, offset: gpui::Point<Pixels>) {
+        // Calculate bounds for scrolling
+        let total_height = self.item_height * self.visible_entries.len() as f32;
+        let viewport_height = px(600.0); // Same as in calculate_visible_range
+        
+        // Clamp scroll offset to valid range
+        // Y: Can scroll from 0 (top) to -(total_height - viewport_height) (bottom)
+        let max_scroll_y = px(0.0);
+        let min_scroll_y = -(total_height - viewport_height).max(px(0.0));
+        
+        // X: No horizontal scrolling needed, keep at 0
+        let clamped_offset = gpui::point(
+            px(0.0), // No horizontal scroll
+            offset.y.max(min_scroll_y).min(max_scroll_y)
+        );
+        
+        self.scroll_handle.set_offset(clamped_offset);
     }
 }
 
@@ -269,6 +391,8 @@ impl Focusable for FileExplorer {
 
 impl Render for FileExplorer {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let file_tree_empty = self.file_tree.is_empty();
+        
         div()
             .size_full()
             .flex()
@@ -343,10 +467,13 @@ impl Render for FileExplorer {
                     )
             )
             .child(
-                // Scrollable content area
+                // Scrollable content area with virtualization
                 div()
+                    .id("file-explorer-content")
                     .flex_1()
-                    .when(self.file_tree.is_empty(), |content| {
+                    .overflow_hidden()
+                    .on_scroll_wheel(cx.listener(Self::on_scroll_wheel))
+                    .when(file_tree_empty, |content| {
                         content.child(
                             div()
                                 .p_4()
@@ -375,7 +502,8 @@ impl Render for FileExplorer {
                                 )
                         )
                     })
-                    .when(!self.file_tree.is_empty(), |content| {
+                    .when(!file_tree_empty, |content| {
+                        // Virtualized scrollable list
                         content.child(self.render_file_tree_content(cx))
                     })
             )
