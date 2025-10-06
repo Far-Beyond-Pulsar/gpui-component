@@ -7,4 +7,5 @@
 //! classes by creating new classes in the enging UI and they will
 //! be automatically included here.
 
-pub mod ExampleClass;
+pub mod ExampleClass;
+pub mod MyBP;

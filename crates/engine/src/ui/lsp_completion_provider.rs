@@ -53,31 +53,18 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
         window: &mut Window,
         cx: &mut Context<InputState>,
     ) -> Task<Result<lsp_types::CompletionResponse>> {
-        println!("🔍 GlobalRustAnalyzerCompletionProvider::completions called for {:?} at offset {}", 
-            self.file_path.file_name(), offset);
-        
-        // Check if analyzer is ready
+        // Check if analyzer is ready (fast check)
         let is_ready = self.analyzer.read(cx).is_running();
-        println!("   rust-analyzer running: {}", is_ready);
         if !is_ready {
-            println!("   ⚠️  rust-analyzer not ready, returning empty completions");
             return Task::ready(Ok(lsp_types::CompletionResponse::Array(vec![])));
         }
 
-        // Convert offset to LSP position
-        let position = text.offset_to_position(offset);
-        println!("   LSP position: line {}, character {}", position.line, position.character);
-
-        // Create completion params
+        // Clone only what we need - DO NOT convert rope to string here (blocks UI!)
         let uri = self.path_to_uri();
-        println!("   File URI: {}", uri);
-        
-        // Get the full current content to ensure synchronization
-        let content = text.to_string();
         let file_path = self.file_path.clone();
-        
-        // Request completions from rust-analyzer
         let analyzer = self.analyzer.clone();
+        let text_clone = text.clone(); // Rope clone is cheap (it's a rope, not a copy)
+        
         let trigger_kind = match trigger.trigger_kind {
             lsp_types::CompletionTriggerKind::INVOKED => 1,
             lsp_types::CompletionTriggerKind::TRIGGER_CHARACTER => 2,
@@ -85,32 +72,28 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
             _ => 1,
         };
         
-        println!("   Trigger kind: {}", trigger_kind);
-        
+        // Spawn immediately - do ALL potentially slow work in the async block
         cx.spawn_in(window, async move |_, cx| {
-            println!("🔄 Syncing file content with rust-analyzer before completion...");
-            // First, ensure the file is synchronized with rust-analyzer
-            // Send a didChange with the current content to ensure we have the latest state
+            // Convert to position in background (can be slow for large files)
+            let position = text_clone.offset_to_position(offset);
+            
+            // Convert rope to string in background (can be slow for large files)
+            let content = text_clone.to_string();
+            
+            // Sync file content with rust-analyzer
             let sync_result = analyzer.update(cx, |analyzer, _| {
-                // Use a high version number to ensure this is the latest
                 analyzer.did_change_file(&file_path, &content, 999999)
             }).ok().and_then(|r| r.ok());
             
             if sync_result.is_none() {
-                // If sync failed, still try to get completions but they might be stale
-                eprintln!("⚠️  Failed to sync file content with rust-analyzer before completion");
-            } else {
-                println!("✓ File content synced");
+                eprintln!("⚠️  Failed to sync file content with rust-analyzer");
             }
             
-            // Small delay to allow rust-analyzer to process the change
-            // This is important for accurate completions
-            println!("⏱️  Waiting 50ms for rust-analyzer to process...");
+            // Small delay to allow rust-analyzer to process
             gpui::Timer::after(std::time::Duration::from_millis(50)).await;
             
-            println!("📡 Sending completion request to rust-analyzer...");
-            // Send completion request
-            let response_result = analyzer.update(cx, |analyzer, _| {
+            // Send completion request (async, non-blocking!)
+            let response_rx = match analyzer.update(cx, |analyzer, _| {
                 let params = json!({
                     "textDocument": {
                         "uri": uri
@@ -124,76 +107,53 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
                     }
                 });
 
-                analyzer.send_request("textDocument/completion", params)
-            }).ok().and_then(|r| r.ok());
+                analyzer.send_request_async("textDocument/completion", params)
+            }).ok().and_then(|r| r.ok()) {
+                Some(rx) => rx,
+                None => {
+                    eprintln!("⚠️  Failed to send completion request");
+                    return Ok(lsp_types::CompletionResponse::Array(vec![]));
+                }
+            };
 
-            if let Some(response) = response_result {
-                println!("✓ Received response from rust-analyzer");
-                
-                // Check for error in response
-                if let Some(error) = response.get("error") {
-                    eprintln!("❌ rust-analyzer returned error: {}", error);
+            // Wait for response asynchronously (non-blocking!)
+            let response = match response_rx.recv_async().await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    eprintln!("⚠️  Failed to receive completion response: {}", e);
+                    return Ok(lsp_types::CompletionResponse::Array(vec![]));
+                }
+            };
+
+            // Check for error in response
+            if let Some(error) = response.get("error") {
+                eprintln!("❌ rust-analyzer completion error: {}", error);
+                return Ok(lsp_types::CompletionResponse::Array(vec![]));
+            }
+            
+            // Parse the response
+            if let Some(result) = response.get("result") {
+                // Check if result is null
+                if result.is_null() {
+                    // Null result is normal - means no completions available at this position
                     return Ok(lsp_types::CompletionResponse::Array(vec![]));
                 }
                 
-                // Parse the response
-                if let Some(result) = response.get("result") {
-                    // Check if result is null
-                    if result.is_null() {
-                        println!("⚠️  rust-analyzer returned null result (no completions available)");
-                        return Ok(lsp_types::CompletionResponse::Array(vec![]));
-                    }
-                    
-                    println!("📦 Result field type: {}", match result {
-                        serde_json::Value::Null => "null",
-                        serde_json::Value::Bool(_) => "bool",
-                        serde_json::Value::Number(_) => "number",
-                        serde_json::Value::String(_) => "string",
-                        serde_json::Value::Array(_) => "array",
-                        serde_json::Value::Object(_) => "object",
-                    });
-                    
-                    // For debugging, print first 500 chars of result
-                    let result_str = serde_json::to_string(&result).unwrap_or_else(|_| "Invalid JSON".to_string());
-                    if result_str.len() > 500 {
-                        println!("📦 Result preview (first 500 chars): {}...", &result_str[..500]);
-                    } else {
-                        println!("📦 Result: {}", result_str);
-                    }
-                    
-                    // Try as array first
-                    match serde_json::from_value::<Vec<lsp_types::CompletionItem>>(result.clone()) {
-                        Ok(items) => {
-                            println!("✓ Parsed {} completion items as array", items.len());
-                            return Ok(lsp_types::CompletionResponse::Array(items));
-                        }
-                        Err(e) => {
-                            println!("   Array parse failed: {}", e);
-                        }
-                    }
-                    
-                    // Try as completion list
-                    match serde_json::from_value::<lsp_types::CompletionList>(result.clone()) {
-                        Ok(list) => {
-                            println!("✓ Parsed completion list with {} items", list.items.len());
-                            return Ok(lsp_types::CompletionResponse::List(list));
-                        }
-                        Err(e) => {
-                            println!("   List parse failed: {}", e);
-                        }
-                    }
-                    
-                    eprintln!("⚠️  Failed to parse completion response - unknown format");
-                } else {
-                    eprintln!("⚠️  No 'result' field in response");
-                    eprintln!("   Response keys: {:?}", response.as_object().map(|o| o.keys().collect::<Vec<_>>()));
+                // Try as array first
+                if let Ok(items) = serde_json::from_value::<Vec<lsp_types::CompletionItem>>(result.clone()) {
+                    return Ok(lsp_types::CompletionResponse::Array(items));
                 }
-            } else {
-                eprintln!("⚠️  No response from rust-analyzer");
+                
+                // Try as completion list
+                if let Ok(list) = serde_json::from_value::<lsp_types::CompletionList>(result.clone()) {
+                    return Ok(lsp_types::CompletionResponse::List(list));
+                }
+                
+                // If we get here, parsing failed
+                eprintln!("⚠️  Failed to parse completion response from rust-analyzer");
             }
 
-            // Return empty on error
-            println!("❌ Returning empty completions");
+            // Return empty on error or no response
             Ok(lsp_types::CompletionResponse::Array(vec![]))
         })
     }
@@ -204,10 +164,11 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
         new_text: &str,
         _cx: &mut Context<InputState>,
     ) -> bool {
-        // Trigger completions in two cases:
-        // 1. Rust-analyzer's official trigger characters: '.', ':', '<'
-        // 2. While typing identifiers (alphanumeric + underscore)
-        //    This allows completions to filter/update as you type
+        // VSCode-style triggering: be aggressive and let rust-analyzer decide
+        // Trigger on:
+        // 1. Any alphanumeric or underscore (identifier)
+        // 2. Trigger characters: '.', ':', '<', '('
+        // 3. After keywords followed by space
         
         if new_text.is_empty() {
             return false;
@@ -216,14 +177,28 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
         let last_char = new_text.chars().last().unwrap();
         
         // Trigger on rust-analyzer's declared trigger characters
-        if matches!(last_char, '.' | ':' | '<') {
+        if matches!(last_char, '.' | ':' | '<' | '(') {
             return true;
         }
         
-        // Also trigger while typing identifiers to provide continuous completions
-        // This is how VSCode and other editors work - completions appear and filter as you type
+        // Trigger on identifier characters
         if last_char.is_alphanumeric() || last_char == '_' {
             return true;
+        }
+        
+        // Trigger after space following Rust keywords
+        if last_char == ' ' {
+            let trimmed = new_text.trim_end();
+            if trimmed.ends_with("use") || 
+               trimmed.ends_with("pub") || 
+               trimmed.ends_with("fn") ||
+               trimmed.ends_with("let") ||
+               trimmed.ends_with("struct") ||
+               trimmed.ends_with("enum") ||
+               trimmed.ends_with("impl") ||
+               trimmed.ends_with("trait") {
+                return true;
+            }
         }
         
         false

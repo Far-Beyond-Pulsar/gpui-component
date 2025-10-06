@@ -1,6 +1,3 @@
-/// Global Rust Analyzer Manager for the Pulsar Engine
-/// Manages a single rust-analyzer instance for the entire project
-
 use anyhow::{anyhow, Result};
 use gpui::{App, Context, Entity, EventEmitter, Task, Window};
 use serde_json::{json, Value};
@@ -59,8 +56,8 @@ pub struct RustAnalyzerManager {
     request_id: Arc<Mutex<i64>>,
     /// Progress updates channel receiver
     progress_rx: Option<Receiver<ProgressUpdate>>,
-    /// Pending request callbacks
-    pending_requests: Arc<Mutex<HashMap<i64, std::sync::mpsc::Sender<serde_json::Value>>>>,
+    /// Pending request callbacks (using flume for async support)
+    pending_requests: Arc<Mutex<HashMap<i64, flume::Sender<serde_json::Value>>>>,
 }
 
 use std::collections::HashMap;
@@ -236,7 +233,7 @@ impl RustAnalyzerManager {
         process_arc: Arc<Mutex<Option<Child>>>,
         stdin_arc: Arc<Mutex<Option<std::process::ChildStdin>>>,
         progress_tx: Sender<ProgressUpdate>,
-        pending_requests: Arc<Mutex<HashMap<i64, Sender<serde_json::Value>>>>,
+        pending_requests: Arc<Mutex<HashMap<i64, flume::Sender<serde_json::Value>>>>,
     ) -> Result<()> {
         println!("Spawning rust-analyzer process...");
         println!("  Binary: {:?}", analyzer_path);
@@ -764,8 +761,9 @@ impl RustAnalyzerManager {
         }
     }
 
-    /// Send a request to rust-analyzer and wait for response
-    pub fn send_request(&self, method: &str, params: Value) -> Result<Value> {
+    /// Send a request to rust-analyzer and wait for response asynchronously
+    /// Returns a Task that resolves when the response is received
+    pub fn send_request_async(&self, method: &str, params: Value) -> Result<flume::Receiver<Value>> {
         if !self.is_running() {
             return Err(anyhow!("rust-analyzer is not running"));
         }
@@ -776,8 +774,8 @@ impl RustAnalyzerManager {
         let id = *req_id;
         drop(req_id);
 
-        // Create channel for this request's response
-        let (response_tx, response_rx) = channel();
+        // Create channel for this request's response (flume for async)
+        let (response_tx, response_rx) = flume::unbounded();
 
         // Register the pending request
         {
@@ -808,13 +806,19 @@ impl RustAnalyzerManager {
         }
         drop(stdin_lock);
 
-        // Wait for response with timeout
-        match response_rx.recv_timeout(Duration::from_secs(5)) {
+        // Return the receiver for async awaiting
+        Ok(response_rx)
+    }
+
+    /// Send a request to rust-analyzer and wait for response (blocking, for legacy compatibility)
+    /// DEPRECATED: Use send_request_async for better performance
+    pub fn send_request(&self, method: &str, params: Value) -> Result<Value> {
+        let rx = self.send_request_async(method, params)?;
+        
+        // Wait for response with timeout (blocking!)
+        match rx.recv_timeout(Duration::from_secs(5)) {
             Ok(response) => Ok(response),
             Err(e) => {
-                // Remove from pending on timeout
-                let mut pending = self.pending_requests.lock().map_err(|_| anyhow!("Lock error"))?;
-                pending.remove(&id);
                 Err(anyhow!("Request timeout: {}", e))
             }
         }

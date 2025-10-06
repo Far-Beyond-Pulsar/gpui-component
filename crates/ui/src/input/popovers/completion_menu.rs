@@ -28,17 +28,71 @@ struct ContextMenuDelegate {
     query: SharedString,
     menu: Entity<CompletionMenu>,
     items: Vec<Rc<CompletionItem>>,
+    filtered_indices: Vec<usize>,  // Indices of items that match the filter
     selected_ix: usize,
 }
 
 impl ContextMenuDelegate {
     fn set_items(&mut self, items: Vec<CompletionItem>) {
-        self.items = items.into_iter().map(Rc::new).collect();
+        // Sort items by sortText (if present) or label
+        // This respects the LSP server's intended ordering
+        let mut sorted_items: Vec<_> = items.into_iter().collect();
+        sorted_items.sort_by(|a, b| {
+            let a_sort = a.sort_text.as_ref().unwrap_or(&a.label);
+            let b_sort = b.sort_text.as_ref().unwrap_or(&b.label);
+            a_sort.cmp(b_sort)
+        });
+        
+        self.items = sorted_items.into_iter().map(Rc::new).collect();
+        self.update_filter();
         self.selected_ix = 0;
     }
 
     fn selected_item(&self) -> Option<&Rc<CompletionItem>> {
-        self.items.get(self.selected_ix)
+        let filtered_ix = *self.filtered_indices.get(self.selected_ix)?;
+        self.items.get(filtered_ix)
+    }
+
+    fn update_filter(&mut self) {
+        let query_lower = self.query.to_lowercase();
+        
+        println!("🔍 Filtering completions: query='{}', total items={}", query_lower, self.items.len());
+        
+        if query_lower.is_empty() {
+            // No filter - show all items in original order
+            self.filtered_indices = (0..self.items.len()).collect();
+            println!("   No filter - showing all {} items", self.filtered_indices.len());
+        } else {
+            // Filter items that start with or contain the query
+            self.filtered_indices = self.items
+                .iter()
+                .enumerate()
+                .filter(|(_, item)| {
+                    let label_lower = item.label.to_lowercase();
+                    let filter_text_lower = item.filter_text.as_ref()
+                        .map(|s| s.to_lowercase())
+                        .unwrap_or_else(|| label_lower.clone());
+                    
+                    filter_text_lower.starts_with(&query_lower) || 
+                    filter_text_lower.contains(&query_lower)
+                })
+                .map(|(i, _)| i)
+                .collect();
+            println!("   Filtered to {} items matching '{}'", self.filtered_indices.len(), query_lower);
+            if self.filtered_indices.len() < 5 {
+                for idx in &self.filtered_indices {
+                    if let Some(item) = self.items.get(*idx) {
+                        println!("     - {}", item.label);
+                    }
+                }
+            }
+        }
+    }
+
+    fn set_query(&mut self, query: SharedString) {
+        self.query = query;
+        self.update_filter();
+        self.selected_ix = 0;  // Reset selection when filter changes
     }
 }
 
@@ -134,7 +188,7 @@ impl ListDelegate for ContextMenuDelegate {
     type Item = CompletionMenuItem;
 
     fn items_count(&self, _: usize, _: &gpui::App) -> usize {
-        self.items.len()
+        self.filtered_indices.len()
     }
 
     fn render_item(
@@ -143,7 +197,8 @@ impl ListDelegate for ContextMenuDelegate {
         _: &mut Window,
         _: &mut Context<List<Self>>,
     ) -> Option<Self::Item> {
-        let item = self.items.get(ix.row)?;
+        let filtered_ix = *self.filtered_indices.get(ix.row)?;
+        let item = self.items.get(filtered_ix)?;
         Some(CompletionMenuItem::new(ix.row, item.clone()).highlight_prefix(self.query.clone()))
     }
 
@@ -198,12 +253,13 @@ impl CompletionMenu {
                 query: SharedString::default(),
                 menu: view,
                 items: vec![],
+                filtered_indices: vec![],
                 selected_ix: 0,
             };
 
             let list = cx.new(|cx| {
                 List::new(menu, window, cx)
-                    .no_query()
+                    .no_query()  // Hide the search input - we filter client-side based on typing
                     .max_h(MAX_MENU_HEIGHT)
             });
 
@@ -404,6 +460,16 @@ impl CompletionMenu {
             self.trigger_start_offset = Some(start_offset);
         }
         self.query = query.into();
+    }
+
+    /// Update just the query without changing trigger offset (for filtering)
+    pub(crate) fn update_query_only(&mut self, query: impl Into<SharedString>, cx: &mut Context<Self>) {
+        self.query = query.into();
+        // Update the delegate's query to trigger filtering
+        self.list.update(cx, |list, cx| {
+            list.delegate_mut().set_query(self.query.clone());
+            cx.notify();
+        });
     }
 
     pub(crate) fn show(

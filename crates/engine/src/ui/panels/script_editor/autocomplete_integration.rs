@@ -28,19 +28,16 @@ pub fn setup_rust_autocomplete(
 ) {
     let workspace = workspace_root.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
     
-    // Create the comprehensive completion provider with dictionary + closures
-    let mut provider = ComprehensiveCompletionProvider::new();
-    
-    // Add rust-analyzer completion provider if available
+    // For Rust files, ONLY use rust-analyzer completions (no dictionary)
+    // rust-analyzer provides all relevant completions with proper priorities
     let rust_provider = GlobalRustAnalyzerCompletionProvider::new(
         analyzer,
         file_path.clone(),
         workspace.clone(),
     );
-    provider = provider.with_lsp_provider(Rc::new(rust_provider));
     
-    // Set the completion provider
-    input_state.lsp.completion_provider = Some(Rc::new(provider));
+    // Set ONLY the LSP provider (no dictionary completions for Rust)
+    input_state.lsp.completion_provider = Some(Rc::new(rust_provider));
     
     println!("✓ Autocomplete configured for: {:?} (workspace: {:?})", file_path.file_name(), workspace);
 }
