@@ -33,6 +33,10 @@ pub struct FileExplorer {
     scroll_state: gpui_component::scroll::ScrollbarState,
     /// Item height in pixels (fixed for all items)
     item_height: Pixels,
+    /// Last measured viewport bounds for accurate calculations
+    last_viewport_bounds: Option<Bounds<Pixels>>,
+    /// Dirty flag to trigger re-clamping on next render
+    needs_scroll_update: bool,
 }
 
 impl FileExplorer {
@@ -48,6 +52,8 @@ impl FileExplorer {
             scroll_handle: ScrollHandle::new(),
             scroll_state: gpui_component::scroll::ScrollbarState::default(),
             item_height: px(28.0), // Fixed height for each item
+            last_viewport_bounds: None,
+            needs_scroll_update: false,
         }
     }
 
@@ -68,9 +74,8 @@ impl FileExplorer {
             self.rebuild_visible_entries();
         }
         
-        // Clamp scroll after refresh (file tree may have changed)
-        let current_offset = self.scroll_handle.offset();
-        self.set_scroll_offset_clamped(current_offset);
+        // Mark that scroll needs updating
+        self.needs_scroll_update = true;
     }
     
     /// Rebuild the flat list of visible entries based on expansion states
@@ -83,6 +88,9 @@ impl FileExplorer {
                 self.visible_entries.push(idx);
             }
         }
+        
+        // Mark that scroll needs updating after tree structure change
+        self.needs_scroll_update = true;
     }
     
     /// Check if an entry is visible (all parents are expanded)
@@ -178,10 +186,6 @@ impl FileExplorer {
         // Rebuild the file tree to reflect expansion changes
         self.refresh_file_tree(cx);
         
-        // Clamp scroll offset after tree changes (number of visible entries changed)
-        let current_offset = self.scroll_handle.offset();
-        self.set_scroll_offset_clamped(current_offset);
-        
         cx.notify();
     }
 
@@ -250,24 +254,55 @@ impl FileExplorer {
     }
     
     /// Calculate which entries are visible in the viewport (virtualization)
-    fn calculate_visible_range(&self, scroll_offset: Pixels) -> (usize, usize, Pixels) {
-        // Assume a reasonable viewport height (will be more accurate with measured bounds)
-        let viewport_height = px(600.0); // Conservative estimate
+    fn calculate_visible_range(&self, scroll_offset: Pixels, viewport_height: Pixels) -> (usize, usize) {
+        // Ensure we have a minimum viewport height
+        let safe_viewport_height = viewport_height.max(px(100.0));
         
         // Convert to float for division
         let scroll_f = -scroll_offset;
         let item_height_f = self.item_height;
         
         let start_index = ((scroll_f / item_height_f).floor().max(0.0)) as usize;
-        let visible_count = ((viewport_height / item_height_f).ceil() as usize) + 4; // +4 for buffer
+        let visible_count = ((safe_viewport_height / item_height_f).ceil() as usize) + 4; // +4 for buffer
         let end_index = (start_index + visible_count).min(self.visible_entries.len());
         
-        (start_index, end_index, viewport_height)
+        (start_index, end_index)
+    }
+    
+    /// Get viewport height from last measured bounds, or use fallback
+    fn get_viewport_height(&self) -> Pixels {
+        self.last_viewport_bounds
+            .map(|bounds| bounds.size.height)
+            .unwrap_or(px(600.0)) // Fallback for first render
+    }
+    
+    /// Get viewport width from last measured bounds, or use fallback
+    fn get_viewport_width(&self) -> Pixels {
+        self.last_viewport_bounds
+            .map(|bounds| bounds.size.width)
+            .unwrap_or(px(250.0)) // Fallback for first render
     }
 
-    fn render_file_tree_content(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_file_tree_content(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        // Use last known viewport bounds or fallback
+        let viewport_height = self.get_viewport_height();
+        let viewport_width = self.get_viewport_width();
+        
+        // Create bounds from stored values
+        let bounds = self.last_viewport_bounds.unwrap_or(Bounds {
+            origin: gpui::point(px(0.0), px(0.0)),
+            size: gpui::size(viewport_width, viewport_height),
+        });
+        
+        // Apply any pending scroll updates
+        if self.needs_scroll_update {
+            let current_offset = self.scroll_handle.offset();
+            self.set_scroll_offset_clamped(current_offset, bounds.size.height);
+            self.needs_scroll_update = false;
+        }
+        
         let scroll_offset = self.scroll_handle.offset();
-        let (start_idx, end_idx, _viewport_height) = self.calculate_visible_range(scroll_offset.y);
+        let (start_idx, end_idx) = self.calculate_visible_range(scroll_offset.y, bounds.size.height);
         
         // Total height of all items
         let total_height = self.item_height * self.visible_entries.len() as f32;
@@ -308,11 +343,26 @@ impl FileExplorer {
                     .child(
                         Scrollbar::vertical(&self.scroll_state, &self.scroll_handle)
                             .scroll_size(gpui::Size {
-                                width: px(250.0), // Approximate width
+                                width: bounds.size.width,
                                 height: total_height,
                             })
                     )
             )
+    }
+    
+    /// Update viewport bounds when window is resized or layout changes
+    pub fn update_viewport_bounds(&mut self, bounds: Bounds<Pixels>, cx: &mut Context<Self>) {
+        let bounds_changed = self.last_viewport_bounds
+            .map(|old_bounds| old_bounds.size != bounds.size)
+            .unwrap_or(true);
+        
+        if bounds_changed {
+            self.last_viewport_bounds = Some(bounds);
+            // Re-clamp scroll with new viewport size
+            let current_offset = self.scroll_handle.offset();
+            self.set_scroll_offset_clamped(current_offset, bounds.size.height);
+            cx.notify();
+        }
     }
 
     fn render_file_item(&self, entry: &FileEntry, cx: &mut Context<Self>) -> impl IntoElement {
@@ -358,15 +408,16 @@ impl FileExplorer {
         let current_offset = self.scroll_handle.offset();
         let new_offset = current_offset + delta;
         
-        self.set_scroll_offset_clamped(new_offset);
+        let viewport_height = self.get_viewport_height();
+        self.set_scroll_offset_clamped(new_offset, viewport_height);
         cx.notify();
     }
     
     /// Set scroll offset with bounds checking to prevent out-of-bounds scrolling
-    fn set_scroll_offset_clamped(&mut self, offset: gpui::Point<Pixels>) {
+    /// Uses actual measured viewport height for accurate bounds
+    fn set_scroll_offset_clamped(&mut self, offset: gpui::Point<Pixels>, viewport_height: Pixels) {
         // Calculate bounds for scrolling
         let total_height = self.item_height * self.visible_entries.len() as f32;
-        let viewport_height = px(600.0); // Same as in calculate_visible_range
         
         // Clamp scroll offset to valid range
         // Y: Can scroll from 0 (top) to -(total_height - viewport_height) (bottom)
@@ -380,6 +431,39 @@ impl FileExplorer {
         );
         
         self.scroll_handle.set_offset(clamped_offset);
+    }
+    
+    /// Scroll to ensure a specific entry is visible
+    pub fn scroll_to_entry(&mut self, entry_path: &Path, cx: &mut Context<Self>) {
+        // Find the entry index in visible_entries
+        let entry_index = self.visible_entries.iter()
+            .position(|&idx| {
+                self.file_tree.get(idx)
+                    .map(|e| e.path == entry_path)
+                    .unwrap_or(false)
+            });
+        
+        if let Some(visible_idx) = entry_index {
+            let viewport_height = self.get_viewport_height();
+            let item_position = self.item_height * visible_idx as f32;
+            let current_offset = self.scroll_handle.offset();
+            
+            // Check if item is already visible
+            let scroll_top = -current_offset.y;
+            let scroll_bottom = scroll_top + viewport_height;
+            let item_bottom = item_position + self.item_height;
+            
+            if item_position < scroll_top {
+                // Item is above viewport, scroll to show it at top
+                self.set_scroll_offset_clamped(gpui::point(px(0.0), -item_position), viewport_height);
+                cx.notify();
+            } else if item_bottom > scroll_bottom {
+                // Item is below viewport, scroll to show it at bottom
+                let target_scroll = -(item_bottom - viewport_height);
+                self.set_scroll_offset_clamped(gpui::point(px(0.0), target_scroll), viewport_height);
+                cx.notify();
+            }
+        }
     }
 }
 
@@ -503,7 +587,7 @@ impl Render for FileExplorer {
                         )
                     })
                     .when(!file_tree_empty, |content| {
-                        // Virtualized scrollable list
+                        // Render virtualized content
                         content.child(self.render_file_tree_content(cx))
                     })
             )
