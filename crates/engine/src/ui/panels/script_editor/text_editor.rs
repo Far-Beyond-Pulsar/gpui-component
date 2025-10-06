@@ -420,6 +420,13 @@ impl TextEditor {
                             .h_full()
                             .w_full()
                             .font_family("monospace")
+                            .font(gpui::Font {
+                                family: "Jetbrains Mono".to_string().into(),
+                                weight: gpui::FontWeight::NORMAL,
+                                style: gpui::FontStyle::Normal,
+                                features: gpui::FontFeatures::default(),
+                                fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["monospace".to_string()])),
+                            })
                             .text_size(px(14.0))
                             .border_0()
                     )
