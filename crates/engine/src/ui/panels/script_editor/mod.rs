@@ -65,12 +65,69 @@ impl ScriptEditor {
 
     /// Set the global rust analyzer manager
     pub fn set_rust_analyzer(&mut self, analyzer: Entity<RustAnalyzerManager>, cx: &mut Context<Self>) {
+        println!("🔧 ScriptEditor::set_rust_analyzer called");
         self.rust_analyzer = Some(analyzer.clone());
         
         // Pass it to the text editor
         self.text_editor.update(cx, |editor, cx| {
-            editor.set_rust_analyzer(analyzer, cx);
+            println!("🔧 Passing rust-analyzer to TextEditor");
+            editor.set_rust_analyzer(analyzer.clone(), cx);
         });
+        
+        // Subscribe to text editor events to forward to rust-analyzer
+        let analyzer_for_sub = analyzer.clone();
+        cx.subscribe(&self.text_editor, move |this: &mut Self, _editor, event: &TextEditorEvent, cx| {
+            println!("📨 ScriptEditor received TextEditorEvent: {:?}", std::mem::discriminant(event));
+            if let Some(ref analyzer) = this.rust_analyzer {
+                match event {
+                    TextEditorEvent::FileOpened { path, content } => {
+                        println!("📂 ScriptEditor handling FileOpened: {:?}", path);
+                        // Notify rust-analyzer that a file was opened
+                        analyzer.update(cx, |analyzer, _cx| {
+                            let language_id = if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                                "rust"
+                            } else {
+                                "text"
+                            };
+                            
+                            println!("🚀 Calling did_open_file for {:?} (language: {})", path.file_name(), language_id);
+                            if let Err(e) = analyzer.did_open_file(path, content, language_id) {
+                                eprintln!("⚠️  Failed to notify rust-analyzer of file open: {}", e);
+                            } else {
+                                println!("✓ Notified rust-analyzer: file opened {:?}", path.file_name());
+                            }
+                        });
+                    }
+                    TextEditorEvent::FileSaved { path, content } => {
+                        println!("💾 ScriptEditor handling FileSaved: {:?}", path);
+                        // Notify rust-analyzer that a file was saved
+                        analyzer.update(cx, |analyzer, _cx| {
+                            if let Err(e) = analyzer.did_save_file(path, content) {
+                                eprintln!("⚠️  Failed to notify rust-analyzer of file save: {}", e);
+                            } else {
+                                println!("✓ Notified rust-analyzer: file saved {:?}", path.file_name());
+                            }
+                        });
+                    }
+                    TextEditorEvent::FileClosed { path } => {
+                        println!("❌ ScriptEditor handling FileClosed: {:?}", path);
+                        // Notify rust-analyzer that a file was closed
+                        analyzer.update(cx, |analyzer, _cx| {
+                            if let Err(e) = analyzer.did_close_file(path) {
+                                eprintln!("⚠️  Failed to notify rust-analyzer of file close: {}", e);
+                            } else {
+                                println!("✓ Notified rust-analyzer: file closed {:?}", path.file_name());
+                            }
+                        });
+                    }
+                    _ => {}
+                }
+            } else {
+                println!("⚠️  ScriptEditor: rust_analyzer is None!");
+            }
+        }).detach();
+        
+        println!("✓ ScriptEditor rust-analyzer setup complete");
     }
 
     pub fn open_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {

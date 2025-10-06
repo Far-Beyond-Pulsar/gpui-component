@@ -30,6 +30,8 @@ pub struct OpenFile {
     pub is_modified: bool,
     pub lines_count: usize,
     pub file_size: usize,
+    /// Document version for LSP synchronization
+    pub version: i32,
 }
 
 pub struct TextEditor {
@@ -94,17 +96,44 @@ impl TextEditor {
             is_modified: false,
             lines_count: 1,
             file_size: 0,
+            version: 1,
         };
 
         self.open_files.push(open_file);
         self.current_file_index = Some(self.open_files.len() - 1);
 
         // Create subscription for this file
-        let subscription = cx.subscribe(&input_state, |this: &mut TextEditor, input_state_entity: Entity<InputState>, event: &InputEvent, cx: &mut Context<TextEditor>| {
+        let analyzer = self.rust_analyzer.clone();
+        println!("📝 Creating change subscription for new file, rust_analyzer present: {}", analyzer.is_some());
+        let subscription = cx.subscribe(&input_state, move |this: &mut TextEditor, input_state_entity: Entity<InputState>, event: &InputEvent, cx: &mut Context<TextEditor>| {
             if let InputEvent::Change = event {
                 if let Some(index) = this.open_files.iter().position(|f| f.input_state == input_state_entity) {
                     if let Some(file) = this.open_files.get_mut(index) {
                         file.is_modified = true;
+                        file.version += 1;
+                        
+                        // Notify rust-analyzer of the change
+                        if let Some(ref analyzer) = analyzer {
+                            let path = file.path.clone();
+                            let version = file.version;
+                            let content = file.input_state.read(cx).value().to_string();
+                            
+                            println!("📝 File changed: {:?} (version {}), notifying rust-analyzer", path.file_name(), version);
+                            analyzer.update(cx, |analyzer, _cx| {
+                                if let Err(e) = analyzer.did_change_file(&path, &content, version) {
+                                    eprintln!("⚠️  Failed to notify rust-analyzer of file change: {}", e);
+                                } else {
+                                    if version % 10 == 0 {  // Log every 10th change to avoid spam
+                                        println!("✓ Notified rust-analyzer of change (version {})", version);
+                                    }
+                                }
+                            });
+                        } else {
+                            if file.version == 2 {  // Only log once to avoid spam
+                                println!("⚠️  No rust-analyzer available for didChange");
+                            }
+                        }
+                        
                         cx.notify();
                     }
                 }
@@ -305,18 +334,45 @@ impl TextEditor {
             is_modified: false,
             lines_count,
             file_size,
+            version: 1,
         };
 
         self.open_files.push(open_file);
         self.current_file_index = Some(self.open_files.len() - 1);
         
         // Create subscription for this file
-        let subscription = cx.subscribe(&input_state, |this: &mut TextEditor, input_state_entity: Entity<InputState>, event: &InputEvent, cx: &mut Context<TextEditor>| {
+        let analyzer = self.rust_analyzer.clone();
+        println!("📝 Creating change subscription for {:?}, rust_analyzer present: {}", path.file_name(), analyzer.is_some());
+        let subscription = cx.subscribe(&input_state, move |this: &mut TextEditor, input_state_entity: Entity<InputState>, event: &InputEvent, cx: &mut Context<TextEditor>| {
             if let InputEvent::Change = event {
                 // Find which file this corresponds to
                 if let Some(index) = this.open_files.iter().position(|f| f.input_state == input_state_entity) {
                     if let Some(file) = this.open_files.get_mut(index) {
                         file.is_modified = true;
+                        file.version += 1;
+                        
+                        // Notify rust-analyzer of the change
+                        if let Some(ref analyzer) = analyzer {
+                            let path = file.path.clone();
+                            let version = file.version;
+                            let content = file.input_state.read(cx).value().to_string();
+                            
+                            println!("📝 File changed: {:?} (version {}), notifying rust-analyzer", path.file_name(), version);
+                            analyzer.update(cx, |analyzer, _cx| {
+                                if let Err(e) = analyzer.did_change_file(&path, &content, version) {
+                                    eprintln!("⚠️  Failed to notify rust-analyzer of file change: {}", e);
+                                } else {
+                                    if version % 10 == 0 {  // Log every 10th change to avoid spam
+                                        println!("✓ Notified rust-analyzer of change (version {})", version);
+                                    }
+                                }
+                            });
+                        } else {
+                            if file.version == 2 {  // Only log once to avoid spam
+                                println!("⚠️  No rust-analyzer available for didChange");
+                            }
+                        }
+                        
                         cx.notify();
                     }
                 }
