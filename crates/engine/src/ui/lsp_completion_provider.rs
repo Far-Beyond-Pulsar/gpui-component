@@ -204,8 +204,10 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
         new_text: &str,
         _cx: &mut Context<InputState>,
     ) -> bool {
-        // Rust-analyzer's official trigger characters: '.', ':', '<'
-        // These are the characters rust-analyzer declares in its CompletionOptions
+        // Trigger completions in two cases:
+        // 1. Rust-analyzer's official trigger characters: '.', ':', '<'
+        // 2. While typing identifiers (alphanumeric + underscore)
+        //    This allows completions to filter/update as you type
         
         if new_text.is_empty() {
             return false;
@@ -213,7 +215,17 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
         
         let last_char = new_text.chars().last().unwrap();
         
-        // Only auto-trigger on rust-analyzer's declared trigger characters
-        matches!(last_char, '.' | ':' | '<')
+        // Trigger on rust-analyzer's declared trigger characters
+        if matches!(last_char, '.' | ':' | '<') {
+            return true;
+        }
+        
+        // Also trigger while typing identifiers to provide continuous completions
+        // This is how VSCode and other editors work - completions appear and filter as you type
+        if last_char.is_alphanumeric() || last_char == '_' {
+            return true;
+        }
+        
+        false
     }
 }
