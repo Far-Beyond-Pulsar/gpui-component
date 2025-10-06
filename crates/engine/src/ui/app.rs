@@ -398,6 +398,12 @@ impl PulsarApp {
         // Create new script editor tab
         let script_editor = cx.new(|cx| ScriptEditorPanel::new(window, cx));
 
+        // Wire up rust-analyzer to the script editor
+        let analyzer = self.rust_analyzer.clone();
+        script_editor.update(cx, |editor, cx| {
+            editor.set_rust_analyzer(analyzer, cx);
+        });
+
         // Subscribe to text editor events to notify rust-analyzer
         cx.subscribe_in(&script_editor, window, Self::on_text_editor_event).detach();
 

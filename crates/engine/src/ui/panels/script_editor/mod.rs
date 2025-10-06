@@ -17,6 +17,8 @@ use gpui_component::{
     ActiveTheme,
 };
 
+use crate::ui::rust_analyzer_manager::RustAnalyzerManager;
+
 actions!(script_editor, [SaveCurrentFile]);
 
 pub struct ScriptEditor {
@@ -27,6 +29,8 @@ pub struct ScriptEditor {
     horizontal_resizable_state: Entity<ResizableState>,
     vertical_resizable_state: Entity<ResizableState>,
     terminal_visible: bool,
+    /// Global rust analyzer for LSP support
+    rust_analyzer: Option<Entity<RustAnalyzerManager>>,
 }
 
 impl ScriptEditor {
@@ -55,7 +59,18 @@ impl ScriptEditor {
             horizontal_resizable_state,
             vertical_resizable_state,
             terminal_visible: true,
+            rust_analyzer: None,
         }
+    }
+
+    /// Set the global rust analyzer manager
+    pub fn set_rust_analyzer(&mut self, analyzer: Entity<RustAnalyzerManager>, cx: &mut Context<Self>) {
+        self.rust_analyzer = Some(analyzer.clone());
+        
+        // Pass it to the text editor
+        self.text_editor.update(cx, |editor, cx| {
+            editor.set_rust_analyzer(analyzer, cx);
+        });
     }
 
     pub fn open_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {

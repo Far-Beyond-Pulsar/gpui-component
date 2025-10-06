@@ -2,15 +2,13 @@
 /// This provides real-time code completions from rust-analyzer
 
 use anyhow::Result;
-use gpui::{App, Context, Entity, Task, Window};
+use gpui::{Context, Task, Window};
 use gpui_component::input::{CompletionProvider, InputState, RopeExt};
-use lsp_types::{CompletionContext, CompletionResponse, CompletionParams, TextDocumentPositionParams, TextDocumentIdentifier, WorkDoneProgressParams};
-use ropey::Rope;
 use serde_json::json;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use super::rust_analyzer_manager::RustAnalyzerManager;
+use gpui::Entity;
 
 /// Completion provider that uses the global rust-analyzer instance
 pub struct GlobalRustAnalyzerCompletionProvider {
@@ -49,16 +47,16 @@ impl GlobalRustAnalyzerCompletionProvider {
 impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
     fn completions(
         &self,
-        text: &Rope,
+        text: &ropey::Rope,
         offset: usize,
-        _trigger: CompletionContext,
+        _trigger: lsp_types::CompletionContext,
         window: &mut Window,
         cx: &mut Context<InputState>,
-    ) -> Task<Result<CompletionResponse>> {
+    ) -> Task<Result<lsp_types::CompletionResponse>> {
         // Check if analyzer is ready
         let is_ready = self.analyzer.read(cx).is_running();
         if !is_ready {
-            return Task::ready(Ok(CompletionResponse::Array(vec![])));
+            return Task::ready(Ok(lsp_types::CompletionResponse::Array(vec![])));
         }
 
         // Convert offset to LSP position
@@ -69,11 +67,10 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
         
         // Request completions from rust-analyzer
         let analyzer = self.analyzer.clone();
-        let file_path = self.file_path.clone();
         
         cx.spawn_in(window, async move |_, cx| {
-            // Send completion request
-            let result = analyzer.update(&cx, |analyzer, _cx| {
+            // Send completion request - use ok() to handle Result
+            let response_result = analyzer.update(&cx, |analyzer, _| {
                 let params = json!({
                     "textDocument": {
                         "uri": uri
@@ -85,31 +82,21 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
                 });
 
                 analyzer.send_request("textDocument/completion", params)
-            });
+            }).ok().and_then(|r| r.ok());
 
-            match result {
-                Ok(response_result) => {
-                    match response_result {
-                        Ok(response) => {
-                            // Parse the response
-                            if let Some(result) = response.get("result") {
-                                if let Ok(items) = serde_json::from_value::<Vec<lsp_types::CompletionItem>>(result.clone()) {
-                                    return Ok(CompletionResponse::Array(items));
-                                } else if let Ok(list) = serde_json::from_value::<lsp_types::CompletionList>(result.clone()) {
-                                    return Ok(CompletionResponse::List(list));
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("Completion request failed: {}", e);
-                        }
+            if let Some(response) = response_result {
+                // Parse the response
+                if let Some(result) = response.get("result") {
+                    if let Ok(items) = serde_json::from_value::<Vec<lsp_types::CompletionItem>>(result.clone()) {
+                        return Ok(lsp_types::CompletionResponse::Array(items));
+                    } else if let Ok(list) = serde_json::from_value::<lsp_types::CompletionList>(result.clone()) {
+                        return Ok(lsp_types::CompletionResponse::List(list));
                     }
                 }
-                Err(_) => {}
             }
 
             // Return empty on error
-            Ok(CompletionResponse::Array(vec![]))
+            Ok(lsp_types::CompletionResponse::Array(vec![]))
         })
     }
 

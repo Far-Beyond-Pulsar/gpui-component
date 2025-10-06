@@ -327,25 +327,6 @@ impl RustAnalyzerManager {
                 eprintln!("❌ rust-analyzer stdout stream ended");
             });
         }
-                                // Check if this is a response to a pending request
-                                if let Some(id) = msg.get("id").and_then(|id| id.as_i64()) {
-                                    if let Ok(pending) = pending_requests.lock() {
-                                        if let Some(tx) = pending.get(&id) {
-                                            let _ = tx.send(msg.clone());
-                                            continue; // Don't process as a notification
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // Otherwise handle as notification/progress
-                            Self::handle_lsp_message(&content, &progress_tx_stdout);
-                        }
-                    }
-                }
-                eprintln!("❌ rust-analyzer stdout stream ended");
-            });
-        }
 
         // Store stdin and process
         {

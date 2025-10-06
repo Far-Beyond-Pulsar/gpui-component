@@ -11,6 +11,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 use std::fs;
 
+use crate::ui::rust_analyzer_manager::RustAnalyzerManager;
+
 #[derive(Clone)]
 pub enum TextEditorEvent {
     OpenFolderRequested(PathBuf),
@@ -38,6 +40,8 @@ pub struct TextEditor {
     last_render_time: Option<Instant>,
     show_performance_stats: bool,
     subscriptions: Vec<Subscription>,
+    /// Global rust analyzer for LSP support
+    rust_analyzer: Option<Entity<RustAnalyzerManager>>,
 }
 
 impl TextEditor {
@@ -49,7 +53,13 @@ impl TextEditor {
             last_render_time: None,
             show_performance_stats: false, // Toggle with F12 or button
             subscriptions: Vec::new(),
+            rust_analyzer: None,
         }
+    }
+
+    /// Set the global rust analyzer manager
+    pub fn set_rust_analyzer(&mut self, analyzer: Entity<RustAnalyzerManager>, _cx: &mut Context<Self>) {
+        self.rust_analyzer = Some(analyzer);
     }
 
     /// Create a new empty file
@@ -266,17 +276,22 @@ impl TextEditor {
             state
         });
 
-        // Set up autocomplete for the file
+        // Set up autocomplete for the file with rust-analyzer support
         let workspace_root = std::env::current_dir().ok();
-        input_state.update(cx, |state, cx| {
-            super::setup_autocomplete_for_file(
-                state,
-                path.clone(),
-                workspace_root,
-                window,
-                cx,
-            );
-        });
+        if let Some(analyzer) = self.rust_analyzer.clone() {
+            input_state.update(cx, |state, cx| {
+                super::setup_autocomplete_for_file(
+                    state,
+                    path.clone(),
+                    workspace_root,
+                    analyzer,
+                    window,
+                    cx,
+                );
+            });
+        } else {
+            println!("⚠️  rust-analyzer not available, completions will be limited");
+        }
 
         let setup_time = setup_start.elapsed();
         println!(

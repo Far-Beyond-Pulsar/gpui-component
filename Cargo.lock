@@ -5091,7 +5091,7 @@ dependencies = [
 
 [[package]]
 name = "pulsar_engine"
-version = "0.1.29"
+version = "0.1.30"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5101,6 +5101,7 @@ dependencies = [
  "git2",
  "gpui",
  "gpui-component",
+ "lsp-types",
  "open",
  "parking_lot",
  "prettyplease",
@@ -5108,6 +5109,7 @@ dependencies = [
  "quote",
  "regex",
  "rfd",
+ "ropey",
  "rust-embed 6.8.1",
  "schemars",
  "serde",
