@@ -35,6 +35,8 @@ pub struct FileExplorer {
     item_height: Pixels,
     /// Last measured viewport bounds for accurate calculations
     last_viewport_bounds: Option<Bounds<Pixels>>,
+    /// Last window size to detect resizes
+    last_window_size: Option<gpui::Size<Pixels>>,
     /// Dirty flag to trigger re-clamping on next render
     needs_scroll_update: bool,
 }
@@ -53,6 +55,7 @@ impl FileExplorer {
             scroll_state: gpui_component::scroll::ScrollbarState::default(),
             item_height: px(28.0), // Fixed height for each item
             last_viewport_bounds: None,
+            last_window_size: None,
             needs_scroll_update: false,
         }
     }
@@ -283,7 +286,30 @@ impl FileExplorer {
             .unwrap_or(px(250.0)) // Fallback for first render
     }
 
-    fn render_file_tree_content(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_file_tree_content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Check for window size changes
+        let window_size = window.viewport_size();
+        let size_changed = self.last_window_size
+            .map(|last_size| last_size != window_size)
+            .unwrap_or(true);
+        
+        if size_changed {
+            self.last_window_size = Some(window_size);
+            // Estimate viewport bounds based on window size
+            // The file explorer typically takes up a portion of the left side
+            // We'll update this more accurately, but this gives us a reasonable estimate
+            let estimated_height = window_size.height * 0.8; // Account for header/footer
+            let estimated_width = px(250.0); // Typical sidebar width
+            
+            self.last_viewport_bounds = Some(Bounds {
+                origin: gpui::point(px(0.0), px(0.0)),
+                size: gpui::size(estimated_width, estimated_height),
+            });
+            
+            // Mark scroll for update with new bounds
+            self.needs_scroll_update = true;
+        }
+        
         // Use last known viewport bounds or fallback
         let viewport_height = self.get_viewport_height();
         let viewport_width = self.get_viewport_width();
@@ -311,6 +337,7 @@ impl FileExplorer {
         let offset_y = self.item_height * start_idx as f32;
         
         div()
+            .id("file_tree_viewport")
             .relative()
             .size_full()
             .overflow_hidden()
@@ -588,7 +615,7 @@ impl Render for FileExplorer {
                     })
                     .when(!file_tree_empty, |content| {
                         // Render virtualized content
-                        content.child(self.render_file_tree_content(cx))
+                        content.child(self.render_file_tree_content(_window, cx))
                     })
             )
             .when_some(self.project_root.clone(), |container, root| {
