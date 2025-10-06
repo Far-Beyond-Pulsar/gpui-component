@@ -861,6 +861,56 @@ impl RustAnalyzerManager {
             }
         }
     }
+
+    /// Request hover information at a specific position
+    pub fn hover(
+        &self,
+        file_path: &PathBuf,
+        line: usize,
+        column: usize,
+    ) -> Result<Value> {
+        if !self.is_running() {
+            return Err(anyhow!("rust-analyzer is not running"));
+        }
+
+        let uri = self.path_to_uri(file_path);
+        let params = json!({
+            "textDocument": {
+                "uri": uri
+            },
+            "position": {
+                "line": line.saturating_sub(1), // LSP uses 0-based lines
+                "character": column.saturating_sub(1) // LSP uses 0-based columns
+            }
+        });
+
+        self.send_request("textDocument/hover", params)
+    }
+
+    /// Request go-to-definition at a specific position
+    pub fn definition(
+        &self,
+        file_path: &PathBuf,
+        line: usize,
+        column: usize,
+    ) -> Result<Value> {
+        if !self.is_running() {
+            return Err(anyhow!("rust-analyzer is not running"));
+        }
+
+        let uri = self.path_to_uri(file_path);
+        let params = json!({
+            "textDocument": {
+                "uri": uri
+            },
+            "position": {
+                "line": line.saturating_sub(1), // LSP uses 0-based lines
+                "character": column.saturating_sub(1) // LSP uses 0-based columns
+            }
+        });
+
+        self.send_request("textDocument/definition", params)
+    }
 }
 
 impl Drop for RustAnalyzerManager {

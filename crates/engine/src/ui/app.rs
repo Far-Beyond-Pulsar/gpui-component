@@ -199,10 +199,11 @@ impl PulsarApp {
                 cx.notify();
             }
             AnalyzerEvent::Diagnostics(diagnostics) => {
-                // Update problems drawer with new diagnostics
+                // Forward diagnostics to the problems drawer
                 self.problems_drawer.update(cx, |drawer, cx| {
                     drawer.set_diagnostics(diagnostics.clone(), cx);
                 });
+                cx.notify();
             }
         }
     }
@@ -304,13 +305,17 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        println!("📂 Navigating to diagnostic: {:?} at line {}", event.file_path, event.line);
+        println!("📂 Navigating to diagnostic: {:?} at line {}, column {}", event.file_path, event.line, event.column);
         
         // Open the file in the script editor
         self.open_script_tab(event.file_path.clone(), window, cx);
         
-        // TODO: Once the file is open, jump to the specific line and column
-        // This requires adding a method to the TextEditor to navigate to a position
+        // Navigate to the specific line and column
+        if let Some(script_editor) = &self.script_editor {
+            script_editor.update(cx, |editor, cx| {
+                editor.go_to_line(event.line, event.column, window, cx);
+            });
+        }
     }
 
     /// Open a blueprint editor tab for the given class path

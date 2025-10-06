@@ -87,6 +87,13 @@ impl ScriptEditor {
         &self.text_editor
     }
 
+    /// Navigate to a specific line and column in the currently open file
+    pub fn go_to_line(&mut self, line: usize, column: usize, window: &mut Window, cx: &mut Context<Self>) {
+        self.text_editor.update(cx, |editor, cx| {
+            editor.go_to_line(line, column, window, cx);
+        });
+    }
+
     pub fn toggle_terminal(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.terminal_visible = !self.terminal_visible;
         cx.notify();

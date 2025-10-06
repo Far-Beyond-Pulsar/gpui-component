@@ -54,11 +54,11 @@ impl ComprehensiveCompletionProvider {
             all_completions.push(closure_completion);
         }
 
-        // 2. Get language-specific completions (keywords, snippets)
-        let language = self.detect_language(text);
-        all_completions.extend(self.language_provider.get_completions(&language, text, offset));
+        // 2. If LSP is available, SKIP language keywords and use LSP instead
+        // Only use dictionary-based completions for fallback
+        let has_lsp = self.lsp_provider.is_some();
 
-        // 3. Get dictionary-based completions
+        // 3. Get dictionary-based completions (always include)
         let current_word = self.get_current_word(text, offset);
         if !current_word.is_empty() {
             all_completions.extend(self.dictionary.get_completions(&current_word));
@@ -78,7 +78,7 @@ impl ComprehensiveCompletionProvider {
                         CompletionResponse::List(list) => combined.extend(list.items),
                     }
                 }
-                
+
                 // Sort by priority and remove duplicates
                 combined.sort_by(|a, b| {
                     a.sort_text.as_ref()
@@ -86,10 +86,14 @@ impl ComprehensiveCompletionProvider {
                         .cmp(b.sort_text.as_ref().unwrap_or(&b.label))
                 });
                 combined.dedup_by(|a, b| a.label == b.label);
-                
+
                 Ok(CompletionResponse::Array(combined))
             });
         }
+
+        // If no LSP, fallback to language-specific completions
+        let language = self.detect_language(text);
+        all_completions.extend(self.language_provider.get_completions(&language, text, offset));
 
         // Return immediately if no LSP provider
         Task::ready(Ok(CompletionResponse::Array(all_completions)))

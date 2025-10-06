@@ -49,7 +49,7 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
         &self,
         text: &ropey::Rope,
         offset: usize,
-        _trigger: lsp_types::CompletionContext,
+        trigger: lsp_types::CompletionContext,
         window: &mut Window,
         cx: &mut Context<InputState>,
     ) -> Task<Result<lsp_types::CompletionResponse>> {
@@ -67,17 +67,26 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
         
         // Request completions from rust-analyzer
         let analyzer = self.analyzer.clone();
+        let trigger_kind = match trigger.trigger_kind {
+            lsp_types::CompletionTriggerKind::INVOKED => 1,
+            lsp_types::CompletionTriggerKind::TRIGGER_CHARACTER => 2,
+            lsp_types::CompletionTriggerKind::TRIGGER_FOR_INCOMPLETE_COMPLETIONS => 3,
+            _ => 1,
+        };
         
         cx.spawn_in(window, async move |_, cx| {
             // Send completion request - use ok() to handle Result
-            let response_result = analyzer.update(&cx, |analyzer, _| {
+            let response_result = analyzer.update(cx, |analyzer, _| {
                 let params = json!({
                     "textDocument": {
                         "uri": uri
                     },
-                    "position": position,
+                    "position": {
+                        "line": position.line,
+                        "character": position.character
+                    },
                     "context": {
-                        "triggerKind": 1
+                        "triggerKind": trigger_kind
                     }
                 });
 
@@ -87,9 +96,12 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
             if let Some(response) = response_result {
                 // Parse the response
                 if let Some(result) = response.get("result") {
+                    // Try as array first
                     if let Ok(items) = serde_json::from_value::<Vec<lsp_types::CompletionItem>>(result.clone()) {
                         return Ok(lsp_types::CompletionResponse::Array(items));
-                    } else if let Ok(list) = serde_json::from_value::<lsp_types::CompletionList>(result.clone()) {
+                    } 
+                    // Try as completion list
+                    else if let Ok(list) = serde_json::from_value::<lsp_types::CompletionList>(result.clone()) {
                         return Ok(lsp_types::CompletionResponse::List(list));
                     }
                 }
@@ -106,9 +118,18 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
         new_text: &str,
         _cx: &mut Context<InputState>,
     ) -> bool {
-        // Trigger on dot, double colon, or alphanumeric
-        new_text.contains('.') 
-            || new_text.contains("::")
-            || new_text.chars().any(|c| c.is_alphanumeric())
+        // Trigger on dot, double colon, or after alphanumeric characters
+        if new_text.is_empty() {
+            return false;
+        }
+        
+        // Trigger on member access
+        if new_text.ends_with('.') || new_text.ends_with("::") {
+            return true;
+        }
+        
+        // Trigger after typing identifiers (but not on every keystroke)
+        let last_char = new_text.chars().last().unwrap();
+        last_char.is_alphanumeric() || last_char == '_'
     }
 }

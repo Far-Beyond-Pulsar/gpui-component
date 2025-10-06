@@ -110,16 +110,14 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // If context menu is open, accept the selected completion
+        // If context menu is open, accept the selected completion and DON'T insert tab
         if self.is_context_menu_open(cx) {
-            let handled = self.handle_action_for_context_menu(
-                Box::new(TabComplete),
+            self.handle_action_for_context_menu(
+                Box::new(super::Enter { secondary: false }),
                 window,
                 cx,
             );
-            if handled {
-                return;
-            }
+            return; // Exit early - don't insert tab
         }
 
         // Otherwise, trigger completions
@@ -128,6 +126,8 @@ impl InputState {
         
         // Get completion provider
         let Some(provider) = self.lsp.completion_provider.clone() else {
+            // No provider - insert tab normally
+            self.insert("\t", window, cx);
             return;
         };
 

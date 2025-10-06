@@ -462,6 +462,37 @@ impl TextEditor {
         false
     }
 
+    /// Navigate to a specific line and column in the current file
+    pub fn go_to_line(&mut self, line: usize, column: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(index) = self.current_file_index {
+            if let Some(open_file) = self.open_files.get(index) {
+                open_file.input_state.update(cx, |state, cx| {
+                    // LSP Position uses 'line' and 'character' fields (0-based)
+                    // Our UI uses 1-based line numbers
+                    use gpui_component::input::Position;
+                    state.set_cursor_position(
+                        Position {
+                            line: (line.saturating_sub(1)) as u32,
+                            character: (column.saturating_sub(1)) as u32,
+                        },
+                        window,
+                        cx,
+                    );
+                    
+                    println!("📍 Navigated to line {}, column {}", line, column);
+                    cx.notify();
+                });
+            }
+        }
+    }
+
+    /// Get the current file path if any
+    pub fn current_file_path(&self) -> Option<PathBuf> {
+        self.current_file_index
+            .and_then(|index| self.open_files.get(index))
+            .map(|file| file.path.clone())
+    }
+
     fn render_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         if self.open_files.is_empty() {
             return div().into_any_element();
