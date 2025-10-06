@@ -1630,7 +1630,7 @@ impl InputState {
             return 0;
         }
 
-        let (Some(bounds), Some(last_layout)) =
+        let (Some(_bounds), Some(last_layout)) =
             (self.last_bounds.as_ref(), self.last_layout.as_ref())
         else {
             return 0;
@@ -1641,21 +1641,32 @@ impl InputState {
 
         // TIP: About the IBeam cursor
         //
-        // If cursor style is IBeam, the mouse mouse position is in the middle of the cursor (This is special in OS)
+        // If cursor style is IBeam, the mouse position is in the middle of the cursor (This is special in OS)
 
         // IMPORTANT: Convert from window coordinates to element coordinates
-        // position is in window coordinates, but we need it relative to the element
-        // bounds.origin includes scroll offset, input_bounds.origin is the actual element position
+        // position is in window coordinates
+        // input_bounds.origin is the element's fixed position in window space (no scroll)
+        // bounds.origin includes the scroll offset applied during rendering
+        
+        // The mouse position relative to the element (not scrolled)
         let element_relative_position = position - self.input_bounds.origin - point(line_number_width, px(0.));
-
-        // Now apply the scroll offset to get the position relative to the scrolled content
-        let scroll_offset = self.scroll_handle.offset();
-        let inner_position = element_relative_position - scroll_offset;
+        
+        // Now we need to find which line this corresponds to
+        // The visible_top is already relative to the scroll, so we work in "content space"
+        // where y=0 is the start of the content (before any scrolling)
+        
+        // Get the scroll offset to convert element coords to content coords
+        let scroll_y = self.scroll_handle.offset().y;
+        
+        // Content-relative position (where y=0 is top of first line)
+        // When scrolled down, scroll_y is negative, so subtracting it adds the scroll amount
+        let content_y = element_relative_position.y - scroll_y;
 
         let mut index = last_layout.visible_range_offset.start;
-        // For virtual scrolling, we need to start y_offset at 0 since bounds.origin
-        // already includes the scroll offset, and visible_top is used for rendering offset
+        // y_offset tracks position in content space (starts at 0 for first visible line in content)
         let mut y_offset = px(0.);
+        
+        // Start from the first visible line and check each one
         for (ix, line) in self
             .text_wrapper
             .lines
@@ -1664,10 +1675,14 @@ impl InputState {
             .enumerate()
         {
             let line_origin = self.line_origin_with_y_offset(&mut y_offset, line, line_height);
-            let pos = inner_position - line_origin;
+            
+            // Adjust for visible_top offset
+            let line_y_in_content = last_layout.visible_top + line_origin.y;
+            let relative_y = content_y - line_y_in_content;
+            let pos = point(element_relative_position.x - line_origin.x, relative_y);
 
             let Some(line_layout) = last_layout.lines.get(ix) else {
-                if pos.y < line_origin.y + line_height {
+                if relative_y < line_height {
                     break;
                 }
 
@@ -1682,7 +1697,7 @@ impl InputState {
             if let Some(v) = line_layout.closest_index_for_position(pos, line_height) {
                 index += v;
                 break;
-            } else if pos.y < px(0.) {
+            } else if relative_y < px(0.) {
                 break;
             }
 

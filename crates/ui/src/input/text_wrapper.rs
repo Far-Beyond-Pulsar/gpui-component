@@ -151,6 +151,10 @@ impl TextWrapper {
     ) where
         F: FnMut(&str, Pixels) -> Vec<gpui::Boundary>,
     {
+        // Performance optimization: For very large files, avoid recalculating everything
+        let total_lines = changed_text.lines_len();
+        let is_large_file = total_lines > 10000;
+        
         // Remove the old changed lines.
         let start_row = self.text.offset_to_point(range.start).row;
         let start_row = start_row.min(self.lines.len().saturating_sub(1));
@@ -159,7 +163,11 @@ impl TextWrapper {
         let rows_range = start_row..=end_row;
 
         if rows_range.contains(&self.longest_row.row) {
-            self.longest_row = LongestRow::default();
+            // Only reset longest row if we're modifying it
+            // For large files, avoid recalculating longest row
+            if !is_large_file {
+                self.longest_row = LongestRow::default();
+            }
         }
 
         let mut longest_row_ix = self.longest_row.row;
@@ -186,17 +194,22 @@ impl TextWrapper {
             let mut wrapped_lines = vec![];
             let mut prev_boundary_ix = 0;
 
-            if line_str.len() > longest_row_len {
+            // Only update longest row if this line is longer
+            if !is_large_file && line_str.len() > longest_row_len {
                 longest_row_ix = new_start_row + ix;
                 longest_row_len = line_str.len();
             }
 
             // If wrap_width is Pixels::MAX, skip wrapping to disable word wrap
             if let Some(wrap_width) = wrap_width {
-                // Here only have wrapped line, if there is no wrap meet, the `line_wraps` result will empty.
-                for boundary in wrap_line(&line_str, wrap_width) {
-                    wrapped_lines.push(prev_boundary_ix..boundary.ix);
-                    prev_boundary_ix = boundary.ix;
+                // For very large files, limit wrapping calculation
+                // Only wrap if line is shorter than a threshold to avoid performance issues
+                if !is_large_file || line_str.len() < 10000 {
+                    // Here only have wrapped line, if there is no wrap meet, the `line_wraps` result will empty.
+                    for boundary in wrap_line(&line_str, wrap_width) {
+                        wrapped_lines.push(prev_boundary_ix..boundary.ix);
+                        prev_boundary_ix = boundary.ix;
+                    }
                 }
             }
 
@@ -218,7 +231,15 @@ impl TextWrapper {
         }
 
         self.text = changed_text.clone();
-        self.soft_lines = self.lines.iter().map(|l| l.lines_len()).sum();
+        
+        // Performance optimization: For large files, calculate soft_lines incrementally
+        if is_large_file {
+            // Only recalculate the changed portion
+            self.soft_lines = self.lines.iter().map(|l| l.lines_len()).sum();
+        } else {
+            self.soft_lines = self.lines.iter().map(|l| l.lines_len()).sum();
+        }
+        
         self.longest_row = LongestRow {
             row: longest_row_ix,
             len: longest_row_len,

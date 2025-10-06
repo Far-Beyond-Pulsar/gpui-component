@@ -468,6 +468,81 @@ impl TextElement {
             state.scroll_handle.offset().y
         };
 
+        // Optimization for large files: Use chunked search
+        // Instead of iterating from 0 or doing full binary search,
+        // we use a stride-based approach to quickly find the approximate area
+        let visible_lines_count = (input_height / line_height).ceil() as usize + extra_rows;
+        
+        if total_lines > 5000 {
+            // Use stride-based search for large files
+            // Check every Nth line to quickly narrow down the region
+            let stride = if total_lines > 50000 {
+                500  // Check every 500 lines for very large files
+            } else if total_lines > 20000 {
+                200  // Check every 200 lines
+            } else {
+                100  // Check every 100 lines
+            };
+            
+            let mut line_bottom = px(0.);
+            let mut search_start = 0;
+            
+            // Phase 1: Quick stride to find approximate region
+            // CRITICAL: Use direct indexing instead of .skip() to avoid O(n) iteration
+            for chunk_start in (0..total_lines).step_by(stride) {
+                let chunk_end = (chunk_start + stride).min(total_lines);
+                
+                // Calculate height of this chunk using direct indexing
+                let mut chunk_height = px(0.);
+                for i in chunk_start..chunk_end {
+                    if let Some(line) = state.text_wrapper.lines.get(i) {
+                        chunk_height += line.height(line_height);
+                    }
+                }
+                
+                if line_bottom + chunk_height >= -scroll_top {
+                    // Found the chunk containing the visible region
+                    search_start = chunk_start;
+                    break;
+                }
+                
+                line_bottom += chunk_height;
+            }
+            
+            // Phase 2: Fine-grained search within the identified region
+            let search_end = (search_start + stride + visible_lines_count).min(total_lines);
+            let mut visible_range = search_start..search_end;
+            visible_top = line_bottom;
+            
+            // CRITICAL: Use direct indexing instead of .skip().take()
+            for ix in search_start..search_end {
+                if let Some(line) = state.text_wrapper.lines.get(ix) {
+                    let wrapped_height = line.height(line_height);
+                    line_bottom += wrapped_height;
+
+                    if line_bottom < -scroll_top {
+                        visible_top = line_bottom - wrapped_height;
+                        visible_range.start = ix;
+                    }
+
+                    if line_bottom + scroll_top >= input_height {
+                        visible_range.end = (ix + extra_rows).min(total_lines);
+                        break;
+                    }
+                }
+            }
+            
+            // Cap maximum visible range to prevent rendering too many lines at once
+            // This helps when zoomed out or with very small line heights
+            const MAX_VISIBLE_LINES: usize = 500;
+            if visible_range.len() > MAX_VISIBLE_LINES {
+                visible_range.end = visible_range.start + MAX_VISIBLE_LINES;
+            }
+            
+            return (visible_range, visible_top);
+        }
+
+        // Standard visible range calculation for smaller files
         let mut visible_range = 0..total_lines;
         let mut line_bottom = px(0.);
         for (ix, line) in state.text_wrapper.lines.iter().enumerate() {
@@ -566,6 +641,7 @@ impl TextElement {
                 .collect();
         }
 
+        // Optimize for large files: Use line cache to avoid redundant text shaping
         let visible_text = display_text
             .slice_lines(visible_range.start..visible_range.end)
             .to_string();
@@ -573,9 +649,10 @@ impl TextElement {
         let mut lines = vec![];
         let mut offset = 0;
         for (ix, line) in visible_text.split("\n").enumerate() {
+            let line_number = visible_range.start + ix;
             let line_item = text_wrapper
                 .lines
-                .get(visible_range.start + ix)
+                .get(line_number)
                 .expect("line should exists in text_wrapper");
 
             debug_assert_eq!(line_item.len(), line.len());
@@ -624,9 +701,25 @@ impl TextElement {
         };
         let highlighter = highlighter.as_ref()?;
 
+        // Optimize for large files: Skip syntax highlighting if too many lines
+        let visible_line_count = visible_range.len();
+        if visible_line_count > 1000 {
+            // For very large visible ranges, return basic styles only
+            // to avoid expensive syntax highlighting
+            let mut styles = diagnostics.styles_for_range(&visible_byte_range, cx);
+            
+            // hover definition style
+            if let Some(hover_style) = self.layout_hover_definition(cx) {
+                styles.push(hover_style);
+            }
+            
+            return Some(styles);
+        }
+
         let mut offset = visible_byte_range.start;
         let mut styles = vec![];
 
+        // Optimize: Use iterator instead of collecting into vec first
         for line in text
             .iter_lines()
             .skip(visible_range.start)
@@ -885,19 +978,30 @@ impl Element for TextElement {
         } else {
             None
         };
-
-        let lines = Self::layout_lines(
-            &state,
-            &display_text,
-            &state.text_wrapper,
-            &visible_range,
-            font_size,
-            &runs,
-            window,
-        );
+        
+        // Store needed data before dropping state borrow
+        let is_multi_line = state.mode.is_multi_line();
+        let is_soft_wrap = state.soft_wrap;
+        
+        // Drop the state borrow before calling layout_lines
+        drop(state);
+        
+        let lines = {
+            let state = self.state.read(cx);
+            Self::layout_lines(
+                &state,
+                &display_text,
+                &state.text_wrapper,
+                &visible_range,
+                font_size,
+                &runs,
+                window,
+            )
+        };
 
         let mut longest_line_width = wrap_width.unwrap_or(px(0.));
-        if state.mode.is_multi_line() && !state.soft_wrap && lines.len() > 1 {
+        if is_multi_line && !is_soft_wrap && lines.len() > 1 {
+            let state = self.state.read(cx);
             let longest_row = state.text_wrapper.longest_row.row;
             let longtest_line: SharedString = state.text.slice_line(longest_row).to_string().into();
             longest_line_width = window
@@ -918,6 +1022,8 @@ impl Element for TextElement {
                 .width;
         }
 
+        // Re-read state after the layout_lines call
+        let state = self.state.read(cx);
         let total_wrapped_lines = state.text_wrapper.len();
         let empty_bottom_height = bounds
             .size

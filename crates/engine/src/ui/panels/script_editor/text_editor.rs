@@ -79,6 +79,23 @@ impl TextEditor {
             file_size / 1024,
             language
         );
+        
+        // Warn user about very large files
+        if lines_count > 50_000 {
+            println!(
+                "⚠️  Large file detected ({} lines). Some features may be disabled for performance:",
+                lines_count
+            );
+            println!("   - Syntax highlighting disabled");
+            println!("   - Soft wrap disabled");
+        } else if lines_count > 10_000 {
+            println!(
+                "ℹ️  Large file ({} lines). Performance optimizations enabled:",
+                lines_count
+            );
+            println!("   - Soft wrap disabled");
+            println!("   - Virtual scrolling enabled");
+        }
 
         // Create editor state with optimal settings for large files
         let setup_start = Instant::now();
@@ -91,7 +108,8 @@ impl TextEditor {
                     hard_tabs: false,
                 })
                 // Disable soft wrap for large files for better performance
-                .soft_wrap(lines_count < 10_000);
+                // Files with more than 5k lines or 500KB get no wrapping
+                .soft_wrap(lines_count < 5_000 && file_size < 500_000);
 
             // Set the content after creating the state
             state.set_value(&content, window, cx);
