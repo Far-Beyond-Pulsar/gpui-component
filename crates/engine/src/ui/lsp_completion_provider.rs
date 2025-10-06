@@ -204,23 +204,16 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
         new_text: &str,
         _cx: &mut Context<InputState>,
     ) -> bool {
-        // Trigger on dot, double colon, or after alphanumeric characters
+        // Rust-analyzer's official trigger characters: '.', ':', '<'
+        // These are the characters rust-analyzer declares in its CompletionOptions
+        
         if new_text.is_empty() {
             return false;
         }
         
-        // Trigger on member access
-        if new_text.ends_with('.') || new_text.ends_with("::") {
-            println!("🔍 Completion trigger detected: member access");
-            return true;
-        }
-        
-        // Trigger after typing identifiers (but not on every keystroke)
         let last_char = new_text.chars().last().unwrap();
-        let should_trigger = last_char.is_alphanumeric() || last_char == '_';
-        if should_trigger {
-            println!("🔍 Completion trigger detected: identifier character '{}'", last_char);
-        }
-        should_trigger
+        
+        // Only auto-trigger on rust-analyzer's declared trigger characters
+        matches!(last_char, '.' | ':' | '<')
     }
 }
