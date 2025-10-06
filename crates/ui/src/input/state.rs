@@ -310,6 +310,9 @@ pub struct InputState {
     pub(crate) mask_pattern: MaskPattern,
     pub(super) placeholder: SharedString,
 
+    /// Optimized line cache for improved rendering performance
+    pub(super) line_cache: crate::input::line_cache::OptimizedLineCache,
+
     /// Popover
     diagnostic_popover: Option<Entity<DiagnosticPopover>>,
     /// Completion/CodeAction context menu
@@ -405,6 +408,7 @@ impl InputState {
             preferred_column: None,
             placeholder: SharedString::default(),
             mask_pattern: MaskPattern::default(),
+            line_cache: crate::input::line_cache::OptimizedLineCache::default(),
             lsp: Lsp::default(),
             diagnostic_popover: None,
             context_menu: None,
@@ -645,6 +649,13 @@ impl InputState {
         self.scroll_handle.set_offset(point(px(0.), px(0.)));
 
         cx.notify();
+    }
+    
+    /// Get a reference to the line cache for performance monitoring.
+    ///
+    /// This allows external code to check cache statistics and performance.
+    pub fn line_cache(&self) -> &crate::input::line_cache::OptimizedLineCache {
+        &self.line_cache
     }
 
     /// Insert text at the current cursor position.
@@ -1632,13 +1643,14 @@ impl InputState {
         //
         // If cursor style is IBeam, the mouse mouse position is in the middle of the cursor (This is special in OS)
 
-        // The position is relative to the bounds of the text input
-        //
-        // bounds.origin:
-        //
-        // - included the input padding.
-        // - included the scroll offset.
-        let inner_position = position - bounds.origin - point(line_number_width, px(0.));
+        // IMPORTANT: Convert from window coordinates to element coordinates
+        // position is in window coordinates, but we need it relative to the element
+        // bounds.origin includes scroll offset, input_bounds.origin is the actual element position
+        let element_relative_position = position - self.input_bounds.origin - point(line_number_width, px(0.));
+
+        // Now apply the scroll offset to get the position relative to the scrolled content
+        let scroll_offset = self.scroll_handle.offset();
+        let inner_position = element_relative_position - scroll_offset;
 
         let mut index = last_layout.visible_range_offset.start;
         // For virtual scrolling, we need to start y_offset at 0 since bounds.origin

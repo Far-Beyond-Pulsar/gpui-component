@@ -3,6 +3,7 @@ mod change;
 mod clear_button;
 mod cursor;
 mod element;
+mod line_cache;
 mod lsp;
 mod mask_pattern;
 mod mode;
@@ -15,9 +16,11 @@ mod search;
 mod state;
 mod text_input;
 mod text_wrapper;
+mod virtual_editor_utils;
 
 pub(crate) use clear_button::*;
 pub use cursor::*;
+pub use line_cache::{CachedLineLayout, OptimizedLineCache};
 pub use lsp::*;
 pub use mask_pattern::MaskPattern;
 pub use mode::TabSize;
@@ -25,6 +28,7 @@ pub use number_input::{NumberInput, NumberInputEvent, StepAction};
 pub use otp_input::*;
 pub use state::*;
 pub use text_input::*;
+pub use virtual_editor_utils::{VirtualEditorConfig, calculate_visible_range, calculate_content_size};
 
 pub use lsp_types::Position;
 pub use rope_ext::*;
