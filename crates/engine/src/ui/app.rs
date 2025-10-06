@@ -409,7 +409,8 @@ impl PulsarApp {
             editor.set_rust_analyzer(analyzer, cx);
         });
 
-        // Subscribe to text editor events to notify rust-analyzer
+        // Note: ScriptEditor now handles LSP notifications internally via set_rust_analyzer
+        // We only subscribe here for non-LSP events (RunScriptRequested, etc.)
         cx.subscribe_in(&script_editor, window, Self::on_text_editor_event).detach();
 
         // Open the specific file
@@ -436,37 +437,20 @@ impl PulsarApp {
         use super::panels::TextEditorEvent;
         
         match event {
-            TextEditorEvent::FileOpened { path, content } => {
-                // Notify rust-analyzer of file opening
-                if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-                    self.rust_analyzer.update(cx, |analyzer, cx| {
-                        if let Err(e) = analyzer.did_open_file(path, content, "rust") {
-                            eprintln!("Failed to notify rust-analyzer of file open: {}", e);
-                        }
-                    });
-                }
+            // LSP notifications are now handled by ScriptEditor internally
+            // We only handle app-level events here
+            TextEditorEvent::FileOpened { .. } => {
+                // No-op: ScriptEditor handles didOpen
             }
-            TextEditorEvent::FileSaved { path, content } => {
-                // Notify rust-analyzer of file save (triggers re-analysis)
-                if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-                    self.rust_analyzer.update(cx, |analyzer, cx| {
-                        if let Err(e) = analyzer.did_save_file(path, content) {
-                            eprintln!("Failed to notify rust-analyzer of file save: {}", e);
-                        }
-                    });
-                }
+            TextEditorEvent::FileSaved { .. } => {
+                // No-op: ScriptEditor handles didSave  
             }
-            TextEditorEvent::FileClosed { path } => {
-                // Notify rust-analyzer of file closing
-                if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-                    self.rust_analyzer.update(cx, |analyzer, cx| {
-                        if let Err(e) = analyzer.did_close_file(path) {
-                            eprintln!("Failed to notify rust-analyzer of file close: {}", e);
-                        }
-                    });
-                }
+            TextEditorEvent::FileClosed { .. } => {
+                // No-op: ScriptEditor handles didClose
             }
-            _ => {}
+            _ => {
+                // Handle other events (RunScriptRequested, etc.) if needed
+            }
         }
     }
 

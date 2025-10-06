@@ -129,22 +129,64 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
 
             if let Some(response) = response_result {
                 println!("✓ Received response from rust-analyzer");
+                
+                // Check for error in response
+                if let Some(error) = response.get("error") {
+                    eprintln!("❌ rust-analyzer returned error: {}", error);
+                    return Ok(lsp_types::CompletionResponse::Array(vec![]));
+                }
+                
                 // Parse the response
                 if let Some(result) = response.get("result") {
-                    // Try as array first
-                    if let Ok(items) = serde_json::from_value::<Vec<lsp_types::CompletionItem>>(result.clone()) {
-                        println!("✓ Parsed {} completion items", items.len());
-                        return Ok(lsp_types::CompletionResponse::Array(items));
-                    } 
-                    // Try as completion list
-                    else if let Ok(list) = serde_json::from_value::<lsp_types::CompletionList>(result.clone()) {
-                        println!("✓ Parsed completion list with {} items", list.items.len());
-                        return Ok(lsp_types::CompletionResponse::List(list));
-                    } else {
-                        eprintln!("⚠️  Failed to parse completion response");
+                    // Check if result is null
+                    if result.is_null() {
+                        println!("⚠️  rust-analyzer returned null result (no completions available)");
+                        return Ok(lsp_types::CompletionResponse::Array(vec![]));
                     }
+                    
+                    println!("📦 Result field type: {}", match result {
+                        serde_json::Value::Null => "null",
+                        serde_json::Value::Bool(_) => "bool",
+                        serde_json::Value::Number(_) => "number",
+                        serde_json::Value::String(_) => "string",
+                        serde_json::Value::Array(_) => "array",
+                        serde_json::Value::Object(_) => "object",
+                    });
+                    
+                    // For debugging, print first 500 chars of result
+                    let result_str = serde_json::to_string(&result).unwrap_or_else(|_| "Invalid JSON".to_string());
+                    if result_str.len() > 500 {
+                        println!("📦 Result preview (first 500 chars): {}...", &result_str[..500]);
+                    } else {
+                        println!("📦 Result: {}", result_str);
+                    }
+                    
+                    // Try as array first
+                    match serde_json::from_value::<Vec<lsp_types::CompletionItem>>(result.clone()) {
+                        Ok(items) => {
+                            println!("✓ Parsed {} completion items as array", items.len());
+                            return Ok(lsp_types::CompletionResponse::Array(items));
+                        }
+                        Err(e) => {
+                            println!("   Array parse failed: {}", e);
+                        }
+                    }
+                    
+                    // Try as completion list
+                    match serde_json::from_value::<lsp_types::CompletionList>(result.clone()) {
+                        Ok(list) => {
+                            println!("✓ Parsed completion list with {} items", list.items.len());
+                            return Ok(lsp_types::CompletionResponse::List(list));
+                        }
+                        Err(e) => {
+                            println!("   List parse failed: {}", e);
+                        }
+                    }
+                    
+                    eprintln!("⚠️  Failed to parse completion response - unknown format");
                 } else {
                     eprintln!("⚠️  No 'result' field in response");
+                    eprintln!("   Response keys: {:?}", response.as_object().map(|o| o.keys().collect::<Vec<_>>()));
                 }
             } else {
                 eprintln!("⚠️  No response from rust-analyzer");
