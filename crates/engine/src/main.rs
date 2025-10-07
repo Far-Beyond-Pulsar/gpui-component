@@ -114,9 +114,11 @@ fn main() {
     }
 
     // Load settings
+    println!("Loading engine settings from {:?}", config_file);
     let mut engine_settings = EngineSettings::load(&config_file);
 
-    let app = Application::new().with_assets(Assets);
+    let app = Application::new()
+        .with_assets(Assets);
 
     app.run(move |cx| {
         // Load custom fonts first

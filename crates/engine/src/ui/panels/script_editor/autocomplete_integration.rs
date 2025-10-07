@@ -37,9 +37,11 @@ pub fn setup_rust_autocomplete(
     );
     
     // Set ONLY the LSP provider (no dictionary completions for Rust)
-    input_state.lsp.completion_provider = Some(Rc::new(rust_provider));
+    let rust_provider_rc = Rc::new(rust_provider);
+    input_state.lsp.completion_provider = Some(rust_provider_rc.clone());
+    input_state.lsp.definition_provider = Some(rust_provider_rc);
     
-    println!("✓ Autocomplete configured for: {:?} (workspace: {:?})", file_path.file_name(), workspace);
+    println!("✓ Autocomplete and Go-to-Definition configured for: {:?} (workspace: {:?})", file_path.file_name(), workspace);
 }
 
 /// Helper function to set up autocomplete for JavaScript/TypeScript files

@@ -2,7 +2,7 @@ use anyhow::Result;
 use gpui::{App, Context, MouseMoveEvent, Task, Window};
 use std::rc::Rc;
 
-use crate::input::{popovers::ContextMenu, InputState, RopeExt};
+use crate::input::{popovers::ContextMenu, InputState, RopeExt, GoToDefinition, ToggleCodeActions};
 
 mod code_actions;
 mod completions;
@@ -86,7 +86,16 @@ impl InputState {
                     handled = menu.handle_action(action, window, cx)
                 });
             }
-            ContextMenu::MouseContext(..) => {}
+            ContextMenu::MouseContext(..) => {
+                // Handle mouse context menu actions
+                if action.as_any().downcast_ref::<GoToDefinition>().is_some() {
+                    self.on_action_go_to_definition(&GoToDefinition, window, cx);
+                    handled = true;
+                } else if action.as_any().downcast_ref::<ToggleCodeActions>().is_some() {
+                    self.on_action_toggle_code_actions(&ToggleCodeActions, window, cx);
+                    handled = true;
+                }
+            }
         };
 
         handled

@@ -2,8 +2,8 @@
 /// This provides real-time code completions from rust-analyzer
 
 use anyhow::Result;
-use gpui::{Context, Task, Window};
-use gpui_component::input::{CompletionProvider, InputState, RopeExt};
+use gpui::{App, Context, Task, Window};
+use gpui_component::input::{CompletionProvider, DefinitionProvider, InputState, RopeExt};
 use serde_json::json;
 use std::path::PathBuf;
 
@@ -235,5 +235,112 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
         
         // Don't trigger on other special characters
         false
+    }
+}
+
+impl DefinitionProvider for GlobalRustAnalyzerCompletionProvider {
+    fn definitions(
+        &self,
+        text: &ropey::Rope,
+        offset: usize,
+        _window: &mut Window,
+        cx: &mut App,
+    ) -> Task<Result<Vec<lsp_types::LocationLink>>> {
+        // Check if analyzer is ready (fast check)
+        let is_ready = self.analyzer.read(cx).is_running();
+        if !is_ready {
+            println!("⚠️  rust-analyzer is not running, cannot get definitions");
+            return Task::ready(Ok(vec![]));
+        }
+
+        let uri = self.path_to_uri();
+        let position = text.offset_to_position(offset);
+        let word = text.word_at(offset);
+        
+        println!("🔍 Requesting definition for '{}' at {}:{}", word, position.line, position.character);
+        
+        // Prepare the request parameters
+        let params = json!({
+            "textDocument": {
+                "uri": uri
+            },
+            "position": {
+                "line": position.line,
+                "character": position.character
+            }
+        });
+        
+        // Send the request synchronously (while we still have access to the entity)
+        let response_rx = match self.analyzer.read(cx).send_request_async("textDocument/definition", params) {
+            Ok(rx) => rx,
+            Err(e) => {
+                eprintln!("⚠️  Failed to send definition request: {}", e);
+                return Task::ready(Ok(vec![]));
+            }
+        };
+        
+        // Use foreground executor to handle the async work
+        let executor = cx.foreground_executor().clone();
+        executor.spawn(async move {
+            // Wait for response
+            let response = match response_rx.recv_async().await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    eprintln!("⚠️  Failed to receive definition response: {}", e);
+                    return Ok(vec![]);
+                }
+            };
+            
+            // Check for errors
+            if let Some(error) = response.get("error") {
+                eprintln!("❌ rust-analyzer definition error: {}", error);
+                return Ok(vec![]);
+            }
+            
+            // Parse the result
+            if let Some(result) = response.get("result") {
+                if result.is_null() {
+                    println!("📍 No definition found for '{}'", word);
+                    return Ok(vec![]);
+                }
+                
+                // Try to parse as LocationLink array
+                if let Ok(links) = serde_json::from_value::<Vec<lsp_types::LocationLink>>(result.clone()) {
+                    println!("✅ Found {} definition(s) for '{}'", links.len(), word);
+                    return Ok(links);
+                }
+                
+                // Try to parse as Location array and convert to LocationLink
+                if let Ok(locations) = serde_json::from_value::<Vec<lsp_types::Location>>(result.clone()) {
+                    let links: Vec<lsp_types::LocationLink> = locations
+                        .into_iter()
+                        .map(|loc| lsp_types::LocationLink {
+                            origin_selection_range: None,
+                            target_uri: loc.uri,
+                            target_range: loc.range,
+                            target_selection_range: loc.range,
+                        })
+                        .collect();
+                    println!("✅ Found {} definition(s) for '{}'", links.len(), word);
+                    return Ok(links);
+                }
+                
+                // Try single Location
+                if let Ok(location) = serde_json::from_value::<lsp_types::Location>(result.clone()) {
+                    let link = lsp_types::LocationLink {
+                        origin_selection_range: None,
+                        target_uri: location.uri,
+                        target_range: location.range,
+                        target_selection_range: location.range,
+                    };
+                    println!("✅ Found definition for '{}'", word);
+                    return Ok(vec![link]);
+                }
+                
+                eprintln!("⚠️  Unexpected definition response format");
+            }
+            
+            Ok(vec![])
+        })
     }
 }

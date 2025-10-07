@@ -23,6 +23,8 @@ pub enum TextEditorEvent {
     FileOpened { path: PathBuf, content: String },
     FileSaved { path: PathBuf, content: String },
     FileClosed { path: PathBuf },
+    /// Request to navigate to a specific location (for go-to-definition)
+    NavigateToLocation { path: PathBuf, line: u32, character: u32 },
 }
 
 #[derive(Clone)]
@@ -36,6 +38,10 @@ pub struct OpenFile {
     pub version: i32,
     /// Whether to render this file as markdown
     pub render_as_markdown: bool,
+    /// Cached markdown preview content (to avoid re-rendering on every frame)
+    pub markdown_preview_cache: String,
+    /// Last time markdown was rendered
+    pub last_markdown_render: Option<Instant>,
 }
 
 pub struct TextEditor {
@@ -50,6 +56,8 @@ pub struct TextEditor {
     rust_analyzer: Option<Entity<RustAnalyzerManager>>,
     /// Resizable state for markdown split view
     markdown_split_state: Entity<ResizableState>,
+    /// Pending navigation (path, line, character) to be handled when we have window access
+    pending_navigation: Option<(PathBuf, u32, u32)>,
 }
 
 impl TextEditor {
@@ -65,6 +73,21 @@ impl TextEditor {
             subscriptions: Vec::new(),
             rust_analyzer: None,
             markdown_split_state,
+            pending_navigation: None,
+        }
+    }
+    
+    /// Manually refresh the markdown preview for the current file
+    pub fn refresh_markdown_preview(&mut self, cx: &mut Context<Self>) {
+        if let Some(index) = self.current_file_index {
+            if let Some(file) = self.open_files.get_mut(index) {
+                if file.render_as_markdown {
+                    let content = file.input_state.read(cx).value().to_string();
+                    file.markdown_preview_cache = content;
+                    file.last_markdown_render = Some(Instant::now());
+                    cx.notify();
+                }
+            }
         }
     }
 
@@ -107,6 +130,8 @@ impl TextEditor {
             file_size: 0,
             version: 1,
             render_as_markdown: false,
+            markdown_preview_cache: String::new(),
+            last_markdown_render: None,
         };
 
         self.open_files.push(open_file);
@@ -353,6 +378,8 @@ impl TextEditor {
             file_size,
             version: 1,
             render_as_markdown: is_markdown,
+            markdown_preview_cache: if is_markdown { content.clone() } else { String::new() },
+            last_markdown_render: if is_markdown { Some(Instant::now()) } else { None },
         };
 
         self.open_files.push(open_file);
@@ -362,38 +389,60 @@ impl TextEditor {
         let analyzer = self.rust_analyzer.clone();
         println!("📝 Creating change subscription for {:?}, rust_analyzer present: {}", path.file_name(), analyzer.is_some());
         let subscription = cx.subscribe(&input_state, move |this: &mut TextEditor, input_state_entity: Entity<InputState>, event: &InputEvent, cx: &mut Context<TextEditor>| {
-            if let InputEvent::Change = event {
-                // Find which file this corresponds to
-                if let Some(index) = this.open_files.iter().position(|f| f.input_state == input_state_entity) {
-                    if let Some(file) = this.open_files.get_mut(index) {
-                        file.is_modified = true;
-                        file.version += 1;
-                        
-                        // Notify rust-analyzer of the change
-                        if let Some(ref analyzer) = analyzer {
-                            let path = file.path.clone();
-                            let version = file.version;
-                            let content = file.input_state.read(cx).value().to_string();
+            match event {
+                InputEvent::Change => {
+                    // Find which file this corresponds to
+                    if let Some(index) = this.open_files.iter().position(|f| f.input_state == input_state_entity) {
+                        if let Some(file) = this.open_files.get_mut(index) {
+                            file.is_modified = true;
+                            file.version += 1;
                             
-                            println!("📝 File changed: {:?} (version {}), notifying rust-analyzer", path.file_name(), version);
-                            analyzer.update(cx, |analyzer, _cx| {
-                                if let Err(e) = analyzer.did_change_file(&path, &content, version) {
-                                    eprintln!("⚠️  Failed to notify rust-analyzer of file change: {}", e);
-                                } else {
-                                    if version % 10 == 0 {  // Log every 10th change to avoid spam
-                                        println!("✓ Notified rust-analyzer of change (version {})", version);
+                            // Note: We no longer auto-update markdown preview here
+                            // User must click the refresh button to update preview
+                            
+                            // Notify rust-analyzer of the change
+                            if let Some(ref analyzer) = analyzer {
+                                let path = file.path.clone();
+                                let version = file.version;
+                                let content = file.input_state.read(cx).value().to_string();
+                                
+                                println!("📝 File changed: {:?} (version {}), notifying rust-analyzer", path.file_name(), version);
+                                analyzer.update(cx, |analyzer, _cx| {
+                                    if let Err(e) = analyzer.did_change_file(&path, &content, version) {
+                                        eprintln!("⚠️  Failed to notify rust-analyzer of file change: {}", e);
+                                    } else {
+                                        if version % 10 == 0 {  // Log every 10th change to avoid spam
+                                            println!("✓ Notified rust-analyzer of change (version {})", version);
+                                        }
                                     }
+                                });
+                            } else {
+                                if file.version == 2 {  // Only log once to avoid spam
+                                    println!("⚠️  No rust-analyzer available for didChange");
                                 }
-                            });
-                        } else {
-                            if file.version == 2 {  // Only log once to avoid spam
-                                println!("⚠️  No rust-analyzer available for didChange");
                             }
+                            
+                            cx.notify();
                         }
-                        
-                        cx.notify();
                     }
-                }
+                },
+                InputEvent::GoToDefinition { path, line, character } => {
+                    // Navigate to the definition - emit an event so it can be handled 
+                    // by the parent where we have window access
+                    println!("🎯 Received GoToDefinition event: {:?} at {}:{}", path, line, character);
+                    
+                    // Emit the navigation event so it can be handled by parent components
+                    // that have window access
+                    let target_path = path.clone();
+                    let target_line = *line;
+                    let target_character = *character;
+                    
+                    // Store pending navigation in TextEditor
+                    this.pending_navigation = Some((target_path.clone(), target_line, target_character));
+                    
+                    cx.notify();
+                },
+                _ => {}
             }
         });
         
@@ -566,6 +615,32 @@ impl TextEditor {
             .and_then(|index| self.open_files.get(index))
             .map(|file| file.path.clone())
     }
+    
+    /// Process pending navigation request (called from render where we have window access)
+    fn process_pending_navigation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some((path, line, character)) = self.pending_navigation.take() {
+            println!("🎯 Processing pending navigation to {:?} at {}:{}", path, line, character);
+            
+            // Check if file is already open
+            let file_index = self.open_files.iter().position(|f| f.path == path);
+            
+            if let Some(index) = file_index {
+                // File is already open, switch to it
+                self.current_file_index = Some(index);
+                println!("✓ Switched to already-open file {:?}", path);
+            } else {
+                // Need to open the file first
+                println!("📂 Opening file {:?}", path);
+                self.open_file(path.clone(), window, cx);
+            }
+            
+            // Now navigate to the specific position
+            // LSP positions are 0-based, but go_to_line expects 1-based
+            self.go_to_line((line + 1) as usize, (character + 1) as usize, window, cx);
+            
+            cx.notify();
+        }
+    }
 
     fn render_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         if self.open_files.is_empty() {
@@ -623,6 +698,12 @@ impl TextEditor {
     }
 
     fn render_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let is_markdown_file = if let Some(index) = self.current_file_index {
+            self.open_files.get(index).map(|f| f.render_as_markdown).unwrap_or(false)
+        } else {
+            false
+        };
+        
         h_flex()
             .w_full()
             .p_2()
@@ -654,6 +735,20 @@ impl TextEditor {
                                 this.save_current_file(window, cx);
                             }))
                     )
+                    .children(if is_markdown_file {
+                        Some(
+                            Button::new("refresh_preview")
+                                .icon(IconName::Refresh)
+                                .tooltip("Refresh Markdown Preview (Ctrl+R)")
+                                .ghost()
+                                .small()
+                                .on_click(cx.listener(|this, _, _window, cx| {
+                                    this.refresh_markdown_preview(cx);
+                                }))
+                        )
+                    } else {
+                        None
+                    })
                     .child(
                         Button::new("find")
                             .icon(IconName::Search)
@@ -729,7 +824,8 @@ impl TextEditor {
             if let Some(open_file) = self.open_files.get(index) {
                 // If it's a markdown file, render split view with editor on left and preview on right
                 if open_file.render_as_markdown {
-                    let content = open_file.input_state.read(cx).value().to_string();
+                    // Use cached markdown content to avoid re-rendering on every frame
+                    let preview_content = &open_file.markdown_preview_cache;
                     
                     return h_resizable("markdown-split", self.markdown_split_state.clone())
                         .child(
@@ -760,25 +856,63 @@ impl TextEditor {
                                 )
                         )
                         .child(
-                            // Right panel: Live markdown preview
+                            // Right panel: Debounced markdown preview (only updates every 300ms)
                             resizable_panel()
-                                .child(
-                                    div()
-                                        .id("markdown-preview-panel")
-                                        .size_full()
-                                        .overflow_y_scroll()
-                                        .p_5()
-                                        .bg(cx.theme().background)
-                                        .child(
-                                            TextView::markdown(
-                                                "md-viewer",
-                                                content,
-                                                window,
-                                                cx,
+                                .child({
+                                    if !preview_content.is_empty() {
+                                        div()
+                                            .id("markdown-preview-panel")
+                                            .size_full()
+                                            .overflow_y_scroll()
+                                            .p_5()
+                                            .bg(cx.theme().background)
+                                            .font_family("monospace")
+                                            .font(gpui::Font {
+                                                family: "Jetbrains Mono".to_string().into(),
+                                                weight: gpui::FontWeight::NORMAL,
+                                                style: gpui::FontStyle::Normal,
+                                                features: gpui::FontFeatures::default(),
+                                                fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["monospace".to_string()])),
+                                            })
+                                            // TODO: Re-enable markdown rendering when performance is improved
+                                            //.child(
+                                            //    TextView::markdown(
+                                            //        "md-viewer",
+                                            //        preview_content.clone(),
+                                            //        window,
+                                            //        cx,
+                                            //    )
+                                            //    .selectable()
+                                            //)
+                                    } else {
+                                        div()
+                                            .id("markdown-preview-panel")
+                                            .size_full()
+                                            .overflow_y_scroll()
+                                            .p_5()
+                                            .bg(cx.theme().background)
+                                            .child(
+                                                div()
+                                                    .flex()
+                                                    .flex_col()
+                                                    .gap_3()
+                                                    .items_center()
+                                                    .justify_center()
+                                                    .size_full()
+                                                    .text_color(cx.theme().muted_foreground)
+                                                    .child(
+                                                        div()
+                                                            .text_sm()
+                                                            .child("Markdown preview ready")
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .text_xs()
+                                                            .child("Click the refresh button or press Ctrl+R to update")
+                                                    )
                                             )
-                                            .selectable()
-                                        )
-                                )
+                                    }
+                                })
                         )
                         .into_any_element();
                 }
@@ -952,6 +1086,9 @@ impl Focusable for TextEditor {
 
 impl Render for TextEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Process any pending navigation requests (from go-to-definition)
+        self.process_pending_navigation(window, cx);
+        
         // Track render time for performance monitoring
         let render_start = Instant::now();
         

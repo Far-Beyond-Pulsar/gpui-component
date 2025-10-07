@@ -1,4 +1,8 @@
-/// Problems Drawer - Displays diagnostics, errors, and warnings from rust-analyzer
+//! Problems Drawer - Displays diagnostics, errors, and warnings from rust-analyzer
+
+// TODO: This should be a seprate window similar to Unreal Engine. The content is similar to VSCode's Problems panel
+//       It should be toggleable from the View menu and dockable in the main window when docking is enabled
+
 use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _, ButtonVariant},

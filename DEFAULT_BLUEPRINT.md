@@ -16,7 +16,7 @@ The default `blueprint.json` demonstrates all key features of the Pulsar bluepri
     add_node              multiply_node           equals_node
     ┌────────┐           ┌────────┐              ┌────────┐
     │  add   │           │multiply│              │ equals │
-    │ a: 2   │──result──→│   a: ◄─┼──result────→│  a: ◄──┤
+    │ a: 2   │──result──→│   a: ◄─┼──result─────→│  a: ◄──┤
     │ b: 3   │           │   b: 4 │              │  b: 20 │
     └────────┘           └────────┘              └────────┘
                                                        │
@@ -36,15 +36,15 @@ The default `blueprint.json` demonstrates all key features of the Pulsar bluepri
                                 │ [False]──┼──┼─┐
                                 └──────────┘  │ │
                                               │ │
-                [Function Nodes]              │ │
+                 [Function Nodes]             │ │
                                               │ │
-           print_true              print_false│ │
-           ┌─────────────┐        ┌──────────┼─┘
-           │print_string │        │print_str │
-       ┌──│ [exec]      │    ┌───│ [exec]   │
-       │  │ message: ✓  │    │   │ message: │
-       └─►│             │    └──►│    ✗     │
-          └─────────────┘        └──────────┘
+            print_true             print_false│ │
+           ┌─────────────┐         ┌──────────┼─┘
+           │print_string │         │print_str │
+        ┌──│ [exec]      │     ┌───│ [exec]   │
+        │  │ message: ✓  │     │   │ message: │
+        └─►│             │     └──►│    ✗     │
+           └─────────────┘         └──────────┘
 ```
 
 ## Node Details

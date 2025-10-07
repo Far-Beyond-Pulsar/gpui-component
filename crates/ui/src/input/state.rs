@@ -102,6 +102,8 @@ pub enum InputEvent {
     PressEnter { secondary: bool },
     Focus,
     Blur,
+    /// Request to navigate to a definition (possibly in another file)
+    GoToDefinition { path: std::path::PathBuf, line: u32, character: u32 },
 }
 
 pub(super) const CONTEXT: &str = "Input";

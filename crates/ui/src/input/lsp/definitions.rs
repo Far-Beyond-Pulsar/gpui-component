@@ -3,10 +3,10 @@ use gpui::{
     px, App, Context, HighlightStyle, Hitbox, MouseDownEvent, Task, UnderlineStyle, Window,
 };
 use ropey::Rope;
-use std::{ops::Range, rc::Rc};
+use std::{ops::Range, path::PathBuf, rc::Rc};
 
 use crate::{
-    input::{element::TextElement, GoToDefinition, InputState, RopeExt},
+    input::{element::TextElement, GoToDefinition, InputState, InputEvent, RopeExt},
     ActiveTheme,
 };
 
@@ -111,19 +111,48 @@ impl InputState {
     pub(crate) fn on_action_go_to_definition(
         &mut self,
         _: &GoToDefinition,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let offset = self.cursor();
-        if let Some((symbol_range, locations)) = self.hover_definition.last_location.clone() {
-            if !(symbol_range.start..=symbol_range.end).contains(&offset) {
+        
+        // First check if we have current hover definition at this offset
+        if !self.hover_definition.is_empty() && self.hover_definition.is_same(offset) {
+            if let Some(location) = self.hover_definition.locations.first().cloned() {
+                self.go_to_definition(&location, cx);
                 return;
             }
-
-            if let Some(location) = locations.first().cloned() {
-                self.go_to_definition(&location, cx);
+        }
+        
+        // Otherwise check last_location
+        if let Some((symbol_range, locations)) = self.hover_definition.last_location.clone() {
+            if (symbol_range.start..=symbol_range.end).contains(&offset) {
+                if let Some(location) = locations.first().cloned() {
+                    self.go_to_definition(&location, cx);
+                    return;
+                }
             }
         }
+        
+        // If we don't have cached results, trigger a new lookup
+        let Some(provider) = self.lsp.definition_provider.clone() else {
+            return;
+        };
+        
+        let task = provider.definitions(&self.text, offset, window, cx);
+        let editor = cx.entity();
+        
+        let _task = cx.spawn_in(window, async move |_, cx| -> anyhow::Result<()> {
+            let locations = task.await.ok().unwrap_or_default();
+            
+            if let Some(location) = locations.first().cloned() {
+                _ = editor.update(cx, |editor, cx| {
+                    editor.go_to_definition(&location, cx);
+                });
+            }
+            
+            Ok(())
+        });
     }
 
     /// Return true if handled.
@@ -159,6 +188,7 @@ impl InputState {
         location: &lsp_types::LocationLink,
         cx: &mut Context<Self>,
     ) {
+        // Handle external URLs (documentation links)
         if location
             .target_uri
             .scheme()
@@ -166,14 +196,38 @@ impl InputState {
             == Some(true)
         {
             cx.open_url(&location.target_uri.to_string());
+            return;
+        }
+        
+        // Parse file URI to get the path
+        let target_path = location.target_uri
+            .as_str()
+            .strip_prefix("file://")
+            .and_then(|path| {
+                // Handle Windows paths that might have /C:/ format
+                #[cfg(target_os = "windows")]
+                {
+                    let path = path.strip_prefix('/').unwrap_or(path);
+                    Some(PathBuf::from(path))
+                }
+                #[cfg(not(target_os = "windows"))]
+                Some(PathBuf::from(path))
+            });
+        
+        let target_range = location.target_selection_range;
+        
+        // Check if we need to navigate to a different file
+        // For now, we'll always emit the event and let the editor handle same-file vs different-file
+        if let Some(path) = target_path {
+            println!("🎯 Go to definition: {:?} at {}:{}", 
+                     path, target_range.start.line, target_range.start.character);
+            cx.emit(InputEvent::GoToDefinition { 
+                path, 
+                line: target_range.start.line, 
+                character: target_range.start.character 
+            });
         } else {
-            // Move to the location.
-            let target_range = location.target_range;
-            let start = self.text.position_to_offset(&target_range.start);
-            let end = self.text.position_to_offset(&target_range.end);
-
-            self.move_to(start, cx);
-            self.select_to(end, cx);
+            eprintln!("⚠️  Failed to parse file path from URI: {}", location.target_uri.as_str());
         }
     }
 }

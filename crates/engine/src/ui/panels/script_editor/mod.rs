@@ -1,11 +1,9 @@
 mod file_explorer;
 pub mod text_editor;
-mod terminal;
 mod autocomplete_integration;
 
 pub use file_explorer::FileExplorer;
 pub use text_editor::{TextEditor, TextEditorEvent};
-pub use terminal::Terminal;
 pub use autocomplete_integration::*;
 
 use std::path::PathBuf;
@@ -25,10 +23,7 @@ pub struct ScriptEditor {
     focus_handle: FocusHandle,
     file_explorer: Entity<FileExplorer>,
     text_editor: Entity<TextEditor>,
-    terminal: Entity<Terminal>,
     horizontal_resizable_state: Entity<ResizableState>,
-    vertical_resizable_state: Entity<ResizableState>,
-    terminal_visible: bool,
     /// Global rust analyzer for LSP support
     rust_analyzer: Option<Entity<RustAnalyzerManager>>,
 }
@@ -40,11 +35,9 @@ impl ScriptEditor {
         ]);
 
         let horizontal_resizable_state = ResizableState::new(cx);
-        let vertical_resizable_state = ResizableState::new(cx);
 
         let file_explorer = cx.new(|cx| FileExplorer::new(window, cx));
         let text_editor = cx.new(|cx| TextEditor::new(window, cx));
-        let terminal = cx.new(|cx| Terminal::new(window, cx));
 
         // Forward text editor events
         cx.subscribe(&text_editor, |this: &mut Self, _editor, event: &TextEditorEvent, cx| {
@@ -55,10 +48,7 @@ impl ScriptEditor {
             focus_handle: cx.focus_handle(),
             file_explorer,
             text_editor,
-            terminal,
             horizontal_resizable_state,
-            vertical_resizable_state,
-            terminal_visible: true,
             rust_analyzer: None,
         }
     }
@@ -151,11 +141,6 @@ impl ScriptEditor {
         });
     }
 
-    pub fn toggle_terminal(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.terminal_visible = !self.terminal_visible;
-        cx.notify();
-    }
-
     fn save_current_file(&mut self, _action: &SaveCurrentFile, window: &mut Window, cx: &mut Context<Self>) {
         self.text_editor.update(cx, |editor, cx| {
             editor.save_current_file(window, cx);
@@ -220,32 +205,7 @@ impl Render for ScriptEditor {
                             .child(
                                 div()
                                     .size_full()
-                                    .child(
-                                        v_resizable("script-editor-vertical", self.vertical_resizable_state.clone())
-                                            .child(
-                                                resizable_panel()
-                                                    .child(
-                                                        div()
-                                                            .size_full()
-                                                            .child(self.text_editor.clone())
-                                                    )
-                                            )
-                                            .when(self.terminal_visible, |resizable| {
-                                                resizable.child(
-                                                    resizable_panel()
-                                                        .size(px(200.))
-                                                        .size_range(px(100.)..px(400.))
-                                                        .child(
-                                                            div()
-                                                                .size_full()
-                                                                .bg(cx.theme().secondary)
-                                                                .border_t_1()
-                                                                .border_color(cx.theme().border)
-                                                                .child(self.terminal.clone())
-                                                        )
-                                                )
-                                            })
-                                    )
+                                    .child(self.text_editor.clone())
                             )
                     )
             )
