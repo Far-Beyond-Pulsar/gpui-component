@@ -1,15 +1,18 @@
 use std::{ops::Range, rc::Rc};
 
 use gpui::{
-    deferred, div, point, prelude::FluentBuilder as _, px, AnyElement, App, AppContext as _,
-    AvailableSpace, Bounds, Element, ElementId, Entity, InteractiveElement, IntoElement,
-    MouseDownEvent, ParentElement as _, Pixels, Render, StyleRefinement, Styled, Window,
+    deferred, div, px, App, AppContext, Entity, InteractiveElement, IntoElement, ParentElement, 
+    Pixels, Point, Render, StatefulInteractiveElement, Styled, Window,
 };
 
 use crate::{
     input::{popovers::render_markdown, InputState},
-    StyledExt,
+    v_flex, ActiveTheme, StyledExt,
 };
+
+const MAX_HOVER_WIDTH: Pixels = px(500.);
+const MAX_HOVER_HEIGHT: Pixels = px(400.);
+const POPOVER_GAP: Pixels = px(4.);
 
 pub struct HoverPopover {
     editor: Entity<InputState>,
@@ -37,247 +40,105 @@ impl HoverPopover {
     pub(crate) fn is_same(&self, offset: usize) -> bool {
         self.symbol_range.contains(&offset)
     }
+
+    /// Get the position where the popover should be rendered
+    fn origin(&self, cx: &App) -> Option<Point<Pixels>> {
+        let editor = self.editor.read(cx);
+        let Some(last_layout) = editor.last_layout.as_ref() else {
+            return None;
+        };
+
+        let Some(_last_bounds) = editor.last_bounds else {
+            return None;
+        };
+
+        // Get the position of the start of the hovered symbol
+        let (_, _, start_pos) = editor.line_and_position_for_offset(self.symbol_range.start);
+        let Some(start_pos) = start_pos else {
+            return None;
+        };
+
+        let scroll_origin = editor.scroll_handle.offset();
+
+        // Position popover below the hovered text
+        Some(
+            scroll_origin + start_pos - editor.input_bounds.origin
+                + Point::new(px(0.), last_layout.line_height + POPOVER_GAP),
+        )
+    }
 }
 
 impl Render for HoverPopover {
-    fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut gpui::Context<Self>) -> impl IntoElement {
         let contents = match self.hover.contents.clone() {
             lsp_types::HoverContents::Scalar(scalar) => match scalar {
                 lsp_types::MarkedString::String(s) => s,
-                lsp_types::MarkedString::LanguageString(ls) => ls.value,
+                lsp_types::MarkedString::LanguageString(ls) => {
+                    // Format code blocks properly
+                    format!("```{}\n{}\n```", ls.language, ls.value)
+                },
             },
             lsp_types::HoverContents::Array(arr) => arr
                 .into_iter()
                 .map(|item| match item {
                     lsp_types::MarkedString::String(s) => s,
-                    lsp_types::MarkedString::LanguageString(ls) => ls.value,
+                    lsp_types::MarkedString::LanguageString(ls) => {
+                        format!("```{}\n{}\n```", ls.language, ls.value)
+                    },
                 })
                 .collect::<Vec<_>>()
                 .join("\n\n"),
             lsp_types::HoverContents::Markup(markup) => markup.value,
         };
 
-        Popover::new(
-            "hover-popover",
-            self.editor.clone(),
-            self.symbol_range.clone(),
-            move |window, cx| render_markdown("message", contents.clone(), window, cx),
+        let Some(pos) = self.origin(cx) else {
+            return div().into_any_element();
+        };
+
+        let max_width = MAX_HOVER_WIDTH.min(window.bounds().size.width - pos.x - px(20.));
+
+        deferred(
+            div()
+                .id("hover-popover")
+                .absolute()
+                .left(pos.x)
+                .top(pos.y)
+                .on_scroll_wheel(|_, _, cx| {
+                    // Stop scroll events from propagating
+                    cx.stop_propagation();
+                })
+                .child(
+                    v_flex()
+                        .w(max_width)
+                        .max_h(MAX_HOVER_HEIGHT)
+                        .min_w(px(200.))
+                        .p_2()
+                        .bg(cx.theme().popover)
+                        .text_color(cx.theme().popover_foreground)
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .rounded(cx.theme().radius)
+                        .shadow_lg()
+                        .overflow_hidden()
+                        .child(
+                            div()
+                                .id("hover-popover-content")
+                                .w_full()
+                                .h_full()
+                                .overflow_y_scroll()
+                                .overflow_x_hidden()
+                                .child(render_markdown("hover-content", contents, window, cx))
+                        )
+                )
+                .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                    // Close hover on click outside
+                    this.editor.update(cx, |editor, cx| {
+                        editor.hover_popover = None;
+                        cx.notify();
+                    });
+                })),
         )
         .into_any_element()
     }
 }
 
-pub(crate) struct Popover {
-    id: ElementId,
-    style: StyleRefinement,
-    editor: Entity<InputState>,
-    range: Range<usize>,
-    width_limit: Range<Pixels>,
-    content_builder: Box<dyn Fn(&mut Window, &mut App) -> AnyElement>,
-}
-
-impl Styled for Popover {
-    fn style(&mut self) -> &mut StyleRefinement {
-        &mut self.style
-    }
-}
-
-impl Popover {
-    pub fn new<F, E>(
-        id: impl Into<ElementId>,
-        editor: Entity<InputState>,
-        range: Range<usize>,
-        f: F,
-    ) -> Self
-    where
-        F: Fn(&mut Window, &mut App) -> E + 'static,
-        E: IntoElement,
-    {
-        Self {
-            id: id.into(),
-            editor,
-            range,
-            style: StyleRefinement::default(),
-            width_limit: px(200.)..px(500.),
-            content_builder: Box::new(move |window, cx| (f)(window, cx).into_any_element()),
-        }
-    }
-
-    /// Get the bounds of the range in the editor, if it is visible.
-    fn trigger_bounds(&self, cx: &App) -> Option<Bounds<Pixels>> {
-        let editor = self.editor.read(cx);
-        let Some(last_layout) = editor.last_layout.as_ref() else {
-            return None;
-        };
-
-        let Some(last_bounds) = editor.last_bounds else {
-            return None;
-        };
-
-        let (_, _, start_pos) = editor.line_and_position_for_offset(self.range.start);
-        let (_, _, end_pos) = editor.line_and_position_for_offset(self.range.end);
-
-        let Some(start_pos) = start_pos else {
-            return None;
-        };
-        let Some(end_pos) = end_pos else {
-            return None;
-        };
-
-        Some(Bounds::from_corners(
-            last_bounds.origin + start_pos,
-            last_bounds.origin + end_pos + point(px(0.), last_layout.line_height),
-        ))
-    }
-}
-
-impl IntoElement for Popover {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
-    }
-}
-
-pub(crate) struct PopoverLayoutState {
-    state: Entity<bool>,
-    bounds: Bounds<Pixels>,
-    element: Option<AnyElement>,
-}
-
-impl Element for Popover {
-    type RequestLayoutState = PopoverLayoutState;
-    type PrepaintState = ();
-
-    fn id(&self) -> Option<ElementId> {
-        Some(self.id.clone())
-    }
-
-    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _: Option<&gpui::GlobalElementId>,
-        _: Option<&gpui::InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (gpui::LayoutId, Self::RequestLayoutState) {
-        let open_state = window.use_keyed_state("popover-open", cx, |_, _| true);
-        let trigger_bounds = match self.trigger_bounds(cx) {
-            Some(bounds) => bounds,
-            None => {
-                return (
-                    div().into_any_element().request_layout(window, cx),
-                    PopoverLayoutState {
-                        bounds: Bounds::default(),
-                        element: None,
-                        state: open_state,
-                    },
-                )
-            }
-        };
-
-        let max_width = self
-            .width_limit
-            .end
-            .min(window.bounds().size.width - SNAP_TO_EDGE * 2)
-            .max(px(200.));
-
-        let is_open = *open_state.read(cx);
-
-        let mut popover = deferred(
-            div()
-                .when(!is_open, |s| s.invisible())
-                .flex_none()
-                .occlude()
-                .p_1()
-                .text_xs()
-                .popover_style(cx)
-                .shadow_md()
-                .max_w(max_width)
-                .refine_style(&self.style)
-                .child((self.content_builder)(window, cx)),
-        )
-        .into_any_element();
-
-        let popover_size = popover.layout_as_root(AvailableSpace::min_size(), window, cx);
-        const SNAP_TO_EDGE: Pixels = px(8.);
-        let top_space = trigger_bounds.top() - SNAP_TO_EDGE;
-        let right_space = window.bounds().size.width - trigger_bounds.left() - SNAP_TO_EDGE;
-
-        let mut pos = point(
-            trigger_bounds.left(),
-            trigger_bounds.top() - popover_size.height,
-        );
-        if popover_size.height > top_space {
-            pos.y = trigger_bounds.bottom();
-        }
-        if popover_size.width > right_space {
-            pos.x = trigger_bounds.right() - popover_size.width;
-        }
-
-        let mut empty = div().into_any_element();
-        let layout_id = empty.request_layout(window, cx);
-        (
-            layout_id,
-            PopoverLayoutState {
-                bounds: Bounds {
-                    origin: pos,
-                    size: popover_size,
-                },
-                element: Some(popover),
-                state: open_state,
-            },
-        )
-    }
-
-    fn prepaint(
-        &mut self,
-        _: Option<&gpui::GlobalElementId>,
-        _: Option<&gpui::InspectorElementId>,
-        _: Bounds<Pixels>,
-        request_layout: &mut Self::RequestLayoutState,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Self::PrepaintState {
-        let bounds = request_layout.bounds;
-        let Some(popover) = request_layout.element.as_mut() else {
-            return;
-        };
-
-        window.with_absolute_element_offset(bounds.origin, |window| {
-            popover.prepaint(window, cx);
-        })
-    }
-
-    fn paint(
-        &mut self,
-        _: Option<&gpui::GlobalElementId>,
-        _: Option<&gpui::InspectorElementId>,
-        _: Bounds<Pixels>,
-        request_layout: &mut Self::RequestLayoutState,
-        _: &mut Self::PrepaintState,
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        let bounds = request_layout.bounds;
-        let Some(popover) = request_layout.element.as_mut() else {
-            return;
-        };
-
-        popover.paint(window, cx);
-
-        let open_state = request_layout.state.clone();
-        // Mouse down out to hide.
-        window.on_mouse_event(move |event: &MouseDownEvent, _, _, cx| {
-            if !bounds.contains(&event.position) {
-                open_state.update(cx, |open, cx| {
-                    *open = false;
-                    cx.notify();
-                })
-            }
-        })
-    }
-}
