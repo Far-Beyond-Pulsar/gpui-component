@@ -3,8 +3,7 @@ use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _, ButtonVariant},
     h_flex, v_flex, ActiveTheme as _, IconName, StyledExt, Sizable as _,
-    list::{List, ListDelegate},
-    IndexPath, Selectable,
+    Selectable,
 };
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -120,10 +119,12 @@ impl RenderOnce for DiagnosticItem {
             .child(
                 v_flex()
                     .gap_1()
+                    .w_full()
                     .child(
                         h_flex()
                             .gap_2()
                             .items_center()
+                            .w_full()
                             .child(
                                 div()
                                     .flex_shrink_0()
@@ -135,6 +136,7 @@ impl RenderOnce for DiagnosticItem {
                             )
                             .child(
                                 div()
+                                    .flex_shrink_0()
                                     .text_xs()
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(diagnostic.severity.color(cx))
@@ -145,7 +147,9 @@ impl RenderOnce for DiagnosticItem {
                                     .flex_1()
                                     .text_xs()
                                     .text_color(cx.theme().muted_foreground)
-                                    .line_clamp(1)
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .whitespace_nowrap()
                                     .child(format!(
                                         "{}:{}:{}",
                                         diagnostic.file_path,
@@ -156,6 +160,7 @@ impl RenderOnce for DiagnosticItem {
                     )
                     .child(
                         div()
+                            .w_full()
                             .text_sm()
                             .text_color(cx.theme().foreground)
                             .child(diagnostic.message.clone())
@@ -176,8 +181,7 @@ pub struct ProblemsDrawer {
     focus_handle: FocusHandle,
     diagnostics: Arc<Mutex<Vec<Diagnostic>>>,
     filtered_severity: Option<DiagnosticSeverity>,
-    list: Entity<List<ProblemsListDelegate>>,
-    selected_index: Option<IndexPath>,
+    selected_index: Option<usize>,
 }
 
 struct ProblemsListDelegate {
@@ -289,24 +293,11 @@ impl ProblemsDrawer {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
         let diagnostics = Arc::new(Mutex::new(Vec::new()));
-        
-        let drawer_entity = cx.entity().clone();
-        let list = cx.new(|cx| {
-            List::new(
-                ProblemsListDelegate {
-                    drawer: drawer_entity,
-                    diagnostics: Vec::new(),
-                },
-                _window,
-                cx,
-            )
-        });
 
         Self {
             focus_handle,
             diagnostics,
             filtered_severity: None,
-            list,
             selected_index: None,
         }
     }
@@ -316,7 +307,7 @@ impl ProblemsDrawer {
             let mut diagnostics = self.diagnostics.lock().unwrap();
             diagnostics.push(diagnostic);
         }
-        self.update_list(cx);
+        cx.notify();
     }
 
     pub fn clear_diagnostics(&mut self, cx: &mut Context<Self>) {
@@ -324,7 +315,8 @@ impl ProblemsDrawer {
             let mut diagnostics = self.diagnostics.lock().unwrap();
             diagnostics.clear();
         }
-        self.update_list(cx);
+        self.selected_index = None;
+        cx.notify();
     }
 
     pub fn set_diagnostics(&mut self, diagnostics: Vec<Diagnostic>, cx: &mut Context<Self>) {
@@ -332,27 +324,21 @@ impl ProblemsDrawer {
             let mut diag = self.diagnostics.lock().unwrap();
             *diag = diagnostics;
         }
-        self.update_list(cx);
+        self.selected_index = None;
+        cx.notify();
     }
 
-    fn update_list(&mut self, cx: &mut Context<Self>) {
+    fn get_filtered_diagnostics(&self) -> Vec<Diagnostic> {
         let diagnostics = self.diagnostics.lock().unwrap().clone();
         
-        let filtered = if let Some(severity) = &self.filtered_severity {
+        if let Some(severity) = &self.filtered_severity {
             diagnostics
                 .into_iter()
                 .filter(|d| &d.severity == severity)
                 .collect()
         } else {
             diagnostics
-        };
-
-        self.list.update(cx, |list, cx| {
-            list.delegate_mut().diagnostics = filtered;
-            cx.notify();
-        });
-        
-        cx.notify();
+        }
     }
 
     pub fn count_by_severity(&self, severity: DiagnosticSeverity) -> usize {
@@ -366,7 +352,22 @@ impl ProblemsDrawer {
 
     fn set_filter(&mut self, severity: Option<DiagnosticSeverity>, cx: &mut Context<Self>) {
         self.filtered_severity = severity;
-        self.update_list(cx);
+        self.selected_index = None;
+        cx.notify();
+    }
+
+    fn select_diagnostic(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.selected_index = Some(index);
+        cx.notify();
+    }
+
+    fn navigate_to_diagnostic(&mut self, diagnostic: &Diagnostic, cx: &mut Context<Self>) {
+        let file_path = PathBuf::from(&diagnostic.file_path);
+        cx.emit(NavigateToDiagnostic {
+            file_path,
+            line: diagnostic.line,
+            column: diagnostic.column,
+        });
     }
 }
 
@@ -382,6 +383,9 @@ impl Render for ProblemsDrawer {
         let warning_count = self.count_by_severity(DiagnosticSeverity::Warning);
         let info_count = self.count_by_severity(DiagnosticSeverity::Information);
         let total_count = self.total_count();
+        
+        let filtered_diagnostics = self.get_filtered_diagnostics();
+        let selected_index = self.selected_index;
 
         v_flex()
             .size_full()
@@ -498,12 +502,68 @@ impl Render for ProblemsDrawer {
                     )
             )
             .child(
-                // Problems list - use proper scrollable container
+                // Problems list - simple scrollable container
                 div()
                     .id("problems-list-container")
                     .flex_1()
                     .overflow_y_scroll()
-                    .child(self.list.clone())
+                    .when(filtered_diagnostics.is_empty(), |container| {
+                        container.child(
+                            div()
+                                .size_full()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .p_8()
+                                .child(
+                                    v_flex()
+                                        .gap_2()
+                                        .items_center()
+                                        .child(
+                                            gpui_component::Icon::new(IconName::Check)
+                                                .size_8()
+                                                .text_color(cx.theme().success)
+                                        )
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                .text_color(cx.theme().foreground)
+                                                .child("No problems detected")
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child("Your code is looking good!")
+                                        )
+                                )
+                        )
+                    })
+                    .when(!filtered_diagnostics.is_empty(), |container| {
+                        container.child(
+                            v_flex()
+                                .w_full()
+                                .children(
+                                    filtered_diagnostics
+                                        .into_iter()
+                                        .enumerate()
+                                        .map(|(index, diagnostic)| {
+                                            let is_selected = selected_index == Some(index);
+                                            let diagnostic_clone = diagnostic.clone();
+                                            
+                                            DiagnosticItem::new(diagnostic)
+                                                .selected(is_selected)
+                                                .on_click(move |_window, cx| {
+                                                    cx.update_entity(&cx.entity_of::<ProblemsDrawer>().unwrap(), |drawer, cx| {
+                                                        drawer.select_diagnostic(index, cx);
+                                                        drawer.navigate_to_diagnostic(&diagnostic_clone, cx);
+                                                    });
+                                                })
+                                        })
+                                )
+                        )
+                    })
             )
     }
 }
