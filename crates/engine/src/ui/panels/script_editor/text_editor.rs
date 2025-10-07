@@ -588,6 +588,35 @@ impl TextEditor {
         }
         false
     }
+    
+    pub fn close_current_file(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(index) = self.current_file_index {
+            if let Some(open_file) = self.open_files.get(index) {
+                let path = open_file.path.clone();
+                
+                // Emit event so rust-analyzer can be notified
+                cx.emit(TextEditorEvent::FileClosed {
+                    path: path.clone(),
+                });
+                
+                println!("❌ File closed: {:?}", path.file_name());
+                
+                // Remove the file from open files
+                self.open_files.remove(index);
+                
+                // Update current file index
+                if self.open_files.is_empty() {
+                    self.current_file_index = None;
+                } else if index >= self.open_files.len() {
+                    // If we removed the last file, select the new last file
+                    self.current_file_index = Some(self.open_files.len() - 1);
+                }
+                // else: keep current index (will now point to the next file)
+                
+                cx.notify();
+            }
+        }
+    }
 
     /// Navigate to a specific line and column in the current file
     pub fn go_to_line(&mut self, line: usize, column: usize, window: &mut Window, cx: &mut Context<Self>) {

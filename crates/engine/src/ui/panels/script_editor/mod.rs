@@ -17,7 +17,7 @@ use gpui_component::{
 
 use crate::ui::rust_analyzer_manager::RustAnalyzerManager;
 
-actions!(script_editor, [SaveCurrentFile]);
+actions!(script_editor, [SaveCurrentFile, CloseCurrentFile]);
 
 pub struct ScriptEditor {
     focus_handle: FocusHandle,
@@ -32,6 +32,7 @@ impl ScriptEditor {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.bind_keys([
             KeyBinding::new("ctrl-s", SaveCurrentFile, Some("ScriptEditor")),
+            KeyBinding::new("ctrl-w", CloseCurrentFile, Some("ScriptEditor")),
         ]);
 
         let horizontal_resizable_state = ResizableState::new(cx);
@@ -154,6 +155,12 @@ impl ScriptEditor {
             editor.save_current_file(window, cx);
         });
     }
+    
+    fn close_current_file(&mut self, _action: &CloseCurrentFile, window: &mut Window, cx: &mut Context<Self>) {
+        self.text_editor.update(cx, |editor, cx| {
+            editor.close_current_file(window, cx);
+        });
+    }
 }
 
 impl Panel for ScriptEditor {
@@ -193,6 +200,7 @@ impl Render for ScriptEditor {
             .bg(cx.theme().background)
             .key_context("ScriptEditor")
             .on_action(cx.listener(Self::save_current_file))
+            .on_action(cx.listener(Self::close_current_file))
             .child(
                 h_resizable("script-editor-horizontal", self.horizontal_resizable_state.clone())
                     .child(
