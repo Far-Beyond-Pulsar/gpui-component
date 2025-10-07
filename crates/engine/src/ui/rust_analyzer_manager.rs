@@ -59,6 +59,8 @@ pub struct RustAnalyzerManager {
     progress_rx: Option<Receiver<ProgressUpdate>>,
     /// Pending request callbacks (using flume for async support)
     pending_requests: Arc<Mutex<HashMap<i64, flume::Sender<serde_json::Value>>>>,
+    /// Whether we've attempted installation on failure
+    install_attempted: bool,
 }
 
 use std::collections::HashMap;
@@ -83,6 +85,7 @@ impl RustAnalyzerManager {
             request_id: Arc::new(Mutex::new(0)),
             progress_rx: None,
             pending_requests: Arc::new(Mutex::new(HashMap::new())),
+            install_attempted: false,
         }
     }
 
@@ -241,6 +244,7 @@ impl RustAnalyzerManager {
 
         self.workspace_root = Some(workspace_root.clone());
         self.status = AnalyzerStatus::Starting;
+        self.install_attempted = false; // Reset installation attempt flag
         cx.emit(AnalyzerEvent::StatusChanged(AnalyzerStatus::Starting));
         cx.notify();
 
@@ -985,6 +989,59 @@ impl RustAnalyzerManager {
                         cx.notify();
                     }
                     ProgressUpdate::ProcessExited(status) => {
+                        // Check if it exited with an error and we haven't tried installing yet
+                        let should_retry = !self.install_attempted && !status.success();
+                        
+                        if should_retry {
+                            println!("⚠️  rust-analyzer exited with error, attempting to install and retry...");
+                            self.install_attempted = true;
+                            
+                            // Try to install and restart
+                            match Self::install_rust_analyzer_to_deps() {
+                                Ok(installed_path) => {
+                                    println!("✓ Installed rust-analyzer, restarting...");
+                                    self.analyzer_path = installed_path;
+                                    
+                                    // Restart with the new path
+                                    if let Some(workspace) = self.workspace_root.clone() {
+                                        self.stop_internal();
+                                        // Small delay to clean up
+                                        std::thread::sleep(Duration::from_millis(100));
+                                        // Note: We can't call self.start() here directly as we're in update_progress_from_thread
+                                        // Instead, we set status to trigger a restart from the app
+                                        self.status = AnalyzerStatus::Idle;
+                                        cx.notify();
+                                        
+                                        // Spawn the start in the background
+                                        let analyzer_path = self.analyzer_path.clone();
+                                        let process_arc = self.process.clone();
+                                        let stdin_arc = self.stdin.clone();
+                                        let request_id_arc = self.request_id.clone();
+                                        let pending_requests_arc = self.pending_requests.clone();
+                                        
+                                        let (progress_tx, progress_rx) = channel();
+                                        self.progress_rx = Some(progress_rx);
+                                        
+                                        std::thread::spawn(move || {
+                                            let _ = Self::spawn_process_blocking(
+                                                &analyzer_path,
+                                                &workspace,
+                                                process_arc,
+                                                stdin_arc,
+                                                progress_tx,
+                                                pending_requests_arc,
+                                            );
+                                        });
+                                        
+                                        return; // Don't emit error event
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("❌ Failed to install rust-analyzer: {}", e);
+                                }
+                            }
+                        }
+                        
                         let error_msg = format!("rust-analyzer exited unexpectedly (status: {:?})", status);
                         println!("❌ {}", error_msg);
                         self.status = AnalyzerStatus::Error(error_msg.clone());
