@@ -66,37 +66,36 @@ impl InputState {
         let start = range.end;
         let new_offset = self.cursor();
 
-        // Check if we should trigger completions (VSCode-style: trigger on most typing)
+        // VSCode behavior: Request on EVERY character that could be part of completion
+        // Let rust-analyzer decide what to return
         let should_trigger = provider.is_completion_trigger(start, new_text, cx);
 
         if !should_trigger {
-            // Not a completion trigger - but check if we need to close an open menu
+            // Not a valid completion character - close menu if open
             if let Some(ContextMenu::Completion(menu)) = self.context_menu.as_ref() {
                 if menu.read(cx).is_open() {
-                    let start_offset = menu.read(cx).trigger_start_offset.unwrap_or(start);
-                    // If cursor moved before the trigger point, close the menu
-                    if new_offset < start_offset {
-                        menu.update(cx, |menu, cx| {
-                            menu.hide(cx);
-                        });
-                    }
+                    menu.update(cx, |menu, cx| {
+                        menu.hide(cx);
+                    });
                 }
             }
             return;
         }
 
-        // Debouncing for identifier typing (not for trigger characters)
-        // TODO: Add debouncing back - for now just request immediately
+        // Get or create menu
+        let existing_menu = match self.context_menu.as_ref() {
+            Some(ContextMenu::Completion(menu)) => Some(menu.clone()),
+            _ => None,
+        };
+
+        // Determine completion context
         let last_char = new_text.chars().last().unwrap_or(' ');
-        let is_trigger_char = matches!(last_char, '.' | ':' | '<' | '(');
         
-        if is_trigger_char {
-            println!("🚀 Requesting completions at offset {} (trigger char)", new_offset);
-        } else {
-            println!("🚀 Requesting completions at offset {} (identifier)", new_offset);
-        }
+        // ALWAYS request new completions from server on every keystroke
+        // The server does all filtering, sorting, and prioritization
+        println!("📡 Requesting completions at offset {} (char: '{}')", new_offset, last_char);
         
-        self.request_completions_now(new_offset, start, new_text, provider, self.text.clone(), None, window, cx);
+        self.request_completions_now(new_offset, start, new_text, provider, self.text.clone(), existing_menu, window, cx);
     }
     
     fn request_completions_now(
@@ -110,55 +109,18 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-
-        println!("🚀 Requesting completions NOW at offset {}", new_offset);
+        println!("🚀 Requesting completions from rust-analyzer at offset {}", new_offset);
 
         // Create or get the menu
-        let menu = existing_menu.or_else(|| {
-            match self.context_menu.as_ref() {
-                Some(ContextMenu::Completion(menu)) => Some(menu.clone()),
-                _ => None,
-            }
-        }).unwrap_or_else(|| {
+        let menu = existing_menu.unwrap_or_else(|| {
             let new_menu = CompletionMenu::new(cx.entity(), window, cx);
             self.context_menu = Some(ContextMenu::Completion(new_menu.clone()));
             new_menu
         });
 
-        // Show loading state immediately (non-blocking)
+        // Show loading state immediately (non-blocking UI)
         menu.update(cx, |menu, cx| {
             menu.show_loading(new_offset, cx);
-        });
-
-        // For trigger characters like :: or ., we want to filter from the CURRENT position
-        // For identifier completion, we want to filter from the start of the identifier
-        let last_char = new_text.chars().last().unwrap_or(' ');
-        let filter_start = if matches!(last_char, '.' | ':' | '<') {
-            // Trigger character - filter from current position (show all initially)
-            new_offset
-        } else {
-            // Identifier - filter from start of the word
-            menu.read(cx).trigger_start_offset.unwrap_or(start)
-        };
-
-        if new_offset < filter_start {
-            return;
-        }
-
-        let query = self
-            .text_for_range(
-                self.range_to_utf16(&(filter_start..new_offset)),
-                &mut None,
-                window,
-                cx,
-            )
-            .map(|s| s.trim().to_string())
-            .unwrap_or_default();
-            
-        println!("   Filter range: {}..{}, query: '{}'", filter_start, new_offset, query);
-            
-        _ = menu.update(cx, |menu, _| {
-            menu.update_query(filter_start, query.clone());
         });
 
         // Determine trigger kind based on what was typed
@@ -174,25 +136,49 @@ impl InputState {
             trigger_character: trigger_char,
         };
 
+        // Request completions from LSP server (non-blocking!)
         let provider_responses =
             provider.completions(&text, new_offset, completion_context, window, cx);
+            
+        // Handle response asynchronously - UI stays responsive
         self._context_menu_task = cx.spawn_in(window, async move |editor, cx| {
             let mut completions: Vec<CompletionItem> = vec![];
-            if let Some(provider_responses) = provider_responses.await.ok() {
-                match provider_responses {
-                    CompletionResponse::Array(items) => completions.extend(items),
-                    CompletionResponse::List(list) => completions.extend(list.items),
+            
+            match provider_responses.await {
+                Ok(provider_responses) => {
+                    match provider_responses {
+                        CompletionResponse::Array(items) => {
+                            println!("📦 Received {} completions (Array)", items.len());
+                            completions.extend(items);
+                        },
+                        CompletionResponse::List(list) => {
+                            println!("📦 Received {} completions (isIncomplete: {})", 
+                                list.items.len(), 
+                                list.is_incomplete
+                            );
+                            completions.extend(list.items);
+                        },
+                    }
+                },
+                Err(e) => {
+                    eprintln!("❌ Error getting completions: {:?}", e);
+                    _ = menu.update(cx, |menu, cx| {
+                        menu.hide(cx);
+                    });
+                    return Ok(());
                 }
             }
 
             if completions.is_empty() {
+                println!("❌ No completions - hiding menu");
                 _ = menu.update(cx, |menu, cx| {
                     menu.hide(cx);
                     cx.notify();
                 });
-
                 return Ok(());
             }
+
+            println!("✅ Showing {} completions from server", completions.len());
 
             editor
                 .update_in(cx, |editor, window, cx| {
@@ -201,9 +187,9 @@ impl InputState {
                     }
 
                     _ = menu.update(cx, |menu, cx| {
+                        // Show completions exactly as received from rust-analyzer
+                        // Server did all filtering, sorting, and prioritization
                         menu.show(new_offset, completions, window, cx);
-                        // Initially show all items (empty query)
-                        menu.update_query_only("", cx);
                     });
 
                     cx.notify();

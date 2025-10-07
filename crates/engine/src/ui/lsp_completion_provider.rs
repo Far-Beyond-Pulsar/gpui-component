@@ -72,6 +72,8 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
             _ => 1,
         };
         
+        let trigger_char = trigger.trigger_character.clone();
+        
         // Spawn immediately - do ALL potentially slow work in the async block
         cx.spawn_in(window, async move |_, cx| {
             // Convert to position in background (can be slow for large files)
@@ -87,13 +89,23 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
             
             if sync_result.is_none() {
                 eprintln!("⚠️  Failed to sync file content with rust-analyzer");
+                return Ok(lsp_types::CompletionResponse::Array(vec![]));
             }
             
-            // Small delay to allow rust-analyzer to process
-            gpui::Timer::after(std::time::Duration::from_millis(50)).await;
+            // NO delay - request immediately! rust-analyzer is fast enough
+            // Any delay just makes the UI feel sluggish
             
             // Send completion request (async, non-blocking!)
             let response_rx = match analyzer.update(cx, |analyzer, _| {
+                let mut context = json!({
+                    "triggerKind": trigger_kind
+                });
+                
+                // Include trigger character if present
+                if let Some(ref ch) = trigger_char {
+                    context["triggerCharacter"] = json!(ch);
+                }
+                
                 let params = json!({
                     "textDocument": {
                         "uri": uri
@@ -102,9 +114,7 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
                         "line": position.line,
                         "character": position.character
                     },
-                    "context": {
-                        "triggerKind": trigger_kind
-                    }
+                    "context": context
                 });
 
                 analyzer.send_request_async("textDocument/completion", params)
@@ -135,7 +145,6 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
             if let Some(result) = response.get("result") {
                 // Check if result is null
                 if result.is_null() {
-                    // Null result is normal - means no completions available at this position
                     return Ok(lsp_types::CompletionResponse::Array(vec![]));
                 }
                 
@@ -150,7 +159,9 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
                 }
                 
                 // If we get here, parsing failed
-                eprintln!("⚠️  Failed to parse completion response from rust-analyzer");
+                eprintln!("⚠️  Failed to parse completion response: {:?}", result);
+            } else {
+                eprintln!("⚠️  No 'result' field in response");
             }
 
             // Return empty on error or no response
@@ -160,14 +171,12 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
 
     fn is_completion_trigger(
         &self,
-        offset: usize,
+        _offset: usize,
         new_text: &str,
         _cx: &mut Context<InputState>,
     ) -> bool {
-        // VSCode's actual behavior (researched from rust-analyzer extension):
-        // 1. Trigger on complete sequences: "::", "->", "."
-        // 2. Trigger while typing identifiers (but with debounce in the caller)
-        // 3. Trigger on opening delimiters: '(', '<'
+        // VSCode behavior: Trigger on almost every keystroke to let rust-analyzer decide
+        // rust-analyzer is smart enough to return empty results when appropriate
         
         if new_text.is_empty() {
             return false;
@@ -175,41 +184,27 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
         
         let last_char = new_text.chars().last().unwrap();
         
-        // Check for complete trigger sequences (not just single chars)
-        if last_char == ':' && new_text.len() >= 2 {
-            // Check if it's "::" (scope resolution)
-            let chars: Vec<char> = new_text.chars().collect();
-            if chars.len() >= 2 && chars[chars.len() - 2] == ':' {
-                return true; // "::" complete
-            }
-            return false; // Single ":" - wait for more
-        }
+        // ALWAYS trigger on:
+        // 1. Identifier characters (alphanumeric or underscore)
+        // 2. rust-analyzer trigger characters (., :, <)
+        // 3. Additional useful characters ((, ), >, ,, [, space)
         
-        // Other trigger characters
-        if matches!(last_char, '.' | '<' | '(') {
-            return true;
-        }
-        
-        // Trigger on identifier characters (will be debounced by caller)
+        // Trigger on identifier characters - this is the most important
         if last_char.is_alphanumeric() || last_char == '_' {
             return true;
         }
         
-        // Trigger after space following Rust keywords
-        if last_char == ' ' {
-            let trimmed = new_text.trim_end();
-            if trimmed.ends_with("use") || 
-               trimmed.ends_with("pub") || 
-               trimmed.ends_with("fn") ||
-               trimmed.ends_with("let") ||
-               trimmed.ends_with("struct") ||
-               trimmed.ends_with("enum") ||
-               trimmed.ends_with("impl") ||
-               trimmed.ends_with("trait") {
-                return true;
-            }
+        // rust-analyzer registered trigger characters
+        if matches!(last_char, '.' | ':' | '<') {
+            return true;
         }
         
+        // Additional useful triggers
+        if matches!(last_char, '(' | ')' | '>' | ',' | '[' | ' ') {
+            return true;
+        }
+        
+        // Don't trigger on other special characters
         false
     }
 }

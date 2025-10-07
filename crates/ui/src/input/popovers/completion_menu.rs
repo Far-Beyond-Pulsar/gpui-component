@@ -34,18 +34,13 @@ struct ContextMenuDelegate {
 
 impl ContextMenuDelegate {
     fn set_items(&mut self, items: Vec<CompletionItem>) {
-        // Sort items by sortText (if present) or label
-        // This respects the LSP server's intended ordering
-        let mut sorted_items: Vec<_> = items.into_iter().collect();
-        sorted_items.sort_by(|a, b| {
-            let a_sort = a.sort_text.as_ref().unwrap_or(&a.label);
-            let b_sort = b.sort_text.as_ref().unwrap_or(&b.label);
-            a_sort.cmp(b_sort)
-        });
-        
-        self.items = sorted_items.into_iter().map(Rc::new).collect();
-        self.update_filter();
+        // Server already sorted and filtered items - just show them AS-IS
+        // Do NOT do any client-side filtering or sorting
+        self.items = items.into_iter().map(Rc::new).collect();
+        self.filtered_indices = (0..self.items.len()).collect();
         self.selected_ix = 0;
+        
+        println!("📋 Showing {} completions from server (no client filtering)", self.items.len());
     }
 
     fn selected_item(&self) -> Option<&Rc<CompletionItem>> {
@@ -53,46 +48,11 @@ impl ContextMenuDelegate {
         self.items.get(filtered_ix)
     }
 
-    fn update_filter(&mut self) {
-        let query_lower = self.query.to_lowercase();
-        
-        println!("🔍 Filtering completions: query='{}', total items={}", query_lower, self.items.len());
-        
-        if query_lower.is_empty() {
-            // No filter - show all items in original order
-            self.filtered_indices = (0..self.items.len()).collect();
-            println!("   No filter - showing all {} items", self.filtered_indices.len());
-        } else {
-            // Filter items that start with or contain the query
-            self.filtered_indices = self.items
-                .iter()
-                .enumerate()
-                .filter(|(_, item)| {
-                    let label_lower = item.label.to_lowercase();
-                    let filter_text_lower = item.filter_text.as_ref()
-                        .map(|s| s.to_lowercase())
-                        .unwrap_or_else(|| label_lower.clone());
-                    
-                    filter_text_lower.starts_with(&query_lower) || 
-                    filter_text_lower.contains(&query_lower)
-                })
-                .map(|(i, _)| i)
-                .collect();
-            println!("   Filtered to {} items matching '{}'", self.filtered_indices.len(), query_lower);
-            if self.filtered_indices.len() < 5 {
-                for idx in &self.filtered_indices {
-                    if let Some(item) = self.items.get(*idx) {
-                        println!("     - {}", item.label);
-                    }
-                }
-            }
-        }
-    }
-
     fn set_query(&mut self, query: SharedString) {
+        // NO client-side filtering - server does ALL the work
+        // We only store query for display purposes
         self.query = query;
-        self.update_filter();
-        self.selected_ix = 0;  // Reset selection when filter changes
+        // DO NOT filter items here!
     }
 }
 
@@ -142,19 +102,32 @@ impl RenderOnce for CompletionMenuItem {
         let item = self.item;
 
         let deprecated = item.deprecated.unwrap_or(false);
-        let matched_len = item
-            .filter_text
-            .as_ref()
-            .map(|s| s.len())
-            .unwrap_or(self.highlight_prefix.len());
+        
+        // Don't highlight based on filter text - server already ranked items
+        // Just show the label as-is
+        let highlights = vec![];
 
-        let highlights = vec![(
-            0..matched_len,
-            HighlightStyle {
-                color: Some(cx.theme().blue),
-                ..Default::default()
-            },
-        )];
+        // Get icon based on completion kind
+        let icon = match item.kind {
+            Some(lsp_types::CompletionItemKind::FUNCTION) | 
+            Some(lsp_types::CompletionItemKind::METHOD) => "🔧",  // Function/Method
+            Some(lsp_types::CompletionItemKind::STRUCT) => "📦",  // Struct
+            Some(lsp_types::CompletionItemKind::ENUM) => "📋",  // Enum
+            Some(lsp_types::CompletionItemKind::INTERFACE) |
+            Some(lsp_types::CompletionItemKind::CLASS) => "🎯",  // Interface/Class
+            Some(lsp_types::CompletionItemKind::MODULE) => "📂",  // Module
+            Some(lsp_types::CompletionItemKind::FIELD) |
+            Some(lsp_types::CompletionItemKind::PROPERTY) => "🏷️",  // Field/Property
+            Some(lsp_types::CompletionItemKind::VARIABLE) |
+            Some(lsp_types::CompletionItemKind::CONSTANT) => "💎",  // Variable/Constant
+            Some(lsp_types::CompletionItemKind::KEYWORD) => "🔑",  // Keyword
+            Some(lsp_types::CompletionItemKind::SNIPPET) => "✂️",  // Snippet
+            Some(lsp_types::CompletionItemKind::TYPE_PARAMETER) => "🔤",  // Type param
+            _ => "📄",  // Default
+        };
+
+        // Determine source label (always [LSP] for rust-analyzer completions)
+        let source = "LSP";
 
         h_flex()
             .id(self.ix)
@@ -169,7 +142,11 @@ impl RenderOnce for CompletionMenuItem {
                 this.bg(cx.theme().accent)
                     .text_color(cx.theme().accent_foreground)
             })
+            // Icon
+            .child(div().child(icon))
+            // Label
             .child(div().child(StyledText::new(item.label.clone()).with_highlights(highlights)))
+            // Detail (type info, etc.)
             .when(item.detail.is_some(), |this| {
                 this.child(
                     Label::new(item.detail.as_deref().unwrap_or("").to_string())
@@ -178,6 +155,16 @@ impl RenderOnce for CompletionMenuItem {
                         .italic(),
                 )
             })
+            // Source label (right-aligned)
+            .child(
+                div()
+                    .flex_1()  // Push source to the right
+            )
+            .child(
+                Label::new(format!("[{}]", source))
+                    .text_color(cx.theme().muted_foreground.opacity(0.6))
+                    .italic()
+            )
             .children(self.children)
     }
 }
@@ -462,13 +449,12 @@ impl CompletionMenu {
         self.query = query.into();
     }
 
-    /// Update just the query without changing trigger offset (for filtering)
+    /// Update just the query without changing trigger offset (for server tracking only)
     pub(crate) fn update_query_only(&mut self, query: impl Into<SharedString>, cx: &mut Context<Self>) {
         self.query = query.into();
-        // Update the delegate's query to trigger filtering
-        self.list.update(cx, |list, cx| {
+        // Just update query reference, no filtering needed
+        self.list.update(cx, |list, _cx| {
             list.delegate_mut().set_query(self.query.clone());
-            cx.notify();
         });
     }
 
