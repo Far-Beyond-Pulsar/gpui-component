@@ -69,25 +69,34 @@ impl Render for HoverPopover {
             lsp_types::HoverContents::Markup(markup) => markup.value,
         };
 
-        // Position popover to the right of the mouse cursor
-        let mut pos_x = self.mouse_position.x + HOVER_OFFSET_X;
-        let mut pos_y = self.mouse_position.y;
-
-        // Ensure popover fits within window bounds
-        let window_width = window.bounds().size.width;
-        let window_height = window.bounds().size.height;
+        // Get the editor's input_bounds to convert window coords to element coords
+        let editor = self.editor.read(cx);
+        let element_origin = editor.input_bounds.origin;
         
-        // If popover would go off the right edge, show it to the left of cursor
-        if pos_x + MAX_HOVER_WIDTH > window_width {
-            pos_x = (self.mouse_position.x - MAX_HOVER_WIDTH - HOVER_OFFSET_X).max(px(10.));
+        // Convert window coordinates to element coordinates
+        // Window coords - element origin = element-relative coords
+        let element_mouse_x = self.mouse_position.x - element_origin.x;
+        let element_mouse_y = self.mouse_position.y - element_origin.y;
+        
+        // Position popover to the right of the mouse cursor (in element coordinates)
+        let mut pos_x = element_mouse_x + HOVER_OFFSET_X;
+        let mut pos_y = element_mouse_y;
+
+        // Get element size for boundary checking
+        let element_width = editor.input_bounds.size.width;
+        let element_height = editor.input_bounds.size.height;
+        
+        // If popover would go off the right edge of the element, show it to the left of cursor
+        if pos_x + MAX_HOVER_WIDTH > element_width {
+            pos_x = (element_mouse_x - MAX_HOVER_WIDTH - HOVER_OFFSET_X).max(px(10.));
         }
         
-        // If popover would go off the bottom, move it up
-        if pos_y + MAX_HOVER_HEIGHT > window_height {
-            pos_y = (window_height - MAX_HOVER_HEIGHT - px(10.)).max(px(10.));
+        // If popover would go off the bottom of the element, move it up
+        if pos_y + MAX_HOVER_HEIGHT > element_height {
+            pos_y = (element_height - MAX_HOVER_HEIGHT - px(10.)).max(px(10.));
         }
 
-        let max_width = MAX_HOVER_WIDTH.min(window_width - pos_x - px(20.));
+        let max_width = MAX_HOVER_WIDTH.min(element_width - pos_x - px(20.));
 
         deferred(
             div()
