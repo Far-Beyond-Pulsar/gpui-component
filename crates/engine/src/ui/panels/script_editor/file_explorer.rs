@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use gpui::{*, prelude::FluentBuilder};
+use gpui::{*, prelude::FluentBuilder, actions};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     context_menu::ContextMenuExt,
@@ -10,8 +10,37 @@ use gpui_component::{
     ActiveTheme as _, StyledExt, Sizable as _,
     IconName, Icon,
 };
+use serde::Deserialize;
+use schemars::JsonSchema;
 
-// Actions for clipboard operations
+// Define actions for context menu
+actions!(
+    file_explorer,
+    [
+        CutFile,
+        CopyFile,
+        PasteFile,
+        DeleteFile,
+        RenameFile,
+        CopyFilePath,
+        CopyRelativePath,
+        RevealInFileManager,
+    ]
+);
+
+#[derive(Action, Clone, PartialEq, Deserialize, JsonSchema)]
+#[action(namespace = file_explorer)]
+struct NewFileHere {
+    path: String,
+}
+
+#[derive(Action, Clone, PartialEq, Deserialize, JsonSchema)]
+#[action(namespace = file_explorer)]
+struct NewFolderHere {
+    path: String,
+}
+
+// Clipboard operations
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ClipboardOperation {
     Cut,
@@ -56,7 +85,7 @@ pub struct FileExplorer {
 }
 
 impl FileExplorer {
-    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
             focus_handle: cx.focus_handle(),
             project_root: None,
@@ -75,6 +104,70 @@ impl FileExplorer {
             clipboard_operation: None,
             renaming_path: None,
         }
+    }
+
+    // Action handlers
+    fn on_cut_file(&mut self, _: &CutFile, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(path) = self.selected_file.clone() {
+            self.cut_file(path, window, cx);
+        }
+    }
+
+    fn on_copy_file(&mut self, _: &CopyFile, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(path) = self.selected_file.clone() {
+            self.copy_file(path, window, cx);
+        }
+    }
+
+    fn on_paste_file(&mut self, _: &PasteFile, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(selected) = self.selected_file.clone() {
+            let target_dir = if selected.is_dir() {
+                selected
+            } else {
+                selected.parent().unwrap_or(&selected).to_path_buf()
+            };
+            self.paste_file(target_dir, window, cx);
+        }
+    }
+
+    fn on_delete_file(&mut self, _: &DeleteFile, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(path) = self.selected_file.clone() {
+            self.delete_file(path, window, cx);
+        }
+    }
+
+    fn on_rename_file(&mut self, _: &RenameFile, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(path) = self.selected_file.clone() {
+            self.start_rename(path, window, cx);
+        }
+    }
+
+    fn on_copy_file_path(&mut self, _: &CopyFilePath, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(path) = &self.selected_file {
+            self.copy_path_to_clipboard(path, cx);
+        }
+    }
+
+    fn on_copy_relative_path(&mut self, _: &CopyRelativePath, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(path) = &self.selected_file {
+            self.copy_relative_path_to_clipboard(path, cx);
+        }
+    }
+
+    fn on_reveal_in_file_manager(&mut self, _: &RevealInFileManager, _window: &mut Window, _cx: &mut Context<Self>) {
+        if let Some(path) = &self.selected_file {
+            self.reveal_in_file_manager(path);
+        }
+    }
+
+    fn on_new_file_here(&mut self, action: &NewFileHere, window: &mut Window, cx: &mut Context<Self>) {
+        let path = PathBuf::from(&action.path);
+        self.create_file_in_directory(path, window, cx);
+    }
+
+    fn on_new_folder_here(&mut self, action: &NewFolderHere, window: &mut Window, cx: &mut Context<Self>) {
+        let path = PathBuf::from(&action.path);
+        self.create_folder_in_directory(path, window, cx);
     }
 
     pub fn open_project(&mut self, path: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
@@ -593,8 +686,17 @@ impl FileExplorer {
         let icon = self.get_file_icon(entry);
         let indent = px(entry.depth as f32 * 16.0); // 16px per depth level
         let has_clipboard = self.clipboard_path.is_some();
+        // Create a valid ID by hashing the path
+        let item_id = SharedString::from(format!("file-{:x}", {
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            entry.path.hash(&mut hasher);
+            hasher.finish()
+        }));
 
         div()
+            .id(item_id)
             .flex()
             .items_center()
             .gap_2()
@@ -615,101 +717,50 @@ impl FileExplorer {
                     .when(!is_selected, |style| style.text_color(cx.theme().foreground))
                     .child(entry.name.clone())
             )
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, window, cx| {
-                if is_directory {
-                    this.toggle_folder(&path, window, cx);
-                } else {
-                    this.select_file(path.clone(), window, cx);
-                    this.open_file_in_editor(path.clone(), window, cx);
-                }
-            }))
+            .on_mouse_down(gpui::MouseButton::Left, {
+                let path = path.clone();
+                cx.listener(move |this, _, window, cx| {
+                    if is_directory {
+                        this.toggle_folder(&path, window, cx);
+                    } else {
+                        this.select_file(path.clone(), window, cx);
+                        this.open_file_in_editor(path.clone(), window, cx);
+                    }
+                })
+            })
             .context_menu({
                 let path = path.clone();
-                move |menu, window, cx| {
+                let path_str = path.to_string_lossy().to_string();
+                move |menu, _window, _cx| {
                     let mut menu = menu;
 
                     // File/Folder specific actions
                     if is_directory {
                         menu = menu
-                            .menu("New File Here", Box::new(cx.listener({
-                                let path = path.clone();
-                                move |this: &mut FileExplorer, _, window, cx| {
-                                    this.create_file_in_directory(path.clone(), window, cx);
-                                }
-                            })))
-                            .menu("New Folder Here", Box::new(cx.listener({
-                                let path = path.clone();
-                                move |this: &mut FileExplorer, _, window, cx| {
-                                    this.create_folder_in_directory(path.clone(), window, cx);
-                                }
-                            })))
+                            .menu("New File Here", Box::new(NewFileHere { path: path_str.clone() }))
+                            .menu("New Folder Here", Box::new(NewFolderHere { path: path_str.clone() }))
                             .separator();
                     }
 
                     // Common actions
                     menu = menu
-                        .menu("Cut", Box::new(cx.listener({
-                            let path = path.clone();
-                            move |this: &mut FileExplorer, _, window, cx| {
-                                this.cut_file(path.clone(), window, cx);
-                            }
-                        })))
-                        .menu("Copy", Box::new(cx.listener({
-                            let path = path.clone();
-                            move |this: &mut FileExplorer, _, window, cx| {
-                                this.copy_file(path.clone(), window, cx);
-                            }
-                        })));
+                        .menu("Cut", Box::new(CutFile))
+                        .menu("Copy", Box::new(CopyFile));
 
                     // Paste (only if we have something in clipboard)
                     if has_clipboard {
-                        let target_dir = if is_directory {
-                            path.clone()
-                        } else {
-                            path.parent().unwrap_or(&path).to_path_buf()
-                        };
-                        
-                        menu = menu.menu("Paste", Box::new(cx.listener({
-                            move |this: &mut FileExplorer, _, window, cx| {
-                                this.paste_file(target_dir.clone(), window, cx);
-                            }
-                        })));
+                        menu = menu.menu("Paste", Box::new(PasteFile));
                     }
 
                     menu = menu
                         .separator()
-                        .menu("Rename", Box::new(cx.listener({
-                            let path = path.clone();
-                            move |this: &mut FileExplorer, _, window, cx| {
-                                this.start_rename(path.clone(), window, cx);
-                            }
-                        })))
-                        .menu("Delete", Box::new(cx.listener({
-                            let path = path.clone();
-                            move |this: &mut FileExplorer, _, window, cx| {
-                                this.delete_file(path.clone(), window, cx);
-                            }
-                        })))
+                        .menu("Rename", Box::new(RenameFile))
+                        .menu("Delete", Box::new(DeleteFile))
                         .separator()
-                        .menu("Copy Path", Box::new(cx.listener({
-                            let path = path.clone();
-                            move |this: &mut FileExplorer, _, _window, cx| {
-                                this.copy_path_to_clipboard(&path, cx);
-                            }
-                        })))
-                        .menu("Copy Relative Path", Box::new(cx.listener({
-                            let path = path.clone();
-                            move |this: &mut FileExplorer, _, _window, cx| {
-                                this.copy_relative_path_to_clipboard(&path, cx);
-                            }
-                        })))
+                        .menu("Copy Path", Box::new(CopyFilePath))
+                        .menu("Copy Relative Path", Box::new(CopyRelativePath))
                         .separator()
-                        .menu("Reveal in File Manager", Box::new(cx.listener({
-                            let path = path.clone();
-                            move |this: &mut FileExplorer, _, _window, _cx| {
-                                this.reveal_in_file_manager(&path);
-                            }
-                        })));
+                        .menu("Reveal in File Manager", Box::new(RevealInFileManager));
 
                     menu
                 }
