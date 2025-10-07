@@ -57,9 +57,10 @@ use ui::entry_window::EntryWindow;
 use ui::settings_window::SettingsWindow;
 
 fn main() {
-    // Note: Node metadata is now loaded lazily from pulsar_std when needed
-    println!("Pulsar Engine - Visual Programming Environment");
-    println!("Using macro-based node system from pulsar_std");
+    println!("{}", ENGINE_NAME);
+    println!("Version: {}", ENGINE_VERSION);
+    println!("Authors: {}", ENGINE_AUTHORS);
+    println!("Description: {}", ENGINE_DESCRIPTION);
 
     // --- THEME EXTRACTION & SETTINGS INIT ---
     use directories::ProjectDirs;
@@ -73,6 +74,11 @@ fn main() {
     let themes_dir = appdata_dir.join("themes");
     let config_dir = appdata_dir.join("configs");
     let config_file = config_dir.join("engine.toml");
+
+    println!("App data directory: {:?}", appdata_dir);
+    println!("Themes directory: {:?}", themes_dir);
+    println!("Config directory: {:?}", config_dir);
+    println!("Config file: {:?}", config_file);
 
     // Extract bundled themes if not present
     if !themes_dir.exists() {

@@ -4,6 +4,7 @@ use gpui_component::{
     input::{InputState, TextInput, TabSize, InputEvent},
     tab::{Tab, TabBar},
     text::TextView,
+    resizable::{h_resizable, resizable_panel, ResizableState},
     v_flex, h_flex,
     ActiveTheme as _, StyledExt, Sizable as _,
     IconName,
@@ -47,10 +48,14 @@ pub struct TextEditor {
     subscriptions: Vec<Subscription>,
     /// Global rust analyzer for LSP support
     rust_analyzer: Option<Entity<RustAnalyzerManager>>,
+    /// Resizable state for markdown split view
+    markdown_split_state: Entity<ResizableState>,
 }
 
 impl TextEditor {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let markdown_split_state = ResizableState::new(cx);
+        
         Self {
             focus_handle: cx.focus_handle(),
             open_files: Vec::new(),
@@ -59,6 +64,7 @@ impl TextEditor {
             show_performance_stats: false, // Toggle with F12 or button
             subscriptions: Vec::new(),
             rust_analyzer: None,
+            markdown_split_state,
         }
     }
 
@@ -721,22 +727,58 @@ impl TextEditor {
     fn render_editor_content(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         if let Some(index) = self.current_file_index {
             if let Some(open_file) = self.open_files.get(index) {
-                // If it's a markdown file, render it as markdown
+                // If it's a markdown file, render split view with editor on left and preview on right
                 if open_file.render_as_markdown {
                     let content = open_file.input_state.read(cx).value().to_string();
-                    return div()
-                        .id("markdown-preview")
-                        .size_full()
-                        .overflow_y_scroll()
-                        .p_5()
+                    
+                    return h_resizable("markdown-split", self.markdown_split_state.clone())
                         .child(
-                            TextView::markdown(
-                                "md-viewer",
-                                content,
-                                window,
-                                cx,
-                            )
-                            .selectable()
+                            // Left panel: Text editor for editing markdown
+                            resizable_panel()
+                                .size(px(400.))
+                                .child(
+                                    div()
+                                        .size_full()
+                                        .overflow_hidden()
+                                        .border_r_1()
+                                        .border_color(cx.theme().border)
+                                        .child(
+                                            TextInput::new(&open_file.input_state)
+                                                .h_full()
+                                                .w_full()
+                                                .font_family("monospace")
+                                                .font(gpui::Font {
+                                                    family: "Jetbrains Mono".to_string().into(),
+                                                    weight: gpui::FontWeight::NORMAL,
+                                                    style: gpui::FontStyle::Normal,
+                                                    features: gpui::FontFeatures::default(),
+                                                    fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["monospace".to_string()])),
+                                                })
+                                                .text_size(px(14.0))
+                                                .border_0()
+                                        )
+                                )
+                        )
+                        .child(
+                            // Right panel: Live markdown preview
+                            resizable_panel()
+                                .child(
+                                    div()
+                                        .id("markdown-preview-panel")
+                                        .size_full()
+                                        .overflow_y_scroll()
+                                        .p_5()
+                                        .bg(cx.theme().background)
+                                        .child(
+                                            TextView::markdown(
+                                                "md-viewer",
+                                                content,
+                                                window,
+                                                cx,
+                                            )
+                                            .selectable()
+                                        )
+                                )
                         )
                         .into_any_element();
                 }
