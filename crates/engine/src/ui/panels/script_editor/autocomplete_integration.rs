@@ -5,6 +5,7 @@ use gpui::{App, Context, Entity, Window};
 use gpui_component::input::{
     ComprehensiveCompletionProvider, 
     InputState,
+    MockRustHoverProvider,
 };
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -41,7 +42,11 @@ pub fn setup_rust_autocomplete(
     input_state.lsp.completion_provider = Some(rust_provider_rc.clone());
     input_state.lsp.definition_provider = Some(rust_provider_rc);
     
-    println!("✓ Autocomplete and Go-to-Definition configured for: {:?} (workspace: {:?})", file_path.file_name(), workspace);
+    // Set up hover provider
+    let hover_provider = MockRustHoverProvider::new();
+    input_state.lsp.hover_provider = Some(Rc::new(hover_provider));
+    
+    println!("✓ Autocomplete, Hover, and Go-to-Definition configured for: {:?} (workspace: {:?})", file_path.file_name(), workspace);
 }
 
 /// Helper function to set up autocomplete for JavaScript/TypeScript files

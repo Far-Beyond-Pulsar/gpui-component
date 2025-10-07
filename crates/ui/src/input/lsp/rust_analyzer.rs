@@ -418,6 +418,139 @@ impl MockRustCompletionProvider {
     }
 }
 
+/// A mock hover provider that provides basic hover information for Rust
+pub struct MockRustHoverProvider {
+    // Future: can add more sophisticated hover data
+}
+
+impl MockRustHoverProvider {
+    pub fn new() -> Self {
+        Self {}
+    }
+    
+    /// Get hover information for common Rust types and keywords
+    fn get_hover_for_word(&self, word: &str) -> Option<Hover> {
+        let (value, language) = match word {
+            // Primitives
+            "i8" | "i16" | "i32" | "i64" | "i128" | "isize" => {
+                (format!("**{}**: Signed integer type", word), "rust")
+            }
+            "u8" | "u16" | "u32" | "u64" | "u128" | "usize" => {
+                (format!("**{}**: Unsigned integer type", word), "rust")
+            }
+            "f32" | "f64" => {
+                (format!("**{}**: Floating-point type", word), "rust")
+            }
+            "bool" => ("**bool**: Boolean type\n\nCan be `true` or `false`".to_string(), "rust"),
+            "char" => ("**char**: Unicode scalar value\n\nRepresents a single Unicode character".to_string(), "rust"),
+            "str" => ("**str**: String slice type\n\nAn immutable sequence of UTF-8 bytes".to_string(), "rust"),
+            
+            // Common types
+            "String" => {
+                ("**String**: Owned, growable string type\n\n```rust\nlet s = String::from(\"hello\");\n```".to_string(), "markdown")
+            }
+            "Vec" => {
+                ("**Vec<T>**: Growable, heap-allocated array\n\n```rust\nlet v = vec![1, 2, 3];\n```".to_string(), "markdown")
+            }
+            "Option" => {
+                ("**Option<T>**: An optional value\n\n```rust\nenum Option<T> {\n    Some(T),\n    None,\n}\n```".to_string(), "markdown")
+            }
+            "Result" => {
+                ("**Result<T, E>**: Success or error\n\n```rust\nenum Result<T, E> {\n    Ok(T),\n    Err(E),\n}\n```".to_string(), "markdown")
+            }
+            "Box" => {
+                ("**Box<T>**: Heap-allocated smart pointer\n\nProvides ownership of heap data".to_string(), "markdown")
+            }
+            "Arc" => {
+                ("**Arc<T>**: Atomically reference counted pointer\n\nThread-safe reference counting".to_string(), "markdown")
+            }
+            "Rc" => {
+                ("**Rc<T>**: Reference counted pointer\n\nSingle-threaded reference counting".to_string(), "markdown")
+            }
+            
+            // Keywords
+            "fn" => ("**fn**: Function definition keyword\n\n```rust\nfn name(param: Type) -> ReturnType {\n    // body\n}\n```".to_string(), "markdown"),
+            "let" => ("**let**: Variable binding keyword\n\n```rust\nlet x = 5;\nlet mut y = 10;\n```".to_string(), "markdown"),
+            "mut" => ("**mut**: Mutable binding modifier\n\nAllows variable to be modified".to_string(), "markdown"),
+            "impl" => ("**impl**: Implementation block\n\nImplements methods for a type".to_string(), "markdown"),
+            "struct" => ("**struct**: Structure definition\n\nDefines a custom data type".to_string(), "markdown"),
+            "enum" => ("**enum**: Enumeration definition\n\nDefines a type with variants".to_string(), "markdown"),
+            "trait" => ("**trait**: Trait definition\n\nDefines shared behavior".to_string(), "markdown"),
+            "use" => ("**use**: Import items into scope\n\n```rust\nuse std::collections::HashMap;\n```".to_string(), "markdown"),
+            "pub" => ("**pub**: Public visibility modifier\n\nMakes item accessible outside its module".to_string(), "markdown"),
+            "return" => ("**return**: Early return from function\n\nReturns a value from the current function".to_string(), "markdown"),
+            "if" | "else" => ("**if/else**: Conditional expression\n\n```rust\nif condition {\n    // then branch\n} else {\n    // else branch\n}\n```".to_string(), "markdown"),
+            "match" => ("**match**: Pattern matching\n\n```rust\nmatch value {\n    pattern => result,\n    _ => default,\n}\n```".to_string(), "markdown"),
+            "loop" => ("**loop**: Infinite loop\n\n```rust\nloop {\n    // body\n    break;\n}\n```".to_string(), "markdown"),
+            "while" => ("**while**: Conditional loop\n\n```rust\nwhile condition {\n    // body\n}\n```".to_string(), "markdown"),
+            "for" => ("**for**: Iterator loop\n\n```rust\nfor item in iterator {\n    // body\n}\n```".to_string(), "markdown"),
+            
+            _ => return None,
+        };
+        
+        Some(Hover {
+            contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
+                kind: lsp_types::MarkupKind::Markdown,
+                value,
+            }),
+            range: None,
+        })
+    }
+}
+
+impl super::HoverProvider for MockRustHoverProvider {
+    fn hover(
+        &self,
+        text: &Rope,
+        offset: usize,
+        _window: &mut Window,
+        _cx: &mut gpui::App,
+    ) -> Task<Result<Option<Hover>>> {
+        // Get the word at the cursor position
+        let word = self.get_word_at_offset(text, offset);
+        
+        if word.is_empty() {
+            return Task::ready(Ok(None));
+        }
+        
+        let hover_info = self.get_hover_for_word(&word);
+        Task::ready(Ok(hover_info))
+    }
+}
+
+impl MockRustHoverProvider {
+    fn get_word_at_offset(&self, text: &Rope, offset: usize) -> String {
+        let offset = offset.min(text.len());
+        let mut start = offset;
+        let mut end = offset;
+        
+        // Move backwards to find word start
+        while start > 0 {
+            let prev_offset = start.saturating_sub(1);
+            if prev_offset < text.len() {
+                let ch = text.slice(prev_offset..prev_offset+1).to_string().chars().next().unwrap_or(' ');
+                if !ch.is_alphanumeric() && ch != '_' {
+                    break;
+                }
+                start = prev_offset;
+            } else {
+                break;
+            }
+        }
+        
+        // Move forward to find word end
+        while end < text.len() {
+            let ch = text.slice(end..end+1).to_string().chars().next().unwrap_or(' ');
+            if !ch.is_alphanumeric() && ch != '_' {
+                break;
+            }
+            end += 1;
+        }
+        
+        text.slice(start..end).to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

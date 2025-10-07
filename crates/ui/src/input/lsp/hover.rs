@@ -1,5 +1,5 @@
 use anyhow::Result;
-use gpui::{App, Context, Task, Window};
+use gpui::{App, Context, MouseMoveEvent, Point, Pixels, Task, Window};
 use ropey::Rope;
 
 use crate::input::{popovers::HoverPopover, InputState, RopeExt};
@@ -25,6 +25,7 @@ impl InputState {
     pub(super) fn handle_hover_popover(
         &mut self,
         offset: usize,
+        mouse_position: Point<Pixels>,
         window: &mut Window,
         cx: &mut Context<InputState>,
     ) {
@@ -56,7 +57,7 @@ impl InputState {
                         let end = editor.text.position_to_offset(&range.end);
                         symbol_range = start..end;
                     }
-                    let hover_popover = HoverPopover::new(cx.entity(), symbol_range, &hover, cx);
+                    let hover_popover = HoverPopover::new(cx.entity(), symbol_range, &hover, mouse_position, cx);
                     editor.hover_popover = Some(hover_popover);
                 }
                 None => {

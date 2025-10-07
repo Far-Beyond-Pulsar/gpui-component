@@ -12,13 +12,15 @@ use crate::{
 
 const MAX_HOVER_WIDTH: Pixels = px(500.);
 const MAX_HOVER_HEIGHT: Pixels = px(400.);
-const POPOVER_GAP: Pixels = px(4.);
+const HOVER_OFFSET_X: Pixels = px(15.); // Offset to the right of cursor
 
 pub struct HoverPopover {
     editor: Entity<InputState>,
     /// The symbol range byte of the hover trigger.
     pub(crate) symbol_range: Range<usize>,
     pub(crate) hover: Rc<lsp_types::Hover>,
+    /// Mouse position where hover was triggered (in window coordinates)
+    pub(crate) mouse_position: Point<Pixels>,
 }
 
 impl HoverPopover {
@@ -26,6 +28,7 @@ impl HoverPopover {
         editor: Entity<InputState>,
         symbol_range: Range<usize>,
         hover: &lsp_types::Hover,
+        mouse_position: Point<Pixels>,
         cx: &mut App,
     ) -> Entity<Self> {
         let hover = Rc::new(hover.clone());
@@ -34,37 +37,12 @@ impl HoverPopover {
             editor,
             symbol_range,
             hover,
+            mouse_position,
         })
     }
 
     pub(crate) fn is_same(&self, offset: usize) -> bool {
         self.symbol_range.contains(&offset)
-    }
-
-    /// Get the position where the popover should be rendered
-    fn origin(&self, cx: &App) -> Option<Point<Pixels>> {
-        let editor = self.editor.read(cx);
-        let Some(last_layout) = editor.last_layout.as_ref() else {
-            return None;
-        };
-
-        let Some(_last_bounds) = editor.last_bounds else {
-            return None;
-        };
-
-        // Get the position of the start of the hovered symbol
-        let (_, _, start_pos) = editor.line_and_position_for_offset(self.symbol_range.start);
-        let Some(start_pos) = start_pos else {
-            return None;
-        };
-
-        let scroll_origin = editor.scroll_handle.offset();
-
-        // Position popover below the hovered text
-        Some(
-            scroll_origin + start_pos - editor.input_bounds.origin
-                + Point::new(px(0.), last_layout.line_height + POPOVER_GAP),
-        )
     }
 }
 
@@ -91,18 +69,32 @@ impl Render for HoverPopover {
             lsp_types::HoverContents::Markup(markup) => markup.value,
         };
 
-        let Some(pos) = self.origin(cx) else {
-            return div().into_any_element();
-        };
+        // Position popover to the right of the mouse cursor
+        let mut pos_x = self.mouse_position.x + HOVER_OFFSET_X;
+        let mut pos_y = self.mouse_position.y;
 
-        let max_width = MAX_HOVER_WIDTH.min(window.bounds().size.width - pos.x - px(20.));
+        // Ensure popover fits within window bounds
+        let window_width = window.bounds().size.width;
+        let window_height = window.bounds().size.height;
+        
+        // If popover would go off the right edge, show it to the left of cursor
+        if pos_x + MAX_HOVER_WIDTH > window_width {
+            pos_x = (self.mouse_position.x - MAX_HOVER_WIDTH - HOVER_OFFSET_X).max(px(10.));
+        }
+        
+        // If popover would go off the bottom, move it up
+        if pos_y + MAX_HOVER_HEIGHT > window_height {
+            pos_y = (window_height - MAX_HOVER_HEIGHT - px(10.)).max(px(10.));
+        }
+
+        let max_width = MAX_HOVER_WIDTH.min(window_width - pos_x - px(20.));
 
         deferred(
             div()
                 .id("hover-popover")
                 .absolute()
-                .left(pos.x)
-                .top(pos.y)
+                .left(pos_x)
+                .top(pos_y)
                 .on_scroll_wheel(|_, _, cx| {
                     // Stop scroll events from propagating
                     cx.stop_propagation();
