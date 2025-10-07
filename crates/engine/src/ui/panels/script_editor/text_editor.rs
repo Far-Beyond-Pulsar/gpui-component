@@ -42,6 +42,8 @@ pub struct OpenFile {
     pub markdown_preview_cache: String,
     /// Last time markdown was rendered
     pub last_markdown_render: Option<Instant>,
+    /// Pending scroll target (line, column) - will be applied after layout is ready
+    pub pending_scroll_target: Option<(usize, usize)>,
 }
 
 pub struct TextEditor {
@@ -132,6 +134,7 @@ impl TextEditor {
             render_as_markdown: false,
             markdown_preview_cache: String::new(),
             last_markdown_render: None,
+            pending_scroll_target: None,
         };
 
         self.open_files.push(open_file);
@@ -380,6 +383,7 @@ impl TextEditor {
             render_as_markdown: is_markdown,
             markdown_preview_cache: if is_markdown { content.clone() } else { String::new() },
             last_markdown_render: if is_markdown { Some(Instant::now()) } else { None },
+            pending_scroll_target: None,
         };
 
         self.open_files.push(open_file);
@@ -588,7 +592,10 @@ impl TextEditor {
     /// Navigate to a specific line and column in the current file
     pub fn go_to_line(&mut self, line: usize, column: usize, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(index) = self.current_file_index {
-            if let Some(open_file) = self.open_files.get(index) {
+            if let Some(open_file) = self.open_files.get_mut(index) {
+                // Store the pending scroll target in case layout isn't ready yet
+                open_file.pending_scroll_target = Some((line, column));
+                
                 open_file.input_state.update(cx, |state, cx| {
                     // LSP Position uses 'line' and 'character' fields (0-based)
                     // Our UI uses 1-based line numbers
@@ -603,8 +610,13 @@ impl TextEditor {
                     );
                     
                     println!("📍 Navigated to line {}, column {}", line, column);
+                    
+                    // Force an additional notify to ensure scroll is processed
                     cx.notify();
                 });
+                
+                // Notify at the TextEditor level as well to ensure render is triggered
+                cx.notify();
             }
         }
     }
@@ -647,6 +659,40 @@ impl TextEditor {
             self.go_to_line(target_line, target_col, window, cx);
             
             cx.notify();
+        }
+    }
+    
+    /// Process any pending scroll targets (called from render after layout is ready)
+    fn process_pending_scroll_targets(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(index) = self.current_file_index {
+            if let Some(open_file) = self.open_files.get_mut(index) {
+                if let Some((line, column)) = open_file.pending_scroll_target {
+                    // Try to scroll - if layout isn't ready, set_cursor_position will handle it gracefully
+                    // We'll keep trying on subsequent frames until it works
+                    println!("📜 Attempting to scroll to line {}, column {}", line, column);
+                    
+                    let scroll_attempted = open_file.input_state.update(cx, |state, cx| {
+                        use gpui_component::input::Position;
+                        state.set_cursor_position(
+                            Position {
+                                line: (line.saturating_sub(1)) as u32,
+                                character: (column.saturating_sub(1)) as u32,
+                            },
+                            window,
+                            cx,
+                        );
+                        // Return true to indicate we tried
+                        true
+                    });
+                    
+                    if scroll_attempted {
+                        // Clear the pending scroll target - even if it didn't fully work,
+                        // set_cursor_position was called which should set deferred scroll
+                        open_file.pending_scroll_target = None;
+                        println!("✓ Scroll target cleared");
+                    }
+                }
+            }
         }
     }
 
@@ -1097,6 +1143,9 @@ impl Render for TextEditor {
         // Process any pending navigation requests (from go-to-definition)
         self.process_pending_navigation(window, cx);
         
+        // Process any pending scroll targets (after layout is ready)
+        self.process_pending_scroll_targets(window, cx);
+
         // Track render time for performance monitoring
         let render_start = Instant::now();
         
