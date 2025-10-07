@@ -34,13 +34,22 @@ struct ContextMenuDelegate {
 
 impl ContextMenuDelegate {
     fn set_items(&mut self, items: Vec<CompletionItem>) {
-        // Server already sorted and filtered items - just show them AS-IS
-        // Do NOT do any client-side filtering or sorting
-        self.items = items.into_iter().map(Rc::new).collect();
+        // Sort items by sortText (or label if sortText is absent)
+        // This is how VSCode and other LSP clients handle completions
+        let mut items: Vec<Rc<CompletionItem>> = items.into_iter().map(Rc::new).collect();
+        
+        items.sort_by(|a, b| {
+            // Use sortText if present, otherwise fall back to label
+            let sort_a = a.sort_text.as_ref().unwrap_or(&a.label);
+            let sort_b = b.sort_text.as_ref().unwrap_or(&b.label);
+            sort_a.cmp(sort_b)
+        });
+        
+        self.items = items;
         self.filtered_indices = (0..self.items.len()).collect();
         self.selected_ix = 0;
         
-        println!("📋 Showing {} completions from server (no client filtering)", self.items.len());
+        println!("📋 Showing {} completions (sorted by relevance)", self.items.len());
     }
 
     fn selected_item(&self) -> Option<&Rc<CompletionItem>> {

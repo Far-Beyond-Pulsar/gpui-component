@@ -79,23 +79,11 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
             // Convert to position in background (can be slow for large files)
             let position = text_clone.offset_to_position(offset);
             
-            // Convert rope to string in background (can be slow for large files)
-            let content = text_clone.to_string();
+            // DON'T sync file content here - it should already be synced via the text editor's change handler!
+            // Calling did_change_file here causes "unexpected DidChangeTextDocument" errors from rust-analyzer.
+            // The text editor already calls did_change_file on every edit.
             
-            // Sync file content with rust-analyzer
-            let sync_result = analyzer.update(cx, |analyzer, _| {
-                analyzer.did_change_file(&file_path, &content, 999999)
-            }).ok().and_then(|r| r.ok());
-            
-            if sync_result.is_none() {
-                eprintln!("⚠️  Failed to sync file content with rust-analyzer");
-                return Ok(lsp_types::CompletionResponse::Array(vec![]));
-            }
-            
-            // NO delay - request immediately! rust-analyzer is fast enough
-            // Any delay just makes the UI feel sluggish
-            
-            // Send completion request (async, non-blocking!)
+            // Send completion request immediately (async, non-blocking!)
             let response_rx = match analyzer.update(cx, |analyzer, _| {
                 let mut context = json!({
                     "triggerKind": trigger_kind
