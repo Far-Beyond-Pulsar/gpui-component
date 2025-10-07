@@ -160,15 +160,14 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
 
     fn is_completion_trigger(
         &self,
-        _offset: usize,
+        offset: usize,
         new_text: &str,
         _cx: &mut Context<InputState>,
     ) -> bool {
-        // VSCode-style triggering: be aggressive and let rust-analyzer decide
-        // Trigger on:
-        // 1. Any alphanumeric or underscore (identifier)
-        // 2. Trigger characters: '.', ':', '<', '('
-        // 3. After keywords followed by space
+        // VSCode's actual behavior (researched from rust-analyzer extension):
+        // 1. Trigger on complete sequences: "::", "->", "."
+        // 2. Trigger while typing identifiers (but with debounce in the caller)
+        // 3. Trigger on opening delimiters: '(', '<'
         
         if new_text.is_empty() {
             return false;
@@ -176,12 +175,22 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
         
         let last_char = new_text.chars().last().unwrap();
         
-        // Trigger on rust-analyzer's declared trigger characters
-        if matches!(last_char, '.' | ':' | '<' | '(') {
+        // Check for complete trigger sequences (not just single chars)
+        if last_char == ':' && new_text.len() >= 2 {
+            // Check if it's "::" (scope resolution)
+            let chars: Vec<char> = new_text.chars().collect();
+            if chars.len() >= 2 && chars[chars.len() - 2] == ':' {
+                return true; // "::" complete
+            }
+            return false; // Single ":" - wait for more
+        }
+        
+        // Other trigger characters
+        if matches!(last_char, '.' | '<' | '(') {
             return true;
         }
         
-        // Trigger on identifier characters
+        // Trigger on identifier characters (will be debounced by caller)
         if last_char.is_alphanumeric() || last_char == '_' {
             return true;
         }

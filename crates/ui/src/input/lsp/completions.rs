@@ -1,5 +1,5 @@
 use anyhow::Result;
-use gpui::{Context, EntityInputHandler, Task, Window};
+use gpui::{Context, Entity, EntityInputHandler, Task, Window};
 use lsp_types::{request::Completion, CompletionContext, CompletionItem, CompletionResponse};
 use ropey::Rope;
 use std::{cell::RefCell, ops::Range, rc::Rc};
@@ -85,17 +85,45 @@ impl InputState {
             return;
         }
 
-        println!("🚀 Requesting completions at offset {}", new_offset);
+        // Debouncing for identifier typing (not for trigger characters)
+        // TODO: Add debouncing back - for now just request immediately
+        let last_char = new_text.chars().last().unwrap_or(' ');
+        let is_trigger_char = matches!(last_char, '.' | ':' | '<' | '(');
+        
+        if is_trigger_char {
+            println!("🚀 Requesting completions at offset {} (trigger char)", new_offset);
+        } else {
+            println!("🚀 Requesting completions at offset {} (identifier)", new_offset);
+        }
+        
+        self.request_completions_now(new_offset, start, new_text, provider, self.text.clone(), None, window, cx);
+    }
+    
+    fn request_completions_now(
+        &mut self,
+        new_offset: usize,
+        start: usize,
+        new_text: &str,
+        provider: Rc<dyn CompletionProvider>,
+        text: Rope,
+        existing_menu: Option<Entity<CompletionMenu>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+
+        println!("🚀 Requesting completions NOW at offset {}", new_offset);
 
         // Create or get the menu
-        let menu = match self.context_menu.as_ref() {
-            Some(ContextMenu::Completion(menu)) => menu.clone(),
-            _ => {
-                let new_menu = CompletionMenu::new(cx.entity(), window, cx);
-                self.context_menu = Some(ContextMenu::Completion(new_menu.clone()));
-                new_menu
+        let menu = existing_menu.or_else(|| {
+            match self.context_menu.as_ref() {
+                Some(ContextMenu::Completion(menu)) => Some(menu.clone()),
+                _ => None,
             }
-        };
+        }).unwrap_or_else(|| {
+            let new_menu = CompletionMenu::new(cx.entity(), window, cx);
+            self.context_menu = Some(ContextMenu::Completion(new_menu.clone()));
+            new_menu
+        });
 
         // Show loading state immediately (non-blocking)
         menu.update(cx, |menu, cx| {
@@ -147,7 +175,7 @@ impl InputState {
         };
 
         let provider_responses =
-            provider.completions(&self.text, new_offset, completion_context, window, cx);
+            provider.completions(&text, new_offset, completion_context, window, cx);
         self._context_menu_task = cx.spawn_in(window, async move |editor, cx| {
             let mut completions: Vec<CompletionItem> = vec![];
             if let Some(provider_responses) = provider_responses.await.ok() {
