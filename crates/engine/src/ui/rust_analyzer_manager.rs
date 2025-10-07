@@ -91,6 +91,11 @@ impl RustAnalyzerManager {
 
     /// Find rust-analyzer in PATH or use bundled version
     fn find_or_use_bundled_analyzer() -> PathBuf {
+        // First, try using rustup to get the component path (handles rustup proxies)
+        if let Some(rustup_path) = Self::find_rust_analyzer_via_rustup() {
+            return rustup_path;
+        }
+
         // Try to find in PATH first
         let candidates = vec![
             "rust-analyzer.exe",
@@ -101,6 +106,11 @@ impl RustAnalyzerManager {
             if let Ok(output) = Command::new(candidate).arg("--version").output() {
                 if output.status.success() {
                     let version_output = String::from_utf8_lossy(&output.stdout);
+                    // Check if this is a rustup proxy by looking for the error message
+                    if version_output.contains("Unknown binary") || version_output.contains("official toolchain") {
+                        println!("⚠️  Found rustup proxy, but rust-analyzer component not installed");
+                        continue;
+                    }
                     println!("✓ Found system rust-analyzer: {}", candidate);
                     println!("   Version: {}", version_output.trim());
                     return PathBuf::from(candidate);
@@ -138,6 +148,43 @@ impl RustAnalyzerManager {
         PathBuf::from("rust-analyzer")
     }
 
+    /// Try to find rust-analyzer via rustup (handles rustup proxy wrappers)
+    fn find_rust_analyzer_via_rustup() -> Option<PathBuf> {
+        // Try to use rustup to find the actual rust-analyzer binary
+        let rustup_cmd = if cfg!(windows) { "rustup.exe" } else { "rustup" };
+        
+        // First check if rust-analyzer component is installed
+        if let Ok(output) = Command::new(rustup_cmd)
+            .args(&["component", "list", "--installed"])
+            .output()
+        {
+            if output.status.success() {
+                let installed = String::from_utf8_lossy(&output.stdout);
+                if installed.contains("rust-analyzer") {
+                    // Component is installed, try to get its path
+                    if let Ok(output) = Command::new(rustup_cmd)
+                        .args(&["which", "rust-analyzer"])
+                        .output()
+                    {
+                        if output.status.success() {
+                            let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                            let path = PathBuf::from(path_str);
+                            if path.exists() {
+                                println!("✓ Found rust-analyzer via rustup: {:?}", path);
+                                return Some(path);
+                            }
+                        }
+                    }
+                } else {
+                    println!("ℹ️  rust-analyzer component not installed via rustup");
+                    println!("   You can install it with: rustup component add rust-analyzer");
+                }
+            }
+        }
+
+        None
+    }
+
     /// Get the path where we should install rust-analyzer in engine deps
     fn get_engine_deps_analyzer_path() -> PathBuf {
         let exe_name = if cfg!(windows) {
@@ -159,7 +206,70 @@ impl RustAnalyzerManager {
 
     /// Download and install rust-analyzer to the engine deps directory
     fn install_rust_analyzer_to_deps() -> Result<PathBuf> {
-        println!("📦 Attempting to install rust-analyzer to engine deps directory...");
+        println!("📦 Attempting to install rust-analyzer...");
+
+        // First, try to install via rustup (easiest and most reliable)
+        if let Ok(installed_path) = Self::install_rust_analyzer_via_rustup() {
+            return Ok(installed_path);
+        }
+
+        // If rustup installation fails, fall back to manual download
+        println!("   Rustup installation not available, trying manual download...");
+        Self::download_rust_analyzer_binary()
+    }
+
+    /// Try to install rust-analyzer via rustup component
+    fn install_rust_analyzer_via_rustup() -> Result<PathBuf> {
+        let rustup_cmd = if cfg!(windows) { "rustup.exe" } else { "rustup" };
+        
+        println!("   Trying to install via rustup...");
+        
+        // Try to install the rust-analyzer component
+        let output = Command::new(rustup_cmd)
+            .args(&["component", "add", "rust-analyzer"])
+            .output()
+            .map_err(|e| anyhow!("Failed to run rustup: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow!("Rustup component add failed: {}", stderr));
+        }
+
+        println!("✓ Installed rust-analyzer component via rustup");
+
+        // Now get the path to the installed binary
+        let output = Command::new(rustup_cmd)
+            .args(&["which", "rust-analyzer"])
+            .output()
+            .map_err(|e| anyhow!("Failed to locate rust-analyzer: {}", e))?;
+
+        if !output.status.success() {
+            return Err(anyhow!("Failed to locate rust-analyzer after installation"));
+        }
+
+        let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let path = PathBuf::from(path_str);
+
+        if !path.exists() {
+            return Err(anyhow!("rust-analyzer path does not exist: {:?}", path));
+        }
+
+        // Verify it works
+        if let Ok(output) = Command::new(&path).arg("--version").output() {
+            if output.status.success() {
+                let version = String::from_utf8_lossy(&output.stdout);
+                println!("✓ rust-analyzer installed and verified via rustup!");
+                println!("   Version: {}", version.trim());
+                return Ok(path);
+            }
+        }
+
+        Err(anyhow!("rust-analyzer installed but verification failed"))
+    }
+
+    /// Download rust-analyzer binary directly from GitHub
+    fn download_rust_analyzer_binary() -> Result<PathBuf> {
+        println!("   Downloading rust-analyzer to engine deps directory...");
 
         let deps_path = Self::get_engine_deps_analyzer_path();
         let deps_dir = deps_path.parent().ok_or_else(|| anyhow!("Invalid deps path"))?;
