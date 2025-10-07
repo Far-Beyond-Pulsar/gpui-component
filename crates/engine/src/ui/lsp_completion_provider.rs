@@ -81,7 +81,14 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
             println!("🚀 Requesting completions from rust-analyzer at offset {}", offset);
             
             // Convert to position in background (can be slow for large files)
-            let position = text_clone.offset_to_position(offset);
+            // Ensure offset is within bounds before converting
+            // Rope stores characters, so we check the length in chars
+            let safe_offset = if offset >= text_clone.len() {
+                text_clone.len().saturating_sub(1)
+            } else {
+                offset
+            };
+            let position = text_clone.offset_to_position(safe_offset);
             
             // DON'T sync file content here - it should already be synced via the text editor's change handler!
             // Calling did_change_file here causes "unexpected DidChangeTextDocument" errors from rust-analyzer.
@@ -142,13 +149,34 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
                 }
                 
                 // Try as array first
-                if let Ok(items) = serde_json::from_value::<Vec<lsp_types::CompletionItem>>(result.clone()) {
+                if let Ok(mut items) = serde_json::from_value::<Vec<lsp_types::CompletionItem>>(result.clone()) {
+                    // Sort items by sort_text (rust-analyzer provides this for relevance)
+                    // Items with no sort_text go to the end
+                    items.sort_by(|a, b| {
+                        match (&a.sort_text, &b.sort_text) {
+                            (Some(a_sort), Some(b_sort)) => a_sort.cmp(b_sort),
+                            (Some(_), None) => std::cmp::Ordering::Less,
+                            (None, Some(_)) => std::cmp::Ordering::Greater,
+                            (None, None) => a.label.cmp(&b.label),
+                        }
+                    });
+                    
                     println!("📦 Received {} completions (Array)", items.len());
                     return Ok(lsp_types::CompletionResponse::Array(items));
                 }
                 
                 // Try as completion list
-                if let Ok(list) = serde_json::from_value::<lsp_types::CompletionList>(result.clone()) {
+                if let Ok(mut list) = serde_json::from_value::<lsp_types::CompletionList>(result.clone()) {
+                    // Sort items in the list as well
+                    list.items.sort_by(|a, b| {
+                        match (&a.sort_text, &b.sort_text) {
+                            (Some(a_sort), Some(b_sort)) => a_sort.cmp(b_sort),
+                            (Some(_), None) => std::cmp::Ordering::Less,
+                            (None, Some(_)) => std::cmp::Ordering::Greater,
+                            (None, None) => a.label.cmp(&b.label),
+                        }
+                    });
+                    
                     println!("📦 Received {} completions (List)", list.items.len());
                     return Ok(lsp_types::CompletionResponse::List(list));
                 }
