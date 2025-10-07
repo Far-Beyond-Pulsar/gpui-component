@@ -344,3 +344,83 @@ impl DefinitionProvider for GlobalRustAnalyzerCompletionProvider {
         })
     }
 }
+
+impl gpui_component::input::HoverProvider for GlobalRustAnalyzerCompletionProvider {
+    fn hover(
+        &self,
+        text: &ropey::Rope,
+        offset: usize,
+        _window: &mut Window,
+        cx: &mut App,
+    ) -> Task<Result<Option<lsp_types::Hover>>> {
+        // Check if analyzer is ready (fast check)
+        let is_ready = self.analyzer.read(cx).is_running();
+        if !is_ready {
+            println!("⚠️  rust-analyzer is not running, cannot get hover info");
+            return Task::ready(Ok(None));
+        }
+
+        let uri = self.path_to_uri();
+        let position = text.offset_to_position(offset);
+        let word = text.word_at(offset);
+        
+        println!("💡 Requesting hover info for '{}' at {}:{}", word, position.line, position.character);
+        
+        // Prepare the request parameters
+        let params = json!({
+            "textDocument": {
+                "uri": uri
+            },
+            "position": {
+                "line": position.line,
+                "character": position.character
+            }
+        });
+        
+        // Send the request synchronously (while we still have access to the entity)
+        let response_rx = match self.analyzer.read(cx).send_request_async("textDocument/hover", params) {
+            Ok(rx) => rx,
+            Err(e) => {
+                eprintln!("⚠️  Failed to send hover request: {}", e);
+                return Task::ready(Ok(None));
+            }
+        };
+        
+        // Use foreground executor to handle the async work
+        let executor = cx.foreground_executor().clone();
+        executor.spawn(async move {
+            // Wait for response
+            let response = match response_rx.recv_async().await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    eprintln!("⚠️  Failed to receive hover response: {}", e);
+                    return Ok(None);
+                }
+            };
+            
+            // Check for errors
+            if let Some(error) = response.get("error") {
+                eprintln!("❌ rust-analyzer hover error: {}", error);
+                return Ok(None);
+            }
+            
+            // Parse the result
+            if let Some(result) = response.get("result") {
+                if result.is_null() {
+                    println!("💡 No hover info found for '{}'", word);
+                    return Ok(None);
+                }
+                
+                // Try to parse as Hover
+                if let Ok(hover) = serde_json::from_value::<lsp_types::Hover>(result.clone()) {
+                    println!("✅ Found hover info for '{}'", word);
+                    return Ok(Some(hover));
+                }
+                
+                eprintln!("⚠️  Unexpected hover response format: {:?}", result);
+            }
+            
+            Ok(None)
+        })
+    }
+}

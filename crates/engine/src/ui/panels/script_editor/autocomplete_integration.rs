@@ -5,7 +5,6 @@ use gpui::{App, Context, Entity, Window};
 use gpui_component::input::{
     ComprehensiveCompletionProvider, 
     InputState,
-    MockRustHoverProvider,
 };
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -16,9 +15,9 @@ use crate::ui::lsp_completion_provider::GlobalRustAnalyzerCompletionProvider;
 /// Helper function to set up autocomplete for a Rust file with real rust-analyzer completions
 /// 
 /// This configures the input state with:
-/// - Dictionary-based completion (English words)
-/// - Closure/bracket auto-completion
 /// - Real Rust completions from global rust-analyzer LSP
+/// - Hover documentation from rust-analyzer
+/// - Go-to-definition from rust-analyzer
 pub fn setup_rust_autocomplete(
     input_state: &mut InputState,
     workspace_root: Option<PathBuf>,
@@ -29,22 +28,18 @@ pub fn setup_rust_autocomplete(
 ) {
     let workspace = workspace_root.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
     
-    // For Rust files, ONLY use rust-analyzer completions (no dictionary)
-    // rust-analyzer provides all relevant completions with proper priorities
+    // For Rust files, use rust-analyzer for everything
     let rust_provider = GlobalRustAnalyzerCompletionProvider::new(
         analyzer,
         file_path.clone(),
         workspace.clone(),
     );
     
-    // Set ONLY the LSP provider (no dictionary completions for Rust)
+    // Set up all LSP features with the same provider
     let rust_provider_rc = Rc::new(rust_provider);
     input_state.lsp.completion_provider = Some(rust_provider_rc.clone());
-    input_state.lsp.definition_provider = Some(rust_provider_rc);
-    
-    // Set up hover provider
-    let hover_provider = MockRustHoverProvider::new();
-    input_state.lsp.hover_provider = Some(Rc::new(hover_provider));
+    input_state.lsp.definition_provider = Some(rust_provider_rc.clone());
+    input_state.lsp.hover_provider = Some(rust_provider_rc); // Use rust-analyzer for hover too!
     
     println!("✓ Autocomplete, Hover, and Go-to-Definition configured for: {:?} (workspace: {:?})", file_path.file_name(), workspace);
 }
