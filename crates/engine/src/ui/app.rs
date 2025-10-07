@@ -408,6 +408,13 @@ impl PulsarApp {
         script_editor.update(cx, |editor, cx| {
             editor.set_rust_analyzer(analyzer, cx);
         });
+        
+        // Load project in file explorer if we have a project path
+        if let Some(ref project_path) = self.project_path {
+            script_editor.update(cx, |editor, cx| {
+                editor.set_project_path(project_path.clone(), window, cx);
+            });
+        }
 
         // Note: ScriptEditor now handles LSP notifications internally via set_rust_analyzer
         // We only subscribe here for non-LSP events (RunScriptRequested, etc.)

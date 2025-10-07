@@ -119,6 +119,14 @@ impl ScriptEditor {
         
         println!("✓ ScriptEditor rust-analyzer setup complete");
     }
+    
+    /// Set the project path and load it in the file explorer
+    pub fn set_project_path(&mut self, project_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        println!("📁 ScriptEditor::set_project_path called with: {:?}", project_path);
+        self.file_explorer.update(cx, |explorer, cx| {
+            explorer.open_project(project_path, window, cx);
+        });
+    }
 
     pub fn open_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         self.text_editor.update(cx, |editor, cx| {

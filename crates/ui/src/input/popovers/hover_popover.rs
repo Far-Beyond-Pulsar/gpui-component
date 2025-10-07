@@ -1,8 +1,8 @@
-use std::{ops::Range, rc::Rc};
+use std::{ops::Range, rc::Rc, time::Duration};
 
 use gpui::{
-    deferred, div, px, App, AppContext, Entity, InteractiveElement, IntoElement, ParentElement, 
-    Pixels, Point, Render, StatefulInteractiveElement, Styled, Window,
+    canvas, deferred, div, px, App, AppContext, Bounds, Context, Entity, InteractiveElement, 
+    IntoElement, ParentElement, Pixels, Point, Render, StatefulInteractiveElement, Styled, Task, Window,
 };
 
 use crate::{
@@ -13,6 +13,8 @@ use crate::{
 const MAX_HOVER_WIDTH: Pixels = px(500.);
 const MAX_HOVER_HEIGHT: Pixels = px(400.);
 const HOVER_OFFSET_X: Pixels = px(15.); // Offset to the right of cursor
+const HOVER_SHOW_DELAY: Duration = Duration::from_millis(500); // Delay before showing
+const HOVER_HIDE_DELAY: Duration = Duration::from_millis(300); // Delay before hiding
 
 pub struct HoverPopover {
     editor: Entity<InputState>,
@@ -21,6 +23,12 @@ pub struct HoverPopover {
     pub(crate) hover: Rc<lsp_types::Hover>,
     /// Mouse position where hover was triggered (in window coordinates)
     pub(crate) mouse_position: Point<Pixels>,
+    /// Bounds of the popover (for hit testing)
+    pub(crate) bounds: Bounds<Pixels>,
+    /// Whether the popover is currently visible
+    pub(crate) visible: bool,
+    /// Task to show the popover after delay
+    _show_task: Task<()>,
 }
 
 impl HoverPopover {
@@ -33,21 +41,63 @@ impl HoverPopover {
     ) -> Entity<Self> {
         let hover = Rc::new(hover.clone());
 
-        cx.new(|_| Self {
+        let entity = cx.new(|_| Self {
             editor,
             symbol_range,
             hover,
             mouse_position,
-        })
+            bounds: Bounds::default(),
+            visible: false,
+            _show_task: Task::ready(()),
+        });
+        
+        // Start the show delay task
+        entity.update(cx, |popover, cx| {
+            popover.start_show_delay(cx);
+        });
+        
+        entity
     }
 
     pub(crate) fn is_same(&self, offset: usize) -> bool {
         self.symbol_range.contains(&offset)
     }
+    
+    /// Start the delay before showing the popover
+    fn start_show_delay(&mut self, cx: &mut Context<Self>) {
+        let entity = cx.entity();
+        self._show_task = cx.spawn(async move |_, cx| {
+            cx.background_executor().timer(HOVER_SHOW_DELAY).await;
+            _ = entity.update(cx, |popover, cx| {
+                popover.visible = true;
+                cx.notify();
+            });
+        });
+    }
+    
+    /// Check if mouse is inside the popover bounds (with padding)
+    pub fn contains_point(&self, mouse_position: Point<Pixels>) -> bool {
+        if !self.visible {
+            return false;
+        }
+        
+        // Add padding to create a "sticky" zone
+        let padding = px(30.);
+        let bounds = Bounds {
+            origin: self.bounds.origin.map(|v| v - padding),
+            size: self.bounds.size.map(|v| v + padding * 2.),
+        };
+        
+        bounds.contains(&mouse_position)
+    }
 }
 
 impl Render for HoverPopover {
     fn render(&mut self, window: &mut Window, cx: &mut gpui::Context<Self>) -> impl IntoElement {
+        if !self.visible {
+            return div().into_any_element();
+        }
+        
         let contents = match self.hover.contents.clone() {
             lsp_types::HoverContents::Scalar(scalar) => match scalar {
                 lsp_types::MarkedString::String(s) => s,
@@ -97,6 +147,8 @@ impl Render for HoverPopover {
         }
 
         let max_width = MAX_HOVER_WIDTH.min(element_width - pos_x - px(20.));
+        
+        let view = cx.entity();
 
         deferred(
             div()
@@ -129,6 +181,19 @@ impl Render for HoverPopover {
                                 .overflow_y_scroll()
                                 .overflow_x_hidden()
                                 .child(render_markdown("hover-content", contents, window, cx))
+                        )
+                        .child(
+                            // Canvas to capture bounds for hit testing
+                            canvas(
+                                move |bounds, _, cx| {
+                                    view.update(cx, |popover, _| popover.bounds = bounds)
+                                },
+                                |_, _, _, _| {},
+                            )
+                            .absolute()
+                            .top_0()
+                            .left_0()
+                            .size_full(),
                         )
                 )
                 .on_mouse_down_out(cx.listener(|this, _, _, cx| {
