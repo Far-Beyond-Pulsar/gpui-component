@@ -49,7 +49,7 @@ use ui::project_selector::ProjectSelected;
 use ui::entry_window::EntryWindow;
 use ui::settings_window::SettingsWindow;
 
-fn main() {
+fn main(
     // Note: Node metadata is now loaded lazily from pulsar_std when needed
     println!("Pulsar Engine - Visual Programming Environment");
     println!("Using macro-based node system from pulsar_std");
@@ -84,7 +84,7 @@ fn main() {
                         if let Some(name) = path.file_name() {
                             let dest = themes_dir.join(name);
                             let _ = fs::copy(&path, &dest);
-                        }
+                        }                        
                     }
                 }
             }
