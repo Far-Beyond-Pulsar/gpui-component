@@ -632,11 +632,19 @@ impl TextEditor {
                 // Need to open the file first
                 println!("📂 Opening file {:?}", path);
                 self.open_file(path.clone(), window, cx);
+                println!("✓ File opened, current_file_index: {:?}", self.current_file_index);
             }
             
             // Now navigate to the specific position
-            // LSP positions are 0-based, but go_to_line expects 1-based
-            self.go_to_line((line + 1) as usize, (character + 1) as usize, window, cx);
+            // LSP positions are 0-based, go_to_line expects 1-based line numbers
+            // and will convert back to 0-based internally
+            let target_line = (line + 1) as usize;  // Convert 0-based to 1-based
+            let target_col = (character + 1) as usize;  // Convert 0-based to 1-based
+            
+            println!("🎯 Calling go_to_line with line {} (LSP: {}), column {} (LSP: {})", 
+                target_line, line, target_col, character);
+            
+            self.go_to_line(target_line, target_col, window, cx);
             
             cx.notify();
         }
