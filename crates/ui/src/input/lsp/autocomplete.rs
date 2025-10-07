@@ -39,6 +39,13 @@ impl ComprehensiveCompletionProvider {
     }
 
     /// Get completions from all sources and merge them
+    /// Priority order (highest to lowest):
+    /// 1. Closure/bracket completions (auto-close)
+    /// 2. LSP completions (rust-analyzer, etc.) - if available
+    /// 3. Language keywords and snippets (if no LSP)
+    /// 4. Document-learned words
+    /// 5. Common words
+    /// 6. System dictionary words (lowest priority)
     pub fn get_completions(
         &self,
         text: &Rope,
@@ -55,10 +62,10 @@ impl ComprehensiveCompletionProvider {
         }
 
         // 2. If LSP is available, SKIP language keywords and use LSP instead
-        // Only use dictionary-based completions for fallback
+        // Dictionary-based completions (document, common, system) are always included
         let has_lsp = self.lsp_provider.is_some();
 
-        // 3. Get dictionary-based completions (always include)
+        // 3. Get dictionary-based completions (document + common + system dictionary)
         let current_word = self.get_current_word(text, offset);
         if !current_word.is_empty() {
             all_completions.extend(self.dictionary.get_completions(&current_word));
@@ -176,6 +183,8 @@ pub struct DictionaryProvider {
     learned_words: HashSet<String>,
     /// Common English words for general text editing
     common_words: HashSet<String>,
+    /// System dictionary words (loaded lazily)
+    system_words: HashSet<String>,
 }
 
 impl DictionaryProvider {
@@ -194,10 +203,45 @@ impl DictionaryProvider {
             common_words.insert(word.to_string());
         }
         
+        let system_words = Self::load_system_dictionary();
+        
         Self {
             learned_words: HashSet::new(),
             common_words,
+            system_words,
         }
+    }
+    
+    /// Load system dictionary from common locations
+    fn load_system_dictionary() -> HashSet<String> {
+        let mut words = HashSet::new();
+        
+        // Try common dictionary file locations
+        let dict_paths = vec![
+            "/usr/share/dict/words",           // Unix/Linux
+            "/usr/dict/words",                  // Alternative Unix location
+            "C:\\Windows\\System32\\en-US.dic", // Windows (hypothetical)
+        ];
+        
+        for path in dict_paths {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                for line in content.lines() {
+                    let word = line.trim().to_lowercase();
+                    // Only include words between 3 and 15 characters
+                    if word.len() >= 3 && word.len() <= 15 && word.chars().all(|c| c.is_alphabetic()) {
+                        words.insert(word);
+                    }
+                }
+                println!("✓ Loaded {} words from system dictionary: {}", words.len(), path);
+                break; // Use first available dictionary
+            }
+        }
+        
+        if words.is_empty() {
+            println!("⚠ No system dictionary found, using built-in word list only");
+        }
+        
+        words
     }
 
     /// Learn words from the text
@@ -218,29 +262,51 @@ impl DictionaryProvider {
         let prefix_lower = prefix.to_lowercase();
         let mut completions = Vec::new();
 
-        // Search learned words
+        // Search learned words (medium-high priority)
         for word in &self.learned_words {
             if word.starts_with(&prefix_lower) && word != &prefix_lower {
                 completions.push(CompletionItem {
                     label: word.clone(),
                     kind: Some(CompletionItemKind::TEXT),
-                    detail: Some("Dictionary".to_string()),
-                    sort_text: Some(format!("z_{}", word)), // Lower priority
+                    detail: Some("Document".to_string()),
+                    sort_text: Some(format!("y_{}", word)), // Medium-high priority
                     ..Default::default()
                 });
             }
         }
 
-        // Search common words
+        // Search common words (medium priority)
         for word in &self.common_words {
             if word.starts_with(&prefix_lower) && word != &prefix_lower {
                 completions.push(CompletionItem {
                     label: word.clone(),
                     kind: Some(CompletionItemKind::TEXT),
-                    detail: Some("Word".to_string()),
-                    sort_text: Some(format!("y_{}", word)), // Medium priority
+                    detail: Some("Common".to_string()),
+                    sort_text: Some(format!("z_{}", word)), // Medium priority
                     ..Default::default()
                 });
+            }
+        }
+        
+        // Search system dictionary words (lowest priority)
+        // Limit to 20 matches to avoid overwhelming the completion list
+        let mut system_matches = 0;
+        for word in &self.system_words {
+            if system_matches >= 20 {
+                break;
+            }
+            if word.starts_with(&prefix_lower) && word != &prefix_lower {
+                // Skip if already in learned or common words
+                if !self.learned_words.contains(word) && !self.common_words.contains(word) {
+                    completions.push(CompletionItem {
+                        label: word.clone(),
+                        kind: Some(CompletionItemKind::TEXT),
+                        detail: Some("Dictionary".to_string()),
+                        sort_text: Some(format!("zz_{}", word)), // Lowest priority
+                        ..Default::default()
+                    });
+                    system_matches += 1;
+                }
             }
         }
 

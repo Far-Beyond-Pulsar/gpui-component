@@ -299,8 +299,9 @@ impl ProblemsDrawer {
             diagnostics
         };
 
-        self.list.update(cx, |list, _cx| {
+        self.list.update(cx, |list, cx| {
             list.delegate_mut().diagnostics = filtered;
+            cx.notify();
         });
         
         cx.notify();
