@@ -13,14 +13,13 @@ use crate::{
 const MAX_HOVER_WIDTH: Pixels = px(500.);
 const MAX_HOVER_HEIGHT: Pixels = px(400.);
 const HOVER_OFFSET_X: Pixels = px(15.); // Offset to the right of cursor
-const HOVER_SHOW_DELAY: Duration = Duration::from_millis(500); // Delay before showing
-const HOVER_HIDE_DELAY: Duration = Duration::from_millis(300); // Delay before hiding
+const HOVER_SHOW_DELAY: Duration = Duration::from_millis(300); // Quick 300ms delay
 
 pub struct HoverPopover {
     editor: Entity<InputState>,
     /// The symbol range byte of the hover trigger.
     pub(crate) symbol_range: Range<usize>,
-    pub(crate) hover: Rc<lsp_types::Hover>,
+    pub(crate) hover: Option<Rc<lsp_types::Hover>>,
     /// Mouse position where hover was triggered (in window coordinates)
     pub(crate) mouse_position: Point<Pixels>,
     /// Bounds of the popover (for hit testing)
@@ -32,19 +31,17 @@ pub struct HoverPopover {
 }
 
 impl HoverPopover {
+    /// Create immediately, fetch LSP data async, show after delay
     pub fn new(
         editor: Entity<InputState>,
         symbol_range: Range<usize>,
-        hover: &lsp_types::Hover,
         mouse_position: Point<Pixels>,
         cx: &mut App,
     ) -> Entity<Self> {
-        let hover = Rc::new(hover.clone());
-
         let entity = cx.new(|_| Self {
             editor,
             symbol_range,
-            hover,
+            hover: None, // Will be set when LSP responds
             mouse_position,
             bounds: Bounds::default(),
             visible: false,
@@ -61,6 +58,12 @@ impl HoverPopover {
 
     pub(crate) fn is_same(&self, offset: usize) -> bool {
         self.symbol_range.contains(&offset)
+    }
+    
+    /// Set hover data when LSP responds (before or after delay)
+    pub fn set_hover(&mut self, hover: lsp_types::Hover, cx: &mut Context<Self>) {
+        self.hover = Some(Rc::new(hover));
+        cx.notify();
     }
     
     /// Start the delay before showing the popover
@@ -94,11 +97,16 @@ impl HoverPopover {
 
 impl Render for HoverPopover {
     fn render(&mut self, window: &mut Window, cx: &mut gpui::Context<Self>) -> impl IntoElement {
-        if !self.visible {
+        // Don't show until both visible AND hover data is ready
+        if !self.visible || self.hover.is_none() {
             return div().into_any_element();
         }
         
-        let contents = match self.hover.contents.clone() {
+        let Some(hover) = &self.hover else {
+            return div().into_any_element();
+        };
+        
+        let contents = match hover.contents.clone() {
             lsp_types::HoverContents::Scalar(scalar) => match scalar {
                 lsp_types::MarkedString::String(s) => s,
                 lsp_types::MarkedString::LanguageString(ls) => {

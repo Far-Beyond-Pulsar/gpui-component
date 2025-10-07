@@ -22,7 +22,7 @@ pub trait HoverProvider {
 
 impl InputState {
     /// Handle hover trigger LSP request.
-    /// Requests immediately from LSP and uses popup delay to mask response time.
+    /// Creates popover immediately, requests LSP instantly, shows after delay.
     pub(super) fn handle_hover_popover(
         &mut self,
         offset: usize,
@@ -54,8 +54,12 @@ impl InputState {
         // Clear any existing hover popover when moving to a new location
         self.hover_popover = None;
 
+        // Create popover IMMEDIATELY (invisible, will show after delay)
+        let symbol_range = self.text.word_range(offset).unwrap_or(offset..offset);
+        let hover_popover = HoverPopover::new(cx.entity(), symbol_range.clone(), mouse_position, cx);
+        self.hover_popover = Some(hover_popover.clone());
+
         // Request hover info from LSP IMMEDIATELY (async, non-blocking)
-        // The popup delay will mask the response time
         let text = self.text.clone();
         let task = provider.hover(&text, offset, window, cx);
         let editor = cx.entity();
@@ -64,25 +68,30 @@ impl InputState {
             // LSP request is already in flight, just wait for it
             let result = task.await?;
             
-            // Process the result
+            // Process the result and set hover data
             _ = editor.update(cx, |editor, cx| {
                 match result {
                     Some(hover) => {
-                        let mut symbol_range = text.word_range(offset).unwrap_or(offset..offset);
+                        let mut updated_range = symbol_range;
                         
                         if let Some(range) = hover.range {
                             let start = text.position_to_offset(&range.start);
                             let end = text.position_to_offset(&range.end);
-                            symbol_range = start..end;
+                            updated_range = start..end;
                         }
                         
-                        // Create hover popover (it will show after its internal delay)
-                        // By the time the delay is done, LSP has likely already responded
-                        let hover_popover = HoverPopover::new(cx.entity(), symbol_range, &hover, mouse_position, cx);
-                        editor.hover_popover = Some(hover_popover);
+                        // Update the hover popover with the data
+                        if let Some(popover_entity) = &editor.hover_popover {
+                            _ = popover_entity.update(cx, |popover, cx| {
+                                popover.symbol_range = updated_range;
+                                popover.set_hover(hover, cx);
+                            });
+                        }
+                        
                         cx.notify();
                     }
                     None => {
+                        // No hover data, remove the popover
                         editor.hover_popover = None;
                     }
                 }
