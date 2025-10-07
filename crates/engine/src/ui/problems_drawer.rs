@@ -46,12 +46,12 @@ impl DiagnosticSeverity {
         }
     }
 
-    pub fn color(&self) -> Hsla {
+    pub fn color(&self, cx: &App) -> Hsla {
         match self {
-            Self::Error => Hsla { h: 0.0, s: 1.0, l: 0.5, a: 1.0 },
-            Self::Warning => Hsla { h: 60.0, s: 1.0, l: 0.5, a: 1.0 },
-            Self::Information => Hsla { h: 200.0, s: 1.0, l: 0.5, a: 1.0 },
-            Self::Hint => Hsla { h: 200.0, s: 0.5, l: 0.5, a: 1.0 },
+            Self::Error => Hsla { h: 0.0, s: 0.8, l: 0.5, a: 1.0 }, // Red
+            Self::Warning => Hsla { h: 40.0, s: 0.9, l: 0.5, a: 1.0 }, // Orange
+            Self::Information => cx.theme().accent, // Blue
+            Self::Hint => cx.theme().muted_foreground, // Gray
         }
     }
 
@@ -69,6 +69,7 @@ impl DiagnosticSeverity {
 struct DiagnosticItem {
     diagnostic: Diagnostic,
     selected: bool,
+    on_click: Option<Arc<dyn Fn(&mut Window, &mut App) + 'static>>,
 }
 
 impl DiagnosticItem {
@@ -76,7 +77,13 @@ impl DiagnosticItem {
         Self {
             diagnostic,
             selected: false,
+            on_click: None,
         }
+    }
+
+    fn on_click(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.on_click = Some(Arc::new(handler));
+        self
     }
 }
 
@@ -92,8 +99,9 @@ impl Selectable for DiagnosticItem {
 }
 
 impl RenderOnce for DiagnosticItem {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let diagnostic = self.diagnostic;
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let diagnostic = self.diagnostic.clone();
+        let on_click = self.on_click.clone();
         
         div()
             .w_full()
@@ -104,6 +112,11 @@ impl RenderOnce for DiagnosticItem {
             .when(self.selected, |this| this.bg(cx.theme().selection))
             .hover(|this| this.bg(cx.theme().secondary))
             .cursor_pointer()
+            .on_mouse_down(gpui::MouseButton::Left, move |_event, window, cx| {
+                if let Some(handler) = &on_click {
+                    handler(window, cx);
+                }
+            })
             .child(
                 v_flex()
                     .gap_1()
@@ -113,16 +126,18 @@ impl RenderOnce for DiagnosticItem {
                             .items_center()
                             .child(
                                 div()
-                                    .w(px(12.))
-                                    .h(px(12.))
-                                    .rounded_full()
-                                    .bg(diagnostic.severity.color())
+                                    .flex_shrink_0()
+                                    .child(
+                                        gpui_component::Icon::new(diagnostic.severity.icon())
+                                            .size_4()
+                                            .text_color(diagnostic.severity.color(cx))
+                                    )
                             )
                             .child(
                                 div()
                                     .text_xs()
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(diagnostic.severity.color())
+                                    .text_color(diagnostic.severity.color(cx))
                                     .child(diagnostic.severity.label())
                             )
                             .child(
@@ -130,8 +145,9 @@ impl RenderOnce for DiagnosticItem {
                                     .flex_1()
                                     .text_xs()
                                     .text_color(cx.theme().muted_foreground)
+                                    .line_clamp(1)
                                     .child(format!(
-                                        "{} [{}:{}]",
+                                        "{}:{}:{}",
                                         diagnostic.file_path,
                                         diagnostic.line,
                                         diagnostic.column
@@ -189,10 +205,24 @@ impl ListDelegate for ProblemsListDelegate {
         &self,
         ix: IndexPath,
         _window: &mut Window,
-        _cx: &mut Context<List<Self>>,
+        cx: &mut Context<List<Self>>,
     ) -> Option<Self::Item> {
         let diagnostic = self.diagnostics.get(ix.row)?.clone();
-        Some(DiagnosticItem::new(diagnostic))
+        let drawer = self.drawer.clone();
+        
+        Some(
+            DiagnosticItem::new(diagnostic.clone())
+                .on_click(move |_window, cx| {
+                    let file_path = PathBuf::from(&diagnostic.file_path);
+                    drawer.update(cx, |_, cx| {
+                        cx.emit(NavigateToDiagnostic {
+                            file_path,
+                            line: diagnostic.line,
+                            column: diagnostic.column,
+                        });
+                    });
+                })
+        )
     }
 
     fn render_empty(&self, _window: &mut Window, cx: &mut Context<List<Self>>) -> impl IntoElement {
@@ -201,16 +231,34 @@ impl ListDelegate for ProblemsListDelegate {
             .flex()
             .items_center()
             .justify_center()
+            .p_8()
             .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("No problems detected")
+                v_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(
+                        gpui_component::Icon::new(IconName::Check)
+                            .size_8()
+                            .text_color(cx.theme().success)
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(cx.theme().foreground)
+                            .child("No problems detected")
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Your code is looking good!")
+                    )
             )
     }
 
     fn confirm(&mut self, _secondary: bool, _window: &mut Window, cx: &mut Context<List<Self>>) {
-        // Handle clicking on a diagnostic to navigate to it
+        // Handle double-clicking or pressing Enter on a diagnostic
         if let Some(index) = self.drawer.read(cx).selected_index {
             if let Some(diagnostic) = self.diagnostics.get(index.row) {
                 let file_path = PathBuf::from(&diagnostic.file_path);
@@ -229,9 +277,9 @@ impl ListDelegate for ProblemsListDelegate {
         &mut self,
         ix: Option<IndexPath>,
         _window: &mut Window,
-        _cx: &mut Context<List<Self>>,
+        cx: &mut Context<List<Self>>,
     ) {
-        self.drawer.update(_cx, |drawer, _| {
+        self.drawer.update(cx, |drawer, _| {
             drawer.selected_index = ix;
         });
     }
@@ -332,86 +380,130 @@ impl Render for ProblemsDrawer {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let error_count = self.count_by_severity(DiagnosticSeverity::Error);
         let warning_count = self.count_by_severity(DiagnosticSeverity::Warning);
+        let info_count = self.count_by_severity(DiagnosticSeverity::Information);
+        let total_count = self.total_count();
 
         v_flex()
             .size_full()
             .bg(cx.theme().background)
             .child(
-                // Header with filter buttons
-                h_flex()
+                // Header with title and filter buttons
+                v_flex()
                     .w_full()
-                    .px_3()
-                    .py_2()
-                    .gap_2()
-                    .bg(cx.theme().sidebar)
+                    .bg(cx.theme().secondary)
                     .border_b_1()
                     .border_color(cx.theme().border)
                     .child(
-                        div()
-                            .text_sm()
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(cx.theme().foreground)
-                            .child("Problems")
-                    )
-                    .child(div().flex_1())
-                    .child(
-                        Button::new("filter-all")
-                            .ghost()
-                            .small()
-                            .when(self.filtered_severity.is_none(), |btn| {
-                                btn.with_variant(ButtonVariant::Primary)
-                            })
-                            .label(format!("All ({})", self.total_count()))
-                            .on_click(cx.listener(|this, _, _window, cx| {
-                                this.set_filter(None, cx);
-                            }))
-                    )
-                    .child(
-                        Button::new("filter-errors")
-                            .ghost()
-                            .small()
-                            .when(
-                                self.filtered_severity == Some(DiagnosticSeverity::Error),
-                                |btn| btn.with_variant(ButtonVariant::Danger)
+                        // Title bar
+                        h_flex()
+                            .w_full()
+                            .px_3()
+                            .py_2()
+                            .justify_between()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(cx.theme().foreground)
+                                    .child(format!("Problems ({})", total_count))
                             )
-                            .icon(IconName::Close)
-                            .label(format!("Errors ({})", error_count))
-                            .on_click(cx.listener(|this, _, _window, cx| {
-                                this.set_filter(Some(DiagnosticSeverity::Error), cx);
-                            }))
-                    )
-                    .child(
-                        Button::new("filter-warnings")
-                            .ghost()
-                            .small()
-                            .when(
-                                self.filtered_severity == Some(DiagnosticSeverity::Warning),
-                                |btn| btn.with_variant(ButtonVariant::Warning)
+                            .child(
+                                h_flex()
+                                    .gap_1()
+                                    .child(
+                                        Button::new("clear")
+                                            .ghost()
+                                            .xsmall()
+                                            .icon(IconName::Close)
+                                            .tooltip("Clear all problems")
+                                            .on_click(cx.listener(|this, _, _window, cx| {
+                                                this.clear_diagnostics(cx);
+                                            }))
+                                    )
                             )
-                            .icon(IconName::TriangleAlert)
-                            .label(format!("Warnings ({})", warning_count))
-                            .on_click(cx.listener(|this, _, _window, cx| {
-                                this.set_filter(Some(DiagnosticSeverity::Warning), cx);
-                            }))
                     )
                     .child(
-                        Button::new("clear")
-                            .ghost()
-                            .small()
-                            .icon(IconName::Close)
-                            .tooltip("Clear all problems")
-                            .on_click(cx.listener(|this, _, _window, cx| {
-                                this.clear_diagnostics(cx);
-                            }))
+                        // Filter buttons bar
+                        h_flex()
+                            .w_full()
+                            .px_3()
+                            .py_1()
+                            .gap_1()
+                            .child(
+                                Button::new("filter-all")
+                                    .xsmall()
+                                    .when(self.filtered_severity.is_none(), |btn| {
+                                        btn.with_variant(ButtonVariant::Primary)
+                                    })
+                                    .when(self.filtered_severity.is_some(), |btn| {
+                                        btn.ghost()
+                                    })
+                                    .label(format!("All ({})", total_count))
+                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                        this.set_filter(None, cx);
+                                    }))
+                            )
+                            .child(
+                                Button::new("filter-errors")
+                                    .xsmall()
+                                    .when(
+                                        self.filtered_severity == Some(DiagnosticSeverity::Error),
+                                        |btn| btn.with_variant(ButtonVariant::Danger)
+                                    )
+                                    .when(
+                                        self.filtered_severity != Some(DiagnosticSeverity::Error),
+                                        |btn| btn.ghost()
+                                    )
+                                    .icon(IconName::Close)
+                                    .label(format!("{}", error_count))
+                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                        this.set_filter(Some(DiagnosticSeverity::Error), cx);
+                                    }))
+                            )
+                            .child(
+                                Button::new("filter-warnings")
+                                    .xsmall()
+                                    .when(
+                                        self.filtered_severity == Some(DiagnosticSeverity::Warning),
+                                        |btn| btn.with_variant(ButtonVariant::Warning)
+                                    )
+                                    .when(
+                                        self.filtered_severity != Some(DiagnosticSeverity::Warning),
+                                        |btn| btn.ghost()
+                                    )
+                                    .icon(IconName::TriangleAlert)
+                                    .label(format!("{}", warning_count))
+                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                        this.set_filter(Some(DiagnosticSeverity::Warning), cx);
+                                    }))
+                            )
+                            .child(
+                                Button::new("filter-info")
+                                    .xsmall()
+                                    .when(
+                                        self.filtered_severity == Some(DiagnosticSeverity::Information),
+                                        |btn| btn.with_variant(ButtonVariant::Primary)
+                                    )
+                                    .when(
+                                        self.filtered_severity != Some(DiagnosticSeverity::Information),
+                                        |btn| btn.ghost()
+                                    )
+                                    .icon(IconName::Info)
+                                    .label(format!("{}", info_count))
+                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                        this.set_filter(Some(DiagnosticSeverity::Information), cx);
+                                    }))
+                            )
                     )
             )
             .child(
-                // Problems list
+                // Problems list - use proper scrollable container
                 div()
+                    .id("problems-list-container")
                     .flex_1()
-                    .scrollable(Axis::Vertical)
+                    .overflow_y_scroll()
                     .child(self.list.clone())
             )
     }
 }
-
