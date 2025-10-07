@@ -184,111 +184,6 @@ pub struct ProblemsDrawer {
     selected_index: Option<usize>,
 }
 
-struct ProblemsListDelegate {
-    drawer: Entity<ProblemsDrawer>,
-    diagnostics: Vec<Diagnostic>,
-}
-
-impl ListDelegate for ProblemsListDelegate {
-    type Item = DiagnosticItem;
-
-    fn items_count(&self, _section: usize, _cx: &App) -> usize {
-        self.diagnostics.len()
-    }
-
-    fn perform_search(
-        &mut self,
-        _query: &str,
-        _window: &mut Window,
-        _cx: &mut Context<List<Self>>,
-    ) -> gpui::Task<()> {
-        gpui::Task::ready(())
-    }
-
-    fn render_item(
-        &self,
-        ix: IndexPath,
-        _window: &mut Window,
-        cx: &mut Context<List<Self>>,
-    ) -> Option<Self::Item> {
-        let diagnostic = self.diagnostics.get(ix.row)?.clone();
-        let drawer = self.drawer.clone();
-        
-        Some(
-            DiagnosticItem::new(diagnostic.clone())
-                .on_click(move |_window, cx| {
-                    let file_path = PathBuf::from(&diagnostic.file_path);
-                    drawer.update(cx, |_, cx| {
-                        cx.emit(NavigateToDiagnostic {
-                            file_path,
-                            line: diagnostic.line,
-                            column: diagnostic.column,
-                        });
-                    });
-                })
-        )
-    }
-
-    fn render_empty(&self, _window: &mut Window, cx: &mut Context<List<Self>>) -> impl IntoElement {
-        div()
-            .size_full()
-            .flex()
-            .items_center()
-            .justify_center()
-            .p_8()
-            .child(
-                v_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(
-                        gpui_component::Icon::new(IconName::Check)
-                            .size_8()
-                            .text_color(cx.theme().success)
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(cx.theme().foreground)
-                            .child("No problems detected")
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("Your code is looking good!")
-                    )
-            )
-    }
-
-    fn confirm(&mut self, _secondary: bool, _window: &mut Window, cx: &mut Context<List<Self>>) {
-        // Handle double-clicking or pressing Enter on a diagnostic
-        if let Some(index) = self.drawer.read(cx).selected_index {
-            if let Some(diagnostic) = self.diagnostics.get(index.row) {
-                let file_path = PathBuf::from(&diagnostic.file_path);
-                self.drawer.update(cx, |drawer, cx| {
-                    cx.emit(NavigateToDiagnostic {
-                        file_path,
-                        line: diagnostic.line,
-                        column: diagnostic.column,
-                    });
-                });
-            }
-        }
-    }
-
-    fn set_selected_index(
-        &mut self,
-        ix: Option<IndexPath>,
-        _window: &mut Window,
-        cx: &mut Context<List<Self>>,
-    ) {
-        self.drawer.update(cx, |drawer, _| {
-            drawer.selected_index = ix;
-        });
-    }
-}
-
 impl ProblemsDrawer {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
@@ -541,6 +436,7 @@ impl Render for ProblemsDrawer {
                         )
                     })
                     .when(!filtered_diagnostics.is_empty(), |container| {
+                        let drawer_entity = cx.entity().clone();
                         container.child(
                             v_flex()
                                 .w_full()
@@ -550,14 +446,15 @@ impl Render for ProblemsDrawer {
                                         .enumerate()
                                         .map(|(index, diagnostic)| {
                                             let is_selected = selected_index == Some(index);
-                                            let diagnostic_clone = diagnostic.clone();
+                                            let drawer = drawer_entity.clone();
+                                            let diag = diagnostic.clone();
                                             
                                             DiagnosticItem::new(diagnostic)
                                                 .selected(is_selected)
                                                 .on_click(move |_window, cx| {
-                                                    cx.update_entity(&cx.entity_of::<ProblemsDrawer>().unwrap(), |drawer, cx| {
+                                                    drawer.update(cx, |drawer, cx| {
                                                         drawer.select_diagnostic(index, cx);
-                                                        drawer.navigate_to_diagnostic(&diagnostic_clone, cx);
+                                                        drawer.navigate_to_diagnostic(&diag, cx);
                                                     });
                                                 })
                                         })
