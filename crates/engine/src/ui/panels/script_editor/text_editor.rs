@@ -3,6 +3,7 @@ use gpui_component::{
     button::{Button, ButtonVariants as _},
     input::{InputState, TextInput, TabSize, InputEvent},
     tab::{Tab, TabBar},
+    text::TextView,
     v_flex, h_flex,
     ActiveTheme as _, StyledExt, Sizable as _,
     IconName,
@@ -32,6 +33,8 @@ pub struct OpenFile {
     pub file_size: usize,
     /// Document version for LSP synchronization
     pub version: i32,
+    /// Whether to render this file as markdown
+    pub render_as_markdown: bool,
 }
 
 pub struct TextEditor {
@@ -97,6 +100,7 @@ impl TextEditor {
             lines_count: 1,
             file_size: 0,
             version: 1,
+            render_as_markdown: false,
         };
 
         self.open_files.push(open_file);
@@ -262,11 +266,18 @@ impl TextEditor {
         // Determine syntax highlighting based on file extension
         let language = self.get_language_from_extension(&path);
         
+        // Check if this is a markdown file
+        let is_markdown = path.extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext == "md")
+            .unwrap_or(false);
+        
         println!(
-            "📄 Opening file: {} lines, {} KB, language: {}",
+            "📄 Opening file: {} lines, {} KB, language: {}{}",
             lines_count,
             file_size / 1024,
-            language
+            language,
+            if is_markdown { " (markdown preview mode)" } else { "" }
         );
         
         // Warn user about very large files
@@ -335,6 +346,7 @@ impl TextEditor {
             lines_count,
             file_size,
             version: 1,
+            render_as_markdown: is_markdown,
         };
 
         self.open_files.push(open_file);
@@ -706,9 +718,30 @@ impl TextEditor {
             )
     }
 
-    fn render_editor_content(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_editor_content(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         if let Some(index) = self.current_file_index {
             if let Some(open_file) = self.open_files.get(index) {
+                // If it's a markdown file, render it as markdown
+                if open_file.render_as_markdown {
+                    let content = open_file.input_state.read(cx).value().to_string();
+                    return div()
+                        .id("markdown-preview")
+                        .size_full()
+                        .overflow_y_scroll()
+                        .p_5()
+                        .child(
+                            TextView::markdown(
+                                "md-viewer",
+                                content,
+                                window,
+                                cx,
+                            )
+                            .selectable()
+                        )
+                        .into_any_element();
+                }
+                
+                // Otherwise render as text editor
                 div()
                     .size_full()
                     .overflow_hidden()
@@ -876,7 +909,7 @@ impl Focusable for TextEditor {
 }
 
 impl Render for TextEditor {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Track render time for performance monitoring
         let render_start = Instant::now();
         
@@ -888,7 +921,7 @@ impl Render for TextEditor {
             .child(
                 div()
                     .flex_1()
-                    .child(self.render_editor_content(cx))
+                    .child(self.render_editor_content(window, cx))
             )
             .child(self.render_status_bar(cx));
         
