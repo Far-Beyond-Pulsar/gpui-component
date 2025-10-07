@@ -8,6 +8,7 @@ use std::io::{BufRead, BufReader, Write, Read};
 use std::time::{Duration, Instant};
 use std::thread;
 use std::sync::mpsc::{channel, Sender, Receiver};
+use std::fs;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AnalyzerStatus {
@@ -121,10 +122,117 @@ impl RustAnalyzerManager {
             }
         }
 
+        // Check engine deps directory
+        let deps_path = Self::get_engine_deps_analyzer_path();
+        if deps_path.exists() {
+            println!("✓ Found rust-analyzer in engine deps: {:?}", deps_path);
+            return deps_path;
+        }
+
         // Fallback to rust-analyzer command (may not exist)
         println!("⚠️  rust-analyzer not found in standard locations");
         println!("   Will attempt to use 'rust-analyzer' from PATH");
         PathBuf::from("rust-analyzer")
+    }
+
+    /// Get the path where we should install rust-analyzer in engine deps
+    fn get_engine_deps_analyzer_path() -> PathBuf {
+        let exe_name = if cfg!(windows) {
+            "rust-analyzer.exe"
+        } else {
+            "rust-analyzer"
+        };
+
+        // Get the current executable's directory (engine binary location)
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                return exe_dir.join("deps").join(exe_name);
+            }
+        }
+
+        // Fallback to current directory
+        PathBuf::from("deps").join(exe_name)
+    }
+
+    /// Download and install rust-analyzer to the engine deps directory
+    fn install_rust_analyzer_to_deps() -> Result<PathBuf> {
+        println!("📦 Attempting to install rust-analyzer to engine deps directory...");
+
+        let deps_path = Self::get_engine_deps_analyzer_path();
+        let deps_dir = deps_path.parent().ok_or_else(|| anyhow!("Invalid deps path"))?;
+
+        // Create deps directory if it doesn't exist
+        fs::create_dir_all(deps_dir)?;
+        println!("   Created deps directory: {:?}", deps_dir);
+
+        // Determine platform and download URL
+        let (platform, extension) = if cfg!(target_os = "windows") {
+            ("pc-windows-msvc", ".exe")
+        } else if cfg!(target_os = "linux") {
+            ("unknown-linux-gnu", "")
+        } else if cfg!(target_os = "macos") {
+            ("apple-darwin", "")
+        } else {
+            return Err(anyhow!("Unsupported platform for automatic installation"));
+        };
+
+        let url = format!(
+            "https://github.com/rust-lang/rust-analyzer/releases/latest/download/rust-analyzer-x86_64-{}{}",
+            platform, extension
+        );
+
+        println!("   Downloading from: {}", url);
+        println!("   This may take a moment...");
+
+        // Download using curl or wget (cross-platform)
+        let download_result = if cfg!(windows) {
+            // Try PowerShell Invoke-WebRequest on Windows
+            Command::new("powershell")
+                .args(&[
+                    "-NoProfile",
+                    "-Command",
+                    &format!("Invoke-WebRequest -Uri '{}' -OutFile '{}'", url, deps_path.display()),
+                ])
+                .output()
+        } else {
+            // Try curl on Unix-like systems
+            Command::new("curl")
+                .args(&["-L", &url, "-o", &deps_path.to_string_lossy()])
+                .output()
+        };
+
+        match download_result {
+            Ok(output) if output.status.success() => {
+                println!("✓ Downloaded rust-analyzer successfully");
+
+                // Make executable on Unix-like systems
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mut perms = fs::metadata(&deps_path)?.permissions();
+                    perms.set_mode(0o755);
+                    fs::set_permissions(&deps_path, perms)?;
+                    println!("✓ Made rust-analyzer executable");
+                }
+
+                // Verify the downloaded file works
+                if let Ok(output) = Command::new(&deps_path).arg("--version").output() {
+                    if output.status.success() {
+                        let version = String::from_utf8_lossy(&output.stdout);
+                        println!("✓ rust-analyzer installed successfully!");
+                        println!("   Version: {}", version.trim());
+                        return Ok(deps_path);
+                    }
+                }
+
+                Err(anyhow!("Downloaded rust-analyzer but failed to verify"))
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                Err(anyhow!("Failed to download rust-analyzer: {}", stderr))
+            }
+            Err(e) => Err(anyhow!("Failed to execute download command: {}", e)),
+        }
     }
 
     /// Start rust-analyzer for the given workspace
@@ -239,13 +347,40 @@ impl RustAnalyzerManager {
         println!("  Binary: {:?}", analyzer_path);
         println!("  Workspace: {:?}", workspace_root);
 
-        let mut child = Command::new(analyzer_path)
+        let spawn_result = Command::new(analyzer_path)
             .current_dir(workspace_root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| anyhow!("Failed to spawn: {}", e))?;
+            .spawn();
+
+        let mut child = match spawn_result {
+            Ok(child) => child,
+            Err(e) => {
+                eprintln!("❌ Failed to spawn rust-analyzer: {}", e);
+                eprintln!("   Attempting to install rust-analyzer to engine deps...");
+
+                // Try to install rust-analyzer
+                match Self::install_rust_analyzer_to_deps() {
+                    Ok(installed_path) => {
+                        println!("✓ Successfully installed rust-analyzer, retrying spawn...");
+
+                        // Retry spawning with the newly installed analyzer
+                        Command::new(&installed_path)
+                            .current_dir(workspace_root)
+                            .stdin(Stdio::piped())
+                            .stdout(Stdio::piped())
+                            .stderr(Stdio::piped())
+                            .spawn()
+                            .map_err(|e| anyhow!("Failed to spawn after installation: {}", e))?
+                    }
+                    Err(install_err) => {
+                        eprintln!("❌ Failed to install rust-analyzer: {}", install_err);
+                        return Err(anyhow!("Failed to spawn and install: spawn error: {}, install error: {}", e, install_err));
+                    }
+                }
+            }
+        };
 
         let pid = child.id();
         println!("✓ rust-analyzer process spawned (PID: {})", pid);
