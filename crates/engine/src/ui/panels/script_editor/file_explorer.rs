@@ -728,9 +728,16 @@ impl FileExplorer {
                     }
                 })
             })
-            .context_menu({
+            // Select the item on right-click to ensure context menu actions work on it
+            .on_mouse_down(gpui::MouseButton::Right, {
                 let path = path.clone();
-                let path_str = path.to_string_lossy().to_string();
+                cx.listener(move |this, _, window, cx| {
+                    this.select_file(path.clone(), window, cx);
+                })
+            })
+            .context_menu({
+                let path_for_menu = path.clone();
+                let path_str = path_for_menu.to_string_lossy().to_string();
                 move |menu, _window, _cx| {
                     let mut menu = menu;
 
@@ -840,8 +847,21 @@ impl Focusable for FileExplorer {
 impl Render for FileExplorer {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let file_tree_empty = self.file_tree.is_empty();
+        let focus_handle = self.focus_handle.clone();
         
         div()
+            .key_context("FileExplorer")
+            .track_focus(&focus_handle)
+            .on_action(cx.listener(Self::on_cut_file))
+            .on_action(cx.listener(Self::on_copy_file))
+            .on_action(cx.listener(Self::on_paste_file))
+            .on_action(cx.listener(Self::on_delete_file))
+            .on_action(cx.listener(Self::on_rename_file))
+            .on_action(cx.listener(Self::on_copy_file_path))
+            .on_action(cx.listener(Self::on_copy_relative_path))
+            .on_action(cx.listener(Self::on_reveal_in_file_manager))
+            .on_action(cx.listener(Self::on_new_file_here))
+            .on_action(cx.listener(Self::on_new_folder_here))
             .size_full()
             .flex()
             .flex_col()
