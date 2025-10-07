@@ -983,9 +983,6 @@ impl Element for TextElement {
         let is_multi_line = state.mode.is_multi_line();
         let is_soft_wrap = state.soft_wrap;
         
-        // Drop the state borrow before calling layout_lines
-        drop(state);
-        
         let lines = {
             let state = self.state.read(cx);
             Self::layout_lines(
