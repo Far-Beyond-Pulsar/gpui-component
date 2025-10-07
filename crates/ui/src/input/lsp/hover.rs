@@ -1,11 +1,8 @@
 use anyhow::Result;
 use gpui::{App, Context, MouseMoveEvent, Point, Pixels, Task, Window};
 use ropey::Rope;
-use std::time::Duration;
 
 use crate::input::{popovers::HoverPopover, InputState, RopeExt};
-
-const HOVER_REQUEST_DELAY: Duration = Duration::from_millis(500); // Delay before requesting hover from LSP
 
 /// Hover provider
 ///
@@ -24,7 +21,8 @@ pub trait HoverProvider {
 }
 
 impl InputState {
-    /// Handle hover trigger LSP request with delay.
+    /// Handle hover trigger LSP request.
+    /// Requests immediately from LSP and uses popup delay to mask response time.
     pub(super) fn handle_hover_popover(
         &mut self,
         offset: usize,
@@ -56,29 +54,15 @@ impl InputState {
         // Clear any existing hover popover when moving to a new location
         self.hover_popover = None;
 
-        // Start async task with delay before requesting hover from LSP
+        // Request hover info from LSP IMMEDIATELY (async, non-blocking)
+        // The popup delay will mask the response time
         let text = self.text.clone();
+        let task = provider.hover(&text, offset, window, cx);
         let editor = cx.entity();
         
         self.lsp._hover_task = cx.spawn_in(window, async move |_, cx| {
-            // Wait before requesting hover info
-            cx.background_executor().timer(HOVER_REQUEST_DELAY).await;
-            
-            // Request hover info from LSP (this is async and non-blocking)
-            // Note: We can't pass window/cx into the async task, so we recreate the call
-            let result = {
-                // Get the provider again in the async context
-                let provider_task = cx.update(|window, cx| {
-                    editor.read(cx).lsp.hover_provider.clone()
-                        .map(|p| p.hover(&text, offset, window, cx))
-                }).ok().flatten();
-                
-                if let Some(task) = provider_task {
-                    task.await.ok().flatten()
-                } else {
-                    None
-                }
-            };
+            // LSP request is already in flight, just wait for it
+            let result = task.await?;
             
             // Process the result
             _ = editor.update(cx, |editor, cx| {
@@ -92,7 +76,8 @@ impl InputState {
                             symbol_range = start..end;
                         }
                         
-                        // Create hover popover (it will show after its own internal delay)
+                        // Create hover popover (it will show after its internal delay)
+                        // By the time the delay is done, LSP has likely already responded
                         let hover_popover = HoverPopover::new(cx.entity(), symbol_range, &hover, mouse_position, cx);
                         editor.hover_popover = Some(hover_popover);
                         cx.notify();
