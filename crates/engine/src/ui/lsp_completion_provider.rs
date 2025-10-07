@@ -74,8 +74,12 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
         
         let trigger_char = trigger.trigger_character.clone();
         
+        println!("📡 Requesting completions at offset {} (char: {:?})", offset, trigger_char);
+        
         // Spawn immediately - do ALL potentially slow work in the async block
         cx.spawn_in(window, async move |_, cx| {
+            println!("🚀 Requesting completions from rust-analyzer at offset {}", offset);
+            
             // Convert to position in background (can be slow for large files)
             let position = text_clone.offset_to_position(offset);
             
@@ -133,16 +137,19 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
             if let Some(result) = response.get("result") {
                 // Check if result is null
                 if result.is_null() {
+                    println!("📦 Received 0 completions (null result)");
                     return Ok(lsp_types::CompletionResponse::Array(vec![]));
                 }
                 
                 // Try as array first
                 if let Ok(items) = serde_json::from_value::<Vec<lsp_types::CompletionItem>>(result.clone()) {
+                    println!("📦 Received {} completions (Array)", items.len());
                     return Ok(lsp_types::CompletionResponse::Array(items));
                 }
                 
                 // Try as completion list
                 if let Ok(list) = serde_json::from_value::<lsp_types::CompletionList>(result.clone()) {
+                    println!("📦 Received {} completions (List)", list.items.len());
                     return Ok(lsp_types::CompletionResponse::List(list));
                 }
                 
@@ -153,6 +160,7 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
             }
 
             // Return empty on error or no response
+            println!("❌ No completions - hiding menu");
             Ok(lsp_types::CompletionResponse::Array(vec![]))
         })
     }
@@ -173,22 +181,27 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
         let last_char = new_text.chars().last().unwrap();
         
         // ALWAYS trigger on:
-        // 1. Identifier characters (alphanumeric or underscore)
-        // 2. rust-analyzer trigger characters (., :, <)
-        // 3. Additional useful characters ((, ), >, ,, [, space)
+        // 1. Identifier characters (alphanumeric or underscore) - this enables completions as you type
+        // 2. rust-analyzer trigger characters (., :, <) - these are special LSP triggers
+        // 3. Space after keywords like 'pub', 'use', 'fn', etc.
         
-        // Trigger on identifier characters - this is the most important
+        // Trigger on identifier characters - this is the most important for continuous completions
         if last_char.is_alphanumeric() || last_char == '_' {
             return true;
         }
         
-        // rust-analyzer registered trigger characters
+        // rust-analyzer registered trigger characters (from LSP spec)
         if matches!(last_char, '.' | ':' | '<') {
             return true;
         }
         
-        // Additional useful triggers
-        if matches!(last_char, '(' | ')' | '>' | ',' | '[' | ' ') {
+        // Space is important for keyword completion (e.g., "pub ", "use ", "fn ")
+        if last_char == ' ' {
+            return true;
+        }
+        
+        // Additional useful triggers for function calls, generics, etc.
+        if matches!(last_char, '(' | ',' | '[') {
             return true;
         }
         
