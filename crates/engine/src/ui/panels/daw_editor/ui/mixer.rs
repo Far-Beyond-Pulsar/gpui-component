@@ -26,7 +26,7 @@ pub fn render_mixer(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl 
                 .gap_2()
                 .px_3()
                 .py_2()
-                .bg(cx.theme().background)  // Match background color with browser/inspector
+                .bg(cx.theme().muted.opacity(0.15))  // Subtle background matching other panels
                 // Render all tracks
                 .children((0..num_tracks).map(|idx| {
                     if let Some(ref project) = state.project {
@@ -135,16 +135,16 @@ fn render_channel_strip(
         .gap_1()
         .p_2()
         .bg(if is_selected {
-            cx.theme().accent.opacity(0.2)
+            cx.theme().accent.opacity(0.25)
         } else {
-            cx.theme().background.opacity(0.6)
+            cx.theme().muted.opacity(0.4)  // Better contrast
         })
         .rounded_lg()
         .border_1()
         .border_color(if is_selected {
-            track_color.opacity(0.8)
+            track_color.opacity(0.9)
         } else {
-            cx.theme().border.opacity(0.5)
+            cx.theme().border.opacity(0.6)
         })
         .shadow_md()
         .cursor_pointer()
@@ -230,10 +230,10 @@ fn render_insert_slots(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoEl
                         .flex()
                         .items_center()
                         .justify_center()
-                        .bg(cx.theme().secondary.opacity(0.4))
+                        .bg(cx.theme().secondary.opacity(0.6))  // Better contrast
                         .rounded_sm()
                         .border_1()
-                        .border_color(cx.theme().border.opacity(0.5))
+                        .border_color(cx.theme().border.opacity(0.7))  // Better contrast
                         .text_xs()
                         .text_color(cx.theme().muted_foreground)
                         .cursor_pointer()
@@ -286,7 +286,7 @@ fn render_meter_bar(level: f32, cx: &mut Context<DawPanel>) -> impl IntoElement 
                 .bg(if is_lit {
                     color
                 } else {
-                    cx.theme().secondary.opacity(0.2)
+                    cx.theme().secondary.opacity(0.3)  // Better contrast for unlit segments
                 })
         }))
 }
@@ -326,7 +326,7 @@ fn render_fader_slider(
                         .w(px(10.0))
                         .h_full()
                         .min_h(px(80.0))
-                        .bg(cx.theme().secondary.opacity(0.4))
+                        .bg(cx.theme().secondary.opacity(0.5))  // Better contrast
                         .rounded_sm()
                         .cursor_ns_resize()
                         .child(
@@ -337,7 +337,7 @@ fn render_fader_slider(
                                 .left_0()
                                 .w_full()
                                 .h(relative(volume_percent / 100.0))
-                                .bg(hsla(0.6, 0.8, 0.6, 1.0)) // Bright green-cyan for visibility
+                                .bg(hsla(0.55, 0.7, 0.55, 1.0)) // Bright teal-green for visibility
                                 .rounded_sm()
                         )
                         .child(
@@ -401,7 +401,7 @@ fn render_pan_slider(
                         .relative()
                         .w_full()
                         .h(px(8.0))
-                        .bg(cx.theme().secondary.opacity(0.4))
+                        .bg(cx.theme().secondary.opacity(0.5))  // Better contrast
                         .rounded_sm()
                         .cursor_ew_resize()
                         .child(

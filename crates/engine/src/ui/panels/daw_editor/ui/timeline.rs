@@ -166,25 +166,34 @@ fn render_track_area(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl
         .map(|p| p.tracks.clone())
         .unwrap_or_default();
     
+    let scroll_y_offset = state.viewport.scroll_y;
+    
     h_flex()
         .flex_1()
         .min_w_0()  // Allow shrinking to fit within container
         .overflow_hidden()
-        // Track headers column
+        // Track headers column - synchronized vertical scroll
         .child(
             div()
                 .w(px(TRACK_HEADER_WIDTH))
                 .h_full()
-                .overflow_y_hidden()  // Make track headers scrollable
-                .scrollable(Axis::Vertical)
+                .overflow_hidden()
                 .border_r_1()
                 .border_color(cx.theme().border)
                 .bg(cx.theme().muted.opacity(0.3))
                 .child(
-                    v_flex()
-                        .children(tracks.iter().map(|track| {
-                            track_header::render_track_header(track, state, cx)
-                        }))
+                    div()
+                        .id("track-headers-scroll-container")
+                        .absolute()
+                        .top(px(-scroll_y_offset as f32))
+                        .left_0()
+                        .w(px(TRACK_HEADER_WIDTH))
+                        .child(
+                            v_flex()
+                                .children(tracks.iter().map(|track| {
+                                    track_header::render_track_header(track, state, cx)
+                                }))
+                        )
                 )
         )
         // Timeline content - scrollable and constrained
@@ -192,17 +201,32 @@ fn render_track_area(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl
             div()
                 .flex_1()
                 .min_w_0()  // Allow shrinking to fit
+                .max_w_full()  // Don't exceed available width
                 .h_full()
-                .overflow_hidden()  // Enable both horizontal and vertical scrolling
-                .scrollable(Axis::Horizontal)
-                .scrollable(Axis::Vertical)
+                .overflow_hidden()  // Clip content, scroll handlers below
                 .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, _window, cx| {
                     let delta = match event.delta {
                         ScrollDelta::Pixels(p) => p,
                         ScrollDelta::Lines(l) => gpui::Point::new(px(l.x * 20.0), px(l.y * 20.0)),
                     };
-                    this.state.viewport.scroll_x += delta.x.as_f64() as f64;
-                    this.state.viewport.scroll_y += delta.y.as_f64() as f64;
+                    
+                    // Horizontal scroll with bounds
+                    let new_scroll_x = (this.state.viewport.scroll_x + delta.x.as_f64()).max(0.0);
+                    this.state.viewport.scroll_x = new_scroll_x;
+                    
+                    // Vertical scroll with bounds (synchronized with headers)
+                    let max_scroll_y = this.state.project.as_ref()
+                        .map(|p| {
+                            let total_height: f32 = p.tracks.iter()
+                                .map(|t| *this.state.track_heights.get(&t.id).unwrap_or(&this.state.viewport.track_height))
+                                .sum();
+                            (total_height - 400.0).max(0.0) as f64  // Assume ~400px visible height
+                        })
+                        .unwrap_or(0.0);
+                    
+                    let new_scroll_y = (this.state.viewport.scroll_y + delta.y.as_f64()).clamp(0.0, max_scroll_y);
+                    this.state.viewport.scroll_y = new_scroll_y;
+                    
                     cx.notify();
                 }))
                 .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _window, cx| {
@@ -231,11 +255,11 @@ fn render_track_area(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl
                         cx.notify();
                     }
                 }))
-                .child(render_timeline_content(&tracks, state, cx))
+                .child(render_timeline_scroll_content(&tracks, state, cx))
         )
 }
 
-fn render_timeline_content(
+fn render_timeline_scroll_content(
     tracks: &[crate::ui::panels::daw_editor::audio_types::Track],
     state: &mut DawUiState,
     cx: &mut Context<DawPanel>,
@@ -247,11 +271,17 @@ fn render_timeline_content(
         })
         .sum();
     
-    // Calculate timeline width (e.g., 500 beats)
-    let timeline_width = state.beats_to_pixels(500.0);
+    // Calculate timeline width (e.g., 500 beats) - constrained to viewport + scroll
+    let timeline_total_width = state.beats_to_pixels(500.0);
+    let scroll_x = state.viewport.scroll_x;
+    let scroll_y = state.viewport.scroll_y;
     
     div()
-        .w(px(timeline_width))
+        .id("timeline-scroll-wrapper")
+        .absolute()
+        .top(px(-scroll_y as f32))
+        .left(px(-state.beats_to_pixels(scroll_x)))
+        .w(px(timeline_total_width))
         .h(px(total_height))
         .relative()
         .bg(cx.theme().background)
@@ -270,7 +300,7 @@ fn render_timeline_content(
                 .absolute()
                 .top(px(y_offset))
                 .left_0()
-                .w_full()
+                .w(px(timeline_total_width))
                 .h(px(track_height))
                 .child(render_track_lane(track, state, cx))
         }))
