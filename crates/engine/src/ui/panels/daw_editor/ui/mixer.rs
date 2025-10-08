@@ -7,7 +7,6 @@ use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme,
-    scroll::Scrollable,
 };
 use crate::ui::panels::daw_editor::audio_types::{Track, TrackId};
 
@@ -17,19 +16,23 @@ pub fn render_mixer(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl 
         .map(|t| t.as_slice())
         .unwrap_or(&[]);
     
-    let scroll_content = h_flex()
+    div()
         .size_full()
-        .gap_3()
-        .p_4()
-        .bg(hsla(220.0 / 360.0, 0.15, 0.08, 1.0))
-        .children(tracks.iter().enumerate().map(|(idx, track)| {
-            render_channel_strip(track, idx, state, cx)
-        }))
-        // Master channel at the end
-        .child(render_master_channel(state, cx));
-    
-    Scrollable::new(ScrollbarAxis::Horizontal, scroll_content)
-        .size_full()
+        .overflow_hidden()
+        .child(
+            h_flex()
+                .id("mixer-scroll-content")
+                .scrollable(Axis::Horizontal)
+                .h_full()
+                .gap_3()
+                .p_4()
+                .bg(hsla(220.0 / 360.0, 0.15, 0.08, 1.0))
+                .children(tracks.iter().enumerate().map(|(idx, track)| {
+                    render_channel_strip(track, idx, state, cx)
+                }))
+                // Master channel at the end
+                .child(render_master_channel(state, cx))
+        )
 }
 
 fn render_channel_strip(
