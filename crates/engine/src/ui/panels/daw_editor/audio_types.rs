@@ -200,6 +200,23 @@ impl AudioClip {
     pub fn end_time(&self) -> SampleTime {
         self.start_time + self.duration
     }
+    
+    /// Convert start time from samples to beats
+    pub fn start_beat(&self, tempo: f32) -> BeatTime {
+        Self::samples_to_beats(self.start_time, tempo)
+    }
+    
+    /// Convert duration from samples to beats
+    pub fn duration_beats(&self, tempo: f32) -> BeatTime {
+        Self::samples_to_beats(self.duration, tempo)
+    }
+    
+    /// Convert samples to beats given tempo
+    fn samples_to_beats(samples: SampleTime, tempo: f32) -> BeatTime {
+        let seconds = samples as f64 / SAMPLE_RATE as f64;
+        let beats_per_second = tempo as f64 / 60.0;
+        seconds * beats_per_second
+    }
 
     /// Check if clip is active at given time
     pub fn is_active_at(&self, time: SampleTime) -> bool {
