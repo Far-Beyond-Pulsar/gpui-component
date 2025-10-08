@@ -330,6 +330,7 @@ fn render_audio_file_item(
 ) -> impl IntoElement {
     let file_path = file.path.clone();
     let file_name = file.name.clone();
+    let file_name_for_closure = file_name.clone(); // Clone for the closure
     let file_type = file.file_type.clone();
     let size_kb = file.size_bytes / 1024;
     
@@ -347,6 +348,7 @@ fn render_audio_file_item(
     let duration = file.duration_seconds;
     
     div()
+        .id(("audio-file", idx))
         .w_full()
         .px_2()
         .py_2()
@@ -354,6 +356,15 @@ fn render_audio_file_item(
         .cursor_pointer()
         .when(!is_even, |d| d.bg(cx.theme().muted.opacity(0.05)))
         .hover(|d| d.bg(cx.theme().accent.opacity(0.15)))
+        // Handle click to start drag
+        .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _event: &MouseDownEvent, _window, cx| {
+            // Set drag state
+            this.state.drag_state = DragState::DraggingFile {
+                file_path: file_path.clone(),
+                file_name: file_name_for_closure.clone(),
+            };
+            cx.notify();
+        }))
         .child(
             v_flex()
                 .gap_1p5()
@@ -374,7 +385,7 @@ fn render_audio_file_item(
                                 .text_sm()
                                 .font_medium()
                                 .text_color(cx.theme().foreground)
-                                .child(file_name.clone())
+                                .child(file_name)
                         )
                         .child(
                             Icon::new(IconName::Ellipsis)

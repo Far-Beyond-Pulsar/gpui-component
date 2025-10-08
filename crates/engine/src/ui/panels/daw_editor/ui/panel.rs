@@ -64,6 +64,20 @@ impl Render for DawPanel {
             .size_full()
             .bg(cx.theme().background)
             .overflow_hidden()
+            // Handle mouse move for dragging
+            .on_mouse_move(cx.listener(|this, _event: &MouseMoveEvent, _window, cx| {
+                // Dragging is being handled by the visual feedback
+                // The actual drop logic is in the track lanes
+                cx.notify();
+            }))
+            // Handle mouse up to clear drag state
+            .on_mouse_up(gpui::MouseButton::Left, cx.listener(|this, _event: &MouseUpEvent, _window, cx| {
+                // Clear drag state when mouse is released
+                if !matches!(this.state.drag_state, DragState::None) {
+                    this.state.drag_state = DragState::None;
+                    cx.notify();
+                }
+            }))
             .child(self.render_content(cx))
     }
 }

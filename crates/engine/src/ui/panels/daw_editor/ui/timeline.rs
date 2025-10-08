@@ -225,8 +225,10 @@ fn render_track_lane(
 ) -> impl IntoElement {
     let is_selected = state.selection.selected_track_ids.contains(&track.id);
     let track_id = track.id;
+    let is_dragging_over = matches!(&state.drag_state, DragState::DraggingFile { .. });
     
     div()
+        .id(("track-lane", track_id))
         .size_full()
         .relative()
         .bg(if is_selected {
@@ -234,20 +236,31 @@ fn render_track_lane(
         } else {
             cx.theme().background
         })
+        .when(is_dragging_over, |d| {
+            d.bg(cx.theme().accent.opacity(0.1))
+        })
         .border_b_1()
         .border_color(cx.theme().border)
         .on_click(cx.listener(move |this, event: &ClickEvent, _window, cx| {
             this.state.select_track(track_id, event.modifiers.shift);
             cx.notify();
         }))
-        .on_drop::<PathBuf>(cx.listener(move |this, path: &PathBuf, _window, cx| {
-            // Handle dropping audio file onto track
-            let mouse_x = 100.0; // Would get from actual mouse position
-            let beat = this.state.pixels_to_beats(mouse_x);
-            let snapped_beat = this.state.snap_beat(beat);
-            
-            if let Some(_clip_id) = this.state.add_clip(track_id, snapped_beat, path.clone()) {
-                eprintln!("✅ Added clip to track");
+        // Handle mouse up for dropping files
+        .on_mouse_up(gpui::MouseButton::Left, cx.listener(move |this, event: &MouseUpEvent, _window, cx| {
+            if let DragState::DraggingFile { ref file_path, .. } = this.state.drag_state {
+                // Get mouse position relative to timeline
+                let mouse_x = event.position.x.as_f32() - TRACK_HEADER_WIDTH;
+                let beat = this.state.pixels_to_beats(mouse_x);
+                let snapped_beat = this.state.snap_beat(beat);
+                
+                if let Some(_clip_id) = this.state.add_clip(track_id, snapped_beat, file_path.clone()) {
+                    eprintln!("✅ Added clip '{}' to track at beat {}", 
+                        file_path.file_name().and_then(|n| n.to_str()).unwrap_or("?"),
+                        snapped_beat);
+                }
+                
+                // Clear drag state
+                this.state.drag_state = DragState::None;
                 cx.notify();
             }
         }))
@@ -275,6 +288,7 @@ fn render_clip(
         .unwrap_or("Clip");
     
     div()
+        .id(("clip", clip_id))
         .absolute()
         .left(px(x))
         .top(px(4.0))
@@ -292,6 +306,21 @@ fn render_clip(
         .bg(cx.theme().accent.opacity(0.3))
         .hover(|d| d.bg(cx.theme().accent.opacity(0.4)))
         .on_click(cx.listener(move |this, event: &ClickEvent, _window, cx| {
+            this.state.select_clip(clip_id, event.modifiers.shift);
+            cx.notify();
+        }))
+        // Make clips draggable with mouse down
+        .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, _window, cx| {
+            // Start dragging the clip
+            let mouse_x = event.position.x.as_f32();
+            let clip_x = x;
+            this.state.drag_state = DragState::DraggingClip {
+                clip_id,
+                track_id,
+                start_beat: clip.start_beat(tempo),
+                mouse_offset: (mouse_x - clip_x, 0.0),
+            };
+            // Also select the clip
             this.state.select_clip(clip_id, event.modifiers.shift);
             cx.notify();
         }))
