@@ -349,13 +349,13 @@ fn render_send_controls(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoE
                 .w_full()
                 .gap_1()
                 // Send A
-                .child(render_send_knob("A", 0.0, hsla(280.0 / 360.0, 0.7, 0.5, 1.0), cx))
+                .child(render_send_knob("A".to_string(), 0.0, hsla(280.0 / 360.0, 0.7, 0.5, 1.0), cx))
                 // Send B
-                .child(render_send_knob("B", 0.0, hsla(320.0 / 360.0, 0.7, 0.5, 1.0), cx))
+                .child(render_send_knob("B".to_string(), 0.0, hsla(320.0 / 360.0, 0.7, 0.5, 1.0), cx))
         )
 }
 
-fn render_send_knob(label: &str, _level: f32, color: Hsla, cx: &mut Context<DawPanel>) -> impl IntoElement {
+fn render_send_knob(label: String, _level: f32, color: Hsla, cx: &mut Context<DawPanel>) -> impl IntoElement {
     v_flex()
         .flex_1()
         .gap_0p5()
