@@ -1,5 +1,5 @@
 /// Mixer View Component
-/// Channel strips with faders, pan, sends, and inserts
+/// Professional channel strips with faders, pan, sends, meters, and insert effects
 
 use super::state::*;
 use super::panel::DawPanel;
@@ -7,8 +7,10 @@ use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme,
-    slider::{Slider, SliderState}, scroll::Scrollable,
+    slider::{Slider, SliderState, SliderEvent}, scroll::Scrollable, label::Label,
+    tooltip::Tooltip, progress::Progress, popover::Popover,
 };
+use crate::ui::panels::daw_editor::audio_types::{Track, TrackId};
 
 pub fn render_mixer(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     let tracks = state.project.as_ref()
@@ -16,104 +18,581 @@ pub fn render_mixer(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl 
         .map(|t| t.as_slice())
         .unwrap_or(&[]);
     
-    h_flex()
-        .size_full()
-        .overflow_x_hidden()
-        .gap_2()
-        .p_4()
-        .children(tracks.iter().map(|track| {
-            render_channel_strip(track, state, cx)
-        }))
-        // Master channel
-        .child(render_master_channel(state, cx))
+    Scrollable::horizontal(
+        h_flex()
+            .size_full()
+            .gap_3()
+            .p_4()
+            .bg(hsla(220.0 / 360.0, 0.15, 0.08, 1.0))
+            .children(tracks.iter().enumerate().map(|(idx, track)| {
+                render_channel_strip(track, idx, state, cx)
+            }))
+            // Master channel at the end
+            .child(render_master_channel(state, cx))
+    )
 }
 
 fn render_channel_strip(
-    track: &crate::ui::panels::daw_editor::audio_types::Track,
+    track: &Track,
+    idx: usize,
     state: &DawUiState,
     cx: &mut Context<DawPanel>,
 ) -> impl IntoElement {
+    let is_selected = state.selection.selected_track_ids.contains(&track.id);
+    let is_muted = track.muted || state.is_track_effectively_muted(track.id);
+    let is_solo = state.solo_tracks.contains(&track.id);
+    let volume_db = 20.0 * track.volume.log10(); // Convert linear to dB
+    let pan_percent = (track.pan * 100.0) as i32;
+    
+    // Beautiful color per track
+    let track_hue = (idx as f32 * 137.5) % 360.0; // Golden angle distribution
+    let track_color = hsla(track_hue / 360.0, 0.6, 0.5, 1.0);
+    
     v_flex()
-        .w(px(state.mixer_width))
+        .w(px(90.0))
         .h_full()
-        .gap_2()
+        .gap_1p5()
         .p_2()
-        .bg(cx.theme().muted.opacity(0.3))
-        .rounded_md()
+        .bg(if is_selected {
+            cx.theme().accent.opacity(0.15)
+        } else {
+            cx.theme().muted.opacity(0.25)
+        })
+        .rounded_lg()
         .border_1()
-        .border_color(cx.theme().border)
+        .border_color(if is_selected {
+            cx.theme().accent
+        } else {
+            cx.theme().border
+        })
+        .shadow_md()
+        // Track color indicator at top
+        .child(
+            div()
+                .w_full()
+                .h(px(3.0))
+                .bg(track_color)
+                .rounded_sm()
+        )
         // Track name
         .child(
             div()
                 .w_full()
-                .text_sm()
-                .font_semibold()
-                .text_center()
-                .child(&track.name)
+                .h(px(32.0))
+                .flex()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .text_xs()
+                        .font_semibold()
+                        .text_center()
+                        .text_color(cx.theme().foreground)
+                        .line_clamp(2)
+                        .child(&track.name)
+                )
         )
-        // Fader (vertical slider)
+        // Insert slots (3 effect slots)
+        .child(render_insert_slots(track, cx))
+        // Peak meter LEDs
+        .child(render_peak_meters(track, cx))
+        // Vertical fader (main content area)
+        .child(render_vertical_fader(track, cx))
+        // Volume readout
         .child(
             div()
-                .flex_1()
+                .w_full()
+                .h(px(24.0))
                 .flex()
                 .items_center()
                 .justify_center()
-                .child("Fader") // Would be actual slider
+                .text_xs()
+                .font_mono()
+                .text_color(if volume_db > 0.0 {
+                    hsla(0.0, 0.8, 0.5, 1.0) // Red if clipping
+                } else {
+                    cx.theme().muted_foreground
+                })
+                .child(format!("{:+.1} dB", volume_db))
         )
-        // Pan control
+        // Pan knob
+        .child(render_pan_control(track, pan_percent, cx))
+        // Send knobs (2 sends: A and B)
+        .child(render_send_controls(track, cx))
+        // Mute / Solo / Record buttons
+        .child(render_channel_buttons(track, is_muted, is_solo, cx))
+}
+
+fn render_insert_slots(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoElement {
+    v_flex()
+        .w_full()
+        .gap_0p5()
         .child(
             div()
-                .w_full()
-                .text_xs()
-                .text_center()
+                .text_2xs()
                 .text_color(cx.theme().muted_foreground)
-                .child(format!("Pan: {:.0}%", track.pan * 100.0))
+                .child("INSERTS")
         )
-        // Meters and controls
         .child(
             h_flex()
                 .w_full()
-                .gap_1()
+                .gap_0p5()
+                .children((0..3).map(|slot_idx| {
+                    div()
+                        .w(px(24.0))
+                        .h(px(24.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(cx.theme().secondary.opacity(0.4))
+                        .rounded_sm()
+                        .border_1()
+                        .border_color(cx.theme().border.opacity(0.5))
+                        .text_2xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .cursor_pointer()
+                        .hover(|style| style.bg(cx.theme().secondary.opacity(0.6)))
+                        .child(format!("{}", slot_idx + 1))
+                }))
+        )
+}
+
+fn render_peak_meters(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoElement {
+    // Simulate stereo peak meters
+    let left_peak = track.volume * 0.8;
+    let right_peak = track.volume * 0.75;
+    
+    h_flex()
+        .w_full()
+        .h(px(60.0))
+        .gap_1()
+        .child(render_meter_bar(left_peak, cx))
+        .child(render_meter_bar(right_peak, cx))
+}
+
+fn render_meter_bar(level: f32, cx: &mut Context<DawPanel>) -> impl IntoElement {
+    let level_clamped = level.clamp(0.0, 1.0);
+    let segments = 12;
+    
+    v_flex()
+        .flex_1()
+        .gap_0p5()
+        .flex_col_reverse() // Bottom to top
+        .children((0..segments).map(move |seg| {
+            let threshold = seg as f32 / segments as f32;
+            let is_lit = level_clamped >= threshold;
+            
+            // Color gradient: green -> yellow -> orange -> red
+            let color = if seg > 10 {
+                hsla(0.0, 0.9, 0.5, 1.0) // Red
+            } else if seg > 8 {
+                hsla(30.0 / 360.0, 0.9, 0.5, 1.0) // Orange
+            } else if seg > 6 {
+                hsla(60.0 / 360.0, 0.9, 0.5, 1.0) // Yellow
+            } else {
+                hsla(120.0 / 360.0, 0.7, 0.5, 1.0) // Green
+            };
+            
+            div()
+                .w_full()
+                .h(px(4.0))
+                .rounded_sm()
+                .bg(if is_lit {
+                    color
+                } else {
+                    cx.theme().secondary.opacity(0.2)
+                })
+        }))
+}
+
+fn render_vertical_fader(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoElement {
+    // Vertical fader representation
+    let fader_height = 180.0;
+    let knob_height = 30.0;
+    let fader_pos = track.volume.clamp(0.0, 1.5); // Allow boost to 150%
+    let knob_y = (1.0 - fader_pos.min(1.0)) * (fader_height - knob_height);
+    
+    div()
+        .w_full()
+        .h(px(fader_height))
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(
+            div()
+                .w(px(24.0))
+                .h_full()
+                .relative()
+                .bg(cx.theme().secondary.opacity(0.3))
+                .rounded_md()
+                .border_1()
+                .border_color(cx.theme().border)
+                // Center line (unity gain)
                 .child(
-                    Button::new(ElementId::Name(format!("mixer-mute-{}", track.id).into()))
-                        .label("M")
-                        .small()
-                        .compact()
-                        
+                    div()
+                        .absolute()
+                        .left(px(8.0))
+                        .right(px(8.0))
+                        .top(px(fader_height * 0.33)) // Unity at 0 dB
+                        .h(px(2.0))
+                        .bg(cx.theme().accent.opacity(0.5))
                 )
+                // Fader track fill (below knob)
                 .child(
-                    Button::new(ElementId::Name(format!("mixer-solo-{}", track.id).into()))
-                        .label("S")
-                        .small()
-                        .compact()
+                    div()
+                        .absolute()
+                        .left(px(6.0))
+                        .right(px(6.0))
+                        .top(px(knob_y + knob_height / 2.0))
+                        .bottom(px(4.0))
+                        .bg(hsla(200.0 / 360.0, 0.7, 0.5, 0.6))
+                        .rounded_sm()
+                )
+                // Fader knob
+                .child(
+                    div()
+                        .absolute()
+                        .left(px(0.0))
+                        .right(px(0.0))
+                        .top(px(knob_y))
+                        .h(px(knob_height))
+                        .bg(cx.theme().accent)
+                        .rounded_md()
+                        .border_2()
+                        .border_color(cx.theme().accent_foreground.opacity(0.3))
+                        .shadow_lg()
+                        .cursor_pointer()
+                        .hover(|style| style.bg(cx.theme().accent.opacity(0.9)))
                 )
         )
 }
 
-fn render_master_channel(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
+fn render_pan_control(track: &Track, pan_percent: i32, cx: &mut Context<DawPanel>) -> impl IntoElement {
+    let pan_hue = if track.pan < 0.0 {
+        240.0 / 360.0 // Blue for left
+    } else {
+        30.0 / 360.0 // Orange for right
+    };
+    
     v_flex()
-        .w(px(state.mixer_width))
-        .h_full()
-        .gap_2()
-        .p_2()
-        .bg(cx.theme().accent.opacity(0.1))
-        .rounded_md()
-        .border_2()
-        .border_color(cx.theme().accent)
+        .w_full()
+        .gap_1()
         .child(
             div()
-                .w_full()
-                .text_sm()
-                .font_bold()
-                .text_center()
-                .child("MASTER")
+                .text_2xs()
+                .text_color(cx.theme().muted_foreground)
+                .child("PAN")
         )
         .child(
             div()
+                .w_full()
+                .h(px(40.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                // Circular pan knob
+                .child(
+                    div()
+                        .w(px(36.0))
+                        .h(px(36.0))
+                        .rounded_full()
+                        .bg(cx.theme().secondary.opacity(0.5))
+                        .border_2()
+                        .border_color(cx.theme().border)
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_pointer()
+                        .hover(|style| style.bg(cx.theme().secondary.opacity(0.7)))
+                        // Pan indicator line
+                        .child(
+                            div()
+                                .w(px(2.0))
+                                .h(px(12.0))
+                                .bg(hsla(pan_hue, 0.8, 0.5, 1.0))
+                                .rounded_sm()
+                                // Rotate based on pan value (-45° to +45°)
+                        )
+                )
+        )
+        .child(
+            div()
+                .w_full()
+                .text_2xs()
+                .text_center()
+                .font_mono()
+                .text_color(cx.theme().muted_foreground)
+                .child(if pan_percent == 0 {
+                    "C".to_string()
+                } else if pan_percent < 0 {
+                    format!("L{}", pan_percent.abs())
+                } else {
+                    format!("R{}", pan_percent)
+                })
+        )
+}
+
+fn render_send_controls(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoElement {
+    v_flex()
+        .w_full()
+        .gap_1()
+        .child(
+            div()
+                .text_2xs()
+                .text_color(cx.theme().muted_foreground)
+                .child("SENDS")
+        )
+        .child(
+            h_flex()
+                .w_full()
+                .gap_1()
+                // Send A
+                .child(render_send_knob("A", 0.0, hsla(280.0 / 360.0, 0.7, 0.5, 1.0), cx))
+                // Send B
+                .child(render_send_knob("B", 0.0, hsla(320.0 / 360.0, 0.7, 0.5, 1.0), cx))
+        )
+}
+
+fn render_send_knob(label: &str, level: f32, color: Hsla, cx: &mut Context<DawPanel>) -> impl IntoElement {
+    v_flex()
+        .flex_1()
+        .gap_0p5()
+        .child(
+            div()
+                .w_full()
+                .h(px(28.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .w(px(26.0))
+                        .h(px(26.0))
+                        .rounded_full()
+                        .bg(cx.theme().secondary.opacity(0.4))
+                        .border_1()
+                        .border_color(color.opacity(0.5))
+                        .cursor_pointer()
+                        .hover(|style| style.border_color(color))
+                )
+        )
+        .child(
+            div()
+                .w_full()
+                .text_2xs()
+                .text_center()
+                .text_color(cx.theme().muted_foreground)
+                .child(label)
+        )
+}
+
+fn render_channel_buttons(track: &Track, is_muted: bool, is_solo: bool, cx: &mut Context<DawPanel>) -> impl IntoElement {
+    v_flex()
+        .w_full()
+        .gap_1()
+        .child(
+            h_flex()
+                .w_full()
+                .gap_1()
+                // Mute button
+                .child(
+                    div()
+                        .flex_1()
+                        .h(px(24.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded_md()
+                        .border_1()
+                        .bg(if is_muted {
+                            hsla(0.0, 0.7, 0.4, 1.0)
+                        } else {
+                            cx.theme().secondary.opacity(0.4)
+                        })
+                        .border_color(if is_muted {
+                            hsla(0.0, 0.7, 0.6, 1.0)
+                        } else {
+                            cx.theme().border
+                        })
+                        .text_xs()
+                        .font_semibold()
+                        .text_color(if is_muted {
+                            gpui::white()
+                        } else {
+                            cx.theme().muted_foreground
+                        })
+                        .cursor_pointer()
+                        .hover(|style| style.bg(if is_muted {
+                            hsla(0.0, 0.7, 0.5, 1.0)
+                        } else {
+                            cx.theme().secondary.opacity(0.6)
+                        }))
+                        .child("M")
+                )
+                // Solo button
+                .child(
+                    div()
+                        .flex_1()
+                        .h(px(24.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded_md()
+                        .border_1()
+                        .bg(if is_solo {
+                            hsla(50.0 / 360.0, 0.9, 0.5, 1.0)
+                        } else {
+                            cx.theme().secondary.opacity(0.4)
+                        })
+                        .border_color(if is_solo {
+                            hsla(50.0 / 360.0, 0.9, 0.7, 1.0)
+                        } else {
+                            cx.theme().border
+                        })
+                        .text_xs()
+                        .font_semibold()
+                        .text_color(if is_solo {
+                            hsla(50.0 / 360.0, 0.9, 0.1, 1.0)
+                        } else {
+                            cx.theme().muted_foreground
+                        })
+                        .cursor_pointer()
+                        .hover(|style| style.bg(if is_solo {
+                            hsla(50.0 / 360.0, 0.9, 0.6, 1.0)
+                        } else {
+                            cx.theme().secondary.opacity(0.6)
+                        }))
+                        .child("S")
+                )
+        )
+        // Record arm button
+        .child(
+            div()
+                .w_full()
+                .h(px(24.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded_md()
+                .border_1()
+                .bg(if track.record_armed {
+                    hsla(0.0, 0.8, 0.5, 1.0)
+                } else {
+                    cx.theme().secondary.opacity(0.4)
+                })
+                .border_color(if track.record_armed {
+                    hsla(0.0, 0.8, 0.7, 1.0)
+                } else {
+                    cx.theme().border
+                })
+                .text_xs()
+                .font_semibold()
+                .text_color(if track.record_armed {
+                    gpui::white()
+                } else {
+                    cx.theme().muted_foreground
+                })
+                .cursor_pointer()
+                .hover(|style| style.bg(if track.record_armed {
+                    hsla(0.0, 0.8, 0.6, 1.0)
+                } else {
+                    cx.theme().secondary.opacity(0.6)
+                }))
+                .child("R")
+        )
+}
+
+fn render_master_channel(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
+    let master_volume = state.project.as_ref()
+        .map(|p| p.transport.master_volume)
+        .unwrap_or(1.0);
+    let volume_db = 20.0 * master_volume.log10();
+    
+    v_flex()
+        .w(px(100.0))
+        .h_full()
+        .gap_1p5()
+        .p_2()
+        .bg(hsla(200.0 / 360.0, 0.3, 0.15, 1.0))
+        .rounded_lg()
+        .border_2()
+        .border_color(cx.theme().accent)
+        .shadow_lg()
+        // Master label
+        .child(
+            div()
+                .w_full()
+                .h(px(3.0))
+                .bg(hsla(200.0 / 360.0, 0.8, 0.5, 1.0))
+                .rounded_sm()
+        )
+        .child(
+            div()
+                .w_full()
+                .h(px(32.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_sm()
+                .font_bold()
+                .text_color(cx.theme().accent)
+                .child("MASTER")
+        )
+        // Master meters
+        .child(
+            h_flex()
+                .w_full()
+                .h(px(80.0))
+                .gap_1()
+                .child(render_meter_bar(master_volume * 0.9, cx))
+                .child(render_meter_bar(master_volume * 0.85, cx))
+        )
+        // Master fader
+        .child(
+            div()
+                .w_full()
                 .flex_1()
                 .flex()
                 .items_center()
                 .justify_center()
-                .child("Master Fader")
+                .child(
+                    div()
+                        .w(px(32.0))
+                        .h_full()
+                        .relative()
+                        .bg(cx.theme().secondary.opacity(0.3))
+                        .rounded_md()
+                        .border_2()
+                        .border_color(cx.theme().accent.opacity(0.5))
+                        // Unity line
+                        .child(
+                            div()
+                                .absolute()
+                                .left(px(8.0))
+                                .right(px(8.0))
+                                .top(px(100.0))
+                                .h(px(2.0))
+                                .bg(cx.theme().accent)
+                        )
+                )
+        )
+        // Master volume readout
+        .child(
+            div()
+                .w_full()
+                .h(px(28.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_sm()
+                .font_mono()
+                .font_bold()
+                .text_color(if volume_db > 0.0 {
+                    hsla(0.0, 0.8, 0.5, 1.0)
+                } else {
+                    cx.theme().accent
+                })
+                .child(format!("{:+.1} dB", volume_db))
         )
 }

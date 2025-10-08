@@ -156,9 +156,7 @@ impl DawPanel {
     }
 
     fn render_mixer(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .size_full()
-            .child("Mixer Placeholder")
+        super::mixer::render_mixer(&mut self.state, cx)
     }
 
     fn render_clip_editor(&mut self, cx: &mut Context<Self>) -> impl IntoElement {

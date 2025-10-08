@@ -3,10 +3,10 @@
 
 mod state;
 mod panel;
+mod mixer;
 
 // Individual panels - to be implemented one by one
 // mod timeline;
-// mod mixer;
 // mod transport;
 // mod inspector;
 // mod browser;
