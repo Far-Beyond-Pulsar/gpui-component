@@ -6,12 +6,12 @@ mod panel;
 mod mixer;
 
 // Individual panels - to be implemented one by one
-// mod timeline;
+mod timeline;
 // mod transport;
 // mod inspector;
 mod browser;
 // mod toolbar;
-// mod track_header;
+mod track_header;
 // mod clip_editor;
 // mod automation;
 // mod effects;

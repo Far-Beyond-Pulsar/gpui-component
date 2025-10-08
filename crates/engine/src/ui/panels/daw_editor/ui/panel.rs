@@ -173,9 +173,7 @@ impl DawPanel {
     }
 
     fn render_timeline(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .size_full()
-            .child("Timeline Placeholder")
+        super::timeline::render_timeline(&mut self.state, cx)
     }
 
     fn render_mixer(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
