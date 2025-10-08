@@ -160,15 +160,15 @@ fn render_track_area(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl
             div()
                 .flex_1()
                 .h_full()
-                .overflow_x_scroll()
-                .overflow_y_scroll()
+                .overflow_scroll()
+                
                 .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, _window, cx| {
                     let delta = match event.delta {
                         ScrollDelta::Pixels(p) => p,
-                        ScrollDelta::Lines(l) => gpui::Point::new(l.x * 20.0, l.y * 20.0),
+                        ScrollDelta::Lines(l) => gpui::Point::new(px(l.x * 20.0), px(l.y * 20.0)),
                     };
-                    this.state.viewport.scroll_x += delta.x as f64;
-                    this.state.viewport.scroll_y += delta.y as f64;
+                    this.state.viewport.scroll_x += delta.x.as_f32() as f64;
+                    this.state.viewport.scroll_y += delta.y.as_f32() as f64;
                     cx.notify();
                 }))
                 .child(render_timeline_content(tracks, state, cx))
@@ -228,7 +228,7 @@ fn render_track_lane(
     let is_dragging_over = matches!(&state.drag_state, DragState::DraggingFile { .. });
     
     div()
-        .id(("track-lane", track_id))
+        .id(format!("track-lane-{}", track_id))
         .size_full()
         .relative()
         .bg(if is_selected {
@@ -288,7 +288,7 @@ fn render_clip(
         .unwrap_or("Clip");
     
     div()
-        .id(("clip", clip_id))
+        .id(format!("clip-{}", clip_id))
         .absolute()
         .left(px(x))
         .top(px(4.0))
@@ -356,7 +356,7 @@ fn render_waveform_placeholder(cx: &mut Context<DawPanel>) -> impl IntoElement {
         .child(
             Icon::new(IconName::Activity)
                 .size_4()
-                .text_color(cx.theme().text_color(cx.theme().accent_foreground).opacity(0.3))
+                .text_color(cx.theme().accent_foreground.opacity(0.3))
         )
 }
 
@@ -367,7 +367,7 @@ fn render_grid_lines(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl Int
     div()
         .absolute()
         .inset_0()
-        .pointer_events_none()
+        
         .children((0..num_beats).step_by(4).map(|beat| {
             let x = state.beats_to_pixels(beat as f64);
             

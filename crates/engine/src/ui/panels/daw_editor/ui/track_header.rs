@@ -53,7 +53,7 @@ pub fn render_track_header(
                         .flex_1()
                         .text_sm()
                         .font_semibold()
-                        .child(&track.name)
+                        .child(track.name.clone())
                 )
         )
         // Controls
@@ -61,15 +61,13 @@ pub fn render_track_header(
             h_flex()
                 .gap_1()
                 .child(
-                    Button::new(ElementId::Name(format!("track-{}-mute", track_id).into()))
+                    Button::new(format!("track-{}-mute", track_id))
                         .label("M")
                         .compact()
                         .small()
                         .when(is_muted, |b| b.warning())
                         
-                        .tooltip(move |_window, _cx| {
-                            Tooltip::new("Mute")
-                        })
+                        .tooltip("Mute")
                         .on_click(cx.listener(move |this, _, _window, cx| {
                             if let Some(t) = this.state.get_track_mut(track_id) {
                                 t.muted = !t.muted;
@@ -78,29 +76,25 @@ pub fn render_track_header(
                         }))
                 )
                 .child(
-                    Button::new(ElementId::Name(format!("track-{}-solo", track_id).into()))
+                    Button::new(format!("track-{}-solo", track_id))
                         .label("S")
                         .compact()
                         .small()
                         .when(is_soloed, |b| b.primary())
                         
-                        .tooltip(move |_window, _cx| {
-                            Tooltip::new("Solo")
-                        })
+                        .tooltip("Solo")
                         .on_click(cx.listener(move |this, _, _window, cx| {
                             this.state.toggle_solo(track_id);
                             cx.notify();
                         }))
                 )
                 .child(
-                    Button::new(ElementId::Name(format!("track-{}-record", track_id).into()))
+                    Button::new(format!("track-{}-record", track_id))
                         .icon(Icon::new(IconName::Circle))
                         .compact()
                         .small()
                         .ghost()
-                        .tooltip(move |_window, _cx| {
-                            Tooltip::new("Record Arm")
-                        })
+                        .tooltip("Record Arm")
                 )
         )
         // Volume indicator
