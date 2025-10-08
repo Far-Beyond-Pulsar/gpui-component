@@ -26,7 +26,7 @@ pub fn render_mixer(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl 
                 .gap_2()
                 .px_3()
                 .py_2()
-                .bg(hsla(220.0 / 360.0, 0.15, 0.08, 1.0))
+                .bg(cx.theme().muted.opacity(0.2))  // Match browser bg
                 // Render all tracks
                 .children((0..num_tracks).map(|idx| {
                     if let Some(ref project) = state.project {
@@ -135,16 +135,16 @@ fn render_channel_strip(
         .gap_1()
         .p_2()
         .bg(if is_selected {
-            cx.theme().accent.opacity(0.15)
+            cx.theme().accent.opacity(0.2)
         } else {
-            cx.theme().muted.opacity(0.25)
+            cx.theme().background.opacity(0.6)
         })
         .rounded_lg()
         .border_1()
         .border_color(if is_selected {
-            cx.theme().accent
+            track_color.opacity(0.8)
         } else {
-            cx.theme().border
+            cx.theme().border.opacity(0.5)
         })
         .shadow_md()
         .cursor_pointer()

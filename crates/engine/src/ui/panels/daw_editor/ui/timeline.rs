@@ -1,6 +1,3 @@
-/// Timeline/Arrange View Component
-/// Main timeline with tracks, clips, and automation lanes
-
 use super::state::*;
 use super::panel::DawPanel;
 use super::track_header;
@@ -10,6 +7,7 @@ use gpui_component::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme,
     scroll::Scrollable, PixelsExt};
 use std::path::PathBuf;
+use crate::ui::panels::daw_editor::audio_types::SAMPLE_RATE;
 
 const TIMELINE_HEADER_HEIGHT: f32 = 40.0;
 const TRACK_HEADER_WIDTH: f32 = 200.0;
@@ -60,8 +58,8 @@ pub fn render_timeline(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> im
 }
 
 fn render_ruler(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
-    let tempo = state.project.as_ref().map(|p| p.transport.tempo).unwrap_or(120.0);
-    let zoom = state.viewport.zoom;
+    let _tempo = state.project.as_ref().map(|p| p.transport.tempo).unwrap_or(120.0);
+    let _zoom = state.viewport.zoom;
     
     h_flex()
         .w_full()
@@ -176,7 +174,8 @@ fn render_track_area(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl
             div()
                 .w(px(TRACK_HEADER_WIDTH))
                 .h_full()
-                .overflow_hidden()
+                .overflow_y_hidden()  // Make track headers scrollable
+                .scrollable(Axis::Vertical)
                 .border_r_1()
                 .border_color(cx.theme().border)
                 .bg(cx.theme().muted.opacity(0.3))
@@ -192,8 +191,8 @@ fn render_track_area(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl
             div()
                 .flex_1()
                 .h_full()
-                
-                
+                .overflow_hidden()  // Enable both horizontal and vertical scrolling
+                .scrollable(Axis::Horizontal)
                 .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, _window, cx| {
                     let delta = match event.delta {
                         ScrollDelta::Pixels(p) => p,
@@ -202,6 +201,32 @@ fn render_track_area(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl
                     this.state.viewport.scroll_x += delta.x.as_f64() as f64;
                     this.state.viewport.scroll_y += delta.y.as_f64() as f64;
                     cx.notify();
+                }))
+                .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _window, cx| {
+                    // Handle dragging clips
+                    if let DragState::DraggingClip { clip_id, track_id, start_beat, mouse_offset } = &this.state.drag_state {
+                        // Convert window coords to element coords to timeline coords
+                        let element_pos = DawPanel::window_to_timeline_pos(event.position, this);
+                        let timeline_pos = DawPanel::element_to_timeline_coords(element_pos, &this.state.viewport);
+                        
+                        let mouse_x = timeline_pos.x - mouse_offset.0;
+                        let new_beat = this.state.pixels_to_beats(mouse_x);
+                        let snapped_beat = this.state.snap_beat(new_beat);
+                        
+                        // Update clip position in project
+                        let clip_id = *clip_id;
+                        let track_id = *track_id;
+                        if let Some(ref mut project) = this.state.project {
+                            if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id) {
+                                if let Some(clip) = track.clips.iter_mut().find(|c| c.id == clip_id) {
+                                    let tempo = project.transport.tempo;
+                                    // Keep the duration the same, just update start_time
+                                    clip.start_time = (snapped_beat * 60.0 / tempo as f64 * SAMPLE_RATE as f64) as u64;
+                                }
+                            }
+                        }
+                        cx.notify();
+                    }
                 }))
                 .child(render_timeline_content(&tracks, state, cx))
         )
@@ -259,20 +284,29 @@ fn render_track_lane(
     let track_id = track.id;
     let is_dragging_over = matches!(&state.drag_state, DragState::DraggingFile { .. });
     
+    // Get track index for color
+    let track_idx = state.project.as_ref()
+        .and_then(|p| p.tracks.iter().position(|t| t.id == track_id))
+        .unwrap_or(0);
+    
+    // Generate consistent color per track
+    let track_hue = (track_idx as f32 * 137.5) % 360.0; // Golden angle
+    let track_color = hsla(track_hue / 360.0, 0.3, 0.12, 1.0);
+    
     div()
         .id(ElementId::Name(format!("track-lane-{}", track_id).into()))
         .size_full()
         .relative()
         .bg(if is_selected {
-            cx.theme().accent.opacity(0.05)
+            hsla(track_hue / 360.0, 0.4, 0.15, 1.0)
         } else {
-            cx.theme().background
+            track_color
         })
         .when(is_dragging_over, |d| {
             d.bg(cx.theme().accent.opacity(0.1))
         })
         .border_b_1()
-        .border_color(cx.theme().border)
+        .border_color(cx.theme().border.opacity(0.5))
         .on_click(cx.listener(move |this, event: &ClickEvent, _window, cx| {
             this.state.select_track(track_id, event.modifiers().shift);
             cx.notify();
@@ -326,6 +360,16 @@ fn render_clip(
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "Clip".to_string());
     
+    // Get track color for clip coloring
+    let track_idx = state.project.as_ref()
+        .and_then(|p| p.tracks.iter().position(|t| t.id == track_id))
+        .unwrap_or(0);
+    
+    // Generate consistent color per track
+    let track_hue = (track_idx as f32 * 137.5) % 360.0; // Golden angle
+    let clip_color = hsla(track_hue / 360.0, 0.5, 0.45, 1.0);
+    let clip_border_color = hsla(track_hue / 360.0, 0.7, 0.35, 1.0);
+    
     div()
         .id(ElementId::Name(format!("clip-{}", clip_id).into()))
         .absolute()
@@ -337,13 +381,13 @@ fn render_clip(
         .overflow_hidden()
         .cursor_pointer()
         .when(is_selected, |d| {
-            d.border_2().border_color(cx.theme().accent)
+            d.border_2().border_color(cx.theme().accent).shadow_lg()
         })
         .when(!is_selected, |d| {
-            d.border_1().border_color(cx.theme().border)
+            d.border_1().border_color(clip_border_color)
         })
-        .bg(cx.theme().accent.opacity(0.3))
-        .hover(|d| d.bg(cx.theme().accent.opacity(0.4)))
+        .bg(clip_color)
+        .hover(|d| d.bg(clip_color.opacity(0.9)))
         .on_click(cx.listener(move |this, event: &ClickEvent, _window, cx| {
             this.state.select_clip(clip_id, false);
             cx.notify();
@@ -378,20 +422,28 @@ fn render_clip(
                     div()
                         .text_xs()
                         .font_semibold()
-                        .text_color(cx.theme().accent_foreground)
+                        .text_color(cx.theme().background) // Contrast with clip color
                         .child(file_name)
                 )
                 .child(
                     div()
                         .flex_1()
                         .relative()
-                        // Placeholder waveform
-                        .child(render_waveform_placeholder(cx))
+                        // Placeholder waveform with track-colored tint
+                        .child(render_waveform_placeholder(clip_color, cx))
                 )
         )
 }
 
-fn render_waveform_placeholder(cx: &mut Context<DawPanel>) -> impl IntoElement {
+fn render_waveform_placeholder(tint_color: Hsla, cx: &mut Context<DawPanel>) -> impl IntoElement {
+    // Darken the tint color manually
+    let darkened_color = hsla(
+        tint_color.h,
+        tint_color.s,
+        (tint_color.l * 0.7).max(0.0),
+        tint_color.a
+    );
+    
     div()
         .size_full()
         .flex()
@@ -400,7 +452,7 @@ fn render_waveform_placeholder(cx: &mut Context<DawPanel>) -> impl IntoElement {
         .child(
             Icon::new(IconName::Activity)
                 .size_4()
-                .text_color(cx.theme().accent_foreground.opacity(0.3))
+                .text_color(darkened_color)
         )
 }
 
