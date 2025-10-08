@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::ui::panels::daw_editor::audio_types::{SAMPLE_RATE, AudioClip};
+use gpui_component::{VirtualListScrollHandle, scroll::ScrollbarState};
 
 /// Main view modes
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -225,6 +226,12 @@ pub struct DawUiState {
     // Mixer state
     pub mixer_scroll: f32,
     pub mixer_width: f32,
+    pub mixer_scroll_handle: VirtualListScrollHandle,
+    pub mixer_scroll_state: ScrollbarState,
+
+    // Virtual list scroll handles for performance
+    pub timeline_scroll_handle: VirtualListScrollHandle,
+    pub timeline_scroll_state: ScrollbarState,
     
     // Undo/Redo
     pub can_undo: bool,
@@ -276,6 +283,11 @@ impl DawUiState {
             
             mixer_scroll: 0.0,
             mixer_width: 80.0,
+            mixer_scroll_handle: VirtualListScrollHandle::new(),
+            mixer_scroll_state: ScrollbarState::default(),
+
+            timeline_scroll_handle: VirtualListScrollHandle::new(),
+            timeline_scroll_state: ScrollbarState::default(),
             
             can_undo: false,
             can_redo: false,

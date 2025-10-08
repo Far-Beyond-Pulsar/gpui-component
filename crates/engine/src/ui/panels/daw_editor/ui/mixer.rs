@@ -7,40 +7,92 @@ use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, PixelsExt,
+    h_virtual_list, VirtualListScrollHandle, scroll::{Scrollbar, ScrollbarAxis},
 };
 use crate::ui::panels::daw_editor::audio_types::{Track, TrackId};
+use std::rc::Rc;
+
+const CHANNEL_STRIP_WIDTH: f32 = 90.0;
+const MIXER_PADDING: f32 = 8.0;
 
 pub fn render_mixer(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     let num_tracks = state.project.as_ref()
         .map(|p| p.tracks.len())
         .unwrap_or(0);
+    
+    // Prepare item sizes for horizontal virtualization
+    let channel_sizes: Rc<Vec<Size<Pixels>>> = {
+        // num_tracks + add button + master = total items
+        let total_items = num_tracks + 2;
+        Rc::new(
+            (0..total_items).map(|_| Size {
+                width: px(CHANNEL_STRIP_WIDTH),
+                height: px(9999.0), // Will be constrained by layout
+            }).collect()
+        )
+    };
+
+    let panel_entity = cx.entity().clone();
 
     div()
         .size_full()
+        .relative()
         .overflow_hidden()
         .child(
-            h_flex()
-                .id("mixer-scroll-content")
-                .overflow_x_scroll()
-                .h_full()
-                .gap_2()
-                .px_3()
-                .py_2()
-                .bg(cx.theme().muted.opacity(0.15))  // Subtle background matching other panels
-                // Render all tracks
-                .children((0..num_tracks).map(|idx| {
-                    if let Some(ref project) = state.project {
-                        if idx < project.tracks.len() {
-                            let track = &project.tracks[idx];
-                            return render_channel_strip(track, idx, state, cx).into_any_element();
-                        }
-                    }
-                    div().into_any_element()
-                }))
-                // Add channel button
-                .child(render_add_channel_button(cx))
-                // Master channel at the end
-                .child(render_master_channel(state, cx))
+            div()
+                .size_full()
+                .relative()
+                .child(
+                    h_virtual_list(
+                        panel_entity.clone(),
+                        "mixer-channels",
+                        channel_sizes,
+                        move |panel, visible_range, _, cx| {
+                            let num_tracks = panel.state.project.as_ref()
+                                .map(|p| p.tracks.len())
+                                .unwrap_or(0);
+                            
+                            visible_range.filter_map(|idx| {
+                                if idx < num_tracks {
+                                    // Render track channel
+                                    if let Some(ref project) = panel.state.project {
+                                        if idx < project.tracks.len() {
+                                            let track = &project.tracks[idx];
+                                            return Some(render_channel_strip(track, idx, &panel.state, cx).into_any_element());
+                                        }
+                                    }
+                                    None
+                                } else if idx == num_tracks {
+                                    // Render add channel button
+                                    Some(render_add_channel_button(cx).into_any_element())
+                                } else if idx == num_tracks + 1 {
+                                    // Render master channel
+                                    Some(render_master_channel(&panel.state, cx).into_any_element())
+                                } else {
+                                    None
+                                }
+                            }).collect::<Vec<_>>()
+                        },
+                    )
+                    .track_scroll(&state.mixer_scroll_handle)
+                    .px(px(MIXER_PADDING))
+                    .py_2()
+                    .bg(cx.theme().muted.opacity(0.15))
+                    .gap_2()
+                )
+                // Scrollbar overlay
+                .child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .child(
+                            Scrollbar::both(
+                                &state.mixer_scroll_state,
+                                &state.mixer_scroll_handle,
+                            )
+                            .axis(ScrollbarAxis::Horizontal)
+                        )
+                )
         )
 }
 
