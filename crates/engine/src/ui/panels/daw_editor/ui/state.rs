@@ -235,7 +235,7 @@ impl DawUiState {
             project_dir: None,
             audio_service: None,
             
-            view_mode: ViewMode::Arrange,
+            view_mode: ViewMode::Mix, // Start in mixer view to see the mixer panel
             browser_tab: BrowserTab::Files,
             inspector_tab: InspectorTab::Track,
             show_browser: true,
