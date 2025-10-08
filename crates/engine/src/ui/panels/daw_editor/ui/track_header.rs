@@ -40,11 +40,6 @@ pub fn render_track_header(
         })
         .border_b_1()
         .border_color(cx.theme().border)
-        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _event: &MouseDownEvent, _window, cx| {
-            this.state.selection.selected_track_ids.clear();
-            this.state.selection.selected_track_ids.insert(track_id);
-            cx.notify();
-        }))
         // Track name and color with controls
         .child(
             h_flex()
