@@ -5,7 +5,7 @@ use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme,
-    scroll::{Scrollbar, ScrollbarAxis, ScrollbarState}, PixelsExt, v_virtual_list, VirtualListScrollHandle};
+    scroll::{Scrollbar, ScrollbarAxis, ScrollbarState}, PixelsExt, v_virtual_list, h_virtual_list, VirtualListScrollHandle};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::ops::Range;
@@ -218,6 +218,19 @@ fn render_track_row(
     let track_id = track.id;
     let track_height = *state.track_heights.get(&track_id)
         .unwrap_or(&state.viewport.track_height);
+    let horizontal_scroll_handle = state.timeline_scroll_handle.clone();
+    let view = cx.entity().clone();
+    
+    // For horizontal virtual scrolling, we need to split the timeline into segments
+    // Let's use 100px wide segments
+    let segment_width = 100.0;
+    let num_segments = (total_width / segment_width).ceil() as usize;
+    let segment_sizes: Rc<Vec<Size<Pixels>>> = Rc::new(
+        (0..num_segments).map(|_| Size {
+            width: px(segment_width),
+            height: px(track_height),
+        }).collect()
+    );
     
     h_flex()
         .w_full()
@@ -233,7 +246,7 @@ fn render_track_row(
                 .border_color(cx.theme().border)
                 .child(track_header::render_track_header(track, state, cx))
         )
-        // Scrollable right: track content (like Table's scrollable columns)
+        // Scrollable right: track content using horizontal virtual_list (like Table's scrollable columns)
         .child(
             div()
                 .flex_1()
@@ -241,12 +254,104 @@ fn render_track_row(
                 .overflow_hidden()
                 .relative()
                 .child(
-                    div()
-                        .w(px(total_width))
-                        .h_full()
-                        .child(render_track_content(track, state, total_width, cx))
+                    h_virtual_list(
+                        view,
+                        track_id,
+                        segment_sizes,
+                        {
+                            let track = track.clone();
+                            move |panel, visible_range, _window, cx| {
+                                let total_width = panel.state.beats_to_pixels(500.0);
+                                let segment_width = 100.0;
+                                
+                                // Render the visible segments of the timeline
+                                visible_range.into_iter().map(|segment_idx| {
+                                    let start_x = segment_idx as f32 * segment_width;
+                                    let end_x = ((segment_idx + 1) as f32 * segment_width).min(total_width);
+                                    let segment_w = end_x - start_x;
+                                    
+                                    render_track_content_segment(&track, &panel.state, start_x, segment_w, total_width, cx)
+                                }).collect()
+                            }
+                        },
+                    )
+                    .track_scroll(&horizontal_scroll_handle)
                 )
         )
+}
+
+/// Render a segment of the track content for horizontal virtual scrolling
+fn render_track_content_segment(
+    track: &crate::ui::panels::daw_editor::audio_types::Track,
+    state: &DawUiState,
+    start_x: f32,
+    segment_width: f32,
+    _total_width: f32,
+    cx: &mut Context<DawPanel>,
+) -> impl IntoElement {
+    let track_id = track.id;
+
+    div()
+        .w(px(segment_width))
+        .h_full()
+        .relative()
+        .bg(cx.theme().background)
+        // Grid lines for this segment
+        .child(render_grid_lines_segment(state, start_x, segment_width, cx))
+        // Render clips that intersect with this segment
+        // Clips are absolutely positioned, so we render the full content but clipped to segment
+        .child(
+            div()
+                .absolute()
+                .left(px(-start_x))  // Offset to account for segment position
+                .top_0()
+                .w(px(state.beats_to_pixels(500.0)))  // Full timeline width
+                .h_full()
+                .children(track.clips.iter().filter_map(|clip| {
+                    let tempo = state.get_tempo();
+                    let clip_start = state.beats_to_pixels(clip.start_beat(tempo));
+                    let clip_end = clip_start + state.beats_to_pixels(clip.duration_beats(tempo));
+                    
+                    // Only render if clip intersects with this segment
+                    if clip_end >= start_x && clip_start < start_x + segment_width {
+                        Some(render_clip(clip, track_id, state, cx))
+                    } else {
+                        None
+                    }
+                }))
+        )
+}
+
+/// Render grid lines for a segment
+fn render_grid_lines_segment(
+    state: &DawUiState,
+    start_x: f32,
+    segment_width: f32,
+    cx: &mut Context<DawPanel>,
+) -> impl IntoElement {
+    let beat_width = state.beats_to_pixels(1.0);
+    let start_beat = (start_x / beat_width).floor() as i32;
+    let end_beat = ((start_x + segment_width) / beat_width).ceil() as i32;
+    
+    div()
+        .absolute()
+        .inset_0()
+        .children((start_beat..=end_beat).map(|beat| {
+            let x = state.beats_to_pixels(beat as f64) - start_x;
+            let is_bar = beat % 4 == 0;
+            
+            div()
+                .absolute()
+                .left(px(x))
+                .top_0()
+                .bottom_0()
+                .w_px()
+                .bg(if is_bar {
+                    cx.theme().border
+                } else {
+                    cx.theme().border.opacity(0.3)
+                })
+        }))
 }
 
 /// Render track timeline content (clips, automation, etc.)
