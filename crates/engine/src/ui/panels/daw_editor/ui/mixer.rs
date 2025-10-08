@@ -7,14 +7,17 @@ use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme,
+    slider::{Slider, SliderState},
 };
 use crate::ui::panels::daw_editor::audio_types::{Track, TrackId};
 
 pub fn render_mixer(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
-    let tracks = state.project.as_ref()
-        .map(|p| &p.tracks)
-        .map(|t| t.as_slice())
-        .unwrap_or(&[]);
+    let num_tracks = state.project.as_ref()
+        .map(|p| p.tracks.len())
+        .unwrap_or(0);
+    
+    // Ensure we have enough tracks for a nice display (minimum 8)
+    let display_count = num_tracks.max(8);
     
     div()
         .size_full()
@@ -27,8 +30,15 @@ pub fn render_mixer(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl 
                 .gap_3()
                 .p_4()
                 .bg(hsla(220.0 / 360.0, 0.15, 0.08, 1.0))
-                .children(tracks.iter().enumerate().map(|(idx, track)| {
-                    render_channel_strip(track, idx, state, cx)
+                .children((0..display_count).filter_map(|idx| {
+                    if let Some(ref project) = state.project {
+                        if idx < project.tracks.len() {
+                            let track = &project.tracks[idx];
+                            return Some(render_channel_strip(track, idx, state, cx).into_any_element());
+                        }
+                    }
+                    // Render empty channel strip if no track exists
+                    Some(render_empty_channel_strip(idx, cx).into_any_element())
                 }))
                 // Master channel at the end
                 .child(render_master_channel(state, cx))
@@ -46,6 +56,7 @@ fn render_channel_strip(
     let is_solo = state.solo_tracks.contains(&track.id);
     let volume_db = 20.0 * track.volume.log10(); // Convert linear to dB
     let pan_percent = (track.pan * 100.0) as i32;
+    let track_id = track.id;
     
     // Beautiful color per track
     let track_hue = (idx as f32 * 137.5) % 360.0; // Golden angle distribution
@@ -69,6 +80,11 @@ fn render_channel_strip(
             cx.theme().border
         })
         .shadow_md()
+        .cursor_pointer()
+        .on_mouse_down(MouseButton::Left, cx.listener(move |panel, _event: &MouseDownEvent, _window, cx| {
+            panel.state.select_track(track_id, false);
+            cx.notify();
+        }))
         // Track color indicator at top
         .child(
             div()
@@ -101,7 +117,7 @@ fn render_channel_strip(
         // Peak meter LEDs
         .child(render_peak_meters(track, cx))
         // Vertical fader (main content area)
-        .child(render_vertical_fader(track, cx))
+        .child(render_vertical_fader(track, track_id, cx))
         // Volume readout
         .child(
             div()
@@ -119,11 +135,66 @@ fn render_channel_strip(
                 .child(format!("{:+.1} dB", volume_db))
         )
         // Pan knob
-        .child(render_pan_control(track, pan_percent, cx))
+        .child(render_pan_control(track, track_id, pan_percent, cx))
         // Send knobs (2 sends: A and B)
-        .child(render_send_controls(track, cx))
+        .child(render_send_controls(track, track_id, cx))
         // Mute / Solo / Record buttons
-        .child(render_channel_buttons(track, is_muted, is_solo, cx))
+        .child(render_channel_buttons(track, track_id, is_muted, is_solo, cx))
+}
+
+fn render_empty_channel_strip(idx: usize, cx: &mut Context<DawPanel>) -> impl IntoElement {
+    // Beautiful color per track
+    let track_hue = (idx as f32 * 137.5) % 360.0; // Golden angle distribution
+    let track_color = hsla(track_hue / 360.0, 0.6, 0.5, 1.0);
+    
+    v_flex()
+        .w(px(90.0))
+        .h_full()
+        .gap_1p5()
+        .p_2()
+        .bg(cx.theme().muted.opacity(0.15))
+        .rounded_lg()
+        .border_1()
+        .border_color(cx.theme().border.opacity(0.3))
+        .shadow_sm()
+        // Track color indicator at top
+        .child(
+            div()
+                .w_full()
+                .h(px(3.0))
+                .bg(track_color.opacity(0.3))
+                .rounded_sm()
+        )
+        // Track name
+        .child(
+            div()
+                .w_full()
+                .h(px(32.0))
+                .flex()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .text_xs()
+                        .font_semibold()
+                        .text_center()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(format!("Track {}", idx + 1))
+                )
+        )
+        // Filler
+        .child(
+            div()
+                .flex_1()
+                .w_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_color(cx.theme().muted_foreground.opacity(0.5))
+                .text_xs()
+                .child("Empty")
+        )
 }
 
 fn render_insert_slots(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoElement {
@@ -208,7 +279,7 @@ fn render_meter_bar(level: f32, cx: &mut Context<DawPanel>) -> impl IntoElement 
         }))
 }
 
-fn render_vertical_fader(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoElement {
+fn render_vertical_fader(track: &Track, track_id: TrackId, cx: &mut Context<DawPanel>) -> impl IntoElement {
     // Vertical fader representation
     let fader_height = 180.0;
     let knob_height = 30.0;
@@ -223,6 +294,7 @@ fn render_vertical_fader(track: &Track, cx: &mut Context<DawPanel>) -> impl Into
         .justify_center()
         .child(
             div()
+                .id(SharedString::from(format!("fader-{}", track_id)))
                 .w(px(24.0))
                 .h_full()
                 .relative()
@@ -230,6 +302,12 @@ fn render_vertical_fader(track: &Track, cx: &mut Context<DawPanel>) -> impl Into
                 .rounded_md()
                 .border_1()
                 .border_color(cx.theme().border)
+                .cursor_pointer()
+                .on_mouse_down(MouseButton::Left, cx.listener(move |_panel, _event: &MouseDownEvent, _window, cx| {
+                    // Start drag for fader
+                    // TODO: Implement drag handling
+                    cx.notify();
+                }))
                 // Center line (unity gain)
                 .child(
                     div()
@@ -266,11 +344,15 @@ fn render_vertical_fader(track: &Track, cx: &mut Context<DawPanel>) -> impl Into
                         .shadow_lg()
                         .cursor_pointer()
                         .hover(|style| style.bg(cx.theme().accent.opacity(0.9)))
+                        .on_mouse_down(MouseButton::Left, cx.listener(move |_panel, _event: &MouseDownEvent, _window, cx| {
+                            // TODO: Start dragging fader knob
+                            cx.stop_propagation();
+                        }))
                 )
         )
 }
 
-fn render_pan_control(track: &Track, pan_percent: i32, cx: &mut Context<DawPanel>) -> impl IntoElement {
+fn render_pan_control(track: &Track, track_id: TrackId, pan_percent: i32, cx: &mut Context<DawPanel>) -> impl IntoElement {
     let pan_hue = if track.pan < 0.0 {
         240.0 / 360.0 // Blue for left
     } else {
@@ -296,6 +378,7 @@ fn render_pan_control(track: &Track, pan_percent: i32, cx: &mut Context<DawPanel
                 // Circular pan knob
                 .child(
                     div()
+                        .id(SharedString::from(format!("pan-{}", track_id)))
                         .w(px(36.0))
                         .h(px(36.0))
                         .rounded_full()
@@ -307,6 +390,13 @@ fn render_pan_control(track: &Track, pan_percent: i32, cx: &mut Context<DawPanel
                         .justify_center()
                         .cursor_pointer()
                         .hover(|style| style.bg(cx.theme().secondary.opacity(0.7)))
+                        .on_mouse_down(MouseButton::Left, cx.listener(move |panel, _event: &MouseDownEvent, _window, cx| {
+                            // TODO: Implement pan dragging - for now, double-click simulation to center
+                            if let Some(track) = panel.state.get_track_mut(track_id) {
+                                track.pan = 0.0;
+                                cx.notify();
+                            }
+                        }))
                         // Pan indicator line
                         .child(
                             div()
@@ -334,7 +424,7 @@ fn render_pan_control(track: &Track, pan_percent: i32, cx: &mut Context<DawPanel
         )
 }
 
-fn render_send_controls(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoElement {
+fn render_send_controls(track: &Track, track_id: TrackId, cx: &mut Context<DawPanel>) -> impl IntoElement {
     v_flex()
         .w_full()
         .gap_1()
@@ -349,13 +439,13 @@ fn render_send_controls(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoE
                 .w_full()
                 .gap_1()
                 // Send A
-                .child(render_send_knob("A".to_string(), 0.0, hsla(280.0 / 360.0, 0.7, 0.5, 1.0), cx))
+                .child(render_send_knob("A".to_string(), track_id, 0, 0.0, hsla(280.0 / 360.0, 0.7, 0.5, 1.0), cx))
                 // Send B
-                .child(render_send_knob("B".to_string(), 0.0, hsla(320.0 / 360.0, 0.7, 0.5, 1.0), cx))
+                .child(render_send_knob("B".to_string(), track_id, 1, 0.0, hsla(320.0 / 360.0, 0.7, 0.5, 1.0), cx))
         )
 }
 
-fn render_send_knob(label: String, _level: f32, color: Hsla, cx: &mut Context<DawPanel>) -> impl IntoElement {
+fn render_send_knob(label: String, track_id: TrackId, send_idx: usize, _level: f32, color: Hsla, cx: &mut Context<DawPanel>) -> impl IntoElement {
     v_flex()
         .flex_1()
         .gap_0p5()
@@ -368,6 +458,7 @@ fn render_send_knob(label: String, _level: f32, color: Hsla, cx: &mut Context<Da
                 .justify_center()
                 .child(
                     div()
+                        .id(SharedString::from(format!("send-{}-{}", track_id, send_idx)))
                         .w(px(26.0))
                         .h(px(26.0))
                         .rounded_full()
@@ -376,6 +467,10 @@ fn render_send_knob(label: String, _level: f32, color: Hsla, cx: &mut Context<Da
                         .border_color(color.opacity(0.5))
                         .cursor_pointer()
                         .hover(|style| style.border_color(color))
+                        .on_mouse_down(MouseButton::Left, cx.listener(move |_panel, _event: &MouseDownEvent, _window, cx| {
+                            // TODO: Start send drag
+                            cx.notify();
+                        }))
                 )
         )
         .child(
@@ -388,7 +483,7 @@ fn render_send_knob(label: String, _level: f32, color: Hsla, cx: &mut Context<Da
         )
 }
 
-fn render_channel_buttons(track: &Track, is_muted: bool, is_solo: bool, cx: &mut Context<DawPanel>) -> impl IntoElement {
+fn render_channel_buttons(track: &Track, track_id: TrackId, is_muted: bool, is_solo: bool, cx: &mut Context<DawPanel>) -> impl IntoElement {
     v_flex()
         .w_full()
         .gap_1()
@@ -399,6 +494,7 @@ fn render_channel_buttons(track: &Track, is_muted: bool, is_solo: bool, cx: &mut
                 // Mute button
                 .child(
                     div()
+                        .id(SharedString::from(format!("mute-{}", track_id)))
                         .flex_1()
                         .h(px(24.0))
                         .flex()
@@ -429,11 +525,18 @@ fn render_channel_buttons(track: &Track, is_muted: bool, is_solo: bool, cx: &mut
                         } else {
                             cx.theme().secondary.opacity(0.6)
                         }))
+                        .on_mouse_down(MouseButton::Left, cx.listener(move |panel, _event: &MouseDownEvent, _window, cx| {
+                            if let Some(track) = panel.state.get_track_mut(track_id) {
+                                track.muted = !track.muted;
+                                cx.notify();
+                            }
+                        }))
                         .child("M")
                 )
                 // Solo button
                 .child(
                     div()
+                        .id(SharedString::from(format!("solo-{}", track_id)))
                         .flex_1()
                         .h(px(24.0))
                         .flex()
@@ -464,12 +567,17 @@ fn render_channel_buttons(track: &Track, is_muted: bool, is_solo: bool, cx: &mut
                         } else {
                             cx.theme().secondary.opacity(0.6)
                         }))
+                        .on_mouse_down(MouseButton::Left, cx.listener(move |panel, _event: &MouseDownEvent, _window, cx| {
+                            panel.state.toggle_solo(track_id);
+                            cx.notify();
+                        }))
                         .child("S")
                 )
         )
         // Record arm button
         .child(
             div()
+                .id(SharedString::from(format!("record-{}", track_id)))
                 .w_full()
                 .h(px(24.0))
                 .flex()
@@ -499,6 +607,12 @@ fn render_channel_buttons(track: &Track, is_muted: bool, is_solo: bool, cx: &mut
                     hsla(0.0, 0.8, 0.6, 1.0)
                 } else {
                     cx.theme().secondary.opacity(0.6)
+                }))
+                .on_mouse_down(MouseButton::Left, cx.listener(move |panel, _event: &MouseDownEvent, _window, cx| {
+                    if let Some(track) = panel.state.get_track_mut(track_id) {
+                        track.record_armed = !track.record_armed;
+                        cx.notify();
+                    }
                 }))
                 .child("R")
         )

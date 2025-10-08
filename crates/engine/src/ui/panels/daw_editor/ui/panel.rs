@@ -128,14 +128,33 @@ impl DawPanel {
     }
 
     fn render_main_area(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
+        v_flex()
             .flex_1()
             .h_full()
             .bg(cx.theme().background)
-            .child(match self.state.view_mode {
-                ViewMode::Arrange => self.render_timeline(cx).into_any_element(),
-                ViewMode::Mix => self.render_mixer(cx).into_any_element(),
-                ViewMode::Edit => self.render_clip_editor(cx).into_any_element(),
+            .gap_0()
+            // Main content area (timeline/editor) - takes up most of the space
+            .child(
+                div()
+                    .flex_1()
+                    .w_full()
+                    .overflow_hidden()
+                    .child(match self.state.view_mode {
+                        ViewMode::Arrange => self.render_timeline(cx).into_any_element(),
+                        ViewMode::Mix => div().child("Full Mix View").into_any_element(),
+                        ViewMode::Edit => self.render_clip_editor(cx).into_any_element(),
+                    })
+            )
+            // Mixer panel at the bottom - fixed height
+            .when(self.state.show_mixer, |this| {
+                this.child(
+                    div()
+                        .w_full()
+                        .h(px(280.0))
+                        .border_t_1()
+                        .border_color(cx.theme().border)
+                        .child(self.render_mixer(cx))
+                )
             })
     }
 

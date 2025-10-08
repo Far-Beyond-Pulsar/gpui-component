@@ -235,12 +235,12 @@ impl DawUiState {
             project_dir: None,
             audio_service: None,
             
-            view_mode: ViewMode::Mix, // Start in mixer view to see the mixer panel
+            view_mode: ViewMode::Arrange, // Start in arrange view with timeline
             browser_tab: BrowserTab::Files,
             inspector_tab: InspectorTab::Track,
             show_browser: true,
             show_inspector: true,
-            show_mixer: false,
+            show_mixer: true, // Show mixer panel at bottom by default
             
             is_playing: false,
             is_recording: false,
