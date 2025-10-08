@@ -303,10 +303,12 @@ fn render_drop_zone(
                 // Calculate beat position from mouse X
                 let beat = this.state.pixels_to_beats(mouse_x);
                 let tempo = this.state.get_tempo();
+                let snap_mode = this.state.snap_mode;
+                let snap_value = this.state.snap_value;
 
                 // Apply snap if enabled
-                let snapped_beat = if this.state.snap_mode == SnapMode::Grid {
-                    let snap_beats = this.state.snap_value.to_beats();
+                let snapped_beat = if snap_mode == SnapMode::Grid {
+                    let snap_beats = snap_value.to_beats();
                     (beat / snap_beats).round() * snap_beats
                 } else {
                     beat
@@ -315,10 +317,9 @@ fn render_drop_zone(
                 // Create new clip
                 if let Some(project) = &mut this.state.project {
                     if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id) {
-                        let tempo = this.state.get_tempo();
                         // Convert beats to samples: samples = beats * 60 * sample_rate / tempo
-                        let start_time = ((snapped_beat * 60.0 * SAMPLE_RATE as f64) / tempo as f64) as i64;
-                        let duration = ((10.0 * 60.0 * SAMPLE_RATE as f64) / tempo as f64) as i64; // 10 beats duration
+                        let start_time = ((snapped_beat * 60.0 * SAMPLE_RATE as f64) / tempo as f64) as u64;
+                        let duration = ((10.0 * 60.0 * SAMPLE_RATE as f64) / tempo as f64) as u64; // 10 beats duration
                         
                         let clip = crate::ui::panels::daw_editor::audio_types::AudioClip::new(
                             file_path.clone(),
@@ -347,10 +348,13 @@ fn render_drop_zone(
 
                     // Calculate new beat position
                     let new_beat = this.state.pixels_to_beats(mouse_x);
+                    let snap_mode = this.state.snap_mode;
+                    let snap_value = this.state.snap_value;
+                    let tempo = this.state.get_tempo();
 
                     // Apply snap if enabled
-                    let snapped_beat = if this.state.snap_mode == SnapMode::Grid {
-                        let snap_beats = this.state.snap_value.to_beats();
+                    let snapped_beat = if snap_mode == SnapMode::Grid {
+                        let snap_beats = snap_value.to_beats();
                         (new_beat / snap_beats).round() * snap_beats
                     } else {
                         new_beat
@@ -360,7 +364,6 @@ fn render_drop_zone(
                     if let Some(project) = &mut this.state.project {
                         if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id) {
                             if let Some(clip) = track.clips.iter_mut().find(|c| c.id == *clip_id) {
-                                let tempo = this.state.get_tempo();
                                 clip.set_start_beat(snapped_beat, tempo);
                             }
                         }
@@ -378,10 +381,13 @@ fn render_drop_zone(
 
                 // Calculate final beat position
                 let new_beat = this.state.pixels_to_beats(mouse_x);
+                let snap_mode = this.state.snap_mode;
+                let snap_value = this.state.snap_value;
+                let tempo = this.state.get_tempo();
 
                 // Apply snap if enabled
-                let snapped_beat = if this.state.snap_mode == SnapMode::Grid {
-                    let snap_beats = this.state.snap_value.to_beats();
+                let snapped_beat = if snap_mode == SnapMode::Grid {
+                    let snap_beats = snap_value.to_beats();
                     (new_beat / snap_beats).round() * snap_beats
                 } else {
                     new_beat
@@ -394,7 +400,6 @@ fn render_drop_zone(
                 if let Some(project) = &mut this.state.project {
                     if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id) {
                         if let Some(clip) = track.clips.iter_mut().find(|c| c.id == *clip_id) {
-                            let tempo = this.state.get_tempo();
                             clip.set_start_beat(snapped_beat, tempo);
                             eprintln!("✅ Final clip position: beat {}",
                                 snapped_beat);
