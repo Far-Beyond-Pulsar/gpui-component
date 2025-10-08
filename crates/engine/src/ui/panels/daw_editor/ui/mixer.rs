@@ -7,8 +7,7 @@ use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme,
-    slider::{Slider, SliderState, SliderEvent}, scroll::Scrollable, label::Label,
-    tooltip::Tooltip, progress::Progress, popover::Popover,
+    scroll::Scrollable,
 };
 use crate::ui::panels::daw_editor::audio_types::{Track, TrackId};
 
@@ -18,18 +17,19 @@ pub fn render_mixer(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl 
         .map(|t| t.as_slice())
         .unwrap_or(&[]);
     
-    Scrollable::horizontal(
-        h_flex()
-            .size_full()
-            .gap_3()
-            .p_4()
-            .bg(hsla(220.0 / 360.0, 0.15, 0.08, 1.0))
-            .children(tracks.iter().enumerate().map(|(idx, track)| {
-                render_channel_strip(track, idx, state, cx)
-            }))
-            // Master channel at the end
-            .child(render_master_channel(state, cx))
-    )
+    let scroll_content = h_flex()
+        .size_full()
+        .gap_3()
+        .p_4()
+        .bg(hsla(220.0 / 360.0, 0.15, 0.08, 1.0))
+        .children(tracks.iter().enumerate().map(|(idx, track)| {
+            render_channel_strip(track, idx, state, cx)
+        }))
+        // Master channel at the end
+        .child(render_master_channel(state, cx));
+    
+    Scrollable::new(ScrollbarAxis::Horizontal, scroll_content)
+        .size_full()
 }
 
 fn render_channel_strip(
@@ -90,7 +90,7 @@ fn render_channel_strip(
                         .text_center()
                         .text_color(cx.theme().foreground)
                         .line_clamp(2)
-                        .child(&track.name)
+                        .child(track.name.clone())
                 )
         )
         // Insert slots (3 effect slots)
@@ -108,7 +108,6 @@ fn render_channel_strip(
                 .items_center()
                 .justify_center()
                 .text_xs()
-                .font_mono()
                 .text_color(if volume_db > 0.0 {
                     hsla(0.0, 0.8, 0.5, 1.0) // Red if clipping
                 } else {
@@ -130,7 +129,7 @@ fn render_insert_slots(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoEl
         .gap_0p5()
         .child(
             div()
-                .text_2xs()
+                .text_xs()
                 .text_color(cx.theme().muted_foreground)
                 .child("INSERTS")
         )
@@ -149,7 +148,7 @@ fn render_insert_slots(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoEl
                         .rounded_sm()
                         .border_1()
                         .border_color(cx.theme().border.opacity(0.5))
-                        .text_2xs()
+                        .text_xs()
                         .text_color(cx.theme().muted_foreground)
                         .cursor_pointer()
                         .hover(|style| style.bg(cx.theme().secondary.opacity(0.6)))
@@ -280,7 +279,7 @@ fn render_pan_control(track: &Track, pan_percent: i32, cx: &mut Context<DawPanel
         .gap_1()
         .child(
             div()
-                .text_2xs()
+                .text_xs()
                 .text_color(cx.theme().muted_foreground)
                 .child("PAN")
         )
@@ -319,9 +318,8 @@ fn render_pan_control(track: &Track, pan_percent: i32, cx: &mut Context<DawPanel
         .child(
             div()
                 .w_full()
-                .text_2xs()
+                .text_xs()
                 .text_center()
-                .font_mono()
                 .text_color(cx.theme().muted_foreground)
                 .child(if pan_percent == 0 {
                     "C".to_string()
@@ -339,7 +337,7 @@ fn render_send_controls(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoE
         .gap_1()
         .child(
             div()
-                .text_2xs()
+                .text_xs()
                 .text_color(cx.theme().muted_foreground)
                 .child("SENDS")
         )
@@ -354,7 +352,7 @@ fn render_send_controls(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoE
         )
 }
 
-fn render_send_knob(label: &str, level: f32, color: Hsla, cx: &mut Context<DawPanel>) -> impl IntoElement {
+fn render_send_knob(label: &str, _level: f32, color: Hsla, cx: &mut Context<DawPanel>) -> impl IntoElement {
     v_flex()
         .flex_1()
         .gap_0p5()
@@ -380,7 +378,7 @@ fn render_send_knob(label: &str, level: f32, color: Hsla, cx: &mut Context<DawPa
         .child(
             div()
                 .w_full()
-                .text_2xs()
+                .text_xs()
                 .text_center()
                 .text_color(cx.theme().muted_foreground)
                 .child(label)
@@ -418,7 +416,7 @@ fn render_channel_buttons(track: &Track, is_muted: bool, is_solo: bool, cx: &mut
                         .text_xs()
                         .font_semibold()
                         .text_color(if is_muted {
-                            gpui::white()
+                            white()
                         } else {
                             cx.theme().muted_foreground
                         })
@@ -489,7 +487,7 @@ fn render_channel_buttons(track: &Track, is_muted: bool, is_solo: bool, cx: &mut
                 .text_xs()
                 .font_semibold()
                 .text_color(if track.record_armed {
-                    gpui::white()
+                    white()
                 } else {
                     cx.theme().muted_foreground
                 })
@@ -504,9 +502,8 @@ fn render_channel_buttons(track: &Track, is_muted: bool, is_solo: bool, cx: &mut
 }
 
 fn render_master_channel(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
-    let master_volume = state.project.as_ref()
-        .map(|p| p.transport.master_volume)
-        .unwrap_or(1.0);
+    // Use a default master volume since Transport doesn't have it
+    let master_volume = 1.0f32;
     let volume_db = 20.0 * master_volume.log10();
     
     v_flex()
@@ -586,7 +583,6 @@ fn render_master_channel(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl
                 .items_center()
                 .justify_center()
                 .text_sm()
-                .font_mono()
                 .font_bold()
                 .text_color(if volume_db > 0.0 {
                     hsla(0.0, 0.8, 0.5, 1.0)
