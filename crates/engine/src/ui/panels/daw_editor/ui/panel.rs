@@ -117,16 +117,6 @@ impl DawPanel {
             .child("Transport Placeholder")
     }
 
-    fn render_browser(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .w(px(250.0))
-            .h_full()
-            .bg(cx.theme().muted.opacity(0.1))
-            .border_r_1()
-            .border_color(cx.theme().border)
-            .child("Browser Placeholder")
-    }
-
     fn render_main_area(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .flex_1()
@@ -176,6 +166,10 @@ impl DawPanel {
 
     fn render_mixer(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         super::mixer::render_mixer(&mut self.state, cx)
+    }
+
+    fn render_browser(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        super::browser::render_browser(&mut self.state, cx)
     }
 
     fn render_clip_editor(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
