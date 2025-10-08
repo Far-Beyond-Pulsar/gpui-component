@@ -124,41 +124,6 @@ impl Render for DawPanel {
                         }
                         cx.notify();
                     }
-                    DragState::DraggingTrackHeaderVolume { track_id, start_mouse_x, start_value } => {
-                        // Update track header volume slider (horizontal)
-                        let current_x = event.position.x;
-                        let delta_px = current_x - *start_mouse_x;
-                        let delta_value = delta_px / px(200.0); // Sensitivity factor (200 pixels = full range)
-                        let new_value = (*start_value + delta_value).clamp(0.0, 1.0);
-                        
-                        // Convert slider value (0..1) to dB then to linear
-                        let db = (new_value * 72.0) - 60.0; // Map 0..1 to -60..+12 dB
-                        let linear = 10f32.powf(db / 20.0);
-                        
-                        if let Some(ref mut project) = this.state.project {
-                            if let Some(track) = project.tracks.iter_mut().find(|t| t.id == *track_id) {
-                                track.volume = linear.clamp(0.0, 2.0);
-                            }
-                        }
-                        cx.notify();
-                    }
-                    DragState::DraggingTrackHeaderPan { track_id, start_mouse_x, start_value } => {
-                        // Update track header pan slider (horizontal)
-                        let current_x = event.position.x;
-                        let delta_px = current_x - *start_mouse_x;
-                        let delta_value = delta_px / px(100.0); // Sensitivity factor (100 pixels = full range)
-                        let new_value = (*start_value + delta_value).clamp(0.0, 1.0);
-                        
-                        // Convert slider value (0..1) to pan (-1..1)
-                        let pan = (new_value * 2.0 - 1.0) as f32;
-                        
-                        if let Some(ref mut project) = this.state.project {
-                            if let Some(track) = project.tracks.iter_mut().find(|t| t.id == *track_id) {
-                                track.pan = pan.clamp(-1.0, 1.0);
-                            }
-                        }
-                        cx.notify();
-                    }
                     _ => {}
                 }
             }))
