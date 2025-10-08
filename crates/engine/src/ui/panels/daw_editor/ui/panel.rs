@@ -5,13 +5,15 @@ use super::state::*;
 use super::super::{audio_service::AudioService, audio_types::*, project::DawProject};
 use gpui::*;
 use gpui::prelude::FluentBuilder;
-use gpui_component::{v_flex, h_flex, StyledExt, ActiveTheme};
+use gpui_component::{v_flex, h_flex, StyledExt, ActiveTheme, PixelsExt};
 use std::path::PathBuf;
 use std::sync::Arc;
 
 pub struct DawPanel {
     focus_handle: FocusHandle,
     pub(super) state: DawUiState,
+    /// Timeline element bounds for coordinate conversion (GPUI mouse events are window-relative)
+    pub timeline_element_bounds: Option<gpui::Bounds<gpui::Pixels>>,
 }
 
 impl DawPanel {
@@ -19,6 +21,7 @@ impl DawPanel {
         Self {
             focus_handle: cx.focus_handle(),
             state: DawUiState::new(),
+            timeline_element_bounds: None,
         }
     }
 
@@ -64,21 +67,32 @@ impl Render for DawPanel {
             .size_full()
             .bg(cx.theme().background)
             .overflow_hidden()
-            // Handle mouse move for dragging
-            .on_mouse_move(cx.listener(|this, _event: &MouseMoveEvent, _window, cx| {
-                // Dragging is being handled by the visual feedback
-                // The actual drop logic is in the track lanes
-                cx.notify();
+            // Handle mouse move for dragging with proper coordinates
+            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _window, cx| {
+                // Update drag visual feedback position
+                match &mut this.state.drag_state {
+                    DragState::DraggingFile { .. } => {
+                        // Just trigger re-render for visual feedback
+                        cx.notify();
+                    }
+                    DragState::DraggingClip { .. } => {
+                        // Trigger re-render for clip drag visual feedback
+                        cx.notify();
+                    }
+                    _ => {}
+                }
             }))
             // Handle mouse up to clear drag state
             .on_mouse_up(gpui::MouseButton::Left, cx.listener(|this, _event: &MouseUpEvent, _window, cx| {
-                // Clear drag state when mouse is released
+                // Clear drag state when mouse is released outside of drop zones
                 if !matches!(this.state.drag_state, DragState::None) {
                     this.state.drag_state = DragState::None;
                     cx.notify();
                 }
             }))
             .child(self.render_content(cx))
+            // Render drag cursor overlay
+            .child(self.render_drag_cursor(cx))
     }
 }
 
@@ -189,4 +203,90 @@ impl DawPanel {
             .size_full()
             .child("Clip Editor Placeholder")
     }
+
+    fn render_drag_cursor(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        match &self.state.drag_state {
+            DragState::DraggingFile { file_name, .. } => {
+                div()
+                    .absolute()
+                    .child(
+                        div()
+                            .px_3()
+                            .py_2()
+                            .rounded_md()
+                            .bg(cx.theme().accent.opacity(0.9))
+                            .border_1()
+                            .border_color(cx.theme().accent)
+                            .shadow_lg()
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        gpui_component::Icon::new(gpui_component::IconName::MusicNote)
+                                            .size_4()
+                                            .text_color(cx.theme().accent_foreground)
+                                    )
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .font_medium()
+                                            .text_color(cx.theme().accent_foreground)
+                                            .child(file_name.clone())
+                                    )
+                            )
+                    )
+                    .into_any_element()
+            }
+            _ => div().into_any_element(),
+        }
+    }
+
+    /// Convert window-relative coordinates to timeline element coordinates
+    /// Mouse events from GPUI are relative to window origin.
+    /// Simple math: element_pos = window_pos - element_origin
+    pub fn window_to_timeline_pos(window_pos: Point<Pixels>, panel: &DawPanel) -> Point<Pixels> {
+        if let Some(bounds) = &panel.timeline_element_bounds {
+            Point::new(
+                window_pos.x - bounds.origin.x,
+                window_pos.y - bounds.origin.y,
+            )
+        } else {
+            // On first event before bounds captured, just return window pos as-is
+            window_pos
+        }
+    }
+
+    /// Convert element coordinates to timeline coordinates (accounting for scroll and zoom)
+    pub fn element_to_timeline_coords(
+        element_pos: Point<Pixels>,
+        viewport: &ViewportState,
+    ) -> Point<f32> {
+        Point::new(
+            element_pos.x.as_f32() + viewport.scroll_x as f32,
+            element_pos.y.as_f32() + viewport.scroll_y as f32,
+        )
+    }
+
+    /// Convert timeline coordinates to element coordinates
+    pub fn timeline_to_element_coords(
+        timeline_pos: Point<f32>,
+        viewport: &ViewportState,
+    ) -> Point<Pixels> {
+        Point::new(
+            px(timeline_pos.x - viewport.scroll_x as f32),
+            px(timeline_pos.y - viewport.scroll_y as f32),
+        )
+    }
+
+    /// One-shot conversion: window → element → timeline
+    pub fn window_to_timeline_coords(
+        window_pos: Point<Pixels>,
+        panel: &DawPanel,
+        viewport: &ViewportState,
+    ) -> Point<f32> {
+        let element_pos = Self::window_to_timeline_pos(window_pos, panel);
+        Self::element_to_timeline_coords(element_pos, viewport)
+    }
 }
+

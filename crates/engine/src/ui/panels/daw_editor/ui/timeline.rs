@@ -17,9 +17,42 @@ const MIN_TRACK_HEIGHT: f32 = 60.0;
 const MAX_TRACK_HEIGHT: f32 = 300.0;
 
 pub fn render_timeline(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
+    let panel_entity = cx.entity().clone();
+    
     v_flex()
         .size_full()
         .bg(cx.theme().background)
+        // Capture timeline element bounds for coordinate conversion
+        .on_children_prepainted({
+            let panel_entity = panel_entity.clone();
+            move |children_bounds, _window, cx| {
+                if !children_bounds.is_empty() {
+                    // Calculate bounding box from children (all in window coordinates)
+                    let mut min_x = f32::MAX;
+                    let mut min_y = f32::MAX;
+                    let mut max_x = f32::MIN;
+                    let mut max_y = f32::MIN;
+
+                    for child_bounds in &children_bounds {
+                        min_x = min_x.min(child_bounds.origin.x.as_f32());
+                        min_y = min_y.min(child_bounds.origin.y.as_f32());
+                        max_x = max_x.max((child_bounds.origin.x + child_bounds.size.width).as_f32());
+                        max_y = max_y.max((child_bounds.origin.y + child_bounds.size.height).as_f32());
+                    }
+
+                    let origin = gpui::Point { x: px(min_x), y: px(min_y) };
+                    let size = gpui::Size {
+                        width: px(max_x - min_x),
+                        height: px(max_y - min_y),
+                    };
+
+                    // Store bounds in panel
+                    panel_entity.update(cx, |panel, _cx| {
+                        panel.timeline_element_bounds = Some(gpui::Bounds { origin, size });
+                    });
+                }
+            }
+        })
         // Ruler/timeline header
         .child(render_ruler(state, cx))
         // Scrollable track area
@@ -249,8 +282,13 @@ fn render_track_lane(
             if let DragState::DraggingFile { ref file_path, .. } = this.state.drag_state {
                 // Clone file_path to avoid holding an immutable borrow
                 let file_path_cloned = file_path.clone();
-                // Get mouse position relative to timeline
-                let mouse_x = event.position.x.as_f64() as f32 - TRACK_HEADER_WIDTH;
+                
+                // Use proper coordinate conversion
+                let element_pos = DawPanel::window_to_timeline_pos(event.position, this);
+                let timeline_pos = DawPanel::element_to_timeline_coords(element_pos, &this.state.viewport);
+                
+                // Convert x position to beats (subtract track header width)
+                let mouse_x = timeline_pos.x - TRACK_HEADER_WIDTH;
                 let beat = this.state.pixels_to_beats(mouse_x);
                 let snapped_beat = this.state.snap_beat(beat);
                 
@@ -314,9 +352,11 @@ fn render_clip(
         .on_mouse_down(gpui::MouseButton::Left, cx.listener({
             let start_beat = clip.start_beat(tempo);
             move |this, event: &MouseDownEvent, _window, cx| {
-                // Start dragging the clip
-                let mouse_x = event.position.x.as_f64() as f32;
+                // Use proper coordinate conversion
+                let element_pos = DawPanel::window_to_timeline_pos(event.position, this);
+                let mouse_x = element_pos.x.as_f32();
                 let clip_x = x;
+                
                 this.state.drag_state = DragState::DraggingClip {
                     clip_id,
                     track_id,
