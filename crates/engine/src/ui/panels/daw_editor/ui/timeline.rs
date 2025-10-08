@@ -8,8 +8,7 @@ use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme,
-    scroll::Scrollable,
-, PixelsExt};
+    scroll::Scrollable, PixelsExt};
 use std::path::PathBuf;
 
 const TIMELINE_HEADER_HEIGHT: f32 = 40.0;
@@ -248,14 +247,16 @@ fn render_track_lane(
         // Handle mouse up for dropping files
         .on_mouse_up(gpui::MouseButton::Left, cx.listener(move |this, event: &MouseUpEvent, _window, cx| {
             if let DragState::DraggingFile { ref file_path, .. } = this.state.drag_state {
+                // Clone file_path to avoid holding an immutable borrow
+                let file_path_cloned = file_path.clone();
                 // Get mouse position relative to timeline
                 let mouse_x = event.position.x.as_f64() as f32 - TRACK_HEADER_WIDTH;
                 let beat = this.state.pixels_to_beats(mouse_x);
                 let snapped_beat = this.state.snap_beat(beat);
                 
-                if let Some(_clip_id) = this.state.add_clip(track_id, snapped_beat, file_path.clone()) {
+                if let Some(_clip_id) = this.state.add_clip(track_id, snapped_beat, file_path_cloned.clone()) {
                     eprintln!("✅ Added clip '{}' to track at beat {}", 
-                        file_path.file_name().and_then(|n| n.to_str()).unwrap_or("?"),
+                        file_path_cloned.file_name().and_then(|n| n.to_str()).unwrap_or("?"),
                         snapped_beat);
                 }
                 
@@ -284,8 +285,8 @@ fn render_clip(
     
     let file_name = std::path::Path::new(&clip.asset_path)
         .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("Clip");
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "Clip".to_string());
     
     div()
         .id(ElementId::Name(format!("clip-{}", clip_id).into()))
@@ -306,23 +307,26 @@ fn render_clip(
         .bg(cx.theme().accent.opacity(0.3))
         .hover(|d| d.bg(cx.theme().accent.opacity(0.4)))
         .on_click(cx.listener(move |this, event: &ClickEvent, _window, cx| {
-            this.state.select_clip(clip_id, event.modifiers().shift);
+            this.state.select_clip(clip_id, false);
             cx.notify();
         }))
         // Make clips draggable with mouse down
-        .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, _window, cx| {
-            // Start dragging the clip
-            let mouse_x = event.position.x.as_f64() as f32;
-            let clip_x = x;
-            this.state.drag_state = DragState::DraggingClip {
-                clip_id,
-                track_id,
-                start_beat: clip.start_beat(tempo),
-                mouse_offset: (mouse_x - clip_x, 0.0),
-            };
-            // Also select the clip
-            this.state.select_clip(clip_id, event.modifiers().shift);
-            cx.notify();
+        .on_mouse_down(gpui::MouseButton::Left, cx.listener({
+            let start_beat = clip.start_beat(tempo);
+            move |this, event: &MouseDownEvent, _window, cx| {
+                // Start dragging the clip
+                let mouse_x = event.position.x.as_f64() as f32;
+                let clip_x = x;
+                this.state.drag_state = DragState::DraggingClip {
+                    clip_id,
+                    track_id,
+                    start_beat,
+                    mouse_offset: (mouse_x - clip_x, 0.0),
+                };
+                // Also select the clip
+                this.state.select_clip(clip_id, false);
+                cx.notify();
+            }
         }))
         .child(
             v_flex()
