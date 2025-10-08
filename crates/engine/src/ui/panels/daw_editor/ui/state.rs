@@ -172,6 +172,16 @@ pub enum DragState {
         start_mouse_x: f32,
         start_pan: f32,
     },
+    DraggingTrackHeaderVolume {
+        track_id: TrackId,
+        start_mouse_x: Pixels,
+        start_value: f32,
+    },
+    DraggingTrackHeaderPan {
+        track_id: TrackId,
+        start_mouse_x: Pixels,
+        start_value: f32,
+    },
 }
 
 impl Default for DragState {
