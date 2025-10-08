@@ -216,7 +216,7 @@ impl DawPanel {
                 this.child(
                     div()
                         .w_full()
-                        .h(px(280.0))
+                        .h(px(420.0)).flex_shrink_0()
                         .border_t_1()
                         .border_color(cx.theme().border)
                         .child(self.render_mixer(cx))

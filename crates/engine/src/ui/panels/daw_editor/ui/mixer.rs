@@ -19,7 +19,7 @@ pub fn render_mixer(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl 
     let num_tracks = state.project.as_ref()
         .map(|p| p.tracks.len())
         .unwrap_or(0);
-    
+
     // Prepare item sizes for horizontal virtualization
     let channel_sizes: Rc<Vec<Size<Pixels>>> = {
         // num_tracks + add button + master = total items
@@ -27,7 +27,7 @@ pub fn render_mixer(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl 
         Rc::new(
             (0..total_items).map(|_| Size {
                 width: px(CHANNEL_STRIP_WIDTH),
-                height: px(9999.0), // Will be constrained by layout
+                height: px(400.0), // Fixed mixer height to match panel
             }).collect()
         )
     };
@@ -35,63 +35,59 @@ pub fn render_mixer(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl 
     let panel_entity = cx.entity().clone();
 
     div()
-        .size_full()
+        .w_full()
+        .h_full()
         .relative()
         .overflow_hidden()
         .child(
-            div()
-                .size_full()
-                .relative()
-                .child(
-                    h_virtual_list(
-                        panel_entity.clone(),
-                        "mixer-channels",
-                        channel_sizes,
-                        move |panel, visible_range, _, cx| {
-                            let num_tracks = panel.state.project.as_ref()
-                                .map(|p| p.tracks.len())
-                                .unwrap_or(0);
-                            
-                            visible_range.filter_map(|idx| {
-                                if idx < num_tracks {
-                                    // Render track channel
-                                    if let Some(ref project) = panel.state.project {
-                                        if idx < project.tracks.len() {
-                                            let track = &project.tracks[idx];
-                                            return Some(render_channel_strip(track, idx, &panel.state, cx).into_any_element());
-                                        }
-                                    }
-                                    None
-                                } else if idx == num_tracks {
-                                    // Render add channel button
-                                    Some(render_add_channel_button(cx).into_any_element())
-                                } else if idx == num_tracks + 1 {
-                                    // Render master channel
-                                    Some(render_master_channel(&panel.state, cx).into_any_element())
-                                } else {
-                                    None
+            h_virtual_list(
+                panel_entity.clone(),
+                "mixer-channels",
+                channel_sizes,
+                move |panel, visible_range, _, cx| {
+                    let num_tracks = panel.state.project.as_ref()
+                        .map(|p| p.tracks.len())
+                        .unwrap_or(0);
+
+                    visible_range.filter_map(|idx| {
+                        if idx < num_tracks {
+                            // Render track channel
+                            if let Some(ref project) = panel.state.project {
+                                if idx < project.tracks.len() {
+                                    let track = &project.tracks[idx];
+                                    return Some(render_channel_strip(track, idx, &panel.state, cx).into_any_element());
                                 }
-                            }).collect::<Vec<_>>()
-                        },
-                    )
-                    .track_scroll(&state.mixer_scroll_handle)
-                    .px(px(MIXER_PADDING))
-                    .py_2()
-                    .bg(cx.theme().muted.opacity(0.15))
-                    .gap_2()
-                )
-                // Scrollbar overlay
+                            }
+                            None
+                        } else if idx == num_tracks {
+                            // Render add channel button
+                            Some(render_add_channel_button(cx).into_any_element())
+                        } else if idx == num_tracks + 1 {
+                            // Render master channel
+                            Some(render_master_channel(&panel.state, cx).into_any_element())
+                        } else {
+                            None
+                        }
+                    }).collect::<Vec<_>>()
+                },
+            )
+            .track_scroll(&state.mixer_scroll_handle)
+            .px(px(MIXER_PADDING))
+            .py_2()
+            .bg(cx.theme().muted.opacity(0.15))
+            .gap_2()
+        )
+        .child(
+            // Scrollbar overlay
+            div()
+                .absolute()
+                .inset_0()
                 .child(
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .child(
-                            Scrollbar::both(
-                                &state.mixer_scroll_state,
-                                &state.mixer_scroll_handle,
-                            )
-                            .axis(ScrollbarAxis::Horizontal)
-                        )
+                    Scrollbar::both(
+                        &state.mixer_scroll_state,
+                        &state.mixer_scroll_handle,
+                    )
+                    .axis(ScrollbarAxis::Horizontal)
                 )
         )
 }
