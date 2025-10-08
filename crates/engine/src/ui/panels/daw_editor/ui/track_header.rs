@@ -61,7 +61,7 @@ pub fn render_track_header(
             h_flex()
                 .gap_1()
                 .child(
-                    Button::new(format!("track-{}-mute", track_id))
+                    Button::new(ElementId::Name(format!("track-{}-mute", track_id).into()))
                         .label("M")
                         .compact()
                         .small()
@@ -76,7 +76,7 @@ pub fn render_track_header(
                         }))
                 )
                 .child(
-                    Button::new(format!("track-{}-solo", track_id))
+                    Button::new(ElementId::Name(format!("track-{}-solo", track_id).into()))
                         .label("S")
                         .compact()
                         .small()
@@ -89,7 +89,7 @@ pub fn render_track_header(
                         }))
                 )
                 .child(
-                    Button::new(format!("track-{}-record", track_id))
+                    Button::new(ElementId::Name(format!("track-{}-record", track_id).into()))
                         .icon(Icon::new(IconName::Circle))
                         .compact()
                         .small()

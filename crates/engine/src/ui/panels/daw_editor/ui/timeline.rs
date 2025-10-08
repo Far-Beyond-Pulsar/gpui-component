@@ -9,7 +9,7 @@ use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme,
     scroll::Scrollable,
-};
+, PixelsExt};
 use std::path::PathBuf;
 
 const TIMELINE_HEADER_HEIGHT: f32 = 40.0;
@@ -131,10 +131,10 @@ fn render_playhead(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoE
 }
 
 fn render_track_area(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
-    let tracks = state.project.as_ref()
-        .map(|p| &p.tracks)
-        .map(|t| t.as_slice())
-        .unwrap_or(&[]);
+    // Clone track list to avoid borrow issues
+    let tracks: Vec<_> = state.project.as_ref()
+        .map(|p| p.tracks.clone())
+        .unwrap_or_default();
     
     h_flex()
         .flex_1()
@@ -160,18 +160,18 @@ fn render_track_area(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl
             div()
                 .flex_1()
                 .h_full()
-                .overflow_scroll()
+                
                 
                 .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, _window, cx| {
                     let delta = match event.delta {
                         ScrollDelta::Pixels(p) => p,
                         ScrollDelta::Lines(l) => gpui::Point::new(px(l.x * 20.0), px(l.y * 20.0)),
                     };
-                    this.state.viewport.scroll_x += delta.x.as_f32() as f64;
-                    this.state.viewport.scroll_y += delta.y.as_f32() as f64;
+                    this.state.viewport.scroll_x += delta.x.as_f64() as f64;
+                    this.state.viewport.scroll_y += delta.y.as_f64() as f64;
                     cx.notify();
                 }))
-                .child(render_timeline_content(tracks, state, cx))
+                .child(render_timeline_content(&tracks, state, cx))
         )
 }
 
@@ -228,7 +228,7 @@ fn render_track_lane(
     let is_dragging_over = matches!(&state.drag_state, DragState::DraggingFile { .. });
     
     div()
-        .id(format!("track-lane-{}", track_id))
+        .id(ElementId::Name(format!("track-lane-{}", track_id).into()))
         .size_full()
         .relative()
         .bg(if is_selected {
@@ -242,14 +242,14 @@ fn render_track_lane(
         .border_b_1()
         .border_color(cx.theme().border)
         .on_click(cx.listener(move |this, event: &ClickEvent, _window, cx| {
-            this.state.select_track(track_id, event.modifiers.shift);
+            this.state.select_track(track_id, event.modifiers().shift);
             cx.notify();
         }))
         // Handle mouse up for dropping files
         .on_mouse_up(gpui::MouseButton::Left, cx.listener(move |this, event: &MouseUpEvent, _window, cx| {
             if let DragState::DraggingFile { ref file_path, .. } = this.state.drag_state {
                 // Get mouse position relative to timeline
-                let mouse_x = event.position.x.as_f32() - TRACK_HEADER_WIDTH;
+                let mouse_x = event.position.x.as_f64() as f32 - TRACK_HEADER_WIDTH;
                 let beat = this.state.pixels_to_beats(mouse_x);
                 let snapped_beat = this.state.snap_beat(beat);
                 
@@ -288,7 +288,7 @@ fn render_clip(
         .unwrap_or("Clip");
     
     div()
-        .id(format!("clip-{}", clip_id))
+        .id(ElementId::Name(format!("clip-{}", clip_id).into()))
         .absolute()
         .left(px(x))
         .top(px(4.0))
@@ -306,13 +306,13 @@ fn render_clip(
         .bg(cx.theme().accent.opacity(0.3))
         .hover(|d| d.bg(cx.theme().accent.opacity(0.4)))
         .on_click(cx.listener(move |this, event: &ClickEvent, _window, cx| {
-            this.state.select_clip(clip_id, event.modifiers.shift);
+            this.state.select_clip(clip_id, event.modifiers().shift);
             cx.notify();
         }))
         // Make clips draggable with mouse down
         .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, _window, cx| {
             // Start dragging the clip
-            let mouse_x = event.position.x.as_f32();
+            let mouse_x = event.position.x.as_f64() as f32;
             let clip_x = x;
             this.state.drag_state = DragState::DraggingClip {
                 clip_id,
@@ -321,7 +321,7 @@ fn render_clip(
                 mouse_offset: (mouse_x - clip_x, 0.0),
             };
             // Also select the clip
-            this.state.select_clip(clip_id, event.modifiers.shift);
+            this.state.select_clip(clip_id, event.modifiers().shift);
             cx.notify();
         }))
         .child(
