@@ -205,11 +205,11 @@ fn render_track_area(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl
                 .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _window, cx| {
                     // Handle dragging clips
                     if let DragState::DraggingClip { clip_id, track_id, start_beat, mouse_offset } = &this.state.drag_state {
-                        // Convert window coords to element coords to timeline coords
+                        // Use proper coordinate conversion: window → element → timeline
                         let element_pos = DawPanel::window_to_timeline_pos(event.position, this);
-                        let timeline_pos = DawPanel::element_to_timeline_coords(element_pos, &this.state.viewport);
+                        let timeline_x = element_pos.x.as_f32();
                         
-                        let mouse_x = timeline_pos.x - mouse_offset.0;
+                        let mouse_x = timeline_x - mouse_offset.0;
                         let new_beat = this.state.pixels_to_beats(mouse_x);
                         let snapped_beat = this.state.snap_beat(new_beat);
                         
@@ -317,12 +317,11 @@ fn render_track_lane(
                 // Clone file_path to avoid holding an immutable borrow
                 let file_path_cloned = file_path.clone();
                 
-                // Use proper coordinate conversion
+                // Use proper coordinate conversion: window → element
                 let element_pos = DawPanel::window_to_timeline_pos(event.position, this);
-                let timeline_pos = DawPanel::element_to_timeline_coords(element_pos, &this.state.viewport);
                 
-                // Convert x position to beats (subtract track header width)
-                let mouse_x = timeline_pos.x - TRACK_HEADER_WIDTH;
+                // Convert x position to beats
+                let mouse_x = element_pos.x.as_f32();
                 let beat = this.state.pixels_to_beats(mouse_x);
                 let snapped_beat = this.state.snap_beat(beat);
                 
@@ -396,7 +395,7 @@ fn render_clip(
         .on_mouse_down(gpui::MouseButton::Left, cx.listener({
             let start_beat = clip.start_beat(tempo);
             move |this, event: &MouseDownEvent, _window, cx| {
-                // Use proper coordinate conversion
+                // Use proper coordinate conversion: window → element
                 let element_pos = DawPanel::window_to_timeline_pos(event.position, this);
                 let mouse_x = element_pos.x.as_f32();
                 let clip_x = x;

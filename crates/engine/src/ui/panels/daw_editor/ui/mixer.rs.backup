@@ -6,7 +6,7 @@ use super::panel::DawPanel;
 use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
-    button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, PixelsExt,
+    button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme,
 };
 use crate::ui::panels::daw_editor::audio_types::{Track, TrackId};
 
@@ -355,9 +355,13 @@ fn render_fader_slider(
                                 .border_color(cx.theme().accent_foreground.opacity(0.5))
                                 .shadow_md()
                                 .cursor_pointer()
-                                // TODO: Replace manual drag with Slider component
-                                .on_mouse_down(MouseButton::Left, cx.listener(move |_panel, _event: &MouseDownEvent, _window, cx| {
-                                    // Temporary: just notify, proper Slider component will handle dragging
+                                .on_mouse_down(MouseButton::Left, cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
+                                    // Start dragging the fader
+                                    panel.state.drag_state = DragState::DraggingFader {
+                                        track_id,
+                                        start_mouse_y: event.position.y.0,
+                                        start_volume: volume,
+                                    };
                                     cx.notify();
                                 }))
                         )
@@ -424,9 +428,13 @@ fn render_pan_slider(
                                 .border_color(cx.theme().accent_foreground.opacity(0.5))
                                 .shadow_md()
                                 .cursor_pointer()
-                                // TODO: Replace manual drag with Slider component
-                                .on_mouse_down(MouseButton::Left, cx.listener(move |_panel, _event: &MouseDownEvent, _window, cx| {
-                                    // Temporary: just notify, proper Slider component will handle dragging
+                                .on_mouse_down(MouseButton::Left, cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
+                                    // Start dragging the pan
+                                    panel.state.drag_state = DragState::DraggingPan {
+                                        track_id,
+                                        start_mouse_x: event.position.x.0,
+                                        start_pan: pan,
+                                    };
                                     cx.notify();
                                 }))
                         )
@@ -792,10 +800,29 @@ fn render_master_fader(master_volume: f32, cx: &mut Context<DawPanel>) -> impl I
                                     cx.notify();
                                 }))
                         )
-                        // TODO: Replace manual click handler with Slider component
-                        .on_mouse_down(MouseButton::Left, cx.listener(move |_panel, _event: &MouseDownEvent, _window, cx| {
-                            // Temporary: just notify, proper Slider component will handle clicking
-                            cx.notify();
+                        .on_mouse_down(MouseButton::Left, cx.listener(move |panel, event: &MouseDownEvent, window, cx| {
+                            // Clicking on the track - jump to that position
+                            let fader_bounds = window.element_bounds(ElementId::Name("master-fader-track".into()));
+                            
+                            if let Some(bounds) = fader_bounds {
+                                let click_y = event.position.y.as_f32();
+                                let track_top = bounds.origin.y.as_f32();
+                                let track_height = bounds.size.height.as_f32();
+                                
+                                let click_relative = (click_y - track_top).max(0.0).min(track_height);
+                                let new_percent = ((track_height - click_relative) / track_height * 100.0).clamp(0.0, 100.0);
+                                let new_volume = (new_percent / 100.0 * 1.5).clamp(0.0, 1.5);
+                                
+                                if let Some(ref mut project) = panel.state.project {
+                                    project.master_track.volume = new_volume;
+                                    panel.state.drag_state = DragState::DraggingFader {
+                                        track_id: uuid::Uuid::nil(),
+                                        start_mouse_y: click_y,
+                                        start_volume: new_volume,
+                                    };
+                                    cx.notify();
+                                }
+                            }
                         }))
                 )
         )

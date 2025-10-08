@@ -161,6 +161,16 @@ pub enum DragState {
         track_id: TrackId,
         initial_height: f32,
     },
+    DraggingFader {
+        track_id: TrackId,
+        start_mouse_y: f32,
+        start_volume: f32,
+    },
+    DraggingPan {
+        track_id: TrackId,
+        start_mouse_x: f32,
+        start_pan: f32,
+    },
 }
 
 impl Default for DragState {

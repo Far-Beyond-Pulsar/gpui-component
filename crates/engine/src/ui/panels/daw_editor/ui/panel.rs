@@ -51,6 +51,20 @@ impl DawPanel {
     pub fn set_audio_service(&mut self, service: Arc<AudioService>) {
         self.state.audio_service = Some(service);
     }
+
+    /// Convert window-relative coordinates to timeline element coordinates
+    /// Following GPUI best practices from gpui-mouse-position.md
+    pub fn window_to_timeline_pos(window_pos: Point<Pixels>, panel: &Self) -> Point<Pixels> {
+        if let Some(bounds) = &panel.timeline_element_bounds {
+            Point::new(
+                window_pos.x - bounds.origin.x,
+                window_pos.y - bounds.origin.y,
+            )
+        } else {
+            // Before first frame, bounds aren't captured yet
+            window_pos
+        }
+    }
 }
 
 impl Focusable for DawPanel {
@@ -77,6 +91,18 @@ impl Render for DawPanel {
                     }
                     DragState::DraggingClip { .. } => {
                         // Trigger re-render for clip drag visual feedback
+                        cx.notify();
+                    }
+                    DragState::DraggingFader { track_id, start_mouse_y, start_volume } => {
+                        // Update fader position based on mouse drag
+                        // Note: Pixels doesn't expose .0 publicly, so we can't use direct dragging here
+                        // This is now handled by the Slider component's built-in drag logic
+                        cx.notify();
+                    }
+                    DragState::DraggingPan { track_id, start_mouse_x, start_pan } => {
+                        // Update pan position based on mouse drag  
+                        // Note: Pixels doesn't expose .0 publicly, so we can't use direct dragging here
+                        // This is now handled by the Slider component's built-in drag logic
                         cx.notify();
                     }
                     _ => {}
@@ -239,21 +265,6 @@ impl DawPanel {
                     .into_any_element()
             }
             _ => div().into_any_element(),
-        }
-    }
-
-    /// Convert window-relative coordinates to timeline element coordinates
-    /// Mouse events from GPUI are relative to window origin.
-    /// Simple math: element_pos = window_pos - element_origin
-    pub fn window_to_timeline_pos(window_pos: Point<Pixels>, panel: &DawPanel) -> Point<Pixels> {
-        if let Some(bounds) = &panel.timeline_element_bounds {
-            Point::new(
-                window_pos.x - bounds.origin.x,
-                window_pos.y - bounds.origin.y,
-            )
-        } else {
-            // On first event before bounds captured, just return window pos as-is
-            window_pos
         }
     }
 
