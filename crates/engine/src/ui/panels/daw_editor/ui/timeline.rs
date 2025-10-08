@@ -301,7 +301,7 @@ fn render_drop_zone(
                 let mouse_x = element_pos.x.as_f32();
 
                 // Calculate beat position from mouse X
-                let beat = this.state.pixels_to_beats(mouse_x as f64);
+                let beat = this.state.pixels_to_beats(mouse_x);
                 let tempo = this.state.get_tempo();
 
                 // Apply snap if enabled
@@ -346,7 +346,7 @@ fn render_drop_zone(
                     let mouse_x = element_pos.x.as_f32() - mouse_offset.0;
 
                     // Calculate new beat position
-                    let new_beat = this.state.pixels_to_beats(mouse_x as f64);
+                    let new_beat = this.state.pixels_to_beats(mouse_x);
 
                     // Apply snap if enabled
                     let snapped_beat = if this.state.snap_mode == SnapMode::Grid {
@@ -377,7 +377,7 @@ fn render_drop_zone(
                 let mouse_x = element_pos.x.as_f32() - mouse_offset.0;
 
                 // Calculate final beat position
-                let new_beat = this.state.pixels_to_beats(mouse_x as f64);
+                let new_beat = this.state.pixels_to_beats(mouse_x);
 
                 // Apply snap if enabled
                 let snapped_beat = if this.state.snap_mode == SnapMode::Grid {
