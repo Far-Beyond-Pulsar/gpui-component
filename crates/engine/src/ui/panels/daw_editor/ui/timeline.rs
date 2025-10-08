@@ -210,22 +210,25 @@ fn render_track_area(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl
                         ScrollDelta::Lines(l) => gpui::Point::new(px(l.x * 20.0), px(l.y * 20.0)),
                     };
                     
-                    // Horizontal scroll with bounds
-                    let new_scroll_x = (this.state.viewport.scroll_x + delta.x.as_f64()).max(0.0);
-                    this.state.viewport.scroll_x = new_scroll_x;
-                    
-                    // Vertical scroll with bounds (synchronized with headers)
-                    let max_scroll_y = this.state.project.as_ref()
-                        .map(|p| {
-                            let total_height: f32 = p.tracks.iter()
-                                .map(|t| *this.state.track_heights.get(&t.id).unwrap_or(&this.state.viewport.track_height))
-                                .sum();
-                            (total_height - 400.0).max(0.0) as f64  // Assume ~400px visible height
-                        })
-                        .unwrap_or(0.0);
-                    
-                    let new_scroll_y = (this.state.viewport.scroll_y + delta.y.as_f64()).clamp(0.0, max_scroll_y);
-                    this.state.viewport.scroll_y = new_scroll_y;
+                    // Horizontal scroll with bounds (shift modifier enables horizontal scroll)
+                    if event.modifiers.shift {
+                        let new_scroll_x = (this.state.viewport.scroll_x - delta.y.as_f64()).max(0.0);
+                        this.state.viewport.scroll_x = new_scroll_x;
+                    } else {
+                        // Vertical scroll with bounds (synchronized with headers)
+                        let max_scroll_y = this.state.project.as_ref()
+                            .map(|p| {
+                                let total_height: f32 = p.tracks.iter()
+                                    .map(|t| *this.state.track_heights.get(&t.id).unwrap_or(&this.state.viewport.track_height))
+                                    .sum();
+                                (total_height - 400.0).max(0.0) as f64  // Assume ~400px visible height
+                            })
+                            .unwrap_or(0.0);
+                        
+                        // Invert the Y delta to fix inverted scroll direction
+                        let new_scroll_y = (this.state.viewport.scroll_y - delta.y.as_f64()).clamp(0.0, max_scroll_y);
+                        this.state.viewport.scroll_y = new_scroll_y;
+                    }
                     
                     cx.notify();
                 }))
