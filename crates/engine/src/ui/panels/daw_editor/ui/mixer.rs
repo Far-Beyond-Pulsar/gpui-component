@@ -168,9 +168,6 @@ fn render_channel_strip(
 ) -> impl IntoElement {
     let is_selected = state.selection.selected_track_ids.contains(&track.id);
     let is_muted = track.muted || state.is_track_effectively_muted(track.id);
-    let is_solo = state.solo_tracks.contains(&track.id);
-    let volume_db = 20.0 * track.volume.log10(); // Convert linear to dB
-    let pan_percent = (track.pan * 100.0) as i32;
     let track_id = track.id;
 
     // Beautiful color per track
@@ -185,7 +182,7 @@ fn render_channel_strip(
         .bg(if is_selected {
             cx.theme().accent.opacity(0.25)
         } else {
-            cx.theme().muted.opacity(0.4)  // Better contrast
+            cx.theme().muted.opacity(0.15)
         })
         .rounded_lg()
         .border_1()
@@ -227,11 +224,15 @@ fn render_channel_strip(
                         .child(track.name.clone())
                 )
         )
+        // Output routing dropdown
+        .child(render_output_routing(track, track_id, cx))
         // Insert slots (3 effect slots)
         .child(render_insert_slots(track, cx))
+        // Send levels (A and B with pre/post toggle)
+        .child(render_send_controls(track, track_id, cx))
         // Peak meter LEDs
         .child(render_peak_meters(track, cx))
-        // Vertical fader slider
+        // Vertical output fader slider (routes to selected output)
         .child(render_fader_slider(track, track_id, cx))
         // Volume readout
         .child(
@@ -242,19 +243,9 @@ fn render_channel_strip(
                 .items_center()
                 .justify_center()
                 .text_xs()
-                .text_color(if volume_db > 0.0 {
-                    hsla(0.0, 0.8, 0.5, 1.0) // Red if clipping
-                } else {
-                    cx.theme().muted_foreground
-                })
-                .child(format!("{:+.1} dB", volume_db))
+                .text_color(cx.theme().muted_foreground)
+                .child(format!("{:+.1} dB", track.volume_db()))
         )
-        // Pan knob/slider
-        .child(render_pan_slider(track, track_id, cx))
-        // Send knobs (2 sends: A and B)
-        .child(render_send_controls(track, track_id, cx))
-        // Mute / Solo / Record buttons
-        .child(render_channel_buttons(track, track_id, is_muted, is_solo, cx))
 }
 
 fn render_insert_slots(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoElement {
@@ -504,6 +495,44 @@ fn render_pan_slider(
         )
 }
 
+/// Output routing dropdown - selects which bus/output this track routes to
+fn render_output_routing(
+    track: &Track,
+    track_id: TrackId,
+    cx: &mut Context<DawPanel>,
+) -> impl IntoElement {
+    v_flex()
+        .w_full()
+        .gap_0p5()
+        .child(
+            div()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child("OUTPUT")
+        )
+        .child(
+            div()
+                .w_full()
+                .h(px(24.0))
+                .px_2()
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(cx.theme().secondary.opacity(0.6))
+                .rounded_sm()
+                .border_1()
+                .border_color(cx.theme().border)
+                .cursor_pointer()
+                .hover(|style| style.bg(cx.theme().secondary.opacity(0.8)))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().foreground)
+                        .child("Master") // Default routing
+                )
+        )
+}
+
 fn render_send_controls(
     track: &Track,
     track_id: TrackId,
@@ -519,186 +548,56 @@ fn render_send_controls(
                 .child("SENDS")
         )
         .child(
-            h_flex()
+            v_flex()
                 .w_full()
                 .gap_1()
-                .child(render_send_knob("A", 0.0, track_id, cx))
-                .child(render_send_knob("B", 0.0, track_id, cx))
+                .child(render_send_row("Send A", 0.0, false, track_id, 0, cx))
+                .child(render_send_row("Send B", 0.0, false, track_id, 1, cx))
         )
 }
 
-fn render_send_knob(
+fn render_send_row(
     label: &'static str,
     value: f32,
-    _track_id: TrackId,
+    is_pre_fader: bool,
+    track_id: TrackId,
+    send_idx: usize,
     cx: &mut Context<DawPanel>,
 ) -> impl IntoElement {
-    v_flex()
-        .flex_1()
-        .gap_0p5()
+    h_flex()
+        .w_full()
+        .gap_1()
         .items_center()
+        // Send label and pre/post toggle
+        .child(
+            Button::new(ElementId::Name(format!("send-{}-{}-prepost", track_id, send_idx).into()))
+                .label(if is_pre_fader { "PRE" } else { "POST" })
+                .compact()
+                .small()
+                .when(is_pre_fader, |b| b.primary())
+                .tooltip("Pre/Post Fader")
+                .flex_shrink_0()
+        )
+        // Send level knob (mini)
         .child(
             div()
-                .w(px(32.0))
-                .h(px(32.0))
-                .rounded_full()
-                .bg(cx.theme().secondary.opacity(0.4))
-                .border_2()
-                .border_color(cx.theme().border)
+                .flex_1()
+                .h(px(20.0))
+                .px_1()
                 .flex()
                 .items_center()
                 .justify_center()
+                .bg(cx.theme().secondary.opacity(0.4))
+                .rounded_sm()
+                .border_1()
+                .border_color(cx.theme().border)
                 .cursor_pointer()
                 .hover(|style| style.bg(cx.theme().secondary.opacity(0.6)))
                 .child(
                     div()
                         .text_xs()
-                        .font_semibold()
                         .text_color(cx.theme().foreground)
-                        .child(format!("{:.0}", value * 100.0))
-                )
-        )
-        .child(
-            div()
-                .text_xs()
-                .text_color(cx.theme().muted_foreground)
-                .child(label)
-        )
-}
-
-fn render_channel_buttons(
-    track: &Track,
-    track_id: TrackId,
-    is_muted: bool,
-    is_solo: bool,
-    cx: &mut Context<DawPanel>,
-) -> impl IntoElement {
-    h_flex()
-        .w_full()
-        .gap_0p5()
-        .child(
-            div()
-                .flex_1()
-                .h(px(24.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded_sm()
-                .bg(if is_muted {
-                    hsla(0.0, 0.7, 0.4, 0.8)
-                } else {
-                    cx.theme().secondary.opacity(0.4)
-                })
-                .border_1()
-                .border_color(cx.theme().border)
-                .cursor_pointer()
-                .hover(|style| {
-                    style.bg(if is_muted {
-                        hsla(0.0, 0.7, 0.5, 0.9)
-                    } else {
-                        cx.theme().secondary.opacity(0.6)
-                    })
-                })
-                .on_mouse_down(MouseButton::Left, cx.listener(move |panel, _event: &MouseDownEvent, _window, cx| {
-                    if let Some(ref mut project) = panel.state.project {
-                        if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id) {
-                            track.muted = !track.muted;
-                            cx.notify();
-                        }
-                    }
-                }))
-                .child(
-                    div()
-                        .text_xs()
-                        .font_semibold()
-                        .text_color(if is_muted {
-                            gpui::white()
-                        } else {
-                            cx.theme().muted_foreground
-                        })
-                        .child("M")
-                )
-        )
-        .child(
-            div()
-                .flex_1()
-                .h(px(24.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded_sm()
-                .bg(if is_solo {
-                    hsla(60.0 / 360.0, 0.9, 0.5, 0.8)
-                } else {
-                    cx.theme().secondary.opacity(0.4)
-                })
-                .border_1()
-                .border_color(cx.theme().border)
-                .cursor_pointer()
-                .hover(|style| {
-                    style.bg(if is_solo {
-                        hsla(60.0 / 360.0, 0.9, 0.6, 0.9)
-                    } else {
-                        cx.theme().secondary.opacity(0.6)
-                    })
-                })
-                .on_mouse_down(MouseButton::Left, cx.listener(move |panel, _event: &MouseDownEvent, _window, cx| {
-                    panel.state.toggle_solo(track_id);
-                    cx.notify();
-                }))
-                .child(
-                    div()
-                        .text_xs()
-                        .font_semibold()
-                        .text_color(if is_solo {
-                            gpui::black()
-                        } else {
-                            cx.theme().muted_foreground
-                        })
-                        .child("S")
-                )
-        )
-        .child(
-            div()
-                .flex_1()
-                .h(px(24.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded_sm()
-                .bg(if track.record_armed {
-                    hsla(0.0, 0.9, 0.5, 0.8)
-                } else {
-                    cx.theme().secondary.opacity(0.4)
-                })
-                .border_1()
-                .border_color(cx.theme().border)
-                .cursor_pointer()
-                .hover(|style| {
-                    style.bg(if track.record_armed {
-                        hsla(0.0, 0.9, 0.6, 0.9)
-                    } else {
-                        cx.theme().secondary.opacity(0.6)
-                    })
-                })
-                .on_mouse_down(MouseButton::Left, cx.listener(move |panel, _event: &MouseDownEvent, _window, cx| {
-                    if let Some(ref mut project) = panel.state.project {
-                        if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id) {
-                            track.record_armed = !track.record_armed;
-                            cx.notify();
-                        }
-                    }
-                }))
-                .child(
-                    div()
-                        .text_xs()
-                        .font_semibold()
-                        .text_color(if track.record_armed {
-                            gpui::white()
-                        } else {
-                            cx.theme().muted_foreground
-                        })
-                        .child("R")
+                        .child(format!("{:.0}%", value * 100.0))
                 )
         )
 }
