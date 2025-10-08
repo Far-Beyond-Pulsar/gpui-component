@@ -168,6 +168,7 @@ fn render_track_area(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl
     
     h_flex()
         .flex_1()
+        .min_w_0()  // Allow shrinking to fit within container
         .overflow_hidden()
         // Track headers column
         .child(
@@ -186,13 +187,15 @@ fn render_track_area(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl
                         }))
                 )
         )
-        // Timeline content
+        // Timeline content - scrollable and constrained
         .child(
             div()
                 .flex_1()
+                .min_w_0()  // Allow shrinking to fit
                 .h_full()
                 .overflow_hidden()  // Enable both horizontal and vertical scrolling
                 .scrollable(Axis::Horizontal)
+                .scrollable(Axis::Vertical)
                 .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, _window, cx| {
                     let delta = match event.delta {
                         ScrollDelta::Pixels(p) => p,

@@ -26,7 +26,7 @@ pub fn render_mixer(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl 
                 .gap_2()
                 .px_3()
                 .py_2()
-                .bg(cx.theme().muted.opacity(0.2))  // Match browser bg
+                .bg(cx.theme().background)  // Match background color with browser/inspector
                 // Render all tracks
                 .children((0..num_tracks).map(|idx| {
                     if let Some(ref project) = state.project {
@@ -319,14 +319,14 @@ fn render_fader_slider(
                 .items_center()
                 .justify_center()
                 .child(
-                    // Vertical fader track
+                    // Vertical fader track with proper mouse handling
                     div()
                         .id(ElementId::Name(format!("fader-track-{}", track_id).into()))
                         .relative()
-                        .w(px(8.0))
+                        .w(px(10.0))
                         .h_full()
                         .min_h(px(80.0))
-                        .bg(cx.theme().secondary.opacity(0.3))
+                        .bg(cx.theme().secondary.opacity(0.4))
                         .rounded_sm()
                         .cursor_ns_resize()
                         .child(
@@ -337,7 +337,7 @@ fn render_fader_slider(
                                 .left_0()
                                 .w_full()
                                 .h(relative(volume_percent / 100.0))
-                                .bg(cx.theme().accent.opacity(0.7))
+                                .bg(hsla(0.6, 0.8, 0.6, 1.0)) // Bright green-cyan for visibility
                                 .rounded_sm()
                         )
                         .child(
@@ -345,19 +345,23 @@ fn render_fader_slider(
                             div()
                                 .id(ElementId::Name(format!("fader-thumb-{}", track_id).into()))
                                 .absolute()
-                                .w(px(20.0))
-                                .h(px(12.0))
-                                .left(px(-6.0))
+                                .w(px(24.0))
+                                .h(px(14.0))
+                                .left(px(-7.0))
                                 .bottom(relative(volume_percent / 100.0))
                                 .bg(cx.theme().accent)
                                 .rounded_sm()
-                                .border_1()
-                                .border_color(cx.theme().accent_foreground.opacity(0.5))
+                                .border_2()
+                                .border_color(cx.theme().foreground.opacity(0.3))
                                 .shadow_md()
                                 .cursor_pointer()
-                                // TODO: Replace manual drag with Slider component
-                                .on_mouse_down(MouseButton::Left, cx.listener(move |_panel, _event: &MouseDownEvent, _window, cx| {
-                                    // Temporary: just notify, proper Slider component will handle dragging
+                                .on_mouse_down(MouseButton::Left, cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
+                                    // Start dragging fader
+                                    panel.state.drag_state = DragState::DraggingFader {
+                                        track_id,
+                                        start_mouse_y: event.position.y.as_f32(),
+                                        start_volume: volume,
+                                    };
                                     cx.notify();
                                 }))
                         )
@@ -396,8 +400,8 @@ fn render_pan_slider(
                         .id(ElementId::Name(format!("pan-track-{}", track_id).into()))
                         .relative()
                         .w_full()
-                        .h(px(6.0))
-                        .bg(cx.theme().secondary.opacity(0.3))
+                        .h(px(8.0))
+                        .bg(cx.theme().secondary.opacity(0.4))
                         .rounded_sm()
                         .cursor_ew_resize()
                         .child(
@@ -414,19 +418,23 @@ fn render_pan_slider(
                             div()
                                 .id(ElementId::Name(format!("pan-thumb-{}", track_id).into()))
                                 .absolute()
-                                .w(px(12.0))
-                                .h(px(16.0))
+                                .w(px(14.0))
+                                .h(px(20.0))
                                 .left(relative(pan_position / 100.0))
-                                .top(px(-5.0))
+                                .top(px(-6.0))
                                 .bg(cx.theme().accent)
                                 .rounded_sm()
-                                .border_1()
-                                .border_color(cx.theme().accent_foreground.opacity(0.5))
+                                .border_2()
+                                .border_color(cx.theme().foreground.opacity(0.3))
                                 .shadow_md()
                                 .cursor_pointer()
-                                // TODO: Replace manual drag with Slider component
-                                .on_mouse_down(MouseButton::Left, cx.listener(move |_panel, _event: &MouseDownEvent, _window, cx| {
-                                    // Temporary: just notify, proper Slider component will handle dragging
+                                .on_mouse_down(MouseButton::Left, cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
+                                    // Start dragging pan
+                                    panel.state.drag_state = DragState::DraggingPan {
+                                        track_id,
+                                        start_mouse_x: event.position.x.as_f32(),
+                                        start_pan: pan,
+                                    };
                                     cx.notify();
                                 }))
                         )
@@ -752,7 +760,7 @@ fn render_master_fader(master_volume: f32, cx: &mut Context<DawPanel>) -> impl I
                     div()
                         .id(ElementId::Name("master-fader-track".into()))
                         .relative()
-                        .w(px(10.0))
+                        .w(px(12.0))
                         .h_full()
                         .min_h(px(80.0))
                         .bg(cx.theme().secondary.opacity(0.4))
@@ -772,31 +780,26 @@ fn render_master_fader(master_volume: f32, cx: &mut Context<DawPanel>) -> impl I
                             div()
                                 .id(ElementId::Name("master-fader-thumb".into()))
                                 .absolute()
-                                .w(px(24.0))
-                                .h(px(14.0))
-                                .left(px(-7.0))
+                                .w(px(28.0))
+                                .h(px(16.0))
+                                .left(px(-8.0))
                                 .bottom(relative(volume_percent / 100.0))
                                 .bg(cx.theme().accent)
                                 .rounded_md()
                                 .border_2()
-                                .border_color(cx.theme().accent_foreground.opacity(0.5))
+                                .border_color(cx.theme().foreground.opacity(0.3))
                                 .shadow_lg()
                                 .cursor_pointer()
                                 .on_mouse_down(MouseButton::Left, cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
-                                    // Start dragging master fader
+                                    // Start dragging master fader (use nil UUID for master)
                                     panel.state.drag_state = DragState::DraggingFader {
-                                        track_id: uuid::Uuid::nil(), // Use nil UUID for master
+                                        track_id: uuid::Uuid::nil(),
                                         start_mouse_y: event.position.y.as_f32(),
                                         start_volume: master_volume,
                                     };
                                     cx.notify();
                                 }))
                         )
-                        // TODO: Replace manual click handler with Slider component
-                        .on_mouse_down(MouseButton::Left, cx.listener(move |_panel, _event: &MouseDownEvent, _window, cx| {
-                            // Temporary: just notify, proper Slider component will handle clicking
-                            cx.notify();
-                        }))
                 )
         )
 }

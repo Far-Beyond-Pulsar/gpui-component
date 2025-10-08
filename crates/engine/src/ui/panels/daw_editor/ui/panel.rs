@@ -83,8 +83,8 @@ impl Render for DawPanel {
             .overflow_hidden()
             // Handle mouse move for dragging with proper coordinates
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _window, cx| {
-                // Update drag visual feedback position
-                match &mut this.state.drag_state {
+                // Update drag visual feedback position and values
+                match &this.state.drag_state.clone() {
                     DragState::DraggingFile { .. } => {
                         // Just trigger re-render for visual feedback
                         cx.notify();
@@ -95,14 +95,33 @@ impl Render for DawPanel {
                     }
                     DragState::DraggingFader { track_id, start_mouse_y, start_volume } => {
                         // Update fader position based on mouse drag
-                        // Note: Pixels doesn't expose .0 publicly, so we can't use direct dragging here
-                        // This is now handled by the Slider component's built-in drag logic
+                        let current_y = event.position.y.as_f32();
+                        let delta_y = *start_mouse_y - current_y; // Inverted: up = increase
+                        let delta_volume = delta_y / 100.0; // Sensitivity factor
+                        let new_volume = (*start_volume + delta_volume).clamp(0.0, 1.5);
+                        
+                        if let Some(ref mut project) = this.state.project {
+                            // Handle master fader (nil UUID)
+                            if track_id.is_nil() {
+                                project.master_track.volume = new_volume;
+                            } else if let Some(track) = project.tracks.iter_mut().find(|t| t.id == *track_id) {
+                                track.volume = new_volume;
+                            }
+                        }
                         cx.notify();
                     }
                     DragState::DraggingPan { track_id, start_mouse_x, start_pan } => {
-                        // Update pan position based on mouse drag  
-                        // Note: Pixels doesn't expose .0 publicly, so we can't use direct dragging here
-                        // This is now handled by the Slider component's built-in drag logic
+                        // Update pan position based on mouse drag
+                        let current_x = event.position.x.as_f32();
+                        let delta_x = current_x - *start_mouse_x;
+                        let delta_pan = delta_x / 50.0; // Sensitivity factor
+                        let new_pan = (*start_pan + delta_pan).clamp(-1.0, 1.0);
+                        
+                        if let Some(ref mut project) = this.state.project {
+                            if let Some(track) = project.tracks.iter_mut().find(|t| t.id == *track_id) {
+                                track.pan = new_pan;
+                            }
+                        }
                         cx.notify();
                     }
                     _ => {}
@@ -175,6 +194,8 @@ impl DawPanel {
         v_flex()
             .flex_1()
             .h_full()
+            .min_w_0()  // Allow shrinking below content width
+            .overflow_hidden()  // Prevent content overflow
             .bg(cx.theme().background)
             .gap_0()
             // Main content area (timeline/editor) - takes up most of the space
@@ -182,6 +203,7 @@ impl DawPanel {
                 div()
                     .flex_1()
                     .w_full()
+                    .min_w_0()  // Allow shrinking
                     .overflow_hidden()
                     .child(match self.state.view_mode {
                         ViewMode::Arrange => self.render_timeline(cx).into_any_element(),
