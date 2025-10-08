@@ -8,6 +8,7 @@ use gpui_component::{
     scroll::{Scrollbar, ScrollbarAxis, ScrollbarState}, PixelsExt, v_virtual_list, VirtualListScrollHandle};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::ops::Range;
 use crate::ui::panels::daw_editor::audio_types::SAMPLE_RATE;
 
 const TIMELINE_HEADER_HEIGHT: f32 = 40.0;
@@ -153,134 +154,62 @@ fn render_playhead(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoE
         )
 }
 
-/// Render virtualized track area with proper scrolling
+/// Render virtualized track area - using Table pattern with uniform_list
 fn render_virtual_track_area(
     state: &DawUiState,
     item_sizes: Rc<Vec<Size<Pixels>>>,
     cx: &mut Context<DawPanel>,
 ) -> impl IntoElement {
     let panel_entity = cx.entity().clone();
+    let num_tracks = state.project.as_ref().map(|p| p.tracks.len()).unwrap_or(0);
     let total_beats = 500.0;
     let total_width = state.beats_to_pixels(total_beats);
-
+    let vertical_scroll_handle = state.timeline_vertical_scroll_handle.clone();
+    
     div()
         .flex_1()
         .w_full()
         .relative()
         .overflow_hidden()
         .child(
-            h_flex()
-                .size_full()
-                .gap_0()
-                // Track headers column (left)
-                .child(render_track_headers_column(state, item_sizes.clone(), cx))
-                // Track content area (right) - scrollable horizontally
-                .child(render_track_content_area(state, item_sizes, total_width, cx))
-        )
-}
-
-/// Render the left column of track headers that scrolls vertically in sync
-fn render_track_headers_column(
-    state: &DawUiState,
-    item_sizes: Rc<Vec<Size<Pixels>>>,
-    cx: &mut Context<DawPanel>,
-) -> impl IntoElement {
-    let panel_entity = cx.entity().clone();
-
-    div()
-        .w(px(TRACK_HEADER_WIDTH))
-        .h_full()
-        .border_r_1()
-        .border_color(cx.theme().border)
-        .overflow_hidden()
-        .child(
-            v_virtual_list(
-                panel_entity.clone(),
-                "timeline-track-headers",
-                item_sizes,
-                move |panel, visible_range, _, cx| {
-                    // Get tracks from panel state
+            uniform_list(
+                "timeline-track-rows",
+                num_tracks,
+                cx.processor(move |panel: &mut DawPanel, visible_range: Range<usize>, _window, cx| {
                     let tracks = panel.state.project.as_ref()
-                        .map(|p| p.tracks.clone())
-                        .unwrap_or_default();
-
-                    // Render only visible track headers
-                    visible_range.filter_map(|track_idx| {
-                        if track_idx < tracks.len() {
-                            let track = &tracks[track_idx];
-                            Some(track_header::render_track_header(track, &panel.state, cx).into_any_element())
-                        } else {
-                            None
-                        }
-                    }).collect::<Vec<_>>()
-                },
+                        .map(|p| &p.tracks)
+                        .map(|t| t.as_slice())
+                        .unwrap_or(&[]);
+                    let total_width = panel.state.beats_to_pixels(500.0);
+                    
+                    visible_range.into_iter().filter_map(|track_idx| {
+                        tracks.get(track_idx).map(|track| {
+                            render_track_row(track, &panel.state, total_width, cx)
+                        })
+                    }).collect()
+                })
             )
-            .track_scroll(&state.timeline_scroll_handle)
-            .gap_0()
+            .size_full()
+            .track_scroll(vertical_scroll_handle)
+            .with_sizing_behavior(ListSizingBehavior::Infer)
         )
-}
-
-/// Render the right content area with virtualized tracks
-fn render_track_content_area(
-    state: &DawUiState,
-    item_sizes: Rc<Vec<Size<Pixels>>>,
-    total_width: f32,
-    cx: &mut Context<DawPanel>,
-) -> impl IntoElement {
-    let panel_entity = cx.entity().clone();
-
-    div()
-        .flex_1()
-        .h_full()
-        .relative()
-        .overflow_hidden()
+        // Scrollbar overlay for horizontal scrolling
         .child(
             div()
-                .size_full()
-                .relative()
+                .absolute()
+                .inset_0()
                 .child(
-                    v_virtual_list(
-                        panel_entity.clone(),
-                        "timeline-tracks-content",
-                        item_sizes,
-                        move |panel, visible_range, _, cx| {
-                            // Get tracks from panel state
-                            let tracks = panel.state.project.as_ref()
-                                .map(|p| p.tracks.clone())
-                                .unwrap_or_default();
-
-                            // Render only visible track content
-                            visible_range.filter_map(|track_idx| {
-                                if track_idx < tracks.len() {
-                                    let track = &tracks[track_idx];
-                                    Some(render_track_content_wrapper(track, &panel.state, total_width, cx).into_any_element())
-                                } else {
-                                    None
-                                }
-                            }).collect::<Vec<_>>()
-                        },
+                    Scrollbar::both(
+                        &state.timeline_scroll_state,
+                        &state.timeline_scroll_handle,
                     )
-                    .track_scroll(&state.timeline_scroll_handle)
-                    .gap_0()
-                )
-                // Scrollbars overlay
-                .child(
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .child(
-                            Scrollbar::both(
-                                &state.timeline_scroll_state,
-                                &state.timeline_scroll_handle,
-                            )
-                            .axis(ScrollbarAxis::Both)
-                        )
+                    .axis(ScrollbarAxis::Horizontal)
                 )
         )
 }
 
-/// Wrapper for track content that matches the height of its corresponding header
-fn render_track_content_wrapper(
+/// Render a single track row - fixed header on left, scrollable content on right (Table pattern)
+fn render_track_row(
     track: &crate::ui::panels::daw_editor::audio_types::Track,
     state: &DawUiState,
     total_width: f32,
@@ -289,13 +218,35 @@ fn render_track_content_wrapper(
     let track_id = track.id;
     let track_height = *state.track_heights.get(&track_id)
         .unwrap_or(&state.viewport.track_height);
-
-    div()
+    
+    h_flex()
         .w_full()
         .h(px(track_height))
         .border_b_1()
         .border_color(cx.theme().border)
-        .child(render_track_content(track, state, total_width, cx))
+        // Fixed left: track header (like Table's fixed left columns)
+        .child(
+            div()
+                .w(px(TRACK_HEADER_WIDTH))
+                .h_full()
+                .border_r_1()
+                .border_color(cx.theme().border)
+                .child(track_header::render_track_header(track, state, cx))
+        )
+        // Scrollable right: track content (like Table's scrollable columns)
+        .child(
+            div()
+                .flex_1()
+                .h_full()
+                .overflow_hidden()
+                .relative()
+                .child(
+                    div()
+                        .w(px(total_width))
+                        .h_full()
+                        .child(render_track_content(track, state, total_width, cx))
+                )
+        )
 }
 
 /// Render track timeline content (clips, automation, etc.)

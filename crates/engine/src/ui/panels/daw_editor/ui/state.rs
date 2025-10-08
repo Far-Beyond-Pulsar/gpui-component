@@ -240,8 +240,9 @@ pub struct DawUiState {
     pub mixer_scroll_state: ScrollbarState,
 
     // Virtual list scroll handles for performance
-    pub timeline_scroll_handle: VirtualListScrollHandle,
+    pub timeline_scroll_handle: VirtualListScrollHandle,  // For horizontal scrolling
     pub timeline_scroll_state: ScrollbarState,
+    pub timeline_vertical_scroll_handle: UniformListScrollHandle,  // For vertical scrolling of rows
     
     // Undo/Redo
     pub can_undo: bool,
@@ -298,6 +299,7 @@ impl DawUiState {
 
             timeline_scroll_handle: VirtualListScrollHandle::new(),
             timeline_scroll_state: ScrollbarState::default(),
+            timeline_vertical_scroll_handle: UniformListScrollHandle::new(),
             
             can_undo: false,
             can_redo: false,
