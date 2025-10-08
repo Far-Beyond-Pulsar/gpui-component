@@ -45,5 +45,18 @@ quote = "1.0"
 prettyplease = "0.2"
 pulsar_std = { path = "../pulsar_std" }
 
+# DAW audio dependencies
+cpal = "0.15"      # Audio I/O library
+hound = "3.5"
+lewton = "0.10"
+claxon = "0.4"   
+crossbeam = "0.8"  # Concurrency utilities
+wgpu = "0.20"      # GPU compute and rendering
+bytemuck = { version = "1.14", features = ["derive"] }
+ron = "0.8"
+
+[dev-dependencies]
+tempfile = "3.8"
+
 [lints]
 workspace = true

@@ -408,10 +408,10 @@ impl RustAnalyzerManager {
                         ) {
                             eprintln!("❌ Failed to send initialize request: {}", e);
                             let _ = progress_tx_for_init.send(ProgressUpdate::Error(format!("Init failed: {}", e)));
-                        } else {
-                            // Start monitoring progress
-                            Self::monitor_progress(progress_tx_for_init);
                         }
+                        // Note: We removed monitor_progress() call here
+                        // Real rust-analyzer sends progress via LSP $/progress notifications
+                        // The fake progress monitor was masking actual errors
                     });
 
                     // Update status to indexing
@@ -801,40 +801,6 @@ impl RustAnalyzerManager {
                 }
             }
         }
-    }
-
-    fn monitor_progress(progress_tx: Sender<ProgressUpdate>) {
-        // Simulate progress updates as fallback
-        // In production, actual progress comes from LSP messages
-        thread::spawn(move || {
-            thread::sleep(Duration::from_secs(2));
-
-            for i in 0..=10 {
-                thread::sleep(Duration::from_millis(800));
-
-                let progress = (i as f32) / 10.0;
-                let message = match i {
-                    0..=2 => "Parsing crates...".to_string(),
-                    3..=5 => "Building type information...".to_string(),
-                    6..=8 => "Indexing symbols...".to_string(),
-                    9 => "Finalizing...".to_string(),
-                    _ => "Ready".to_string(),
-                };
-
-                println!("📊 Progress: {:.0}% - {}", progress * 100.0, message);
-
-                let _ = progress_tx.send(ProgressUpdate::Progress {
-                    progress,
-                    message: message.clone(),
-                });
-
-                if progress >= 1.0 {
-                    println!("✅ rust-analyzer indexing complete");
-                    let _ = progress_tx.send(ProgressUpdate::Ready);
-                    break;
-                }
-            }
-        });
     }
 
     /// Stop rust-analyzer

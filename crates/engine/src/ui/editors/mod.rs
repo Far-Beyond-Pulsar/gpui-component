@@ -16,6 +16,7 @@ pub enum EditorType {
     Behavior,
     Foliage,
     UI,
+    Daw,
 }
 
 impl EditorType {
@@ -37,6 +38,7 @@ impl EditorType {
             EditorType::Behavior => "Behavior Tree Editor",
             EditorType::Foliage => "Foliage Editor",
             EditorType::UI => "UI Editor",
+            EditorType::Daw => "DAW Editor",
         }
     }
 
@@ -58,6 +60,7 @@ impl EditorType {
             EditorType::Behavior => "Design AI behavior trees",
             EditorType::Foliage => "Paint vegetation and foliage",
             EditorType::UI => "Design user interfaces",
+            EditorType::Daw => "Multi-track audio editing and mixing",
         }
     }
 }

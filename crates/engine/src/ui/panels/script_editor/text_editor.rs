@@ -9,6 +9,7 @@ use gpui_component::{
     ActiveTheme as _, StyledExt, Sizable as _,
     IconName,
 };
+
 use std::path::PathBuf;
 use std::time::Instant;
 use std::fs;

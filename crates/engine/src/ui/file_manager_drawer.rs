@@ -58,6 +58,7 @@ pub enum FileType {
     Folder,
     Class, // A folder containing graph_save.json
     Script,
+    DawProject, // .pdaw files
     Other,
 }
 
@@ -82,10 +83,12 @@ impl FileItem {
             } else {
                 FileType::Folder
             }
-        } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
-            FileType::Script
         } else {
-            FileType::Other
+            match path.extension().and_then(|s| s.to_str()) {
+                Some("rs") => FileType::Script,
+                Some("pdaw") => FileType::DawProject,
+                _ => FileType::Other,
+            }
         };
 
         Some(FileItem {
@@ -247,20 +250,27 @@ impl FileManagerDrawer {
             .unwrap_or_default()
     }
 
+    /// Handle clicking on an item in the file manager drawer
     fn handle_item_click(&mut self, item: &FileItem, cx: &mut Context<Self>) {
+        eprintln!("DEBUG: handle_item_click called for: {:?}, type: {:?}", item.path, item.file_type);
+        
         match &item.file_type {
-            FileType::Class | FileType::Script => {
-                // Emit event to open this class in BP editor or script in script editor
+            FileType::Class | FileType::Script | FileType::DawProject => {
+                eprintln!("DEBUG: Emitting FileSelected event");
+                // Emit event to open this class in BP editor, script in script editor, or DAW project
                 cx.emit(FileSelected {
                     path: item.path.clone(),
                     file_type: item.file_type.clone(),
                 });
             }
             FileType::Folder => {
+                eprintln!("DEBUG: Selecting folder");
                 // Select this folder to show its contents
                 self.select_folder(item.path.clone(), cx);
             }
-            _ => {}
+            _ => {
+                eprintln!("DEBUG: Unknown file type, ignoring");
+            }
         }
     }
 
@@ -597,6 +607,7 @@ impl FileManagerDrawer {
             FileType::Folder => IconName::Folder,
             FileType::Class => IconName::Component,
             FileType::Script => IconName::Code,
+            FileType::DawProject => IconName::MusicNote,
             FileType::Other => IconName::Page,
         };
 
@@ -690,6 +701,7 @@ impl FileManagerDrawer {
                                 match &item.file_type {
                                     FileType::Class => cx.theme().primary,
                                     FileType::Folder => cx.theme().accent,
+                                    FileType::DawProject => cx.theme().success,
                                     _ => cx.theme().muted_foreground,
                                 },
                             ))

@@ -15,7 +15,7 @@ use super::{
     project_selector::ProjectSelected,
     file_manager_drawer::{FileManagerDrawer, FileSelected, FileType},
     menu::AppTitleBar,
-    panels::{BlueprintEditorPanel, LevelEditorPanel, ScriptEditorPanel},
+    panels::{BlueprintEditorPanel, DawEditorPanel, LevelEditorPanel, ScriptEditorPanel},
     problems_drawer::ProblemsDrawer,
     rust_analyzer_manager::{RustAnalyzerManager, AnalyzerEvent, AnalyzerStatus},
 };
@@ -42,6 +42,7 @@ pub struct PulsarApp {
     center_tabs: Entity<TabPanel>,
     script_editor: Option<Entity<ScriptEditorPanel>>,
     blueprint_editors: Vec<Entity<BlueprintEditorPanel>>,
+    daw_editors: Vec<Entity<DawEditorPanel>>,
     next_tab_id: usize,
     // Rust Analyzer
     rust_analyzer: Entity<RustAnalyzerManager>,
@@ -108,6 +109,7 @@ impl PulsarApp {
         // Initialize editor tracking
         let script_editor = None;
         let blueprint_editors = Vec::new();
+        let daw_editors = Vec::new();
 
         // Create entry screen only if no project path is provided
         let entry_screen = if project_path.is_none() {
@@ -159,6 +161,7 @@ impl PulsarApp {
             center_tabs,
             script_editor,
             blueprint_editors,
+            daw_editors,
             next_tab_id: 1,
             rust_analyzer,
             analyzer_status_text: "Idle".to_string(),
@@ -243,6 +246,8 @@ impl PulsarApp {
             PanelEvent::TabClosed(entity_id) => {
                 self.blueprint_editors
                     .retain(|e| e.entity_id() != *entity_id);
+                self.daw_editors
+                    .retain(|e| e.entity_id() != *entity_id);
             }
             _ => {}
         }
@@ -255,14 +260,24 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        eprintln!("DEBUG: FileSelected event received - path: {:?}, type: {:?}", event.path, event.file_type);
+        
         match event.file_type {
             FileType::Class => {
+                eprintln!("DEBUG: Opening blueprint tab");
                 self.open_blueprint_tab(event.path.clone(), window, cx);
             }
             FileType::Script => {
+                eprintln!("DEBUG: Opening script tab");
                 self.open_script_tab(event.path.clone(), window, cx);
             }
-            _ => {}
+            FileType::DawProject => {
+                eprintln!("DEBUG: Opening DAW tab for path: {:?}", event.path);
+                self.open_daw_tab(event.path.clone(), window, cx);
+            }
+            _ => {
+                eprintln!("DEBUG: Unknown file type, ignoring");
+            }
         }
 
         // Close the drawer after opening a file
@@ -434,6 +449,59 @@ impl PulsarApp {
         self.script_editor = Some(script_editor);
     }
 
+    /// Open a DAW editor tab for the given project path
+    fn open_daw_tab(&mut self, project_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        eprintln!("DEBUG: open_daw_tab called with path: {:?}", project_path);
+        
+        // Check if a DAW editor for this project is already open
+        let already_open = self
+            .daw_editors
+            .iter()
+            .enumerate()
+            .find_map(|(ix, editor)| {
+                let state = editor.read(cx).dump(cx);
+                if let gpui_component::dock::PanelInfo::Panel(info) = state.info {
+                    info.get("project_path")
+                        .and_then(|v| v.as_str())
+                        .map(|p| p == project_path.to_string_lossy())
+                        .unwrap_or(false)
+                        .then_some(ix)
+                } else {
+                    None
+                }
+            });
+
+        if let Some(ix) = already_open {
+            eprintln!("DEBUG: DAW tab already open at index {}, focusing", ix);
+            // Focus the correct tab
+            if let Some(editor_entity) = self.daw_editors.get(ix) {
+                let target_id = editor_entity.entity_id();
+                self.center_tabs.update(cx, |tabs, cx| {
+                    if let Some(tab_ix) = tabs.index_of_panel_by_entity_id(target_id) {
+                        tabs.set_active_tab(tab_ix, window, cx);
+                    }
+                });
+            }
+            return;
+        }
+
+        eprintln!("DEBUG: Creating new DAW editor panel");
+        // Create new DAW editor tab
+        let daw_editor = cx.new(|cx| DawEditorPanel::new_with_project(project_path.clone(), window, cx));
+
+        eprintln!("DEBUG: Adding DAW editor to tabs");
+        // Add the tab
+        self.center_tabs.update(cx, |tabs, cx| {
+            tabs.add_panel(Arc::new(daw_editor.clone()), window, cx);
+        });
+
+        eprintln!("DEBUG: Storing DAW editor reference");
+        // Store the DAW editor reference
+        self.daw_editors.push(daw_editor);
+        
+        eprintln!("DEBUG: DAW tab opened successfully");
+    }
+
     fn on_text_editor_event(
         &mut self,
         _editor: &Entity<ScriptEditorPanel>,
@@ -470,11 +538,9 @@ impl PulsarApp {
             }
         } else if let Some(extension) = path.extension() {
             match extension.to_str() {
-                // TODO: Create a separate asset editor for assets like .png, .jpg, .wav, .mp3, etc.
-                // TODO: Create a material editor for .material files
-                // TODO: Create a level editor open level feature for .usd files
-                // TODO: Make a new file that has a helper fn for all these extensions
-                // TODO: There is probably a crate that has all these extensions defined
+                Some("pdaw") => {
+                    self.open_daw_tab(path, window, cx);
+                }
                 Some("rs") | Some("js") | Some("ts") | Some("py") | Some("lua") => {
                     self.open_script_tab(path, window, cx);
                 }
