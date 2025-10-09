@@ -4,6 +4,7 @@ use gpui_component::{
 };
 
 use super::state::{LevelEditorState, TransformTool};
+use super::actions::*;
 use crate::ui::shared::{Toolbar, ToolbarButton};
 
 /// Toolbar - Transform tools and quick actions
@@ -14,10 +15,13 @@ impl ToolbarPanel {
         Self
     }
 
-    pub fn render(&self, state: &LevelEditorState, cx: &mut App) -> impl IntoElement {
+    pub fn render<V: 'static>(&self, state: &LevelEditorState, cx: &mut Context<V>) -> impl IntoElement
+    where
+        V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
+    {
         h_flex()
             .w_full()
-            .h_10()
+            .h(px(40.0))
             .px_3()
             .gap_1()
             .items_center()
@@ -33,24 +37,36 @@ impl ToolbarPanel {
                             .icon(IconName::CursorPointer)
                             .tooltip("Select (S)")
                             .selected(matches!(state.current_tool, TransformTool::Select))
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.dispatch_action(&SelectTool);
+                            }))
                     )
                     .child(
                         Button::new("tool_move")
                             .icon(IconName::Drag)
                             .tooltip("Move (M)")
                             .selected(matches!(state.current_tool, TransformTool::Move))
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.dispatch_action(&MoveTool);
+                            }))
                     )
                     .child(
                         Button::new("tool_rotate")
                             .icon(IconName::RotateCameraRight)
                             .tooltip("Rotate (R)")
                             .selected(matches!(state.current_tool, TransformTool::Rotate))
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.dispatch_action(&RotateTool);
+                            }))
                     )
                     .child(
                         Button::new("tool_scale")
                             .icon(IconName::Enlarge)
                             .tooltip("Scale (T)")
                             .selected(matches!(state.current_tool, TransformTool::Scale))
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.dispatch_action(&ScaleTool);
+                            }))
                     )
             )
             .child(
@@ -70,18 +86,33 @@ impl ToolbarPanel {
                             .icon(IconName::Plus)
                             .tooltip("Add Mesh")
                             .xsmall()
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.dispatch_action(&AddObjectOfType {
+                                    object_type: "Mesh".to_string()
+                                });
+                            }))
                     )
                     .child(
                         Button::new("add_light")
                             .icon(IconName::Sun)
                             .tooltip("Add Light")
                             .xsmall()
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.dispatch_action(&AddObjectOfType {
+                                    object_type: "Light".to_string()
+                                });
+                            }))
                     )
                     .child(
                         Button::new("add_camera")
                             .icon(IconName::Camera)
                             .tooltip("Add Camera")
                             .xsmall()
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.dispatch_action(&AddObjectOfType {
+                                    object_type: "Camera".to_string()
+                                });
+                            }))
                     )
             )
             .child(
@@ -127,19 +158,27 @@ impl ToolbarPanel {
                             btn = btn.text_color(cx.theme().warning);
                         }
 
-                        btn
+                        btn.on_click(cx.listener(|_, _, _, cx| {
+                            cx.dispatch_action(&SaveScene);
+                        }))
                     })
                     .child(
                         Button::new("open_scene")
                             .icon(IconName::FolderOpen)
                             .tooltip("Open Scene (Ctrl+O)")
                             .xsmall()
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.dispatch_action(&OpenScene);
+                            }))
                     )
                     .child(
                         Button::new("new_scene")
                             .icon(IconName::FolderPlus)
                             .tooltip("New Scene (Ctrl+N)")
                             .xsmall()
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.dispatch_action(&NewScene);
+                            }))
                     )
             )
     }

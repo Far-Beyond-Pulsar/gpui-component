@@ -1,9 +1,12 @@
 use gpui::*;
 use gpui_component::{
-    button::{Button, ButtonVariants as _}, h_flex, v_flex, scroll::ScrollbarAxis, ActiveTheme, Icon, IconName, Selectable, Sizable, StyledExt,
+    button::{Button, ButtonVariants as _},
+    context_menu::ContextMenuExt,
+    h_flex, v_flex, scroll::ScrollbarAxis, ActiveTheme, Icon, IconName, Selectable, Sizable, StyledExt,
 };
 
 use super::state::{LevelEditorState, ObjectType, SceneObject};
+use super::actions::*;
 
 /// Hierarchy Panel - Scene outliner showing all objects in a tree structure
 pub struct HierarchyPanel;
@@ -13,7 +16,14 @@ impl HierarchyPanel {
         Self
     }
 
-    pub fn render(&self, state: &LevelEditorState, cx: &mut App) -> impl IntoElement {
+    pub fn render<V: 'static>(
+        &self,
+        state: &LevelEditorState,
+        cx: &mut Context<V>
+    ) -> impl IntoElement
+    where
+        V: EventEmitter<PanelEvent> + Render,
+    {
         v_flex()
             .size_full()
             .child(
@@ -45,6 +55,9 @@ impl HierarchyPanel {
                                             .ghost()
                                             .xsmall()
                                             .tooltip("Add Object")
+                                            .on_click(cx.listener(|_, _, _, cx| {
+                                                cx.dispatch_action(&AddObject);
+                                            }))
                                     )
                                     .child(
                                         Button::new("delete_object")
@@ -52,6 +65,9 @@ impl HierarchyPanel {
                                             .ghost()
                                             .xsmall()
                                             .tooltip("Delete Selected")
+                                            .on_click(cx.listener(|_, _, _, cx| {
+                                                cx.dispatch_action(&DeleteObject);
+                                            }))
                                     )
                             )
                     )
@@ -74,38 +90,62 @@ impl HierarchyPanel {
             )
     }
 
-    fn render_object_tree_item(
+    fn render_object_tree_item<V: 'static>(
         object: &SceneObject,
         state: &LevelEditorState,
         depth: usize,
-        cx: &App,
-    ) -> impl IntoElement {
+        cx: &mut Context<V>,
+    ) -> impl IntoElement
+    where
+        V: EventEmitter<PanelEvent> + Render,
+    {
         let is_selected = state.selected_object.as_ref() == Some(&object.id);
         let has_children = !object.children.is_empty();
+        let is_expanded = state.is_object_expanded(&object.id);
         let indent = px(depth as f32 * 16.0);
         let icon = Self::get_icon_for_object_type(object.object_type);
+        let object_id = object.id.clone();
+        let object_id_for_expand = object.id.clone();
+        let object_id_for_menu = object.id.clone();
+
+        // Build item div base
+        let item_id = SharedString::from(format!("object-{}", object.id));
+        let mut item_div = div()
+            .id(item_id)
+            .flex()
+            .items_center()
+            .gap_2()
+            .h(px(24.0))
+            .pl(indent + px(12.0))
+            .pr_3()
+            .rounded_md()
+            .cursor_pointer();
+
+        // Apply conditional styling
+        item_div = if is_selected {
+            item_div.bg(cx.theme().accent)
+        } else {
+            item_div.hover(|style| style.bg(cx.theme().accent.opacity(0.1)))
+        };
 
         div()
             .flex()
             .flex_col()
-            .child({
-                let mut item_div = div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .h(px(24.0))
-                    .pl(indent + px(12.0))
-                    .pr_3()
-                    .rounded_md()
-                    .cursor_pointer();
-
-                if is_selected {
-                    item_div = item_div.bg(cx.theme().accent);
-                } else {
-                    item_div = item_div.hover(|style| style.bg(cx.theme().accent.opacity(0.1)));
-                }
-
+            .child(
                 item_div
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |view, _, _, cx| {
+                        cx.dispatch_action(&SelectObject {
+                            object_id: object_id.clone()
+                        });
+                    }))
+                    .context_menu(move |menu, _window, _cx| {
+                        menu
+                            .menu("Add Child Object", Box::new(AddObject) as Box<dyn gpui::Action>)
+                            .menu("Duplicate", Box::new(DuplicateObject) as Box<dyn gpui::Action>)
+                            .separator()
+                            .menu("Rename", Box::new(RenameObject) as Box<dyn gpui::Action>)
+                            .menu("Delete", Box::new(DeleteObject) as Box<dyn gpui::Action>)
+                    })
                     .child(
                         // Expand/collapse arrow for items with children
                         if has_children {
@@ -117,7 +157,13 @@ impl HierarchyPanel {
                                 } else {
                                     cx.theme().muted_foreground
                                 })
-                                .child("▼")
+                                .child(if is_expanded { "▼" } else { "▶" })
+                                .on_mouse_down(MouseButton::Left, cx.listener(move |view, _, _, cx| {
+                                    cx.stop_propagation();
+                                    cx.dispatch_action(&ToggleObjectExpanded {
+                                        object_id: object_id_for_expand.clone()
+                                    });
+                                }))
                                 .into_any_element()
                         } else {
                             div()
@@ -151,12 +197,16 @@ impl HierarchyPanel {
                             })
                             .child(if object.visible { "●" } else { "○" })
                     )
-            })
+            )
             .children(
-                // Render children recursively
-                object.children.iter().map(|child| {
-                    Self::render_object_tree_item(child, state, depth + 1, cx)
-                })
+                if is_expanded {
+                    // Render children recursively only if expanded
+                    object.children.iter().map(|child| {
+                        Self::render_object_tree_item(child, state, depth + 1, cx)
+                    }).collect::<Vec<_>>()
+                } else {
+                    vec![]
+                }
             )
     }
 
@@ -169,3 +219,5 @@ impl HierarchyPanel {
         }
     }
 }
+
+use gpui_component::dock::PanelEvent;

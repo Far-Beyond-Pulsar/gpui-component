@@ -17,8 +17,9 @@ use std::time::Duration;
 
 use super::{
     LevelEditorState, SceneBrowser, HierarchyPanel, PropertiesPanel,
-    ViewportPanel, ToolbarPanel,
+    ViewportPanel, ToolbarPanel, CameraMode, ObjectType, TransformTool, Transform, SceneObject,
 };
+use super::actions::*;
 
 /// Main Level Editor Panel - Orchestrates all sub-components
 pub struct LevelEditorPanel {
@@ -188,6 +189,120 @@ impl LevelEditorPanel {
             .add_right_item(format!("Tool: {:?}", self.state.current_tool))
             .render(cx)
     }
+
+    // Action handlers
+    fn on_select_tool(&mut self, _: &SelectTool, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.set_tool(TransformTool::Select);
+        cx.notify();
+    }
+
+    fn on_move_tool(&mut self, _: &MoveTool, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.set_tool(TransformTool::Move);
+        cx.notify();
+    }
+
+    fn on_rotate_tool(&mut self, _: &RotateTool, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.set_tool(TransformTool::Rotate);
+        cx.notify();
+    }
+
+    fn on_scale_tool(&mut self, _: &ScaleTool, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.set_tool(TransformTool::Scale);
+        cx.notify();
+    }
+
+    fn on_add_object(&mut self, _: &AddObject, _: &mut Window, cx: &mut Context<Self>) {
+        let new_object = SceneObject {
+            id: format!("object_{}", self.state.scene_objects.len() + 1),
+            name: "New Object".to_string(),
+            object_type: ObjectType::Empty,
+            transform: Transform::default(),
+            visible: true,
+            children: vec![],
+        };
+        self.state.add_object(new_object);
+        cx.notify();
+    }
+
+    fn on_add_object_of_type(&mut self, action: &AddObjectOfType, _: &mut Window, cx: &mut Context<Self>) {
+        let object_type = match action.object_type.as_str() {
+            "Mesh" => ObjectType::Mesh,
+            "Light" => ObjectType::Light,
+            "Camera" => ObjectType::Camera,
+            _ => ObjectType::Empty,
+        };
+
+        let new_object = SceneObject {
+            id: format!("{}_{}", action.object_type.to_lowercase(), self.state.scene_objects.len() + 1),
+            name: format!("New {}", action.object_type),
+            object_type,
+            transform: Transform::default(),
+            visible: true,
+            children: vec![],
+        };
+        self.state.add_object(new_object);
+        cx.notify();
+    }
+
+    fn on_delete_object(&mut self, _: &DeleteObject, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.remove_selected_object();
+        cx.notify();
+    }
+
+    fn on_duplicate_object(&mut self, _: &DuplicateObject, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.duplicate_selected_object();
+        cx.notify();
+    }
+
+    fn on_select_object(&mut self, action: &SelectObject, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.select_object(Some(action.object_id.clone()));
+        cx.notify();
+    }
+
+    fn on_toggle_object_expanded(&mut self, action: &ToggleObjectExpanded, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_object_expanded(&action.object_id);
+        cx.notify();
+    }
+
+    fn on_toggle_grid(&mut self, _: &ToggleGrid, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_grid();
+        cx.notify();
+    }
+
+    fn on_toggle_wireframe(&mut self, _: &ToggleWireframe, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_wireframe();
+        cx.notify();
+    }
+
+    fn on_toggle_lighting(&mut self, _: &ToggleLighting, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_lighting();
+        cx.notify();
+    }
+
+    fn on_perspective_view(&mut self, _: &PerspectiveView, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.set_camera_mode(CameraMode::Perspective);
+        cx.notify();
+    }
+
+    fn on_orthographic_view(&mut self, _: &OrthographicView, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.set_camera_mode(CameraMode::Orthographic);
+        cx.notify();
+    }
+
+    fn on_top_view(&mut self, _: &TopView, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.set_camera_mode(CameraMode::Top);
+        cx.notify();
+    }
+
+    fn on_front_view(&mut self, _: &FrontView, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.set_camera_mode(CameraMode::Front);
+        cx.notify();
+    }
+
+    fn on_side_view(&mut self, _: &SideView, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.set_camera_mode(CameraMode::Side);
+        cx.notify();
+    }
 }
 
 impl Panel for LevelEditorPanel {
@@ -234,6 +349,29 @@ impl Render for LevelEditorPanel {
         v_flex()
             .size_full()
             .bg(cx.theme().background)
+            .key_context("LevelEditor")
+            // Transform tools
+            .on_action(cx.listener(Self::on_select_tool))
+            .on_action(cx.listener(Self::on_move_tool))
+            .on_action(cx.listener(Self::on_rotate_tool))
+            .on_action(cx.listener(Self::on_scale_tool))
+            // Object operations
+            .on_action(cx.listener(Self::on_add_object))
+            .on_action(cx.listener(Self::on_add_object_of_type))
+            .on_action(cx.listener(Self::on_delete_object))
+            .on_action(cx.listener(Self::on_duplicate_object))
+            .on_action(cx.listener(Self::on_select_object))
+            .on_action(cx.listener(Self::on_toggle_object_expanded))
+            // View operations
+            .on_action(cx.listener(Self::on_toggle_grid))
+            .on_action(cx.listener(Self::on_toggle_wireframe))
+            .on_action(cx.listener(Self::on_toggle_lighting))
+            // Camera modes
+            .on_action(cx.listener(Self::on_perspective_view))
+            .on_action(cx.listener(Self::on_orthographic_view))
+            .on_action(cx.listener(Self::on_top_view))
+            .on_action(cx.listener(Self::on_front_view))
+            .on_action(cx.listener(Self::on_side_view))
             .child(
                 // Toolbar at the top
                 self.toolbar.render(&self.state, cx)

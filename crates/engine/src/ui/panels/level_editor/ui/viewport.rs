@@ -5,6 +5,7 @@ use gpui_component::{
 use gpui_component::viewport_final::Viewport;
 
 use super::state::{CameraMode, LevelEditorState};
+use super::actions::*;
 use crate::ui::shared::ViewportControls;
 use std::sync::{Arc, Mutex};
 
@@ -26,13 +27,16 @@ impl ViewportPanel {
         }
     }
 
-    pub fn render(
+    pub fn render<V: 'static>(
         &self,
         state: &LevelEditorState,
         render_engine: &Arc<Mutex<crate::ui::rainbow_engine_final::RainbowRenderEngine>>,
         current_pattern: crate::ui::rainbow_engine_final::RainbowPattern,
-        cx: &mut App,
-    ) -> impl IntoElement {
+        cx: &mut Context<V>,
+    ) -> impl IntoElement
+    where
+        V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
+    {
         let mut viewport_div = div()
             .size_full()
             .relative()
@@ -85,7 +89,10 @@ impl ViewportPanel {
         viewport_div
     }
 
-    fn render_camera_mode_selector(camera_mode: CameraMode, cx: &App) -> impl IntoElement {
+    fn render_camera_mode_selector<V: 'static>(camera_mode: CameraMode, cx: &mut Context<V>) -> impl IntoElement
+    where
+        V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
+    {
         h_flex()
             .gap_1()
             .p_1()
@@ -98,34 +105,52 @@ impl ViewportPanel {
                     .child("Persp")
                     .xsmall()
                     .selected(matches!(camera_mode, CameraMode::Perspective))
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        cx.dispatch_action(&PerspectiveView);
+                    }))
             )
             .child(
                 Button::new("camera_orthographic")
                     .child("Ortho")
                     .xsmall()
                     .selected(matches!(camera_mode, CameraMode::Orthographic))
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        cx.dispatch_action(&OrthographicView);
+                    }))
             )
             .child(
                 Button::new("camera_top")
                     .child("Top")
                     .xsmall()
                     .selected(matches!(camera_mode, CameraMode::Top))
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        cx.dispatch_action(&TopView);
+                    }))
             )
             .child(
                 Button::new("camera_front")
                     .child("Front")
                     .xsmall()
                     .selected(matches!(camera_mode, CameraMode::Front))
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        cx.dispatch_action(&FrontView);
+                    }))
             )
             .child(
                 Button::new("camera_side")
                     .child("Side")
                     .xsmall()
                     .selected(matches!(camera_mode, CameraMode::Side))
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        cx.dispatch_action(&SideView);
+                    }))
             )
     }
 
-    fn render_viewport_options(state: &LevelEditorState, cx: &App) -> impl IntoElement {
+    fn render_viewport_options<V: 'static>(state: &LevelEditorState, cx: &mut Context<V>) -> impl IntoElement
+    where
+        V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
+    {
         h_flex()
             .gap_1()
             .p_1()
@@ -138,27 +163,39 @@ impl ViewportPanel {
                     .child("Grid")
                     .xsmall()
                     .selected(state.show_grid)
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        cx.dispatch_action(&ToggleGrid);
+                    }))
             )
             .child(
                 Button::new("toggle_wireframe")
                     .child("Wireframe")
                     .xsmall()
                     .selected(state.show_wireframe)
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        cx.dispatch_action(&ToggleWireframe);
+                    }))
             )
             .child(
                 Button::new("toggle_lighting")
                     .child("Lighting")
                     .xsmall()
                     .selected(state.show_lighting)
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        cx.dispatch_action(&ToggleLighting);
+                    }))
             )
     }
 
-    fn render_performance_overlay(
+    fn render_performance_overlay<V: 'static>(
         &self,
         render_engine: &Arc<Mutex<crate::ui::rainbow_engine_final::RainbowRenderEngine>>,
         current_pattern: crate::ui::rainbow_engine_final::RainbowPattern,
-        cx: &App,
-    ) -> impl IntoElement {
+        cx: &mut Context<V>,
+    ) -> impl IntoElement
+    where
+        V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
+    {
         let (engine_fps, frame_count, pattern_name) = if let Ok(engine) = render_engine.lock() {
             let fps = engine.get_fps();
             let frames = engine.get_frame_count();
