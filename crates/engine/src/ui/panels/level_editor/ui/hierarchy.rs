@@ -1,6 +1,6 @@
 use gpui::*;
 use gpui_component::{
-    button::{Button, ButtonVariants as _}, h_flex, v_flex, scroll::ScrollbarAxis, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
+    button::{Button, ButtonVariants as _}, h_flex, v_flex, scroll::ScrollbarAxis, ActiveTheme, Icon, IconName, Selectable, Sizable, StyledExt,
 };
 
 use super::state::{LevelEditorState, ObjectType, SceneObject};
@@ -16,40 +16,43 @@ impl HierarchyPanel {
     pub fn render(&self, state: &LevelEditorState, cx: &mut App) -> impl IntoElement {
         v_flex()
             .size_full()
-            .gap_2()
             .child(
                 // Header
-                h_flex()
+                div()
                     .w_full()
-                    .p_2()
-                    .justify_between()
-                    .items_center()
-                    .bg(cx.theme().sidebar)
+                    .px_4()
+                    .py_3()
                     .border_b_1()
                     .border_color(cx.theme().border)
                     .child(
-                        div()
-                            .text_sm()
-                            .font_semibold()
-                            .text_color(cx.theme().foreground)
-                            .child("Hierarchy")
-                    )
-                    .child(
                         h_flex()
-                            .gap_1()
+                            .w_full()
+                            .justify_between()
+                            .items_center()
                             .child(
-                                Button::new("add_object")
-                                    .icon(IconName::Plus)
-                                    .ghost()
-                                    .xsmall()
-                                    .tooltip("Add Object")
+                                div()
+                                    .text_sm()
+                                    .font_semibold()
+                                    .text_color(cx.theme().foreground)
+                                    .child("Hierarchy")
                             )
                             .child(
-                                Button::new("delete_object")
-                                    .icon(IconName::Trash)
-                                    .ghost()
-                                    .xsmall()
-                                    .tooltip("Delete Selected")
+                                h_flex()
+                                    .gap_1()
+                                    .child(
+                                        Button::new("add_object")
+                                            .icon(IconName::Plus)
+                                            .ghost()
+                                            .xsmall()
+                                            .tooltip("Add Object")
+                                    )
+                                    .child(
+                                        Button::new("delete_object")
+                                            .icon(IconName::Trash)
+                                            .ghost()
+                                            .xsmall()
+                                            .tooltip("Delete Selected")
+                                    )
                             )
                     )
             )
@@ -58,23 +61,14 @@ impl HierarchyPanel {
                 div()
                     .flex_1()
                     .overflow_hidden()
-                    .p_2()
-                    .bg(cx.theme().background)
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .rounded(cx.theme().radius)
                     .child(
                         v_flex()
                             .size_full()
                             .scrollable(ScrollbarAxis::Vertical)
-                            .child(
-                                v_flex()
-                                    .gap_1()
-                                    .children(
-                                        state.scene_objects.iter().map(|obj| {
-                                            Self::render_object_tree_item(obj, state, 0, cx)
-                                        })
-                                    )
+                            .children(
+                                state.scene_objects.iter().map(|obj| {
+                                    Self::render_object_tree_item(obj, state, 0, cx)
+                                })
                             )
                     )
             )
@@ -88,80 +82,76 @@ impl HierarchyPanel {
     ) -> impl IntoElement {
         let is_selected = state.selected_object.as_ref() == Some(&object.id);
         let has_children = !object.children.is_empty();
+        let indent = px(depth as f32 * 16.0);
+        let icon = Self::get_icon_for_object_type(object.object_type);
 
-        let mut base_div = div()
-            .w_full()
-            .pl(px((depth * 16) as f32))
-            .pr_2()
-            .py_1p5()
-            .rounded(cx.theme().radius);
+        div()
+            .flex()
+            .flex_col()
+            .child({
+                let mut item_div = div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .h(px(24.0))
+                    .pl(indent + px(12.0))
+                    .pr_3()
+                    .rounded_md()
+                    .cursor_pointer();
 
-        if is_selected {
-            base_div = base_div
-                .bg(cx.theme().primary.opacity(0.2))
-                .border_l_2()
-                .border_color(cx.theme().primary);
-        } else {
-            base_div = base_div.hover(|style| style.bg(cx.theme().muted.opacity(0.5)));
-        }
+                if is_selected {
+                    item_div = item_div.bg(cx.theme().accent);
+                } else {
+                    item_div = item_div.hover(|style| style.bg(cx.theme().accent.opacity(0.1)));
+                }
 
-        v_flex()
-            .gap_px()
-            .child(
-                base_div.child(
-                    h_flex()
-                        .gap_2()
-                        .items_center()
-                        .child(
-                            // Expand/collapse arrow for items with children
-                            if has_children {
-                                div()
-                                    .w_4()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("▼")
-                                    .into_any_element()
-                            } else {
-                                div()
-                                    .w_4()
-                                    .into_any_element()
-                            }
-                        )
-                        .child(
-                            // Icon based on object type
+                item_div
+                    .child(
+                        // Expand/collapse arrow for items with children
+                        if has_children {
                             div()
-                                .text_color(if is_selected {
-                                    cx.theme().primary
-                                } else {
-                                    cx.theme().foreground
-                                })
-                                .child(Self::get_icon_for_object_type(object.object_type))
-                        )
-                        .child(
-                            // Object name
-                            div()
-                                .text_sm()
-                                .text_color(if is_selected {
-                                    cx.theme().primary
-                                } else {
-                                    cx.theme().foreground
-                                })
-                                .child(object.name.clone())
-                        )
-                        .child(
-                            // Visibility toggle
-                            div()
-                                .ml_auto()
+                                .w_4()
                                 .text_xs()
-                                .text_color(if object.visible {
-                                    cx.theme().muted_foreground
+                                .text_color(if is_selected {
+                                    cx.theme().accent_foreground
                                 } else {
-                                    cx.theme().danger
+                                    cx.theme().muted_foreground
                                 })
-                                .child(if object.visible { "●" } else { "○" })
-                        )
-                )
-            )
+                                .child("▼")
+                                .into_any_element()
+                        } else {
+                            div()
+                                .w_4()
+                                .into_any_element()
+                        }
+                    )
+                    .child(Icon::new(icon).size_4())
+                    .child({
+                        let mut text_div = div().text_sm();
+                        if is_selected {
+                            text_div = text_div.text_color(cx.theme().accent_foreground);
+                        } else {
+                            text_div = text_div.text_color(cx.theme().foreground);
+                        }
+                        text_div.child(object.name.clone())
+                    })
+                    .child(
+                        // Visibility toggle
+                        div()
+                            .ml_auto()
+                            .text_xs()
+                            .text_color(if object.visible {
+                                if is_selected {
+                                    cx.theme().accent_foreground.opacity(0.7)
+                                } else {
+                                    cx.theme().muted_foreground
+                                }
+                            } else {
+                                cx.theme().danger
+                            })
+                            .child(if object.visible { "●" } else { "○" })
+                    )
+            })
             .children(
                 // Render children recursively
                 object.children.iter().map(|child| {
@@ -170,12 +160,12 @@ impl HierarchyPanel {
             )
     }
 
-    fn get_icon_for_object_type(object_type: ObjectType) -> &'static str {
+    fn get_icon_for_object_type(object_type: ObjectType) -> IconName {
         match object_type {
-            ObjectType::Camera => "◆",
-            ObjectType::Light => "○",
-            ObjectType::Mesh => "▪",
-            ObjectType::Empty => "◦",
+            ObjectType::Camera => IconName::Camera,
+            ObjectType::Light => IconName::LightBulb,
+            ObjectType::Mesh => IconName::Box,
+            ObjectType::Empty => IconName::Circle,
         }
     }
 }
