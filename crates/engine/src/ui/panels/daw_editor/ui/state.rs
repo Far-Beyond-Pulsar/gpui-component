@@ -243,6 +243,8 @@ pub struct DawUiState {
     pub timeline_scroll_handle: VirtualListScrollHandle,  // For horizontal scrolling
     pub timeline_scroll_state: ScrollbarState,
     pub timeline_vertical_scroll_handle: UniformListScrollHandle,  // For vertical scrolling of rows
+    pub timeline_scroll_axis_lock: Option<Axis>,  // Lock scrolling to one axis at a time
+    pub timeline_scroll_lock_timeout: Option<std::time::Instant>,  // Release lock after inactivity
     
     // Undo/Redo
     pub can_undo: bool,
@@ -300,6 +302,8 @@ impl DawUiState {
             timeline_scroll_handle: VirtualListScrollHandle::new(),
             timeline_scroll_state: ScrollbarState::default(),
             timeline_vertical_scroll_handle: UniformListScrollHandle::new(),
+            timeline_scroll_axis_lock: None,
+            timeline_scroll_lock_timeout: None,
             
             can_undo: false,
             can_redo: false,

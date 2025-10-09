@@ -255,7 +255,7 @@ fn render_track_row(
                 .relative()
                 .child(
                     h_virtual_list(
-                        view,
+                        view.clone(),
                         track_id,
                         segment_sizes,
                         {
@@ -276,6 +276,14 @@ fn render_track_row(
                         },
                     )
                     .track_scroll(&horizontal_scroll_handle)
+                )
+                // Add ScrollableMask as a sibling to enable scroll wheel handling
+                .child(
+                    gpui_component::scroll::ScrollableMask::new(
+                        view.entity_id(),
+                        Axis::Horizontal,
+                        horizontal_scroll_handle.as_ref(),
+                    )
                 )
         )
 }
