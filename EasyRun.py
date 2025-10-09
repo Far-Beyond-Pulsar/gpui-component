@@ -20,7 +20,7 @@ def Start():
     global States
     global Pulsar
     Logtype=States["DebugMode"] and sys.stdout or subprocess.DEVNULL
-    Command=States["Altcommand"] and CargoCommand or ALTCargoCommand
+    Command=States["Altcommand"] and ALTCargoCommand or CargoCommand
     Pulsar=subprocess.Popen(Command,shell=True,stdout=Logtype,stderr=Logtype)
     print(States["Altcommand"] and "Building Pulsar(Cargo) (Slow But Fast)" or "Building Pulsar(Cargo) (Fast But Slow)")
     return Pulsar
