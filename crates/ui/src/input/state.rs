@@ -15,7 +15,7 @@ use serde::Deserialize;
 use std::cell::RefCell;
 use std::ops::Range;
 use std::rc::Rc;
-use sum_tree::Bias;
+use zed_sum_tree::Bias;
 use unicode_segmentation::*;
 
 use super::{

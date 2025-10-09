@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use ropey::{LineType, Rope, RopeSlice};
-use sum_tree::Bias;
+use zed_sum_tree::Bias;
 use tree_sitter::Point;
 
 use crate::input::Position;

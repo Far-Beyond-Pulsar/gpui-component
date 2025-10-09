@@ -13,13 +13,15 @@ resolver = "2"
 
 [workspace.dependencies]
 gpui = { git = "https://github.com/zed-industries/zed.git" }
-gpui_macros = { git = "https://github.com/zed-industries/zed.git" }
+gpui-macros = { git = "https://github.com/zed-industries/zed.git" }
 reqwest_client = { git = "https://github.com/zed-industries/zed.git" }
-sum_tree = { git = "https://github.com/zed-industries/zed.git" }
+zed-sum-tree = { git = "https://github.com/zed-industries/zed.git" }
 gpui-component = { path = "crates/ui" }
 gpui-component-macros = { path = "crates/macros" }
 pulsar_std = { path = "crates/pulsar_std" }
 ropey = { version = "=2.0.0-beta.1", features = ["metric_utf16", "metric_lines_lf"] }
+
+horizon = { git = "https://github.com/Far-Beyond-Dev/horizon" }
 
 anyhow = "1"
 log = "0.4"

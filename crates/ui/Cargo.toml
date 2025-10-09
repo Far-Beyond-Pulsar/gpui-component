@@ -53,8 +53,8 @@ winit = "0.29"
 # For wgpu vertex buffer
 bytemuck = { version = "1.14", features = ["derive"] }
 gpui.workspace = true
-sum_tree.workspace = true
-gpui_macros.workspace = true
+zed-sum-tree.workspace = true
+gpui-macros.workspace = true
 # rope.workspace = true
 anyhow.workspace = true
 gpui-component-macros.workspace = true
