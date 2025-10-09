@@ -1,6 +1,6 @@
 use gpui::*;
 use gpui_component::{
-    button::Button, h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
+    button::{Button, ButtonVariants as _}, h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
 };
 use gpui_component::viewport_final::Viewport;
 
@@ -13,14 +13,16 @@ pub struct ViewportPanel {
     viewport: Entity<Viewport>,
     viewport_controls: ViewportControls,
     show_performance_overlay: bool,
+    render_enabled: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl ViewportPanel {
-    pub fn new(viewport: Entity<Viewport>) -> Self {
+    pub fn new(viewport: Entity<Viewport>, render_enabled: Arc<std::sync::atomic::AtomicBool>) -> Self {
         Self {
             viewport,
             viewport_controls: ViewportControls::new(),
             show_performance_overlay: true,
+            render_enabled,
         }
     }
 
@@ -28,7 +30,6 @@ impl ViewportPanel {
         &self,
         state: &LevelEditorState,
         render_engine: &Arc<Mutex<crate::ui::rainbow_engine_final::RainbowRenderEngine>>,
-        render_enabled: &Arc<std::sync::atomic::AtomicBool>,
         current_pattern: crate::ui::rainbow_engine_final::RainbowPattern,
         cx: &mut App,
     ) -> impl IntoElement {
@@ -77,7 +78,7 @@ impl ViewportPanel {
                     .absolute()
                     .bottom_4()
                     .right_4()
-                    .child(Self::render_performance_overlay(render_engine, render_enabled, current_pattern, cx))
+                    .child(self.render_performance_overlay(render_engine, current_pattern, cx))
             );
         }
 
@@ -87,15 +88,14 @@ impl ViewportPanel {
     fn render_camera_mode_selector(camera_mode: CameraMode, cx: &App) -> impl IntoElement {
         h_flex()
             .gap_1()
-            .p_2()
-            .bg(cx.theme().background.opacity(0.95))
+            .p_1()
+            .bg(cx.theme().background.opacity(0.9))
             .rounded(cx.theme().radius)
             .border_1()
             .border_color(cx.theme().border)
-            .shadow_lg()
             .child(
                 Button::new("camera_perspective")
-                    .child("Perspective")
+                    .child("Persp")
                     .xsmall()
                     .selected(matches!(camera_mode, CameraMode::Perspective))
             )
@@ -126,52 +126,36 @@ impl ViewportPanel {
     }
 
     fn render_viewport_options(state: &LevelEditorState, cx: &App) -> impl IntoElement {
-        v_flex()
-            .gap_2()
-            .p_2()
-            .bg(cx.theme().background.opacity(0.95))
+        h_flex()
+            .gap_1()
+            .p_1()
+            .bg(cx.theme().background.opacity(0.9))
             .rounded(cx.theme().radius)
             .border_1()
             .border_color(cx.theme().border)
-            .shadow_lg()
             .child(
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().foreground)
-                            .child("View Options")
-                    )
+                Button::new("toggle_grid")
+                    .child("Grid")
+                    .xsmall()
+                    .selected(state.show_grid)
             )
             .child(
-                h_flex()
-                    .gap_1()
-                    .child(
-                        Button::new("toggle_grid")
-                            .child("Grid")
-                            .xsmall()
-                            .selected(state.show_grid)
-                    )
-                    .child(
-                        Button::new("toggle_wireframe")
-                            .child("Wireframe")
-                            .xsmall()
-                            .selected(state.show_wireframe)
-                    )
-                    .child(
-                        Button::new("toggle_lighting")
-                            .child("Lighting")
-                            .xsmall()
-                            .selected(state.show_lighting)
-                    )
+                Button::new("toggle_wireframe")
+                    .child("Wireframe")
+                    .xsmall()
+                    .selected(state.show_wireframe)
+            )
+            .child(
+                Button::new("toggle_lighting")
+                    .child("Lighting")
+                    .xsmall()
+                    .selected(state.show_lighting)
             )
     }
 
     fn render_performance_overlay(
+        &self,
         render_engine: &Arc<Mutex<crate::ui::rainbow_engine_final::RainbowRenderEngine>>,
-        render_enabled: &Arc<std::sync::atomic::AtomicBool>,
         current_pattern: crate::ui::rainbow_engine_final::RainbowPattern,
         cx: &App,
     ) -> impl IntoElement {
@@ -184,56 +168,40 @@ impl ViewportPanel {
             (0.0, 0, "Unknown".to_string())
         };
 
-        v_flex()
-            .gap_1()
-            .p_2()
-            .bg(cx.theme().background.opacity(0.95))
+        h_flex()
+            .gap_2()
+            .p_1()
+            .items_center()
+            .bg(cx.theme().background.opacity(0.9))
             .rounded(cx.theme().radius)
             .border_1()
             .border_color(cx.theme().border)
-            .shadow_lg()
-            .child(
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(
-                        div()
-                            .text_xs()
-                            .font_semibold()
-                            .text_color(if engine_fps > 200.0 {
-                                cx.theme().success
-                            } else if engine_fps > 120.0 {
-                                cx.theme().warning
-                            } else {
-                                cx.theme().accent
-                            })
-                            .child(format!("🌈 {:.1} FPS", engine_fps))
-                    )
-                    .child(
-                        Button::new("toggle_render")
-                            .child(if render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
-                                "⏸"
-                            } else {
-                                "▶"
-                            })
-                            .xsmall()
-                    )
-            )
-            .child(
-                h_flex()
-                    .gap_2()
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("Frames: {}", frame_count))
-                    )
-            )
             .child(
                 div()
                     .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(format!("Pattern: {}", pattern_name))
+                    .font_semibold()
+                    .text_color(if engine_fps > 200.0 {
+                        cx.theme().success
+                    } else if engine_fps > 120.0 {
+                        cx.theme().warning
+                    } else {
+                        cx.theme().muted_foreground
+                    })
+                    .child(format!("{:.0} FPS", engine_fps))
             )
+            .child({
+                let enabled = self.render_enabled.clone();
+                Button::new("toggle_render")
+                    .child(if self.render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
+                        "⏸"
+                    } else {
+                        "▶"
+                    })
+                    .xsmall()
+                    .on_click(move |_event, _window, _cx| {
+                        let current = enabled.load(std::sync::atomic::Ordering::Relaxed);
+                        enabled.store(!current, std::sync::atomic::Ordering::Relaxed);
+                    })
+            })
     }
 }

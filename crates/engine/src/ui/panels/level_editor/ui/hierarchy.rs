@@ -158,7 +158,7 @@ impl HierarchyPanel {
                                 } else {
                                     cx.theme().danger
                                 })
-                                .child(if object.visible { "👁" } else { "🚫" })
+                                .child(if object.visible { "●" } else { "○" })
                         )
                 )
             )
@@ -172,10 +172,10 @@ impl HierarchyPanel {
 
     fn get_icon_for_object_type(object_type: ObjectType) -> &'static str {
         match object_type {
-            ObjectType::Camera => "🎮",
-            ObjectType::Light => "☀️",
-            ObjectType::Mesh => "📦",
-            ObjectType::Empty => "⚪",
+            ObjectType::Camera => "◆",
+            ObjectType::Light => "○",
+            ObjectType::Mesh => "▪",
+            ObjectType::Empty => "◦",
         }
     }
 }

@@ -17,8 +17,8 @@ impl ToolbarPanel {
     pub fn render(&self, state: &LevelEditorState, cx: &mut App) -> impl IntoElement {
         h_flex()
             .w_full()
-            .h_12()
-            .px_4()
+            .h_10()
+            .px_3()
             .gap_1()
             .items_center()
             .bg(cx.theme().sidebar)

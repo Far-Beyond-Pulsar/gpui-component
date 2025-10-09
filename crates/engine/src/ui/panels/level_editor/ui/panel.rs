@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use super::{
     LevelEditorState, SceneBrowser, HierarchyPanel, PropertiesPanel,
-    ViewportPanel, AssetBrowser, ToolbarPanel,
+    ViewportPanel, ToolbarPanel,
 };
 
 /// Main Level Editor Panel - Orchestrates all sub-components
@@ -32,13 +32,11 @@ pub struct LevelEditorPanel {
     hierarchy: HierarchyPanel,
     properties: PropertiesPanel,
     viewport_panel: ViewportPanel,
-    asset_browser: AssetBrowser,
     toolbar: ToolbarPanel,
 
     // Layout state
     horizontal_resizable_state: Entity<ResizableState>,
     vertical_resizable_state: Entity<ResizableState>,
-    center_vertical_resizable_state: Entity<ResizableState>,
 
     // Viewport and rendering
     viewport: Entity<Viewport>,
@@ -54,7 +52,6 @@ impl LevelEditorPanel {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let horizontal_resizable_state = ResizableState::new(cx);
         let vertical_resizable_state = ResizableState::new(cx);
-        let center_vertical_resizable_state = ResizableState::new(cx);
 
         // Create viewport with zero-copy background rendering
         let (viewport, buffers, refresh_hook) = create_viewport_with_background_rendering(
@@ -85,12 +82,10 @@ impl LevelEditorPanel {
             scene_browser: SceneBrowser::new(),
             hierarchy: HierarchyPanel::new(),
             properties: PropertiesPanel::new(),
-            viewport_panel: ViewportPanel::new(viewport.clone()),
-            asset_browser: AssetBrowser::new(),
+            viewport_panel: ViewportPanel::new(viewport.clone(), render_enabled.clone()),
             toolbar: ToolbarPanel::new(),
             horizontal_resizable_state,
             vertical_resizable_state,
-            center_vertical_resizable_state,
             viewport,
             render_engine,
             buffers,
@@ -273,7 +268,7 @@ impl Render for LevelEditorPanel {
                                                             .child(
                                                                 div()
                                                                     .size_full()
-                                                                    .p_2()
+                                                                    .p_1()
                                                                     .child(self.hierarchy.render(&self.state, cx))
                                                             )
                                                     )
@@ -281,59 +276,34 @@ impl Render for LevelEditorPanel {
                                     )
                             )
                             .child(
-                                // Center: Viewport + Asset Browser
+                                // Center: Viewport
                                 resizable_panel()
                                     .child(
                                         div()
                                             .size_full()
+                                            .p_1()
                                             .child(
-                                                v_resizable("level-editor-center", self.center_vertical_resizable_state.clone())
-                                                    .child(
-                                                        resizable_panel()
-                                                            .child(
-                                                                div()
-                                                                    .size_full()
-                                                                    .p_2()
-                                                                    .child(
-                                                                        self.viewport_panel.render(
-                                                                            &self.state,
-                                                                            &self.render_engine,
-                                                                            &self.render_enabled,
-                                                                            self.current_pattern,
-                                                                            cx
-                                                                        )
-                                                                    )
-                                                            )
-                                                    )
-                                                    .child(
-                                                        resizable_panel()
-                                                            .size(px(200.))
-                                                            .size_range(px(150.)..px(400.))
-                                                            .child(
-                                                                div()
-                                                                    .size_full()
-                                                                    .bg(cx.theme().sidebar)
-                                                                    .border_t_1()
-                                                                    .border_color(cx.theme().border)
-                                                                    .p_2()
-                                                                    .child(self.asset_browser.render(cx))
-                                                            )
-                                                    )
+                                                self.viewport_panel.render(
+                                                    &self.state,
+                                                    &self.render_engine,
+                                                    self.current_pattern,
+                                                    cx
+                                                )
                                             )
                                     )
                             )
                             .child(
                                 // Right sidebar: Properties
                                 resizable_panel()
-                                    .size(px(320.))
-                                    .size_range(px(250.)..px(500.))
+                                    .size(px(300.))
+                                    .size_range(px(250.)..px(450.))
                                     .child(
                                         div()
                                             .size_full()
                                             .bg(cx.theme().sidebar)
                                             .border_l_1()
                                             .border_color(cx.theme().border)
-                                            .p_2()
+                                            .p_1()
                                             .child(self.properties.render(&self.state, cx))
                                     )
                             )
