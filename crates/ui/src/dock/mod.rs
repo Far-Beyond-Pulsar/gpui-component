@@ -953,6 +953,9 @@ impl DockArea {
                     PanelEvent::TabClosed(_) => {
                         // Do nothing for TabClosed
                     }
+                    PanelEvent::MoveToNewWindow(_, _) => {
+                        // This event will be handled by PulsarApp - do nothing here
+                    }
                 },
             );
 

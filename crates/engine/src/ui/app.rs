@@ -51,7 +51,7 @@ pub struct PulsarApp {
 
 impl PulsarApp {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::new_internal(None, window, cx)
+        Self::new_internal(None, None, true, window, cx)
     }
 
     pub fn new_with_project(
@@ -60,7 +60,18 @@ impl PulsarApp {
         cx: &mut Context<Self>,
     ) -> Self {
         eprintln!("DEBUG: PulsarApp::new_with_project called with path: {:?}", project_path);
-        Self::new_internal(Some(project_path), window, cx)
+        Self::new_internal(Some(project_path), None, true, window, cx)
+    }
+
+    /// Create a new window that shares the rust analyzer from an existing window
+    /// This is used for detached windows and doesn't create a default Level Editor tab
+    pub fn new_with_shared_analyzer(
+        project_path: Option<PathBuf>,
+        rust_analyzer: Entity<RustAnalyzerManager>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self::new_internal(project_path, Some(rust_analyzer), false, window, cx)
     }
 
     /// Get the global rust analyzer manager
@@ -73,8 +84,70 @@ impl PulsarApp {
         self.project_path.as_ref()
     }
 
+    /// Create a detached window with a panel, sharing the rust analyzer
+    fn create_detached_window(
+        &self,
+        panel: Arc<dyn gpui_component::dock::PanelView>,
+        position: gpui::Point<gpui::Pixels>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
+        use gpui_component::Root;
+
+        let window_size = size(px(800.), px(600.));
+        let window_bounds = Bounds::new(
+            Point {
+                x: position.x - px(100.0),
+                y: position.y - px(30.0),
+            },
+            window_size,
+        );
+
+        let window_options = WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(window_bounds)),
+            titlebar: None,
+            window_min_size: Some(gpui::Size {
+                width: px(400.),
+                height: px(300.),
+            }),
+            kind: WindowKind::Normal,
+            #[cfg(target_os = "linux")]
+            window_background: gpui::WindowBackgroundAppearance::Transparent,
+            #[cfg(target_os = "linux")]
+            window_decorations: Some(gpui::WindowDecorations::Client),
+            ..Default::default()
+        };
+
+        let project_path = self.project_path.clone();
+        let rust_analyzer = self.rust_analyzer.clone();
+
+        let _ = cx.open_window(window_options, move |window, cx| {
+            // Create PulsarApp with shared rust analyzer
+            let app = cx.new(|cx| {
+                let mut app = Self::new_with_shared_analyzer(
+                    project_path.clone(),
+                    rust_analyzer.clone(),
+                    window,
+                    cx,
+                );
+
+                // Add the panel to the center tabs
+                app.center_tabs.update(cx, |tabs, cx| {
+                    tabs.add_panel(panel.clone(), window, cx);
+                });
+
+                app
+            });
+
+            cx.new(|cx| Root::new(app.into(), window, cx))
+        });
+    }
+
     fn new_internal(
         project_path: Option<PathBuf>,
+        shared_rust_analyzer: Option<Entity<RustAnalyzerManager>>,
+        create_level_editor: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -83,17 +156,26 @@ impl PulsarApp {
         let dock_area = cx.new(|cx| DockArea::new("main-dock", Some(1), window, cx));
         let weak_dock = dock_area.downgrade();
 
-        // Only create level editor tab by default
-        let level_editor = cx.new(|cx| LevelEditorPanel::new(window, cx));
-
-        // Set up the dock area with the level editor tab
-        let center_dock_item = DockItem::tabs(
-            vec![Arc::new(level_editor.clone())],
-            Some(0),
-            &weak_dock,
-            window,
-            cx,
-        );
+        // Only create level editor tab if requested (not for detached windows)
+        let center_dock_item = if create_level_editor {
+            let level_editor = cx.new(|cx| LevelEditorPanel::new(window, cx));
+            DockItem::tabs(
+                vec![Arc::new(level_editor.clone())],
+                Some(0),
+                &weak_dock,
+                window,
+                cx,
+            )
+        } else {
+            // Create empty tabs for detached windows
+            DockItem::tabs(
+                vec![],
+                None,
+                &weak_dock,
+                window,
+                cx,
+            )
+        };
 
         dock_area.update(cx, |dock, cx| {
             dock.set_center(center_dock_item, window, cx);
@@ -129,16 +211,26 @@ impl PulsarApp {
         let problems_drawer = cx.new(|cx| ProblemsDrawer::new(window, cx));
         cx.subscribe_in(&problems_drawer, window, Self::on_navigate_to_diagnostic).detach();
 
-        // Create rust analyzer manager
-        let rust_analyzer = cx.new(|cx| RustAnalyzerManager::new(window, cx));
-        cx.subscribe_in(&rust_analyzer, window, Self::on_analyzer_event).detach();
+        // Create rust analyzer manager or use shared one
+        let rust_analyzer = if let Some(shared_analyzer) = shared_rust_analyzer {
+            // Use the shared rust analyzer from another window
+            shared_analyzer
+        } else {
+            // Create a new rust analyzer for this window
+            let analyzer = cx.new(|cx| RustAnalyzerManager::new(window, cx));
 
-        // Start rust analyzer if we have a project
-        if let Some(ref project) = project_path {
-            rust_analyzer.update(cx, |analyzer, cx| {
-                analyzer.start(project.clone(), window, cx);
-            });
-        }
+            // Start rust analyzer if we have a project
+            if let Some(ref project) = project_path {
+                analyzer.update(cx, |analyzer, cx| {
+                    analyzer.start(project.clone(), window, cx);
+                });
+            }
+
+            analyzer
+        };
+
+        // Subscribe to analyzer events
+        cx.subscribe_in(&rust_analyzer, window, Self::on_analyzer_event).detach();
 
         // Subscribe to PanelEvent on center_tabs to handle tab close and cleanup
         cx.subscribe_in(&center_tabs, window, Self::on_tab_panel_event)
@@ -239,10 +331,14 @@ impl PulsarApp {
         &mut self,
         _tabs: &Entity<TabPanel>,
         event: &PanelEvent,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) {
         match event {
+            PanelEvent::MoveToNewWindow(panel, position) => {
+                // Create a new window with the same project and shared rust analyzer
+                self.create_detached_window(panel.clone(), *position, window, cx);
+            }
             PanelEvent::TabClosed(entity_id) => {
                 self.blueprint_editors
                     .retain(|e| e.entity_id() != *entity_id);

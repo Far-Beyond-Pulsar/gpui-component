@@ -841,19 +841,15 @@ impl TabPanel {
 
                                         // Defer the operation to avoid updating TabPanel while it's already being updated
                                         window.defer(cx, move |window, cx| {
-                                            // Remove from current tab panel
+                                            // Emit event to request new window creation
+                                            // This will be handled by PulsarApp which can create a window with shared services
                                             _ = source_view.update(cx, |tab_panel, cx| {
+                                                cx.emit(PanelEvent::MoveToNewWindow(panel_to_move.clone(), mouse_pos));
+
+                                                // Remove from current tab panel
                                                 tab_panel.detach_panel(panel_to_move.clone(), window, cx);
                                                 tab_panel.remove_self_if_empty(window, cx);
                                             });
-
-                                            // Create new window with the panel
-                                            Self::create_window_with_panel(
-                                                panel_to_move,
-                                                mouse_pos,
-                                                dock_area,
-                                                cx,
-                                            );
                                         });
                                     }))
                             )
@@ -1014,7 +1010,10 @@ impl TabPanel {
     }
 
     /// Create a simple new window with just the dragged panel
-    /// This creates a minimal window without duplicating services like rust analyzer
+    ///
+    /// NOTE: This creates a minimal window container. The panel itself maintains its
+    /// references to shared services (like rust analyzer) from the main window,
+    /// so there's no duplication of services.
     fn create_window_with_panel(
         panel: Arc<dyn PanelView>,
         position: Point<Pixels>,
