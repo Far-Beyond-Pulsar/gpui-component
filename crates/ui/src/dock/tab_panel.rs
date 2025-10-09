@@ -822,9 +822,10 @@ impl TabPanel {
                                 ))
                             })
                         })
-                        .suffix(h_flex().gap_1().when(state.draggable && !is_level_editor && self.panels.len() > 1, |this| {
+                        .suffix(h_flex().gap_1().when(!is_level_editor, |this| {
                             let panel = panel_for_menu.clone();
                             let view = view_for_menu.clone();
+                            let dock = self.dock_area.clone();
 
                             this.child(
                                 Button::new(("move-to-window", ix))
@@ -835,21 +836,25 @@ impl TabPanel {
                                     .on_click(cx.listener(move |_, _, window, cx| {
                                         let panel_to_move = panel.clone();
                                         let source_view = view.clone();
-                                        let dock = source_view.read(cx).dock_area.clone();
+                                        let dock_area = dock.clone();
+                                        let mouse_pos = window.mouse_position();
 
-                                        // Remove from current tab panel
-                                        _ = source_view.update(cx, |tab_panel, cx| {
-                                            tab_panel.detach_panel(panel_to_move.clone(), window, cx);
-                                            tab_panel.remove_self_if_empty(window, cx);
+                                        // Defer the operation to avoid updating TabPanel while it's already being updated
+                                        window.defer(cx, move |window, cx| {
+                                            // Remove from current tab panel
+                                            _ = source_view.update(cx, |tab_panel, cx| {
+                                                tab_panel.detach_panel(panel_to_move.clone(), window, cx);
+                                                tab_panel.remove_self_if_empty(window, cx);
+                                            });
+
+                                            // Create new window with the panel
+                                            Self::create_window_with_panel(
+                                                panel_to_move,
+                                                mouse_pos,
+                                                dock_area,
+                                                cx,
+                                            );
                                         });
-
-                                        // Create new window with the panel
-                                        Self::create_window_with_panel(
-                                            panel_to_move,
-                                            window.mouse_position(),
-                                            dock,
-                                            cx,
-                                        );
                                     }))
                             )
                         }).when(!is_level_editor, |this| {
@@ -1008,11 +1013,12 @@ impl TabPanel {
         is_outside
     }
 
-    /// Create a new window with the dragged panel
+    /// Create a simple new window with just the dragged panel
+    /// This creates a minimal window without duplicating services like rust analyzer
     fn create_window_with_panel(
         panel: Arc<dyn PanelView>,
         position: Point<Pixels>,
-        dock_area: WeakEntity<DockArea>,
+        _dock_area: WeakEntity<DockArea>,
         cx: &mut App,
     ) {
         let window_size = size(px(800.), px(600.));
@@ -1044,30 +1050,24 @@ impl TabPanel {
         let _ = cx.open_window(window_options, move |window, cx| {
             use crate::Root;
 
-            // Create a new dock area for this window
+            // Create a minimal new dock area for this detached window
+            // This is NOT a copy of the main app - it's just a simple container
             let new_dock_area = cx.new(|cx| DockArea::new("detached-dock", Some(1), window, cx));
             let weak_new_dock = new_dock_area.downgrade();
 
-            // Create a new tab panel with the dragged panel
+            // Create a tab panel with just the one panel
             let new_tab_panel = cx.new(|cx| {
-                Self::new(None, weak_new_dock.clone(), window, cx)
+                let mut tab_panel = Self::new(None, weak_new_dock.clone(), window, cx);
+                tab_panel.closable = true; // Allow closing this detached window
+                tab_panel
             });
 
             new_tab_panel.update(cx, |view, cx| {
                 view.add_panel(panel.clone(), window, cx);
             });
 
-            // Set up the dock area
-            let center_dock_item = super::DockItem::tabs(
-                vec![],
-                None,
-                &weak_new_dock,
-                window,
-                cx,
-            );
-
+            // Set up the dock area with just this panel
             new_dock_area.update(cx, |dock, cx| {
-                // Replace the empty tabs with our new tab panel
                 let dock_item = super::DockItem::Tabs {
                     view: new_tab_panel,
                     active_ix: 0,
@@ -1148,20 +1148,20 @@ impl TabPanel {
                 // Close the current window if it was the last tab and we're not in the main window
                 let should_close_window = self.panels.is_empty() && !self.in_tiles;
 
-                if should_close_window {
-                    // Schedule window close after we create the new window
-                    window.defer(cx, move |window, cx| {
+                // Defer window creation and closing to avoid update conflicts
+                window.defer(cx, move |window, cx| {
+                    if should_close_window {
                         window.remove_window();
-                    });
-                }
+                    }
 
-                // Create new window with the panel
-                Self::create_window_with_panel(
-                    panel_to_extract,
-                    start_pos,
-                    dock_area,
-                    cx,
-                );
+                    // Create new window with the panel
+                    Self::create_window_with_panel(
+                        panel_to_extract,
+                        start_pos,
+                        dock_area,
+                        cx,
+                    );
+                });
 
                 self.dragging_outside_window = false;
                 cx.emit(PanelEvent::LayoutChanged);
