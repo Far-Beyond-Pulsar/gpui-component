@@ -146,8 +146,6 @@ impl AppTitleBar {
 impl Render for AppTitleBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let notifications_count = window.notifications(cx).len();
-        println!("App titlebar draw call (menu.rs)");
-        
 
         TitleBar::new()
             // left side with title and main menu
@@ -226,8 +224,6 @@ impl MainMenu {
 
 impl Render for MainMenu {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        println!("impl Render for MainMenu render() call");
-    
         h_flex()
             .items_center()
             .gap_0()
