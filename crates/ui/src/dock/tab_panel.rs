@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use gpui::{
-    div, prelude::FluentBuilder, px, relative, rems, App, AppContext, Context, Corner,
+    div, prelude::FluentBuilder, px, relative, rems, size, App, AppContext, Bounds, Context, Corner,
     DismissEvent, Div, DragMoveEvent, Empty, Entity, EventEmitter, FocusHandle, Focusable,
-    InteractiveElement as _, IntoElement, ParentElement, Pixels, Render, ScrollHandle,
+    InteractiveElement as _, IntoElement, ParentElement, Pixels, Point, Render, ScrollHandle,
     SharedString, StatefulInteractiveElement, StyleRefinement, Styled, WeakEntity, Window,
+    WindowBounds, WindowKind, WindowOptions,
 };
 use rust_i18n::t;
 
@@ -35,16 +36,36 @@ struct TabState {
 pub(crate) struct DragPanel {
     pub(crate) panel: Arc<dyn PanelView>,
     pub(crate) tab_panel: Entity<TabPanel>,
+    pub(crate) source_index: usize,
+    pub(crate) drag_start_position: Option<Point<Pixels>>,
 }
 
 impl DragPanel {
     pub(crate) fn new(panel: Arc<dyn PanelView>, tab_panel: Entity<TabPanel>) -> Self {
-        Self { panel, tab_panel }
+        Self {
+            panel,
+            tab_panel,
+            source_index: 0,
+            drag_start_position: None,
+        }
+    }
+
+    pub(crate) fn with_index(mut self, index: usize) -> Self {
+        self.source_index = index;
+        self
+    }
+
+    pub(crate) fn with_start_position(mut self, position: Point<Pixels>) -> Self {
+        self.drag_start_position = Some(position);
+        self
     }
 }
 
 impl Render for DragPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Check if we should show "new window" visual feedback
+        let is_outside_bounds = self.tab_panel.read(cx).dragging_outside_window;
+
         div()
             .id("drag-panel")
             .cursor_grab()
@@ -54,11 +75,23 @@ impl Render for DragPanel {
             .overflow_hidden()
             .whitespace_nowrap()
             .border_1()
-            .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
-            .text_color(cx.theme().tab_foreground)
-            .bg(cx.theme().tab_active)
-            .opacity(0.75)
+            .when(is_outside_bounds, |this| {
+                // Visual feedback for creating new window
+                this.border_2()
+                    .border_color(cx.theme().primary)
+                    .text_color(cx.theme().primary_foreground)
+                    .bg(cx.theme().primary)
+                    .opacity(0.9)
+                    .shadow_lg()
+            })
+            .when(!is_outside_bounds, |this| {
+                // Normal drag appearance
+                this.border_color(cx.theme().border)
+                    .text_color(cx.theme().tab_foreground)
+                    .bg(cx.theme().tab_active)
+                    .opacity(0.75)
+            })
             .child(self.panel.title(window, cx))
     }
 }
@@ -83,6 +116,10 @@ pub struct TabPanel {
     will_split_placement: Option<Placement>,
     /// Is TabPanel used in Tiles.
     in_tiles: bool,
+    /// Track the index where a dragged tab should be inserted for reordering
+    pending_reorder_index: Option<usize>,
+    /// Track if we're currently dragging outside window bounds
+    dragging_outside_window: bool,
 }
 
 impl Panel for TabPanel {
@@ -161,6 +198,8 @@ impl TabPanel {
             collapsed: false,
             closable: true,
             in_tiles: false,
+            pending_reorder_index: None,
+            dragging_outside_window: false,
         }
     }
 
@@ -654,15 +693,20 @@ impl TabPanel {
                         .child(panel.title(window, cx))
                         .when(state.draggable, |this| {
                             this.on_drag(
-                                DragPanel {
-                                    panel: panel.clone(),
-                                    tab_panel: view,
-                                },
-                                |drag, _, _, cx| {
+                                DragPanel::new(panel.clone(), view.clone())
+                                    .with_index(0),
+                                move |drag, position, _, cx| {
+                                    // Capture the drag start position for window creation
+                                    let mut drag_with_pos = drag.clone();
+                                    drag_with_pos.drag_start_position = Some(position);
                                     cx.stop_propagation();
-                                    cx.new(|_| drag.clone())
+                                    cx.new(|_| drag_with_pos)
                                 },
                             )
+                            .on_drag_move(cx.listener(|this, event: &DragMoveEvent<DragPanel>, window, cx| {
+                                // Track mouse position to detect when dragging outside window
+                                this.check_drag_outside_window(event.event.position, window, cx);
+                            }))
                         }),
                 )
                 .children(panel.title_suffix(window, cx))
@@ -744,12 +788,20 @@ impl TabPanel {
                         .when(!droppable, |this| {
                             this.when(state.draggable, |this| {
                                 this.on_drag(
-                                    DragPanel::new(panel.clone(), view.clone()),
-                                    |drag, _, _, cx| {
+                                    DragPanel::new(panel.clone(), view.clone())
+                                        .with_index(ix),
+                                    move |drag, position, _, cx| {
+                                        // Capture the drag start position for window creation
+                                        let mut drag_with_pos = drag.clone();
+                                        drag_with_pos.drag_start_position = Some(position);
                                         cx.stop_propagation();
-                                        cx.new(|_| drag.clone())
+                                        cx.new(|_| drag_with_pos)
                                     },
                                 )
+                                .on_drag_move(cx.listener(|this, event: &DragMoveEvent<DragPanel>, window, cx| {
+                                    // Track mouse position to detect when dragging outside window
+                                    this.check_drag_outside_window(event.event.position, window, cx);
+                                }))
                             })
                             .when(state.droppable, |this| {
                                 this.drag_over::<DragPanel>(|this, _, _, cx| {
@@ -899,15 +951,117 @@ impl TabPanel {
             .into_any_element()
     }
 
+    /// Check if the drag position is outside the window bounds
+    fn check_drag_outside_window(
+        &mut self,
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let window_bounds = window.bounds();
+
+        // Add a small margin (20px) to make it easier to trigger
+        let margin = px(20.0);
+        let is_outside = position.x < window_bounds.left() - margin
+            || position.x > window_bounds.right() + margin
+            || position.y < window_bounds.top() - margin
+            || position.y > window_bounds.bottom() + margin;
+
+        if is_outside != self.dragging_outside_window {
+            self.dragging_outside_window = is_outside;
+            cx.notify();
+        }
+
+        is_outside
+    }
+
+    /// Create a new window with the dragged panel
+    fn create_window_with_panel(
+        panel: Arc<dyn PanelView>,
+        position: Point<Pixels>,
+        dock_area: WeakEntity<DockArea>,
+        cx: &mut App,
+    ) {
+        let window_size = size(px(800.), px(600.));
+
+        // Position window at cursor, adjusted so cursor is on the tab bar
+        let window_bounds = Bounds::new(
+            Point {
+                x: position.x - px(100.0),
+                y: position.y - px(30.0),
+            },
+            window_size,
+        );
+
+        let window_options = WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(window_bounds)),
+            titlebar: None,
+            window_min_size: Some(gpui::Size {
+                width: px(400.),
+                height: px(300.),
+            }),
+            kind: WindowKind::Normal,
+            #[cfg(target_os = "linux")]
+            window_background: gpui::WindowBackgroundAppearance::Opaque,
+            #[cfg(target_os = "linux")]
+            window_decorations: Some(gpui::WindowDecorations::Client),
+            ..Default::default()
+        };
+
+        let _ = cx.open_window(window_options, move |window, cx| {
+            use crate::Root;
+
+            // Create a new dock area for this window
+            let new_dock_area = cx.new(|cx| DockArea::new("detached-dock", Some(1), window, cx));
+            let weak_new_dock = new_dock_area.downgrade();
+
+            // Create a new tab panel with the dragged panel
+            let new_tab_panel = cx.new(|cx| {
+                Self::new(None, weak_new_dock.clone(), window, cx)
+            });
+
+            new_tab_panel.update(cx, |view, cx| {
+                view.add_panel(panel.clone(), window, cx);
+            });
+
+            // Set up the dock area
+            let center_dock_item = super::DockItem::tabs(
+                vec![],
+                None,
+                &weak_new_dock,
+                window,
+                cx,
+            );
+
+            new_dock_area.update(cx, |dock, cx| {
+                // Replace the empty tabs with our new tab panel
+                let dock_item = super::DockItem::Tabs {
+                    view: new_tab_panel,
+                    active_ix: 0,
+                    items: vec![panel.clone()],
+                };
+                dock.set_center(dock_item, window, cx);
+            });
+
+            cx.new(|cx| Root::new(new_dock_area.into(), window, cx))
+        });
+    }
+
     /// Calculate the split direction based on the current mouse position
     fn on_panel_drag_move(
         &mut self,
         drag: &DragMoveEvent<DragPanel>,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let bounds = drag.bounds;
         let position = drag.event.position;
+
+        // Check if dragging outside window bounds for window extraction
+        if self.check_drag_outside_window(position, window, cx) {
+            self.will_split_placement = None;
+            return;
+        }
 
         // Check the mouse position to determine the split direction
         if position.x < bounds.left() + bounds.size.width * 0.35 {
@@ -938,6 +1092,83 @@ impl TabPanel {
     ) {
         let panel = drag.panel.clone();
         let is_same_tab = drag.tab_panel == cx.entity();
+
+        // Check if we should create a new window (dragged outside bounds)
+        if self.dragging_outside_window {
+            // Get the current cursor position for window placement
+            if let Some(start_pos) = drag.drag_start_position {
+                // Remove from source tab panel
+                let source_panel = drag.tab_panel.clone();
+                let panel_to_extract = panel.clone();
+                let dock_area = self.dock_area.clone();
+
+                // Detach the panel from the source
+                if is_same_tab {
+                    self.detach_panel(panel_to_extract.clone(), window, cx);
+                } else {
+                    let _ = source_panel.update(cx, |view, cx| {
+                        view.detach_panel(panel_to_extract.clone(), window, cx);
+                        view.remove_self_if_empty(window, cx);
+                    });
+                }
+
+                // Close the current window if it was the last tab and we're not in the main window
+                let should_close_window = self.panels.is_empty() && !self.in_tiles;
+
+                if should_close_window {
+                    // Schedule window close after we create the new window
+                    window.defer(cx, move |window, cx| {
+                        window.remove_window();
+                    });
+                }
+
+                // Create new window with the panel
+                Self::create_window_with_panel(
+                    panel_to_extract,
+                    start_pos,
+                    dock_area,
+                    cx,
+                );
+
+                self.dragging_outside_window = false;
+                cx.emit(PanelEvent::LayoutChanged);
+                return;
+            }
+        }
+
+        // Handle reordering within the same tab panel
+        if is_same_tab && ix.is_some() && self.will_split_placement.is_none() {
+            let target_ix = ix.unwrap();
+            let source_ix = drag.source_index;
+
+            // Only reorder if different positions
+            if source_ix != target_ix {
+                // Remove panel from old position
+                let panel = self.panels.remove(source_ix);
+
+                // Calculate new insert position
+                let insert_ix = if target_ix > source_ix {
+                    target_ix - 1
+                } else {
+                    target_ix
+                };
+
+                // Insert at new position
+                self.panels.insert(insert_ix, panel);
+
+                // Update active index if needed
+                if self.active_ix == source_ix {
+                } else if source_ix < self.active_ix && insert_ix >= self.active_ix {
+                    self.active_ix -= 1;
+                } else if source_ix > self.active_ix && insert_ix <= self.active_ix {
+                    self.active_ix += 1;
+                }
+
+                cx.emit(PanelEvent::LayoutChanged);
+                cx.notify();
+            }
+            return;
+        }
 
         // If target is same tab, and it is only one panel, do nothing.
         if is_same_tab && ix.is_none() {
