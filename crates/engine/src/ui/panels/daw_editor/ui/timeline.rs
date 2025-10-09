@@ -298,6 +298,16 @@ fn render_track_content_segment(
         .bg(cx.theme().background)
         // Grid lines for this segment
         .child(render_grid_lines_segment(state, start_x, segment_width, cx))
+        // Drop zone for the entire timeline (full width, positioned to cover this segment)
+        .child(
+            div()
+                .absolute()
+                .left(px(-start_x))  // Offset to account for segment position
+                .top_0()
+                .w(px(state.beats_to_pixels(500.0)))  // Full timeline width
+                .h_full()
+                .child(render_drop_zone(track_id, state, cx))
+        )
         // Render clips that intersect with this segment
         // Clips are absolutely positioned, so we render the full content but clipped to segment
         .child(
