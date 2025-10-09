@@ -7,7 +7,7 @@ use crate::{blueprint,exec_output};
 /// 
 /// (Do to limitations of the engine api currently this will only have 5 pins) later on as better exec pin handling it will be able to add on in engine.
 ///
-#[blueprint(type: crate::NodeTypes::control_flow, category: "Logic Execution ++",color="#861212ff")]
+#[blueprint(type: crate::NodeTypes::control_flow, category: "Logic Execution ++ (Experimental)",color="#861212ff")]
 pub fn randexec() -> i32 {
     let selectedpin: i32=rand::random_range(1..=5);
     
