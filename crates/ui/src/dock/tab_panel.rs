@@ -11,6 +11,7 @@ use rust_i18n::t;
 
 use crate::{
     button::{Button, ButtonVariants as _},
+    context_menu::ContextMenu,
     dock::PanelInfo,
     h_flex,
     popup_menu::{PopupMenu, PopupMenuExt},
@@ -762,6 +763,9 @@ impl TabPanel {
                 Some({
                     // Add close button to all tabs except Level Editor
                     let is_level_editor = panel.panel_name(cx) == "Level Editor";
+                    let panel_for_menu = panel.clone();
+                    let view_for_menu = view.clone();
+
                     let tab = Tab::empty()
                         .map(|this| {
                             if let Some(tab_name) = panel.tab_name(cx) {
@@ -817,23 +821,52 @@ impl TabPanel {
                                     },
                                 ))
                             })
-                        });
-                    if !is_level_editor {
-                        tab.suffix(
-                            Button::new(("close-tab", ix))
-                                .icon(IconName::Close)
-                                .ghost()
-                                .xsmall()
-                                .on_click(cx.listener({
-                                    let panel = panel.clone();
-                                    move |this, _, window, cx| {
-                                        this.remove_panel(panel.clone(), window, cx);
-                                    }
-                                })),
-                        )
-                    } else {
-                        tab
-                    }
+                        })
+                        .suffix(h_flex().gap_1().when(state.draggable && !is_level_editor && self.panels.len() > 1, |this| {
+                            let panel = panel_for_menu.clone();
+                            let view = view_for_menu.clone();
+
+                            this.child(
+                                Button::new(("move-to-window", ix))
+                                    .icon(IconName::ExternalLink)
+                                    .ghost()
+                                    .xsmall()
+                                    .tooltip("Move to New Window")
+                                    .on_click(cx.listener(move |_, _, window, cx| {
+                                        let panel_to_move = panel.clone();
+                                        let source_view = view.clone();
+                                        let dock = source_view.read(cx).dock_area.clone();
+
+                                        // Remove from current tab panel
+                                        _ = source_view.update(cx, |tab_panel, cx| {
+                                            tab_panel.detach_panel(panel_to_move.clone(), window, cx);
+                                            tab_panel.remove_self_if_empty(window, cx);
+                                        });
+
+                                        // Create new window with the panel
+                                        Self::create_window_with_panel(
+                                            panel_to_move,
+                                            window.mouse_position(),
+                                            dock,
+                                            cx,
+                                        );
+                                    }))
+                            )
+                        }).when(!is_level_editor, |this| {
+                            this.child(
+                                Button::new(("close-tab", ix))
+                                    .icon(IconName::Close)
+                                    .ghost()
+                                    .xsmall()
+                                    .on_click(cx.listener({
+                                        let panel = panel.clone();
+                                        move |this, _, window, cx| {
+                                            this.remove_panel(panel.clone(), window, cx);
+                                        }
+                                    }))
+                            )
+                        }).into_any_element());
+                    tab
                 })
             }))
             .last_empty_space(
@@ -1158,6 +1191,7 @@ impl TabPanel {
 
                 // Update active index if needed
                 if self.active_ix == source_ix {
+                    self.active_ix = insert_ix;
                 } else if source_ix < self.active_ix && insert_ix >= self.active_ix {
                     self.active_ix -= 1;
                 } else if source_ix > self.active_ix && insert_ix <= self.active_ix {
