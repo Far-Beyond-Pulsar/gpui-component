@@ -5647,7 +5647,7 @@ dependencies = [
 
 [[package]]
 name = "pulsar_engine"
-version = "0.1.30"
+version = "0.1.31"
 dependencies = [
  "anyhow",
  "bytemuck",
