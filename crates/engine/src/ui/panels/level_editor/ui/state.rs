@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 
 /// Shared state for the Level Editor
@@ -20,6 +21,8 @@ pub struct LevelEditorState {
     pub show_grid: bool,
     /// Scene objects (simplified for now)
     pub scene_objects: Vec<SceneObject>,
+    /// Expanded state for hierarchy items
+    pub expanded_objects: HashSet<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -76,6 +79,7 @@ impl Default for LevelEditorState {
             show_lighting: true,
             show_grid: true,
             scene_objects: Self::create_default_scene(),
+            expanded_objects: HashSet::new(),
         }
     }
 }
@@ -209,6 +213,55 @@ impl LevelEditorState {
 
     pub fn set_camera_mode(&mut self, mode: CameraMode) {
         self.camera_mode = mode;
+    }
+
+    pub fn toggle_object_expanded(&mut self, object_id: &str) {
+        if self.expanded_objects.contains(object_id) {
+            self.expanded_objects.remove(object_id);
+        } else {
+            self.expanded_objects.insert(object_id.to_string());
+        }
+    }
+
+    pub fn is_object_expanded(&self, object_id: &str) -> bool {
+        self.expanded_objects.contains(object_id)
+    }
+
+    pub fn expand_all(&mut self, objects: &[SceneObject]) {
+        for obj in objects {
+            if !obj.children.is_empty() {
+                self.expanded_objects.insert(obj.id.clone());
+                self.expand_all(&obj.children);
+            }
+        }
+    }
+
+    pub fn collapse_all(&mut self) {
+        self.expanded_objects.clear();
+    }
+
+    pub fn duplicate_selected_object(&mut self) {
+        if let Some(id) = &self.selected_object.clone() {
+            if let Some(obj) = self.find_object_by_id(id, &self.scene_objects) {
+                let mut new_obj = obj.clone();
+                new_obj.id = format!("{}_copy", obj.id);
+                new_obj.name = format!("{} Copy", obj.name);
+                self.scene_objects.push(new_obj);
+                self.has_unsaved_changes = true;
+            }
+        }
+    }
+
+    pub fn toggle_grid(&mut self) {
+        self.show_grid = !self.show_grid;
+    }
+
+    pub fn toggle_wireframe(&mut self) {
+        self.show_wireframe = !self.show_wireframe;
+    }
+
+    pub fn toggle_lighting(&mut self) {
+        self.show_lighting = !self.show_lighting;
     }
 }
 

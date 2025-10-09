@@ -9,6 +9,7 @@ mod properties;
 mod viewport;
 mod asset_browser;
 mod toolbar;
+mod actions;
 
 pub use state::*;
 pub use panel::LevelEditorPanel;
@@ -18,3 +19,4 @@ pub use properties::PropertiesPanel;
 pub use viewport::ViewportPanel;
 pub use asset_browser::AssetBrowser;
 pub use toolbar::ToolbarPanel;
+pub use actions::*;
