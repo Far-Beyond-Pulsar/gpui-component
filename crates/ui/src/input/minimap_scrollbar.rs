@@ -77,12 +77,12 @@ impl MinimapScrollbar {
         
         // Render density bars for sampled lines
         for line_idx in (0..self.total_lines).step_by(sample_rate) {
-            // Safety check
-            if line_idx >= self.text.lines_len() {
+            // Safety check - use len_lines() method
+            if line_idx >= self.text.len_lines() {
                 break;
             }
             
-            // Get line content
+            // Get line content - provide both arguments
             let line_text = self.text.line(line_idx).to_string();
             let trimmed = line_text.trim();
             
@@ -107,8 +107,6 @@ impl MinimapScrollbar {
                         .w(bar_width - px(8.0))
                         .h(bar_height)
                         .bg(rgb(0x606060)) // Subtle gray for code
-                        .opacity(self.config.opacity)
-                        .rounded_px()
                         .into_any_element()
                 );
             }
@@ -149,8 +147,8 @@ impl Element for MinimapScrollbar {
         style.size.width = self.config.width.into();
         style.size.height = relative(1.0).into();
         style.position = Position::Absolute;
-        style.inset.right = Some(px(0.0).into());
-        style.inset.top = Some(px(0.0).into());
+        style.inset.right = px(0.0).into();
+        style.inset.top = px(0.0).into();
         
         (window.request_layout(style, [], cx), ())
     }
