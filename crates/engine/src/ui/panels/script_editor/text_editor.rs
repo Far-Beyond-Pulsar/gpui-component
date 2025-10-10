@@ -115,6 +115,7 @@ impl TextEditor {
             let mut state = InputState::new(window, cx)
                 .code_editor(language)
                 .line_number(true)
+                .minimap(true) // Enable VSCode-style minimap
                 .tab_size(TabSize {
                     tab_size: 4,
                     hard_tabs: false,
@@ -338,6 +339,7 @@ impl TextEditor {
             let mut state = InputState::new(window, cx)
                 .code_editor(language)
                 .line_number(true)
+                .minimap(true) // Enable VSCode-style minimap scrollbar
                 .tab_size(TabSize {
                     tab_size: 4,
                     hard_tabs: false,

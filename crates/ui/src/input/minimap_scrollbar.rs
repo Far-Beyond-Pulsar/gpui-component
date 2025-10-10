@@ -4,7 +4,7 @@
 //! providing both scrolling functionality and document overview.
 
 use gpui::*;
-use ropey::Rope;
+use ropey::{Rope, LineType};
 use std::ops::Range;
 
 use crate::{ActiveTheme, Colorize};
@@ -78,12 +78,12 @@ impl MinimapScrollbar {
         // Render density bars for sampled lines
         for line_idx in (0..self.total_lines).step_by(sample_rate) {
             // Safety check - use len_lines() method
-            if line_idx >= self.text.len_lines() {
+            if line_idx >= self.text.len_lines(LineType::LF) {
                 break;
             }
             
-            // Get line content - provide both arguments
-            let line_text = self.text.line(line_idx).to_string();
+            // Get line content - provide LineType parameter
+            let line_text = self.text.line(line_idx, LineType::LF).to_string();
             let trimmed = line_text.trim();
             
             // Calculate density (how full is this line)
@@ -169,13 +169,13 @@ impl Element for MinimapScrollbar {
         &mut self,
         _id: Option<&GlobalElementId>,
         _: Option<&InspectorElementId>,
-        bounds: &Self::PrepaintState,
+        bounds: Self::PrepaintState,
         _request_layout: &mut Self::RequestLayoutState,
         _prepaint: &mut Self::PrepaintState,
         window: &mut Window,
         cx: &mut App,
     ) {
-        let minimap_bounds = *bounds;
+        let minimap_bounds = bounds;
         
         // Background
         window.paint_quad(fill(
@@ -194,25 +194,16 @@ impl Element for MinimapScrollbar {
         window.paint_quad(PaintQuad {
             bounds: indicator_bounds,
             corner_radii: Corners::all(px(2.0)),
-            background: cx.theme().accent,
+            background: cx.theme().accent.into(),
             border_widths: Edges::all(px(1.0)),
             border_color: cx.theme().accent,
             border_style: BorderStyle::Solid,
         });
         
-        // Mouse interaction - use shared ID type
-        let hitbox_id = window.element_id_stack().last().cloned()
-            .unwrap_or_else(|| "minimap-scrollbar".into());
-        
+        // Mouse interaction - create hitbox using correct API
         window.insert_hitbox(
-            Hitbox {
-                id: hitbox_id,
-                bounds: minimap_bounds,
-                corner_radii: Corners::all(px(4.0)),
-                cursor_style: CursorStyle::PointingHand,
-                behavior: HitboxBehavior::default(),
-            },
-            false,
+            minimap_bounds,
+            HitboxBehavior::default(),
         );
         
         // TODO: Add mouse event handlers for click and drag

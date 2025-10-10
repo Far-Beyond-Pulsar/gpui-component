@@ -9,10 +9,10 @@
 //! - Smooth scrolling synchronization
 
 use gpui::*;
-use ropey::Rope;
+use ropey::{Rope, LineType};
 use std::ops::Range;
 
-use crate::{ActiveTheme, Colorize, PixelsExt};
+use crate::{ActiveTheme, PixelsExt};
 
 /// Configuration for the minimap display.
 #[derive(Clone, Debug)]
@@ -150,11 +150,11 @@ pub fn render_minimap_content(
     // Render sampled lines
     for line_idx in (0..total_lines).step_by(sample_rate) {
         // Get line content (if we can) - line() returns a Rope slice
-        if line_idx >= text.len_lines() {
+        if line_idx >= text.len_lines(LineType::LF) {
             break;
         }
         
-        let line_text = text.line(line_idx).to_string();
+        let line_text = text.line(line_idx, LineType::LF).to_string();
         
         // Calculate visual density (how full is this line)
         let density = (line_text.trim().len() as f32 / config.max_chars_per_line as f32)

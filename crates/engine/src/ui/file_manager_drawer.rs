@@ -1676,9 +1676,11 @@ impl Render for FileManagerDrawer {
                                                                         div()
                                                                             .flex_1()
                                                                             .w_full()
-                                                                            .overflow_y_scroll()
-                                                                            .p_1p5()
                                                                             .child(
+                                                                                div()
+                                                                                    .p_1p5()
+                                                                                    .scrollable(Axis::Vertical)
+                                                                                    .child(
                                                                                 if let Some(tree) = &self.folder_tree {
                                                                                     v_flex()
                                                                                         .w_full()
@@ -1713,7 +1715,8 @@ impl Render for FileManagerDrawer {
                                                                                         )
                                                                                         .into_any_element()
                                                                                 },
-                                                                            ),
+                                                                            )
+                                                                        ),
                                                                     ),
                                                             ),
                                                     )
@@ -1743,12 +1746,11 @@ impl Render for FileManagerDrawer {
                                                                         )
                                                                 )
                                                                 .child(
-                                                                    // CONTENT GRID/LIST with proper sizing
+                                                                    // CONTENT GRID/LIST with proper sizing - wrap the child in scrollable
                                                                     div()
+                                                                        .id("file-manager-content-area")
                                                                         .flex_1()
                                                                         .w_full()
-                                                                        .overflow_y_scroll()
-                                                                        .p_2()
                                                                         .context_menu({
                                                                             let selected_folder_for_menu = self.selected_folder.clone();
                                                                             move |menu, _window, _cx| {
@@ -1779,6 +1781,10 @@ impl Render for FileManagerDrawer {
                                                                             }
                                                                         })
                                                                         .child(
+                                                                            div()
+                                                                                .p_2()
+                                                                                .scrollable(Axis::Vertical)
+                                                                                .child(
                                                                             match self.view_mode {
                                                                                 ViewMode::Grid => {
                                                                                     h_flex().w_full().flex_wrap().gap_1p5().children(
@@ -1798,6 +1804,7 @@ impl Render for FileManagerDrawer {
                                                                                 }
                                                                             }
                                                                         )
+                                                                    )
                                                                 )
                                                         ),
                                                     )
