@@ -3,6 +3,7 @@ pub mod editors;
 pub mod entry_screen;
 pub mod entry_window;
 pub mod file_manager_drawer;
+pub mod file_manager_window;
 pub mod lsp_completion_provider;
 pub mod menu;
 pub mod panels;

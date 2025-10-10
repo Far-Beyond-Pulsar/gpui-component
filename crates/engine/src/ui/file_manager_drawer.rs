@@ -6,7 +6,7 @@ use gpui_component::{
     h_flex,
     input::{InputState, TextInput},
     popup_menu::PopupMenu,
-    resizable::{h_resizable, resizable_panel, ResizableState},
+    resizable::{h_resizable, resizable_panel, v_resizable, ResizableState},
     v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
 };
 use schemars::JsonSchema;
@@ -53,6 +53,10 @@ pub struct CommitRename;
 #[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[action(namespace = file_manager, no_json)]
 pub struct CancelRename;
+
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager, no_json)]
+pub struct PopoutFileManager;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum FileType {
@@ -172,6 +176,7 @@ pub struct FileManagerDrawer {
     folder_tree: Option<FolderNode>,
     selected_folder: Option<PathBuf>,
     resizable_state: Entity<ResizableState>,
+    height_resizable_state: Entity<ResizableState>,
     renaming_item: Option<PathBuf>,
     rename_input_state: Entity<InputState>,
 }
@@ -179,6 +184,7 @@ pub struct FileManagerDrawer {
 impl FileManagerDrawer {
     pub fn new(project_path: Option<PathBuf>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let resizable_state = ResizableState::new(cx);
+        let height_resizable_state = ResizableState::new(cx);
         let rename_input_state = cx.new(|cx| InputState::new(window, cx));
 
         // Subscribe to input events to handle Enter key for committing rename
@@ -200,6 +206,7 @@ impl FileManagerDrawer {
             project_path: project_path.clone(),
             selected_folder: project_path,
             resizable_state,
+            height_resizable_state,
             renaming_item: None,
             rename_input_state,
         }
@@ -210,6 +217,7 @@ impl FileManagerDrawer {
         self.folder_tree = FolderNode::from_path(&path);
         self.selected_folder = Some(path);
         self.resizable_state = ResizableState::new(cx);
+        self.height_resizable_state = ResizableState::new(cx);
         cx.notify();
     }
 
@@ -483,6 +491,39 @@ impl FileManagerDrawer {
         cx: &mut Context<Self>,
     ) {
         self.cancel_rename(cx);
+    }
+
+    fn on_popout_file_manager(
+        &mut self,
+        _action: &PopoutFileManager,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Create a new file manager drawer for the window
+        let new_drawer = cx.new(|cx| {
+            FileManagerDrawer::new(self.project_path.clone(), window, cx)
+        });
+
+        // Open the file manager window
+        cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds {
+                    origin: point(px(100.), px(100.)),
+                    size: size(px(1000.), px(700.)),
+                })),
+                titlebar: Some(TitlebarOptions {
+                    title: Some("File Manager".into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            |window, cx| {
+                let file_manager_window = cx.new(|cx| {
+                    crate::ui::file_manager_window::FileManagerWindow::new(new_drawer, window, cx)
+                });
+                file_manager_window
+            },
+        );
     }
 
     fn render_folder_tree_node(
@@ -862,9 +903,17 @@ impl Render for FileManagerDrawer {
             .on_action(cx.listener(Self::on_rename_item))
             .on_action(cx.listener(Self::on_commit_rename))
             .on_action(cx.listener(Self::on_cancel_rename))
+            .on_action(cx.listener(Self::on_popout_file_manager))
             .child(
-                h_resizable("file-manager-split", self.resizable_state.clone())
+                // Vertical resizable for drawer height
+                v_resizable("file-manager-height", self.height_resizable_state.clone())
                     .child(
+                        resizable_panel()
+                            .size(px(400.))
+                            .size_range(px(200.)..px(800.))
+                            .child(
+                                h_resizable("file-manager-split", self.resizable_state.clone())
+                                    .child(
                         resizable_panel()
                             .size(px(280.))
                             .size_range(px(200.)..px(450.))
@@ -924,6 +973,17 @@ impl Render for FileManagerDrawer {
                                                                     .text_color(cx.theme().muted_foreground)
                                                                     .child("Folder Structure")
                                                             )
+                                                    )
+                                                    .child(
+                                                        // Popout button
+                                                        Button::new("popout-file-manager")
+                                                            .ghost()
+                                                            .compact()
+                                                            .icon(IconName::ExternalLink)
+                                                            .tooltip("Open in New Window")
+                                                            .on_click(cx.listener(|_, _, _, cx| {
+                                                                cx.dispatch_action(&PopoutFileManager);
+                                                            }))
                                                     )
                                             )
                                             .child(
@@ -1149,7 +1209,9 @@ impl Render for FileManagerDrawer {
                                     })
                                 )
                         ),
-                    ),
+                    )
+                )
             )
+    )
     }
 }
