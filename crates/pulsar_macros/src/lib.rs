@@ -59,15 +59,15 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
 
     // Parse node type
     let node_type_str = if args_str.contains("NodeTypes :: pure") || args_str.contains("NodeTypes::pure") {
-        "Pure"
+        "pure"
     } else if args_str.contains("NodeTypes :: fn_") || args_str.contains("NodeTypes::fn_") {
-        "Function"
+        "fn_"
     } else if args_str.contains("NodeTypes :: control_flow") || args_str.contains("NodeTypes::control_flow") {
-        "ControlFlow"
+        "control_flow"
     } else if args_str.contains("NodeTypes :: event") || args_str.contains("NodeTypes::event") {
-        "Event"
+        "event"
     } else {
-        "Function" // Default
+        "fn_" // Default
     };
 
     // Extract category
@@ -165,7 +165,7 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
         #[linkme(crate = ::linkme)]
         static #registry_ident: crate::NodeMetadata = crate::NodeMetadata {
             name: #fn_name_str,
-            node_type: crate::NodeType::#node_type_ident,
+            node_type: crate::NodeTypes::#node_type_ident,
             params: &[#(#params),*],
             return_type: #return_type,
             exec_inputs: #exec_inputs,

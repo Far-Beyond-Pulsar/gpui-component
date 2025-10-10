@@ -11,7 +11,7 @@ use super::{
     ast_utils,
     data_resolver::DataResolver,
     execution_routing::ExecutionRouting,
-    node_metadata::{NodeMetadata, NodeType},
+    node_metadata::{NodeMetadata, NodeTypes},
 };
 use crate::graph::{ConnectionType, GraphDescription, NodeInstance};
 use std::collections::{HashMap, HashSet};
@@ -70,7 +70,7 @@ impl<'a> CodeGenerator<'a> {
             .get(&event_node.node_type)
             .ok_or_else(|| format!("Unknown event node type: {}", event_node.node_type))?;
 
-        if node_meta.node_type != NodeType::Event {
+        if node_meta.node_type != NodeTypes::event {
             return Err(format!("Node {} is not an event node", event_node.id));
         }
 
@@ -149,20 +149,20 @@ impl<'a> CodeGenerator<'a> {
             .ok_or_else(|| format!("Unknown node type: {}", node.node_type))?;
 
         match node_meta.node_type {
-            NodeType::Pure => {
+            NodeTypes::pure => {
                 // Pure nodes are pre-evaluated, skip in exec chain
                 Ok(())
             }
 
-            NodeType::Function => {
+            NodeTypes::fn_ => {
                 self.generate_function_node(node, node_meta, output, indent_level)
             }
 
-            NodeType::ControlFlow => {
+            NodeTypes::control_flow => {
                 self.generate_control_flow_node(node, node_meta, output, indent_level)
             }
 
-            NodeType::Event => {
+            NodeTypes::event => {
                 // Event nodes define the outer function, skip in exec chain
                 // Their "Body" output defines where execution starts
                 Ok(())
@@ -440,7 +440,7 @@ pub fn generate_program(
             // Check if this node's type is an event in metadata
             metadata
                 .get(&node.node_type)
-                .map(|meta| meta.node_type == NodeType::Event)
+                .map(|meta| meta.node_type == NodeTypes::event)
                 .unwrap_or(false)
         })
         .collect();
