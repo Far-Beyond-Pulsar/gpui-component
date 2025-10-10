@@ -1617,6 +1617,9 @@ impl Render for FileManagerDrawer {
                                                                                                 .when(self.selected_folder.is_some(), |this| {
                                                                                                     let folder = self.selected_folder.clone().unwrap();
                                                                                                     let folder_str = folder.to_string_lossy().to_string();
+                                                                                                    let folder_str1 = folder_str.clone();
+                                                                                                    let folder_str2 = folder_str.clone();
+                                                                                                    let folder_str3 = folder_str.clone();
                                                                                                     this.child(
                                                                                                         Button::new("new-folder-quick")
                                                                                                             .ghost()
@@ -1625,7 +1628,7 @@ impl Render for FileManagerDrawer {
                                                                                                             .tooltip("New Folder")
                                                                                                             .on_click(cx.listener(move |_, _, _, cx| {
                                                                                                                 cx.dispatch_action(&NewFolder {
-                                                                                                                    folder_path: folder_str.clone(),
+                                                                                                                    folder_path: folder_str1.clone(),
                                                                                                                 });
                                                                                                             }))
                                                                                                     )
@@ -1637,7 +1640,7 @@ impl Render for FileManagerDrawer {
                                                                                                             .tooltip("New Class")
                                                                                                             .on_click(cx.listener(move |_, _, _, cx| {
                                                                                                                 cx.dispatch_action(&NewClass {
-                                                                                                                    folder_path: folder_str.clone(),
+                                                                                                                    folder_path: folder_str2.clone(),
                                                                                                                 });
                                                                                                             }))
                                                                                                     )
@@ -1649,7 +1652,7 @@ impl Render for FileManagerDrawer {
                                                                                                             .tooltip("New File")
                                                                                                             .on_click(cx.listener(move |_, _, _, cx| {
                                                                                                                 cx.dispatch_action(&NewFile {
-                                                                                                                    folder_path: folder_str.clone(),
+                                                                                                                    folder_path: folder_str3.clone(),
                                                                                                                 });
                                                                                                             }))
                                                                                                     )
