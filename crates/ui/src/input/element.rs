@@ -673,6 +673,11 @@ impl TextElement {
             debug_assert_eq!(line_item.len(), line.len());
 
             let mut line_layout = LineLayout::new();
+            
+            // TODO: PERFORMANCE FIX - Use line cache here
+            // The cache exists and stores ShapedLine objects but requires &mut
+            // Solution: Wrap line_cache in RefCell or change layout_lines to take &mut InputState
+            // This will eliminate 60fps text reshaping lag
             let mut wrapped_lines = SmallVec::with_capacity(1);
 
             for range in &line_item.wrapped_lines {
