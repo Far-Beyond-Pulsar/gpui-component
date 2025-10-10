@@ -71,6 +71,7 @@ pub enum FileType {
     Class, // A folder containing graph_save.json
     Script,
     DawProject, // .pdaw files
+    Config, // .toml files
     Other,
 }
 
@@ -121,6 +122,7 @@ impl FileItem {
             match path.extension().and_then(|s| s.to_str()) {
                 Some("rs") => FileType::Script,
                 Some("pdaw") => FileType::DawProject,
+                Some("toml") => FileType::Config,
                 _ => FileType::Other,
             }
         };
@@ -922,6 +924,7 @@ impl FileManagerDrawer {
             FileType::Class => IconName::Component,
             FileType::Script => IconName::Code,
             FileType::DawProject => IconName::MusicNote,
+            FileType::Config => IconName::Settings,
             FileType::Other => IconName::Page,
         };
 
@@ -1091,7 +1094,8 @@ impl FileManagerDrawer {
                                         .font_medium()
                                         .text_color(cx.theme().foreground.opacity(0.9))
                                         .overflow_hidden()
-                                        .line_clamp(2)
+                                        .text_ellipsis()
+                                        .whitespace_nowrap()
                                         .child(item.name.clone())
                                         .into_any_element()
                                 }
@@ -1265,6 +1269,8 @@ impl FileManagerDrawer {
                                         .font_medium()
                                         .text_color(cx.theme().foreground)
                                         .overflow_hidden()
+                                        .text_ellipsis()
+                                        .whitespace_nowrap()
                                         .child(item.name.clone())
                                         .into_any_element()
                                 }

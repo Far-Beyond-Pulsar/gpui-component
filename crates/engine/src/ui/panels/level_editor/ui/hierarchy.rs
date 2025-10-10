@@ -112,12 +112,13 @@ impl HierarchyPanel {
         let item_id = SharedString::from(format!("object-{}", object.id));
         let mut item_div = div()
             .id(item_id)
+            .w_full()
             .flex()
             .items_center()
             .gap_2()
             .h(px(24.0))
-            .pl(indent + px(12.0))
-            .pr_3()
+            .pl(indent + px(8.0))
+            .pr_2()
             .rounded_md()
             .cursor_pointer();
 
@@ -129,6 +130,7 @@ impl HierarchyPanel {
         };
 
         div()
+            .w_full()
             .flex()
             .flex_col()
             .child(

@@ -19,6 +19,7 @@ pub struct LevelEditorState {
     pub show_wireframe: bool,
     pub show_lighting: bool,
     pub show_grid: bool,
+    pub show_performance_overlay: bool,
     /// Scene objects (simplified for now)
     pub scene_objects: Vec<SceneObject>,
     /// Expanded state for hierarchy items
@@ -78,6 +79,7 @@ impl Default for LevelEditorState {
             show_wireframe: false,
             show_lighting: true,
             show_grid: true,
+            show_performance_overlay: true,
             scene_objects: Self::create_default_scene(),
             expanded_objects: HashSet::new(),
         }
@@ -262,6 +264,10 @@ impl LevelEditorState {
 
     pub fn toggle_lighting(&mut self) {
         self.show_lighting = !self.show_lighting;
+    }
+
+    pub fn toggle_performance_overlay(&mut self) {
+        self.show_performance_overlay = !self.show_performance_overlay;
     }
 }
 
