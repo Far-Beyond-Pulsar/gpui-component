@@ -130,7 +130,7 @@ pub fn minimap_click_to_line(
 /// a colored bar based on its content density and length.
 pub fn render_minimap_content(
     text: &Rope,
-    visible_lines: Range<usize>,
+    _visible_lines: Range<usize>,
     total_lines: usize,
     config: &MinimapConfig,
     minimap_bounds: Bounds<Pixels>,
@@ -149,7 +149,11 @@ pub fn render_minimap_content(
     
     // Render sampled lines
     for line_idx in (0..total_lines).step_by(sample_rate) {
-        // Get line content (if we can)
+        // Get line content (if we can) - line() returns a Rope slice
+        if line_idx >= text.len_lines() {
+            break;
+        }
+        
         let line_text = text.line(line_idx).to_string();
         
         // Calculate visual density (how full is this line)
@@ -176,7 +180,6 @@ pub fn render_minimap_content(
                     .w(bar_width)
                     .h(config.line_height)
                     .bg(rgb(0x808080)) // Gray color for code
-                    .opacity(config.opacity)
                     .into_any_element()
             );
         }

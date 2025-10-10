@@ -178,22 +178,10 @@ impl Element for MinimapScrollbar {
         let minimap_bounds = *bounds;
         
         // Background
-        window.paint_quad(PaintQuad {
-            bounds: minimap_bounds,
-            corner_radii: Corners::all(px(4.0)),
-            content_mask: ContentMask::default(),
-            background: cx.theme().secondary.opacity(0.3),
-            border_widths: Edges::all(px(0.0)),
-            border_color: Hsla::default(),
-        });
-        
-        // Render minimap content
-        let content_elements = self.render_content(minimap_bounds, cx);
-        for element in content_elements {
-            // Note: We can't actually paint elements here in the paint phase
-            // This would need to be done in a render method instead
-            // For now, this is a placeholder showing the architecture
-        }
+        window.paint_quad(fill(
+            minimap_bounds,
+            cx.theme().secondary,
+        ).corner_radii(Corners::all(px(4.0))));
         
         // Viewport indicator
         let indicator_bounds = calculate_viewport_indicator(
@@ -206,21 +194,20 @@ impl Element for MinimapScrollbar {
         window.paint_quad(PaintQuad {
             bounds: indicator_bounds,
             corner_radii: Corners::all(px(2.0)),
-            content_mask: ContentMask::default(),
-            background: cx.theme().accent.opacity(0.2),
+            background: cx.theme().accent,
             border_widths: Edges::all(px(1.0)),
             border_color: cx.theme().accent,
+            border_style: BorderStyle::Solid,
         });
         
-        // Mouse interaction hitbox
+        // Mouse interaction - use shared ID type
+        let hitbox_id = window.element_id_stack().last().cloned()
+            .unwrap_or_else(|| "minimap-scrollbar".into());
+        
         window.insert_hitbox(
             Hitbox {
-                id: "minimap-scrollbar".into(),
+                id: hitbox_id,
                 bounds: minimap_bounds,
-                content_mask: ContentMask::default(),
-                opaque: false,
-                tooltip_style: None,
-                tooltip_text: None,
                 corner_radii: Corners::all(px(4.0)),
                 cursor_style: CursorStyle::PointingHand,
                 behavior: HitboxBehavior::default(),
@@ -240,7 +227,7 @@ pub fn minimap_scrollbar(
     text: &Rope,
     visible_range: Range<usize>,
     total_lines: usize,
-    on_scroll: impl Fn(usize) + 'static,
+    _on_scroll: impl Fn(usize) + 'static,
 ) -> impl IntoElement {
     let config = MinimapConfig::default();
     
@@ -250,7 +237,7 @@ pub fn minimap_scrollbar(
         .top_0()
         .w(config.width)
         .h_full()
-        .bg(rgb(0x1e1e1e).opacity(0.3))
+        .bg(rgb(0x1e1e1e))
         .rounded_md()
         .child({
             // Viewport indicator
@@ -270,7 +257,7 @@ pub fn minimap_scrollbar(
                 .top(indicator_bounds.origin.y)
                 .w_full()
                 .h(indicator_bounds.size.height)
-                .bg(rgb(0x007acc).opacity(0.3))
+                .bg(rgb(0x007acc))
                 .border_2()
                 .border_color(rgb(0x007acc))
                 .rounded_sm()
