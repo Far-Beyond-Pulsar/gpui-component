@@ -200,28 +200,14 @@ impl VariablesRenderer {
                     )
             )
             .child(
-                // CONTENT AREA with professional styling
-                div()
+                // CONTENT AREA - clean scrollable list
+                v_flex()
                     .flex_1()
                     .overflow_hidden()
-                    .px_2()
-                    .py_2()
-                    .child(
-                        div()
-                            .size_full()
-                            .bg(cx.theme().background)
-                            .border_1()
-                            .border_color(cx.theme().border.opacity(0.5))
-                            .rounded(px(8.0))
-                            .overflow_hidden()
-                            .child(
-                                v_flex()
-                                    .size_full()
-                                    .p_2()
-                                    .scrollable(Axis::Vertical)
-                                    .child(Self::render_variables_list(panel, cx))
-                            )
-                    )
+                    .p_3()
+                    .gap_2()
+                    .scrollable(Axis::Vertical)
+                    .child(Self::render_variables_list(panel, cx))
             )
     }
 

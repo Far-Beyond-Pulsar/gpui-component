@@ -120,28 +120,13 @@ impl PropertiesRenderer {
                     )
             )
             .child(
-                // CONTENT AREA with professional styling
-                div()
+                // CONTENT AREA - clean scrollable content
+                v_flex()
                     .flex_1()
                     .overflow_hidden()
-                    .px_2()
-                    .py_2()
-                    .child(
-                        div()
-                            .size_full()
-                            .bg(cx.theme().background)
-                            .border_1()
-                            .border_color(cx.theme().border.opacity(0.5))
-                            .rounded(px(8.0))
-                            .overflow_hidden()
-                            .child(
-                                v_flex()
-                                    .size_full()
-                                    .p_3()
-                                    .scrollable(Axis::Vertical)
-                                    .child(Self::render_properties_content(panel, cx))
-                            )
-                    )
+                    .p_3()
+                    .scrollable(Axis::Vertical)
+                    .child(Self::render_properties_content(panel, cx))
             )
     }
 

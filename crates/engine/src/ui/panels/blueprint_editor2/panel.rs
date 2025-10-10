@@ -6,7 +6,7 @@ use gpui_component::{
     dock::{Panel, PanelEvent},
     input::{InputEvent, InputState},
     resizable::{h_resizable, resizable_panel, ResizableState},
-    v_flex, ActiveTheme as _, PixelsExt, StyledExt,
+    v_flex, h_flex, ActiveTheme as _, PixelsExt, StyledExt,
 };
 use smol::Timer;
 use std::time::Duration;
@@ -2565,12 +2565,27 @@ impl Panel for BlueprintEditorPanel {
         "Blueprint Editor"
     }
 
-    fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
-        if let Some(title) = &self.tab_title {
-            div().child(title.clone()).into_any_element()
-        } else {
-            div().child("Blueprint Editor").into_any_element()
-        }
+    fn title(&self, _window: &Window, cx: &App) -> AnyElement {
+        // STUDIO-QUALITY TAB TITLE with icon
+        h_flex()
+            .gap_2()
+            .items_center()
+            .child(
+                // Blueprint icon
+                div()
+                    .text_sm()
+                    .child("⚡")
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .child(if let Some(title) = &self.tab_title {
+                        title.clone()
+                    } else {
+                        "Blueprint Editor".to_string()
+                    })
+            )
+            .into_any_element()
     }
 
     fn dump(&self, _cx: &App) -> gpui_component::dock::PanelState {
@@ -2617,41 +2632,16 @@ impl Render for BlueprintEditorPanel {
                             resizable_panel()
                                 .size(px(280.))
                                 .size_range(px(200.)..px(400.))
-                                .child(
-                                    div()
-                                        .size_full()
-                                        .bg(cx.theme().sidebar)
-                                        .border_1()
-                                        .border_color(cx.theme().border)
-                                        .rounded(cx.theme().radius)
-                                        .p_2()
-                                        .child(super::variables::VariablesRenderer::render(
-                                            self, cx,
-                                        )),
-                                ),
+                                .child(super::variables::VariablesRenderer::render(self, cx))
                         )
                         .child(
-                            resizable_panel().child(
-                                div()
-                                    .size_full()
-                                    .p_2()
-                                    .child(NodeGraphRenderer::render(self, cx)),
-                            ),
+                            resizable_panel().child(NodeGraphRenderer::render(self, cx))
                         )
                         .child(
                             resizable_panel()
                                 .size(px(320.))
                                 .size_range(px(250.)..px(500.))
-                                .child(
-                                    div()
-                                        .size_full()
-                                        .bg(cx.theme().sidebar)
-                                        .border_1()
-                                        .border_color(cx.theme().border)
-                                        .rounded(cx.theme().radius)
-                                        .p_2()
-                                        .child(PropertiesRenderer::render(self, cx)),
-                                ),
+                                .child(super::properties::PropertiesRenderer::render(self, cx))
                         ),
                 ),
             )
