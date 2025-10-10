@@ -5,6 +5,8 @@ pub mod variables;
 pub mod panel;
 pub mod node_creation_menu;
 pub mod hoverable_tooltip;
+pub mod node_library;
+pub mod minimap;
 
 // Re-export the main panel
 pub use panel::BlueprintEditorPanel;
@@ -13,7 +15,35 @@ use gpui::*;
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
-use crate::graph::{DataType, PinStyle};
+use crate::graph::DataType;
+
+// Compilation status tracking for UI feedback
+#[derive(Clone, Debug, PartialEq)]
+pub enum CompilationState {
+    Idle,
+    Compiling,
+    Success,
+    Error,
+}
+
+#[derive(Clone, Debug)]
+pub struct CompilationStatus {
+    pub state: CompilationState,
+    pub message: String,
+    pub progress: f32, // 0.0 to 1.0
+    pub is_compiling: bool,
+}
+
+impl Default for CompilationStatus {
+    fn default() -> Self {
+        Self {
+            state: CompilationState::Idle,
+            message: "Ready to compile".to_string(),
+            progress: 0.0,
+            is_compiling: false,
+        }
+    }
+}
 
 // Context menu actions for blueprint editor
 #[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]

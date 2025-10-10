@@ -77,6 +77,8 @@ pub struct BlueprintEditorPanel {
     pub comment_text_input: Entity<gpui_component::input::InputState>,
     // Store subscriptions to keep them alive
     pub subscriptions: Vec<gpui::Subscription>,
+    // Compilation status for UI feedback
+    pub compilation_status: super::CompilationStatus,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -426,6 +428,7 @@ impl BlueprintEditorPanel {
                 gpui_component::input::InputState::new(window, cx).placeholder("Comment text...")
             }),
             subscriptions: Vec::<gpui::Subscription>::new(),
+            compilation_status: super::CompilationStatus::default(),
         };
 
         result
@@ -2298,6 +2301,109 @@ impl BlueprintEditorPanel {
         self.dragging_variable = None;
         self.variable_drop_menu_position = None;
         cx.notify();
+    }
+
+    // Stub methods for node library (not currently used)
+    pub fn get_search_input_state(&self) -> &Entity<gpui_component::input::InputState> {
+        &self.variable_name_input // Reuse existing input state
+    }
+
+    pub fn get_search_query(&self) -> &str {
+        "" // Return empty string for now
+    }
+
+    /// Start the compilation process with progress tracking
+    pub fn start_compilation(&mut self, cx: &mut Context<Self>) {
+        self.compilation_status = super::CompilationStatus {
+            state: super::CompilationState::Compiling,
+            message: "Starting compilation...".to_string(),
+            progress: 0.0,
+            is_compiling: true,
+        };
+        cx.notify();
+
+        // Spawn async compilation task
+        cx.spawn(async move |view, mut cx| {
+            // Phase 1: Validate blueprint
+            cx.update(|cx| {
+                view.update(cx, |panel, cx| {
+                    panel.compilation_status.message = "Validating blueprint graph...".to_string();
+                    panel.compilation_status.progress = 0.2;
+                    cx.notify();
+                }).ok();
+            }).ok();
+
+            smol::Timer::after(std::time::Duration::from_millis(100)).await;
+
+            // Phase 2: Generate code
+            let compile_result = cx.update(|cx| {
+                view.update(cx, |panel, cx| {
+                    panel.compilation_status.message = "Generating Rust code...".to_string();
+                    panel.compilation_status.progress = 0.5;
+                    cx.notify();
+                    panel.compile_to_class_directory()
+                }).ok()
+            }).ok().flatten();
+
+            smol::Timer::after(std::time::Duration::from_millis(100)).await;
+
+            // Phase 3: Write files
+            cx.update(|cx| {
+                view.update(cx, |panel, cx| {
+                    panel.compilation_status.message = "Writing files...".to_string();
+                    panel.compilation_status.progress = 0.8;
+                    cx.notify();
+                }).ok();
+            }).ok();
+
+            smol::Timer::after(std::time::Duration::from_millis(100)).await;
+
+            // Phase 4: Complete
+            cx.update(|cx| {
+                view.update(cx, |panel, cx| {
+                    match compile_result {
+                        Some(Ok(())) => {
+                            panel.compilation_status = super::CompilationStatus {
+                                state: super::CompilationState::Success,
+                                message: "Compilation successful!".to_string(),
+                                progress: 1.0,
+                                is_compiling: false,
+                            };
+                            println!("✅ Blueprint compiled successfully!");
+                        }
+                        Some(Err(e)) => {
+                            panel.compilation_status = super::CompilationStatus {
+                                state: super::CompilationState::Error,
+                                message: format!("Compilation failed: {}", e),
+                                progress: 0.0,
+                                is_compiling: false,
+                            };
+                            eprintln!("❌ Compilation error: {}", e);
+                        }
+                        None => {
+                            panel.compilation_status = super::CompilationStatus {
+                                state: super::CompilationState::Error,
+                                message: "Compilation cancelled".to_string(),
+                                progress: 0.0,
+                                is_compiling: false,
+                            };
+                        }
+                    }
+                    cx.notify();
+                }).ok();
+            }).ok();
+
+            // Reset to idle after 3 seconds
+            smol::Timer::after(std::time::Duration::from_secs(3)).await;
+            cx.update(|cx| {
+                view.update(cx, |panel, cx| {
+                    if panel.compilation_status.state != super::CompilationState::Compiling {
+                        panel.compilation_status = super::CompilationStatus::default();
+                        cx.notify();
+                    }
+                }).ok();
+            }).ok();
+        }).detach();
     }
 
     /// Create a getter node for a variable at the specified position
