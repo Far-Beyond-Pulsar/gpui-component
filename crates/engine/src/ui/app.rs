@@ -769,7 +769,7 @@ impl PulsarApp {
                         // Project Files Toggle
                         Button::new("toggle-drawer")
                             .ghost()
-                            .icon(IconName::Files)
+                            .icon(IconName::Folder)
                             .label("Files")
                             .when(drawer_open, |btn| btn.primary())
                             .tooltip("Toggle Project Files (Ctrl+B)")
