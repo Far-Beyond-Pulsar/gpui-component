@@ -6,7 +6,7 @@ use gpui_component::{
     v_flex, ActiveTheme as _, TitleBar,
 };
 
-use super::file_manager_drawer::FileManagerDrawer;
+use super::file_manager_drawer::{FileManagerDrawer, FileSelected};
 
 pub struct FileManagerWindow {
     file_manager: Entity<FileManagerDrawer>,
@@ -15,16 +15,32 @@ pub struct FileManagerWindow {
 impl FileManagerWindow {
     pub fn new(
         file_manager: Entity<FileManagerDrawer>,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) -> Self {
+        // Subscribe to file selected events and forward them
+        cx.subscribe_in(&file_manager, window, Self::on_file_selected).detach();
+
         Self { file_manager }
     }
 
     pub fn file_manager(&self) -> &Entity<FileManagerDrawer> {
         &self.file_manager
     }
+
+    fn on_file_selected(
+        &mut self,
+        _drawer: &Entity<FileManagerDrawer>,
+        event: &FileSelected,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Forward the event so other windows can handle it
+        cx.emit(event.clone());
+    }
 }
+
+impl EventEmitter<FileSelected> for FileManagerWindow {}
 
 impl Render for FileManagerWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

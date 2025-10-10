@@ -390,13 +390,13 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Create a new file manager drawer for the window
-        let new_drawer = cx.new(|cx| {
-            FileManagerDrawer::new(event.project_path.clone(), window, cx)
-        });
+        use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
+        use gpui_component::Root;
+
+        let project_path = event.project_path.clone();
 
         // Open the file manager window
-        cx.open_window(
+        let _ = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds {
                     origin: Point { x: px(100.0), y: px(100.0) },
@@ -404,15 +404,25 @@ impl PulsarApp {
                 })),
                 titlebar: None,
                 kind: WindowKind::Normal,
+                window_min_size: Some(gpui::Size {
+                    width: px(600.),
+                    height: px(400.),
+                }),
                 ..Default::default()
             },
-            |window, cx| {
+            move |window, cx| {
+                // Create a new file manager drawer for the window
+                let new_drawer = cx.new(|cx| {
+                    FileManagerDrawer::new(project_path.clone(), window, cx)
+                });
+
                 let file_manager_window = cx.new(|cx| {
                     FileManagerWindow::new(new_drawer, window, cx)
                 });
-                file_manager_window
+
+                cx.new(|cx| Root::new(file_manager_window.into(), window, cx))
             },
-        ).ok();
+        );
     }
 
     fn toggle_drawer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -421,10 +431,13 @@ impl PulsarApp {
     }
 
     fn toggle_problems(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
+        use gpui_component::Root;
+
         // Open problems in a separate window
         let problems_drawer = self.problems_drawer.clone();
         
-        cx.open_window(
+        let _ = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds {
                     origin: Point { x: px(100.0), y: px(100.0) },
@@ -432,14 +445,18 @@ impl PulsarApp {
                 })),
                 titlebar: None,
                 kind: WindowKind::Normal,
+                window_min_size: Some(gpui::Size {
+                    width: px(500.),
+                    height: px(300.),
+                }),
                 ..Default::default()
             },
             |window, cx| {
                 let problems_window = cx.new(|cx| ProblemsWindow::new(problems_drawer, window, cx));
                 
-                problems_window
+                cx.new(|cx| Root::new(problems_window.into(), window, cx))
             },
-        ).ok();
+        );
     }
 
     fn on_toggle_file_manager(
