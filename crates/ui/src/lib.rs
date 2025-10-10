@@ -42,6 +42,7 @@ pub mod json_ui;
 pub mod label;
 pub mod link;
 pub mod list;
+pub mod minimap;
 pub mod modal;
 pub mod notification;
 pub mod plot;

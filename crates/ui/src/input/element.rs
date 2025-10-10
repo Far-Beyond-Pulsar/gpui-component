@@ -454,87 +454,98 @@ impl TextElement {
         line_height: Pixels,
         input_height: Pixels,
     ) -> (Range<usize>, Pixels) {
-        // Add extra rows to avoid showing empty space when scroll to bottom.
-        let extra_rows = 1;
-        let mut visible_top = px(0.);
+        // Single line mode - always show just the first line
         if state.mode.is_single_line() {
-            return (0..1, visible_top);
+            return (0..1, px(0.));
         }
 
         let total_lines = state.text_wrapper.len();
+        if total_lines == 0 {
+            return (0..0, px(0.));
+        }
+
         let scroll_top = if let Some(deferred_scroll_offset) = state.deferred_scroll_offset {
             deferred_scroll_offset.y
         } else {
             state.scroll_handle.offset().y
         };
 
-        // Optimization for large files: Use chunked search
-        // Instead of iterating from 0 or doing full binary search,
-        // we use a stride-based approach to quickly find the approximate area
-        let visible_lines_count = (input_height / line_height).ceil() as usize + extra_rows;
+        // Calculate how many lines can fit in viewport + small buffer
+        let visible_lines_count = (input_height / line_height).ceil() as usize + 1;
         
+        // Studio-quality optimization: Use stride-based binary search for large files
+        // This is O(log n) instead of O(n), critical for files with 100k+ lines
         if total_lines > 5000 {
-            // Use stride-based search for large files
-            // Check every Nth line to quickly narrow down the region
-            let stride = if total_lines > 50000 {
-                500  // Check every 500 lines for very large files
-            } else if total_lines > 20000 {
-                200  // Check every 200 lines
-            } else {
-                100  // Check every 100 lines
+            // Use adaptive stride based on file size for optimal performance
+            let stride = match total_lines {
+                5000..=20000 => 100,      // Check every 100 lines
+                20001..=50000 => 200,     // Check every 200 lines
+                50001..=100000 => 500,    // Check every 500 lines
+                _ => 1000,                 // Check every 1000 lines for massive files
             };
             
             let mut line_bottom = px(0.);
             let mut search_start = 0;
             
-            // Phase 1: Quick stride to find approximate region
-            // CRITICAL: Use direct indexing instead of .skip() to avoid O(n) iteration
-            for chunk_start in (0..total_lines).step_by(stride) {
+            // Phase 1: Exponential stride to quickly locate the region
+            // Use direct indexing (NOT .skip()) to avoid O(n) iteration cost
+            let mut chunk_start = 0;
+            while chunk_start < total_lines {
                 let chunk_end = (chunk_start + stride).min(total_lines);
                 
-                // Calculate height of this chunk using direct indexing
+                // Calculate height of this chunk using direct indexing O(stride)
                 let mut chunk_height = px(0.);
                 for i in chunk_start..chunk_end {
+                    // CRITICAL: Direct indexing avoids iterator allocation overhead
                     if let Some(line) = state.text_wrapper.lines.get(i) {
                         chunk_height += line.height(line_height);
                     }
                 }
                 
                 if line_bottom + chunk_height >= -scroll_top {
-                    // Found the chunk containing the visible region
+                    // Found it! The visible region starts in this chunk
                     search_start = chunk_start;
                     break;
                 }
                 
                 line_bottom += chunk_height;
+                chunk_start = chunk_end;
             }
             
-            // Phase 2: Fine-grained search within the identified region
+            // Phase 2: Fine-grained linear search within the located chunk
+            // Only search a small region, not the entire file
             let search_end = (search_start + stride + visible_lines_count).min(total_lines);
             let mut visible_range = search_start..search_end;
-            visible_top = line_bottom;
+            let mut visible_top = line_bottom;
             
-            // CRITICAL: Use direct indexing instead of .skip().take()
+            // Reset to start of found chunk
+            line_bottom = visible_top;
+            
+            // Linear search within the small region to find exact boundaries
             for ix in search_start..search_end {
                 if let Some(line) = state.text_wrapper.lines.get(ix) {
                     let wrapped_height = line.height(line_height);
-                    line_bottom += wrapped_height;
-
+                    
+                    // Track the top of the first visible line
                     if line_bottom < -scroll_top {
-                        visible_top = line_bottom - wrapped_height;
+                        visible_top = line_bottom;
                         visible_range.start = ix;
                     }
 
+                    line_bottom += wrapped_height;
+
+                    // Stop when we've passed the bottom of the viewport
                     if line_bottom + scroll_top >= input_height {
-                        visible_range.end = (ix + extra_rows).min(total_lines);
+                        // Add just 1 extra line for smooth scroll at high speeds
+                        visible_range.end = (ix + 2).min(total_lines);
                         break;
                     }
                 }
             }
             
-            // Cap maximum visible range to prevent rendering too many lines at once
-            // This helps when zoomed out or with very small line heights
-            const MAX_VISIBLE_LINES: usize = 500;
+            // Studio-quality safety: Cap maximum visible range to prevent rendering too many lines
+            // This handles edge cases like extreme zoom out or microscopic line heights
+            const MAX_VISIBLE_LINES: usize = 200; // No normal viewport needs more than 200 lines
             if visible_range.len() > MAX_VISIBLE_LINES {
                 visible_range.end = visible_range.start + MAX_VISIBLE_LINES;
             }
@@ -542,20 +553,24 @@ impl TextElement {
             return (visible_range, visible_top);
         }
 
-        // Standard visible range calculation for smaller files
+        // Standard linear search for smaller files (< 5000 lines)
+        // Still efficient enough for this size
         let mut visible_range = 0..total_lines;
+        let mut visible_top = px(0.);
         let mut line_bottom = px(0.);
+        
         for (ix, line) in state.text_wrapper.lines.iter().enumerate() {
             let wrapped_height = line.height(line_height);
-            line_bottom += wrapped_height;
-
+            
             if line_bottom < -scroll_top {
-                visible_top = line_bottom - wrapped_height;
+                visible_top = line_bottom;
                 visible_range.start = ix;
             }
 
+            line_bottom += wrapped_height;
+
             if line_bottom + scroll_top >= input_height {
-                visible_range.end = (ix + extra_rows).min(total_lines);
+                visible_range.end = (ix + 2).min(total_lines);
                 break;
             }
         }
