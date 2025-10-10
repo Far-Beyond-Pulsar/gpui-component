@@ -175,10 +175,24 @@ pub struct FileManagerDrawer {
     height_resizable_state: Entity<ResizableState>,
     renaming_item: Option<PathBuf>,
     rename_input_state: Entity<InputState>,
+    is_in_window: bool, // Track if this drawer is rendered in a separate window
 }
 
 impl FileManagerDrawer {
     pub fn new(project_path: Option<PathBuf>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_with_context(project_path, window, cx, false)
+    }
+
+    pub fn new_in_window(project_path: Option<PathBuf>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_with_context(project_path, window, cx, true)
+    }
+
+    fn new_with_context(
+        project_path: Option<PathBuf>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        is_in_window: bool,
+    ) -> Self {
         let resizable_state = ResizableState::new(cx);
         let height_resizable_state = ResizableState::new(cx);
         let rename_input_state = cx.new(|cx| InputState::new(window, cx));
@@ -205,6 +219,7 @@ impl FileManagerDrawer {
             height_resizable_state,
             renaming_item: None,
             rename_input_state,
+            is_in_window,
         }
     }
 
@@ -913,18 +928,20 @@ impl Render for FileManagerDrawer {
                                                                     .child("File Manager")
                                                             )
                                                     )
-                                                    .child(
-                                                        // Popout button
-                                                        Button::new("popout-drawer")
-                                                            .ghost()
-                                                            .compact()
-                                                            .icon(IconName::ExternalLink)
-                                                            .tooltip("Open in Separate Window")
-                                                            .on_click(cx.listener(|drawer, _, _, cx| {
-                                                                let project_path = drawer.project_path.clone();
-                                                                cx.emit(PopoutFileManagerEvent { project_path });
-                                                            }))
-                                                    )
+                                                    .when(!self.is_in_window, |this| {
+                                                        this.child(
+                                                            // Popout button - only show when in drawer
+                                                            Button::new("popout-drawer")
+                                                                .ghost()
+                                                                .compact()
+                                                                .icon(IconName::ExternalLink)
+                                                                .tooltip("Open in Separate Window")
+                                                                .on_click(cx.listener(|drawer, _, _, cx| {
+                                                                    let project_path = drawer.project_path.clone();
+                                                                    cx.emit(PopoutFileManagerEvent { project_path });
+                                                                }))
+                                                        )
+                                                    })
                                             )
                                     )
                                     .child(

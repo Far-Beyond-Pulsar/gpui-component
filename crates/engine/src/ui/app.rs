@@ -395,6 +395,10 @@ impl PulsarApp {
 
         let project_path = event.project_path.clone();
 
+        // Close the drawer when popping out
+        self.drawer_open = false;
+        cx.notify();
+
         // Open the file manager window
         let _ = cx.open_window(
             WindowOptions {
@@ -411,9 +415,9 @@ impl PulsarApp {
                 ..Default::default()
             },
             move |window, cx| {
-                // Create a new file manager drawer for the window
+                // Create a new file manager drawer for the window (use new_in_window)
                 let new_drawer = cx.new(|cx| {
-                    FileManagerDrawer::new(project_path.clone(), window, cx)
+                    FileManagerDrawer::new_in_window(project_path.clone(), window, cx)
                 });
 
                 let file_manager_window = cx.new(|cx| {
