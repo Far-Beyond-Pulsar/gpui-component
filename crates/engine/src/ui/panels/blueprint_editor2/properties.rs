@@ -104,17 +104,17 @@ impl PropertiesRenderer {
                             )
                             .child(
                                 if !panel.graph.selected_nodes.is_empty() {
-                                    Some(div()
+                                    div()
                                         .px_2()
                                         .py_1()
                                         .rounded(px(4.0))
                                         .bg(cx.theme().info.opacity(0.15))
                                         .text_xs()
-                                        .font_mono()
+                                        .font_family("JetBrainsMono-Regular")
                                         .text_color(cx.theme().info)
-                                        .child(format!("{}", panel.graph.selected_nodes.len())))
+                                        .child(format!("{}", panel.graph.selected_nodes.len()))
                                 } else {
-                                    None
+                                    div() // Empty div when no selection
                                 }
                             )
                     )
@@ -248,9 +248,8 @@ impl PropertiesRenderer {
             .gap_3()
             .child(
                 div()
-                    .text_4xl()
-                    .text_color(cx.theme().muted_foreground.opacity(0.3))
-                    .child("📋")
+                    .text_xl()
+                    .child("📋📋📋")
             )
             .child(
                 div()
@@ -343,7 +342,7 @@ impl PropertiesRenderer {
                     .rounded(px(4.0))
                     .bg(cx.theme().muted.opacity(0.2))
                     .text_xs()
-                    .font_mono()
+                    .font_family("JetBrainsMono-Regular")
                     .text_color(cx.theme().foreground)
                     .child(value.to_string())
             )
