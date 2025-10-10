@@ -393,13 +393,13 @@ impl Render for NodeCreationMenu {
                 v_flex()
                     .key_context("NodeCreationMenu")
                     .track_focus(&self.focus_handle)
-                    .w(px(280.0))
-                    .max_h(px(350.0))
+                    .w(px(300.0)) // Slightly wider for better readability
+                    .max_h(px(400.0)) // Taller for more nodes visible
                     .bg(cx.theme().popover)
-                    .border_1()
+                    .border_2() // Thicker border for prominence
                     .border_color(cx.theme().border)
-                    .rounded(cx.theme().radius)
-                    .shadow_lg()
+                    .rounded(px(8.0)) // More rounded corners
+                    .shadow_2xl() // Enhanced shadow for depth
                     .overflow_hidden()
                     .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| {
                         cx.stop_propagation(); // Prevent clicks inside menu from bubbling up
@@ -407,6 +407,33 @@ impl Render for NodeCreationMenu {
                     .on_scroll_wheel(cx.listener(|_, _, _, cx| {
                         cx.stop_propagation(); // Prevent scroll events from reaching canvas
                     }))
+                    // Header with title
+                    .child(
+                        div()
+                            .w_full()
+                            .px_3()
+                            .py_2()
+                            .bg(cx.theme().secondary)
+                            .border_b_2()
+                            .border_color(cx.theme().border)
+                            .child(
+                                h_flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .child("🔍")
+                                    )
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .font_semibold()
+                                            .text_color(cx.theme().foreground)
+                                            .child("Add Node")
+                                    )
+                            )
+                    )
                     .child(self.render_search_box(cx))
                     .child(
                         div()
@@ -416,6 +443,7 @@ impl Render for NodeCreationMenu {
                                 v_flex()
                                     .w_full()
                                     .gap_0p5()
+                                    .p_1()
                                     .scrollable(Axis::Vertical)
                                     .children(
                                         self.filtered_categories.iter().map(|category| {
