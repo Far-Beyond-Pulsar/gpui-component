@@ -1414,6 +1414,196 @@ impl Render for FileManagerDrawer {
                                                         )
                                                     })
                                             )
+                                            // Combined breadcrumbs and controls bar
+                                            .child(
+                                                h_flex()
+                                                    .w_full()
+                                                    .items_center()
+                                                    .justify_between()
+                                                    .gap_2()
+                                                    .child(
+                                                        // Breadcrumb navigation
+                                                        h_flex()
+                                                            .flex_1()
+                                                            .items_center()
+                                                            .gap_1()
+                                                            .overflow_hidden()
+                                                            .children(
+                                                                breadcrumbs.iter().enumerate().flat_map(|(i, (name, path))| {
+                                                                    let path_clone = path.clone();
+                                                                    let is_last = i == breadcrumbs.len() - 1;
+                                                                    
+                                                                    let mut elements: Vec<gpui::AnyElement> = vec![];
+                                                                    
+                                                                    if i > 0 {
+                                                                        elements.push(
+                                                                            Icon::new(IconName::ChevronRight)
+                                                                                .size(px(12.))
+                                                                                .text_color(cx.theme().muted_foreground.opacity(0.4))
+                                                                                .into_any_element()
+                                                                        );
+                                                                    }
+                                                                    
+                                                                    elements.push(
+                                                                        Button::new(SharedString::from(format!("breadcrumb-{}", i)))
+                                                                            .ghost()
+                                                                            .compact()
+                                                                            .label(name.clone())
+                                                                            .when(is_last, |btn| btn.primary())
+                                                                            .on_click(cx.listener(move |drawer, _, _, cx| {
+                                                                                drawer.select_folder(path_clone.clone(), cx);
+                                                                            }))
+                                                                            .into_any_element()
+                                                                    );
+                                                                    
+                                                                    elements
+                                                                })
+                                                            )
+                                                    )
+                                                    .child(
+                                                        // Item count and controls
+                                                        h_flex()
+                                                            .items_center()
+                                                            .gap_2()
+                                                            .child(
+                                                                h_flex()
+                                                                    .items_center()
+                                                                    .gap_1p5()
+                                                                    .child(
+                                                                        Icon::new(IconName::Page)
+                                                                            .size(px(14.))
+                                                                            .text_color(cx.theme().primary)
+                                                                    )
+                                                                    .child(
+                                                                        div()
+                                                                            .px_1p5()
+                                                                            .py_0p5()
+                                                                            .rounded(px(3.))
+                                                                            .bg(cx.theme().muted.opacity(0.3))
+                                                                            .child(
+                                                                                div()
+                                                                                    .text_xs()
+                                                                                    .text_color(cx.theme().muted_foreground)
+                                                                                    .child(format!("{} items", contents.len()))
+                                                                            )
+                                                                    )
+                                                            )
+                                                            .child(
+                                                                h_flex()
+                                                                    .gap_0p5()
+                                                                    .when(self.selected_folder.is_some(), |this| {
+                                                                        let folder = self.selected_folder.clone().unwrap();
+                                                                        let folder_str = folder.to_string_lossy().to_string();
+                                                                        let folder_str1 = folder_str.clone();
+                                                                        let folder_str2 = folder_str.clone();
+                                                                        let folder_str3 = folder_str.clone();
+                                                                        this.child(
+                                                                            Button::new("new-folder-quick")
+                                                                                .ghost()
+                                                                                .compact()
+                                                                                .icon(IconName::FolderPlus)
+                                                                                .tooltip("New Folder")
+                                                                                .on_click(cx.listener(move |_, _, _, cx| {
+                                                                                    cx.dispatch_action(&NewFolder {
+                                                                                        folder_path: folder_str1.clone(),
+                                                                                    });
+                                                                                }))
+                                                                        )
+                                                                        .child(
+                                                                            Button::new("new-class-quick")
+                                                                                .ghost()
+                                                                                .compact()
+                                                                                .icon(IconName::Component)
+                                                                                .tooltip("New Class")
+                                                                                .on_click(cx.listener(move |_, _, _, cx| {
+                                                                                    cx.dispatch_action(&NewClass {
+                                                                                        folder_path: folder_str2.clone(),
+                                                                                    });
+                                                                                }))
+                                                                        )
+                                                                        .child(
+                                                                            Button::new("new-file-quick")
+                                                                                .ghost()
+                                                                                .compact()
+                                                                                .icon(IconName::Page)
+                                                                                .tooltip("New File")
+                                                                                .on_click(cx.listener(move |_, _, _, cx| {
+                                                                                    cx.dispatch_action(&NewFile {
+                                                                                        folder_path: folder_str3.clone(),
+                                                                                    });
+                                                                                }))
+                                                                        )
+                                                                    })
+                                                                    .child(
+                                                                        Button::new("refresh")
+                                                                            .ghost()
+                                                                            .compact()
+                                                                            .icon(IconName::Refresh)
+                                                                            .tooltip("Refresh")
+                                                                            .on_click(cx.listener(|_, _, _, cx| {
+                                                                                cx.dispatch_action(&RefreshFileManager);
+                                                                            }))
+                                                                    )
+                                                                    .child(
+                                                                        Button::new("view-grid")
+                                                                            .ghost()
+                                                                            .compact()
+                                                                            .icon(IconName::LayoutDashboard)
+                                                                            .tooltip("Grid View")
+                                                                            .when(self.view_mode == ViewMode::Grid, |btn| btn.primary())
+                                                                            .on_click(cx.listener(|drawer, _, _, cx| {
+                                                                                drawer.toggle_view_mode(ViewMode::Grid, cx);
+                                                                            }))
+                                                                    )
+                                                                    .child(
+                                                                        Button::new("view-list")
+                                                                            .ghost()
+                                                                            .compact()
+                                                                            .icon(IconName::List)
+                                                                            .tooltip("List View")
+                                                                            .when(self.view_mode == ViewMode::List, |btn| btn.primary())
+                                                                            .on_click(cx.listener(|drawer, _, _, cx| {
+                                                                                drawer.toggle_view_mode(ViewMode::List, cx);
+                                                                            }))
+                                                                    )
+                                                                    .child(
+                                                                        Button::new("sort-button")
+                                                                            .ghost()
+                                                                            .compact()
+                                                                            .icon(IconName::ChevronsUpDown)
+                                                                            .tooltip("Sort By")
+                                                                            .on_click(cx.listener(|drawer, _, _, cx| {
+                                                                                let next_sort = match drawer.sort_by {
+                                                                                    SortBy::Name => SortBy::DateModified,
+                                                                                    SortBy::DateModified => SortBy::Size,
+                                                                                    SortBy::Size => SortBy::Type,
+                                                                                    SortBy::Type => SortBy::Name,
+                                                                                };
+                                                                                drawer.set_sort_by(next_sort, cx);
+                                                                            }))
+                                                                    )
+                                                                    .child(
+                                                                        Button::new("filter-button")
+                                                                            .ghost()
+                                                                            .compact()
+                                                                            .icon(IconName::Filter)
+                                                                            .tooltip("Filter")
+                                                                            .when(!self.selected_file_types.is_empty(), |btn| btn.primary())
+                                                                    )
+                                                                    .child(
+                                                                        Button::new("toggle-hidden")
+                                                                            .ghost()
+                                                                            .compact()
+                                                                            .icon(IconName::Eye)
+                                                                            .tooltip(if self.show_hidden_files { "Hide Hidden Files" } else { "Show Hidden Files" })
+                                                                            .when(self.show_hidden_files, |btn| btn.primary())
+                                                                            .on_click(cx.listener(|_, _, _, cx| {
+                                                                                cx.dispatch_action(&ToggleHiddenFiles);
+                                                                            }))
+                                                                    )
+                                                            )
+                                                    )
+                                            )
                                     )
                                     .child(
                                         // Content split: tree and grid
@@ -1540,207 +1730,11 @@ impl Render for FileManagerDrawer {
                                                                     // COMPACT CONTENT HEADER
                                                                     v_flex()
                                                                         .w_full()
-                                                                        .gap_2()
+                                                                        .gap_1p5()
                                                                         .px_2p5()
                                                                         .py_2()
                                                                         .border_b_1()
                                                                         .border_color(cx.theme().border.opacity(0.3))
-                                                                        .child(
-                                                                            // Breadcrumb navigation
-                                                                            h_flex()
-                                                                                .w_full()
-                                                                                .items_center()
-                                                                                .gap_1()
-                                                                                .overflow_hidden()
-                                                                                .children(
-                                                                                    breadcrumbs.iter().enumerate().flat_map(|(i, (name, path))| {
-                                                                                        let path_clone = path.clone();
-                                                                                        let is_last = i == breadcrumbs.len() - 1;
-                                                                                        
-                                                                                        let mut elements: Vec<gpui::AnyElement> = vec![];
-                                                                                        
-                                                                                        if i > 0 {
-                                                                                            elements.push(
-                                                                                                Icon::new(IconName::ChevronRight)
-                                                                                                    .size(px(12.))
-                                                                                                    .text_color(cx.theme().muted_foreground.opacity(0.4))
-                                                                                                    .into_any_element()
-                                                                                            );
-                                                                                        }
-                                                                                        
-                                                                                        elements.push(
-                                                                                            Button::new(SharedString::from(format!("breadcrumb-{}", i)))
-                                                                                                .ghost()
-                                                                                                .compact()
-                                                                                                .label(name.clone())
-                                                                                                .when(is_last, |btn| btn.primary())
-                                                                                                .on_click(cx.listener(move |drawer, _, _, cx| {
-                                                                                                    drawer.select_folder(path_clone.clone(), cx);
-                                                                                                }))
-                                                                                                .into_any_element()
-                                                                                        );
-                                                                                        
-                                                                                        elements
-                                                                                    })
-                                                                                )
-                                                                        )
-                                                                        .child(
-                                                                            h_flex()
-                                                                                .w_full()
-                                                                                .items_center()
-                                                                                .justify_between()
-                                                                                .gap_2()
-                                                                                .child(
-                                                                                    h_flex()
-                                                                                        .items_center()
-                                                                                        .gap_1p5()
-                                                                                        .child(
-                                                                                            Icon::new(IconName::Page)
-                                                                                                .size(px(14.))
-                                                                                                .text_color(cx.theme().primary)
-                                                                                        )
-                                                                                        .child(
-                                                                                            div()
-                                                                                                .px_1p5()
-                                                                                                .py_0p5()
-                                                                                                .rounded(px(3.))
-                                                                                                .bg(cx.theme().muted.opacity(0.3))
-                                                                                                .child(
-                                                                                                    div()
-                                                                                                        .text_xs()
-                                                                                                        .text_color(cx.theme().muted_foreground)
-                                                                                                        .child(format!("{} items", contents.len()))
-                                                                                                )
-                                                                                        )
-                                                                                )
-                                                                                .child(
-                                                                                    h_flex()
-                                                                                        .gap_1()
-                                                                                        .child(
-                                                                                            // Quick actions
-                                                                                            h_flex()
-                                                                                                .gap_0p5()
-                                                                                                .when(self.selected_folder.is_some(), |this| {
-                                                                                                    let folder = self.selected_folder.clone().unwrap();
-                                                                                                    let folder_str = folder.to_string_lossy().to_string();
-                                                                                                    let folder_str1 = folder_str.clone();
-                                                                                                    let folder_str2 = folder_str.clone();
-                                                                                                    let folder_str3 = folder_str.clone();
-                                                                                                    this.child(
-                                                                                                        Button::new("new-folder-quick")
-                                                                                                            .ghost()
-                                                                                                            .compact()
-                                                                                                            .icon(IconName::FolderPlus)
-                                                                                                            .tooltip("New Folder")
-                                                                                                            .on_click(cx.listener(move |_, _, _, cx| {
-                                                                                                                cx.dispatch_action(&NewFolder {
-                                                                                                                    folder_path: folder_str1.clone(),
-                                                                                                                });
-                                                                                                            }))
-                                                                                                    )
-                                                                                                    .child(
-                                                                                                        Button::new("new-class-quick")
-                                                                                                            .ghost()
-                                                                                                            .compact()
-                                                                                                            .icon(IconName::Component)
-                                                                                                            .tooltip("New Class")
-                                                                                                            .on_click(cx.listener(move |_, _, _, cx| {
-                                                                                                                cx.dispatch_action(&NewClass {
-                                                                                                                    folder_path: folder_str2.clone(),
-                                                                                                                });
-                                                                                                            }))
-                                                                                                    )
-                                                                                                    .child(
-                                                                                                        Button::new("new-file-quick")
-                                                                                                            .ghost()
-                                                                                                            .compact()
-                                                                                                            .icon(IconName::Page)
-                                                                                                            .tooltip("New File")
-                                                                                                            .on_click(cx.listener(move |_, _, _, cx| {
-                                                                                                                cx.dispatch_action(&NewFile {
-                                                                                                                    folder_path: folder_str3.clone(),
-                                                                                                                });
-                                                                                                            }))
-                                                                                                    )
-                                                                                                })
-                                                                                                .child(
-                                                                                                    Button::new("refresh")
-                                                                                                        .ghost()
-                                                                                                        .compact()
-                                                                                                        .icon(IconName::Refresh)
-                                                                                                        .tooltip("Refresh")
-                                                                                                        .on_click(cx.listener(|_, _, _, cx| {
-                                                                                                            cx.dispatch_action(&RefreshFileManager);
-                                                                                                        }))
-                                                                                                )
-                                                                                        )
-                                                                                        .child(
-                                                                                            // View mode toggles
-                                                                                            h_flex()
-                                                                                                .gap_0p5()
-                                                                                                .child(
-                                                                                                    Button::new("view-grid")
-                                                                                                        .ghost()
-                                                                                                        .compact()
-                                                                                                        .icon(IconName::LayoutDashboard)
-                                                                                                        .tooltip("Grid View")
-                                                                                                        .when(self.view_mode == ViewMode::Grid, |btn| btn.primary())
-                                                                                                        .on_click(cx.listener(|drawer, _, _, cx| {
-                                                                                                            drawer.toggle_view_mode(ViewMode::Grid, cx);
-                                                                                                        }))
-                                                                                                )
-                                                                                                .child(
-                                                                                                    Button::new("view-list")
-                                                                                                        .ghost()
-                                                                                                        .compact()
-                                                                                                        .icon(IconName::List)
-                                                                                                        .tooltip("List View")
-                                                                                                        .when(self.view_mode == ViewMode::List, |btn| btn.primary())
-                                                                                                        .on_click(cx.listener(|drawer, _, _, cx| {
-                                                                                                            drawer.toggle_view_mode(ViewMode::List, cx);
-                                                                                                        }))
-                                                                                                )
-                                                                                        )
-                                                                                        .child(
-                                                                                            // Sort button (simplified - full menu implementation would be more complex)
-                                                                                            Button::new("sort-button")
-                                                                                                .ghost()
-                                                                                                .compact()
-                                                                                                .icon(IconName::ChevronsUpDown)
-                                                                                                .tooltip("Sort By")
-                                                                                                .on_click(cx.listener(|drawer, _, _, cx| {
-                                                                                                    // Cycle through sort options
-                                                                                                    let next_sort = match drawer.sort_by {
-                                                                                                        SortBy::Name => SortBy::DateModified,
-                                                                                                        SortBy::DateModified => SortBy::Size,
-                                                                                                        SortBy::Size => SortBy::Type,
-                                                                                                        SortBy::Type => SortBy::Name,
-                                                                                                    };
-                                                                                                    drawer.set_sort_by(next_sort, cx);
-                                                                                                }))
-                                                                                        )
-                                                                                        .child(
-                                                                                            // Filter button (simplified)
-                                                                                            Button::new("filter-button")
-                                                                                                .ghost()
-                                                                                                .compact()
-                                                                                                .icon(IconName::Filter)
-                                                                                                .tooltip("Filter")
-                                                                                                .when(!self.selected_file_types.is_empty(), |btn| btn.primary())
-                                                                                        )
-                                                                                        .child(
-                                                                                            Button::new("toggle-hidden")
-                                                                                                .ghost()
-                                                                                                .compact()
-                                                                                                .icon(IconName::Eye)
-                                                                                                .tooltip(if self.show_hidden_files { "Hide Hidden Files" } else { "Show Hidden Files" })
-                                                                                                .when(self.show_hidden_files, |btn| btn.primary())
-                                                                                                .on_click(cx.listener(|_, _, _, cx| {
-                                                                                                    cx.dispatch_action(&ToggleHiddenFiles);
-                                                                                                }))
-                                                                                        )
-                                                                                )
-                                                                        )
                                                                         .child(
                                                                             // File filter search
                                                                             div()

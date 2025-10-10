@@ -7,21 +7,27 @@ use gpui_component::{
 };
 
 use super::file_manager_drawer::{FileManagerDrawer, FileSelected};
+use super::app::PulsarApp;
 
 pub struct FileManagerWindow {
     file_manager: Entity<FileManagerDrawer>,
+    parent_app: Entity<PulsarApp>,
 }
 
 impl FileManagerWindow {
     pub fn new(
         file_manager: Entity<FileManagerDrawer>,
+        parent_app: Entity<PulsarApp>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        // Subscribe to file selected events and forward them
+        // Subscribe to file selected events and forward them to parent window
         cx.subscribe_in(&file_manager, window, Self::on_file_selected).detach();
 
-        Self { file_manager }
+        Self { 
+            file_manager,
+            parent_app,
+        }
     }
 
     pub fn file_manager(&self) -> &Entity<FileManagerDrawer> {
@@ -32,15 +38,19 @@ impl FileManagerWindow {
         &mut self,
         _drawer: &Entity<FileManagerDrawer>,
         event: &FileSelected,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Forward the event so other windows can handle it
-        cx.emit(event.clone());
+        // Forward the event to the parent app
+        let event_clone = event.clone();
+        let parent = self.parent_app.clone();
+        
+        // Update parent in its own window
+        parent.update(cx, |app, cx| {
+            app.handle_file_selected_from_external_window(&event_clone, window, cx);
+        });
     }
 }
-
-impl EventEmitter<FileSelected> for FileManagerWindow {}
 
 impl Render for FileManagerWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
