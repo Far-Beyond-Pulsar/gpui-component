@@ -1382,41 +1382,27 @@ impl Render for FileManagerDrawer {
                                                     .w_full()
                                                     .items_center()
                                                     .justify_between()
-                                                    .child(
-                                                        h_flex()
-                                                            .items_center()
-                                                            .gap_2()
-                                                            .child(
-                                                                Icon::new(IconName::Folder)
-                                                                    .size(px(18.))
-                                                                    .text_color(cx.theme().accent)
-                                                            )
-                                                            .child(
-                                                                div()
-                                                                    .text_sm()
-                                                                    .font_semibold()
-                                                                    .text_color(cx.theme().foreground)
-                                                                    .child("File Manager")
-                                                            )
-                                                    )
-                                                    .when(!self.is_in_window, |this| {
-                                                        this.child(
-                                                            // Popout button - only show when in drawer
-                                                            Button::new("popout-drawer")
-                                                                .ghost()
-                                                                .compact()
-                                                                .icon(IconName::ExternalLink)
-                                                                .tooltip("Open in Separate Window")
-                                                                .on_click(cx.listener(|drawer, _, _, cx| {
-                                                                    let project_path = drawer.project_path.clone();
-                                                                    cx.emit(PopoutFileManagerEvent { project_path });
-                                                                }))
-                                                        )
-                                                    })
-                                            )
-                                            // Combined breadcrumbs and controls bar
-                                            .child(
-                                                h_flex()
+                                                    // .child(
+                                                    //     h_flex()
+                                                    //         .items_center()
+                                                    //         .gap_2()
+                                                    //         .child(
+                                                    //             Icon::new(IconName::Folder)
+                                                    //                 .size(px(18.))
+                                                    //                 .text_color(cx.theme().accent)
+                                                    //         )
+                                                    //         .child(
+                                                    //             div()
+                                                    //                 .text_sm()
+                                                    //                 .font_semibold()
+                                                    //                 .text_color(cx.theme().foreground)
+                                                    //                 .child("File Manager")
+                                                    //         )
+                                                    // )
+                                                )
+                                                // Combined breadcrumbs and controls bar
+                                                .child(
+                                                    h_flex()
                                                     .w_full()
                                                     .items_center()
                                                     .justify_between()
@@ -1424,9 +1410,9 @@ impl Render for FileManagerDrawer {
                                                     .child(
                                                         // Breadcrumb navigation
                                                         h_flex()
-                                                            .flex_1()
-                                                            .items_center()
-                                                            .gap_1()
+                                                        .flex_1()
+                                                        .items_center()
+                                                        .gap_1()
                                                             .overflow_hidden()
                                                             .children(
                                                                 breadcrumbs.iter().enumerate().flat_map(|(i, (name, path))| {
@@ -1441,11 +1427,11 @@ impl Render for FileManagerDrawer {
                                                                                 .size(px(12.))
                                                                                 .text_color(cx.theme().muted_foreground.opacity(0.4))
                                                                                 .into_any_element()
-                                                                        );
-                                                                    }
-                                                                    
-                                                                    elements.push(
-                                                                        Button::new(SharedString::from(format!("breadcrumb-{}", i)))
+                                                                            );
+                                                                        }
+                                                                        
+                                                                        elements.push(
+                                                                            Button::new(SharedString::from(format!("breadcrumb-{}", i)))
                                                                             .ghost()
                                                                             .compact()
                                                                             .label(name.clone())
@@ -1459,9 +1445,9 @@ impl Render for FileManagerDrawer {
                                                                     elements
                                                                 })
                                                             )
-                                                    )
-                                                    .child(
-                                                        // Item count and controls
+                                                        )
+                                                        .child(
+                                                            // Item count and controls
                                                         h_flex()
                                                             .items_center()
                                                             .gap_2()
@@ -1485,12 +1471,12 @@ impl Render for FileManagerDrawer {
                                                                                     .text_xs()
                                                                                     .text_color(cx.theme().muted_foreground)
                                                                                     .child(format!("{} items", contents.len()))
-                                                                            )
+                                                                                )
                                                                     )
-                                                            )
-                                                            .child(
+                                                                )
+                                                                .child(
                                                                 h_flex()
-                                                                    .gap_0p5()
+                                                                .gap_0p5()
                                                                     .when(self.selected_folder.is_some(), |this| {
                                                                         let folder = self.selected_folder.clone().unwrap();
                                                                         let folder_str = folder.to_string_lossy().to_string();
@@ -1589,9 +1575,9 @@ impl Render for FileManagerDrawer {
                                                                             .icon(IconName::Filter)
                                                                             .tooltip("Filter")
                                                                             .when(!self.selected_file_types.is_empty(), |btn| btn.primary())
-                                                                    )
-                                                                    .child(
-                                                                        Button::new("toggle-hidden")
+                                                                        )
+                                                                        .child(
+                                                                            Button::new("toggle-hidden")
                                                                             .ghost()
                                                                             .compact()
                                                                             .icon(IconName::Eye)
@@ -1600,15 +1586,29 @@ impl Render for FileManagerDrawer {
                                                                             .on_click(cx.listener(|_, _, _, cx| {
                                                                                 cx.dispatch_action(&ToggleHiddenFiles);
                                                                             }))
+                                                                        )
                                                                     )
-                                                            )
+                                                                    .when(!self.is_in_window, |this| {
+                                                                        this.child(
+                                                                            // Popout button - only show when in drawer
+                                                                            Button::new("popout-drawer")
+                                                                                .ghost()
+                                                                                .compact()
+                                                                                .icon(IconName::ExternalLink)
+                                                                                .tooltip("Open in Separate Window")
+                                                                                .on_click(cx.listener(|drawer, _, _, cx| {
+                                                                                    let project_path = drawer.project_path.clone();
+                                                                                    cx.emit(PopoutFileManagerEvent { project_path });
+                                                                                }))
+                                                                        )
+                                                                    })
                                                     )
                                             )
                                     )
                                     .child(
                                         // Content split: tree and grid
                                         div()
-                                            .flex_1()
+                                        .flex_1()
                                             .overflow_hidden()
                                             .child(
                                                 h_resizable("file-manager-split", self.resizable_state.clone())
