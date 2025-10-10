@@ -1,11 +1,12 @@
 use gpui::*;
+use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::{Button, ButtonVariant, ButtonVariants as _},
     context_menu::ContextMenuExt,
     h_flex,
     input::{InputState, TextInput},
     popup_menu::PopupMenu,
-    resizable::{h_resizable, resizable_panel, ResizableState},
+    resizable::{h_resizable, resizable_panel, v_resizable, ResizableState},
     v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
 };
 use schemars::JsonSchema;
@@ -171,13 +172,29 @@ pub struct FileManagerDrawer {
     folder_tree: Option<FolderNode>,
     selected_folder: Option<PathBuf>,
     resizable_state: Entity<ResizableState>,
+    height_resizable_state: Entity<ResizableState>,
     renaming_item: Option<PathBuf>,
     rename_input_state: Entity<InputState>,
+    is_in_window: bool, // Track if this drawer is rendered in a separate window
 }
 
 impl FileManagerDrawer {
     pub fn new(project_path: Option<PathBuf>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_with_context(project_path, window, cx, false)
+    }
+
+    pub fn new_in_window(project_path: Option<PathBuf>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_with_context(project_path, window, cx, true)
+    }
+
+    fn new_with_context(
+        project_path: Option<PathBuf>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        is_in_window: bool,
+    ) -> Self {
         let resizable_state = ResizableState::new(cx);
+        let height_resizable_state = ResizableState::new(cx);
         let rename_input_state = cx.new(|cx| InputState::new(window, cx));
 
         // Subscribe to input events to handle Enter key for committing rename
@@ -199,8 +216,10 @@ impl FileManagerDrawer {
             project_path: project_path.clone(),
             selected_folder: project_path,
             resizable_state,
+            height_resizable_state,
             renaming_item: None,
             rename_input_state,
+            is_in_window,
         }
     }
 
@@ -209,6 +228,7 @@ impl FileManagerDrawer {
         self.folder_tree = FolderNode::from_path(&path);
         self.selected_folder = Some(path);
         self.resizable_state = ResizableState::new(cx);
+        self.height_resizable_state = ResizableState::new(cx);
         cx.notify();
     }
 
@@ -490,13 +510,13 @@ impl FileManagerDrawer {
         depth: usize,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let indent = depth * 16;
+        let indent = (depth + 1) * 12;
         let icon = if node.is_class {
             IconName::Component
         } else if node.expanded {
-            IconName::FolderOpen
+            IconName::ChevronDown
         } else {
-            IconName::FolderClosed
+            IconName::ChevronRight
         };
 
         let path_clone = node.path.clone();
@@ -505,22 +525,95 @@ impl FileManagerDrawer {
         let is_selected = self.selected_folder.as_ref() == Some(&node.path);
         let is_class = node.is_class;
 
-        let button = if is_selected {
-            Button::new(SharedString::from(format!("tree-{}", node.path.display())))
-                .primary()
-                .w_full()
-                .justify_start()
-                .pl(px(indent as f32))
-        } else {
-            Button::new(SharedString::from(format!("tree-{}", node.path.display())))
-                .ghost()
-                .w_full()
-                .justify_start()
-                .pl(px(indent as f32))
-        };
+        // COMPACT TREE NODE
+        let node_button = div()
+            .w_full()
+            .h(px(26.))
+            .rounded(px(4.))
+            .pl(px(indent as f32 + 6.))
+            .pr_1p5()
+            .flex()
+            .items_center()
+            .gap_1p5()
+            .cursor_pointer()
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener(move |drawer, _, _, cx| {
+                    if !is_class {
+                        drawer.toggle_folder(&path_clone, cx);
+                    }
+                    drawer.select_folder(path_clone2.clone(), cx);
+                }),
+            )
+            .when(is_selected, |this| {
+                this.bg(cx.theme().primary.opacity(0.12))
+                    .border_l_2()
+                    .border_color(cx.theme().primary)
+            })
+            .when(!is_selected, |this| {
+                this.hover(|this| {
+                    this.bg(cx.theme().muted.opacity(0.4))
+                })
+            })
+            .child(
+                Icon::new(icon)
+                    .size(px(14.))
+                    .text_color(
+                        if is_selected {
+                            cx.theme().primary
+                        } else if node.is_class {
+                            cx.theme().accent
+                        } else {
+                            cx.theme().muted_foreground.opacity(0.7)
+                        }
+                    )
+            )
+            .child(
+                if self.renaming_item.as_ref() == Some(&node.path) {
+                    div()
+                        .flex_1()
+                        .child(
+                            TextInput::new(&self.rename_input_state)
+                                .appearance(false)
+                                .w_full()
+                        )
+                        .into_any_element()
+                } else {
+                    div()
+                        .flex_1()
+                        .text_xs()
+                        .when(is_selected, |this| {
+                            this.font_semibold()
+                                .text_color(cx.theme().foreground)
+                        })
+                        .when(!is_selected, |this| {
+                            this.text_color(cx.theme().foreground.opacity(0.8))
+                        })
+                        .child(node.name.clone())
+                        .into_any_element()
+                }
+            )
+            .when(is_class, |this| {
+                this.child(
+                    // Compact class badge
+                    div()
+                        .px_1()
+                        .py_0p5()
+                        .rounded(px(3.))
+                        .bg(cx.theme().accent.opacity(0.15))
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_semibold()
+                                .text_color(cx.theme().accent)
+                                .child("BP")
+                        )
+                )
+            });
 
         v_flex()
             .w_full()
+            .gap_0p5()
             .child(
                 div()
                     .id(SharedString::from(format!(
@@ -555,47 +648,18 @@ impl FileManagerDrawer {
                             }),
                         )
                     })
-                    .child(
-                        button
-                            .on_click(cx.listener(move |drawer, _, _, cx| {
-                                if !is_class {
-                                    drawer.toggle_folder(&path_clone, cx);
-                                }
-                                drawer.select_folder(path_clone2.clone(), cx);
-                            }))
-                            .child(
-                                h_flex()
-                                    .gap_2()
-                                    .items_center()
-                                    .child(Icon::new(icon).size(px(14.)).text_color(
-                                        if node.is_class {
-                                            cx.theme().primary
-                                        } else {
-                                            cx.theme().muted_foreground
-                                        },
-                                    ))
-                                    .child(if self.renaming_item.as_ref() == Some(&node.path) {
-                                        div()
-                                            .text_sm()
-                                            .child(
-                                                TextInput::new(&self.rename_input_state)
-                                                    .appearance(false)
-                                                    .w_full(),
-                                            )
-                                            .into_any_element()
-                                    } else {
-                                        div().text_sm().child(node.name.clone()).into_any_element()
-                                    }),
-                            ),
-                    ),
+                    .child(node_button)
             )
             .children(if node.expanded && !node.is_class {
                 Some(
-                    v_flex().w_full().children(
-                        node.children
-                            .iter()
-                            .map(|child| self.render_folder_tree_node(child, depth + 1, cx)),
-                    ),
+                    v_flex()
+                        .w_full()
+                        .gap_0p5()
+                        .children(
+                            node.children
+                                .iter()
+                                .map(|child| self.render_folder_tree_node(child, depth + 1, cx)),
+                        ),
                 )
             } else {
                 None
@@ -615,14 +679,14 @@ impl FileManagerDrawer {
         let item_path = item.path.clone();
         let item_type = item.file_type.clone();
 
-        // Grid item with icon on top, text below
+        // COMPACT GRID ITEM
         div()
             .id(SharedString::from(format!(
                 "content-item-{}",
                 item.path.display()
             )))
-            .w(px(100.))
-            .p_2()
+            .w(px(90.))
+            .h(px(100.))
             .context_menu(move |menu, _window, _cx| {
                 let path_str = item_path.to_string_lossy().to_string();
                 match item_type {
@@ -683,7 +747,19 @@ impl FileManagerDrawer {
             })
             .child(
                 div()
+                    .w_full()
+                    .h_full()
+                    .p_1p5()
+                    .rounded(px(6.))
+                    .border_1()
+                    .border_color(cx.theme().border.opacity(0.4))
+                    .bg(cx.theme().background)
                     .cursor_pointer()
+                    .hover(|this| {
+                        this.bg(cx.theme().muted.opacity(0.25))
+                            .border_color(cx.theme().primary.opacity(0.4))
+                            .shadow_sm()
+                    })
                     .on_mouse_down(
                         gpui::MouseButton::Left,
                         cx.listener(move |drawer, _, _, cx| {
@@ -692,40 +768,87 @@ impl FileManagerDrawer {
                     )
                     .child(
                         v_flex()
-                            .gap_2()
+                            .w_full()
+                            .h_full()
+                            .gap_1p5()
                             .items_center()
-                            .hover(|this| this.bg(cx.theme().muted.opacity(0.5)))
-                            .rounded(cx.theme().radius)
-                            .p_2()
-                            .child(Icon::new(icon).size(px(48.)).text_color(
-                                match &item.file_type {
-                                    FileType::Class => cx.theme().primary,
-                                    FileType::Folder => cx.theme().accent,
-                                    FileType::DawProject => cx.theme().success,
-                                    _ => cx.theme().muted_foreground,
-                                },
-                            ))
-                            .child(if self.renaming_item.as_ref() == Some(&item.path) {
+                            .justify_center()
+                            .child(
+                                // Compact icon
                                 div()
-                                    .text_xs()
-                                    .text_center()
-                                    .w_full()
+                                    .size(px(44.))
+                                    .rounded(px(6.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .bg(match &item.file_type {
+                                        FileType::Class => cx.theme().accent.opacity(0.12),
+                                        FileType::Folder => cx.theme().primary.opacity(0.08),
+                                        FileType::Script => cx.theme().info.opacity(0.12),
+                                        FileType::DawProject => cx.theme().success.opacity(0.12),
+                                        _ => cx.theme().muted.opacity(0.08),
+                                    })
+                                    .border_1()
+                                    .border_color(match &item.file_type {
+                                        FileType::Class => cx.theme().accent.opacity(0.25),
+                                        FileType::Folder => cx.theme().primary.opacity(0.18),
+                                        FileType::Script => cx.theme().info.opacity(0.25),
+                                        FileType::DawProject => cx.theme().success.opacity(0.25),
+                                        _ => cx.theme().border.opacity(0.25),
+                                    })
                                     .child(
-                                        TextInput::new(&self.rename_input_state)
-                                            .appearance(false)
-                                            .w_full(),
+                                        Icon::new(icon)
+                                            .size(px(24.))
+                                            .text_color(match &item.file_type {
+                                                FileType::Class => cx.theme().accent,
+                                                FileType::Folder => cx.theme().primary,
+                                                FileType::Script => cx.theme().info,
+                                                FileType::DawProject => cx.theme().success,
+                                                _ => cx.theme().muted_foreground,
+                                            })
                                     )
-                                    .into_any_element()
-                            } else {
-                                div()
-                                    .text_xs()
-                                    .text_center()
-                                    .w_full()
-                                    .overflow_hidden()
-                                    .child(item.name.clone())
-                                    .into_any_element()
-                            }),
-                    ),
+                            )
+                            .child(
+                                if self.renaming_item.as_ref() == Some(&item.path) {
+                                    div()
+                                        .w_full()
+                                        .child(
+                                            TextInput::new(&self.rename_input_state)
+                                                .appearance(false)
+                                                .w_full()
+                                        )
+                                        .into_any_element()
+                                } else {
+                                    div()
+                                        .w_full()
+                                        .text_xs()
+                                        .text_center()
+                                        .font_medium()
+                                        .text_color(cx.theme().foreground.opacity(0.9))
+                                        .overflow_hidden()
+                                        .line_clamp(2)
+                                        .child(item.name.clone())
+                                        .into_any_element()
+                                }
+                            )
+                            .when(matches!(item.file_type, FileType::Class), |this| {
+                                this.child(
+                                    // Compact blueprint badge
+                                    div()
+                                        .px_1p5()
+                                        .py_0p5()
+                                        .rounded(px(3.))
+                                        .bg(cx.theme().accent.opacity(0.15))
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .font_semibold()
+                                                .text_color(cx.theme().accent)
+                                                .child("BP")
+                                        )
+                                )
+                            })
+                    )
             )
     }
 }
@@ -736,7 +859,13 @@ pub struct FileSelected {
     pub file_type: FileType,
 }
 
+#[derive(Clone, Debug)]
+pub struct PopoutFileManagerEvent {
+    pub project_path: Option<PathBuf>,
+}
+
 impl EventEmitter<FileSelected> for FileManagerDrawer {}
+impl EventEmitter<PopoutFileManagerEvent> for FileManagerDrawer {}
 
 impl Render for FileManagerDrawer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -744,6 +873,8 @@ impl Render for FileManagerDrawer {
 
         div()
             .size_full()
+            .flex()
+            .flex_col()
             .bg(cx.theme().background)
             .border_t_1()
             .border_color(cx.theme().border)
@@ -755,138 +886,312 @@ impl Render for FileManagerDrawer {
             .on_action(cx.listener(Self::on_commit_rename))
             .on_action(cx.listener(Self::on_cancel_rename))
             .child(
-                h_resizable("file-manager-split", self.resizable_state.clone())
+                // Vertical resizable for drawer height with resizable from top edge
+                v_resizable("file-manager-height", self.height_resizable_state.clone())
                     .child(
                         resizable_panel()
-                            .size(px(250.))
-                            .size_range(px(150.)..px(400.))
+                            .size(px(350.))
+                            .size_range(px(200.)..px(800.))
                             .child(
                                 v_flex()
                                     .size_full()
                                     .child(
-                                        // Tree header
-                                        h_flex()
+                                        // SLEEK MODERN HEADER with popout
+                                        v_flex()
                                             .w_full()
-                                            .p_2()
+                                            .gap_2()
+                                            .px_3()
+                                            .py_2p5()
+                                            .bg(cx.theme().secondary.opacity(0.4))
                                             .border_b_1()
                                             .border_color(cx.theme().border)
-                                            .items_center()
-                                            .justify_between()
                                             .child(
-                                                div()
-                                                    .text_sm()
-                                                    .font_semibold()
-                                                    .text_color(cx.theme().foreground)
-                                                    .child("Folders"),
-                                            ),
+                                                // Main header row
+                                                h_flex()
+                                                    .w_full()
+                                                    .items_center()
+                                                    .justify_between()
+                                                    .child(
+                                                        h_flex()
+                                                            .items_center()
+                                                            .gap_2()
+                                                            .child(
+                                                                Icon::new(IconName::Folder)
+                                                                    .size(px(18.))
+                                                                    .text_color(cx.theme().accent)
+                                                            )
+                                                            .child(
+                                                                div()
+                                                                    .text_sm()
+                                                                    .font_semibold()
+                                                                    .text_color(cx.theme().foreground)
+                                                                    .child("File Manager")
+                                                            )
+                                                    )
+                                                    .when(!self.is_in_window, |this| {
+                                                        this.child(
+                                                            // Popout button - only show when in drawer
+                                                            Button::new("popout-drawer")
+                                                                .ghost()
+                                                                .compact()
+                                                                .icon(IconName::ExternalLink)
+                                                                .tooltip("Open in Separate Window")
+                                                                .on_click(cx.listener(|drawer, _, _, cx| {
+                                                                    let project_path = drawer.project_path.clone();
+                                                                    cx.emit(PopoutFileManagerEvent { project_path });
+                                                                }))
+                                                        )
+                                                    })
+                                            )
                                     )
                                     .child(
-                                        // Tree content with scrolling
-                                        div().flex_1().overflow_hidden().p_1().child(
-                                            div().size_full().scrollable(Axis::Vertical).child(
-                                                if let Some(tree) = &self.folder_tree {
-                                                    v_flex()
-                                                        .w_full()
-                                                        .children(tree.children.iter().map(
-                                                            |child| {
-                                                                self.render_folder_tree_node(
-                                                                    child, 0, cx,
-                                                                )
-                                                            },
-                                                        ))
-                                                        .into_any_element()
-                                                } else {
-                                                    div()
-                                                        .p_4()
-                                                        .text_sm()
-                                                        .text_color(cx.theme().muted_foreground)
-                                                        .child("No project loaded")
-                                                        .into_any_element()
-                                                },
-                                            ),
-                                        ),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        resizable_panel().child(
-                            v_flex()
-                                .size_full()
-                                .child(
-                                    // Content header
-                                    h_flex()
-                                        .w_full()
-                                        .p_2()
-                                        .border_b_1()
-                                        .border_color(cx.theme().border)
-                                        .items_center()
-                                        .justify_between()
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .font_semibold()
-                                                .text_color(cx.theme().foreground)
-                                                .children(self.selected_folder.as_ref().and_then(
-                                                    |p| {
-                                                        p.file_name()
-                                                            .and_then(|n| n.to_str())
-                                                            .map(|s| s.to_string())
-                                                    },
-                                                )),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child(format!("{} items", contents.len())),
-                                        ),
-                                )
-                                .child(
-                                    // Content grid with scrolling
-                                    div().flex_1().overflow_hidden().p_3().child({
-                                        let selected_folder_for_menu = self.selected_folder.clone();
+                                        // Content split: tree and grid
                                         div()
-                                            .id("content-area-wrapper")
-                                            .size_full()
-                                            .context_menu(move |menu, _window, _cx| {
-                                                if let Some(folder) = &selected_folder_for_menu {
-                                                    let folder_str =
-                                                        folder.to_string_lossy().to_string();
-                                                    menu.menu(
-                                                        "New Folder",
-                                                        Box::new(NewFolder {
-                                                            folder_path: folder_str.clone(),
-                                                        }),
-                                                    )
-                                                    .menu(
-                                                        "New Class",
-                                                        Box::new(NewClass {
-                                                            folder_path: folder_str.clone(),
-                                                        }),
-                                                    )
-                                                    .menu(
-                                                        "New File",
-                                                        Box::new(NewFile {
-                                                            folder_path: folder_str.clone(),
-                                                        }),
-                                                    )
-                                                } else {
-                                                    menu
-                                                }
-                                            })
+                                            .flex_1()
+                                            .overflow_hidden()
                                             .child(
-                                                div().size_full().scrollable(Axis::Vertical).child(
-                                                    h_flex().w_full().flex_wrap().gap_2().children(
-                                                        contents.iter().map(|item| {
-                                                            self.render_content_item(item, cx)
-                                                        }),
-                                                    ),
-                                                ),
+                                                h_resizable("file-manager-split", self.resizable_state.clone())
+                                                    .child(
+                                                        resizable_panel()
+                                                            .size(px(260.))
+                                                            .size_range(px(180.)..px(450.))
+                                                            .child(
+                                                                v_flex()
+                                                                    .size_full()
+                                                                    .bg(cx.theme().secondary.opacity(0.2))
+                                                                    .border_r_1()
+                                                                    .border_color(cx.theme().border.opacity(0.5))
+                                                                    .child(
+                                                                        // COMPACT TREE HEADER
+                                                                        v_flex()
+                                                                            .w_full()
+                                                                            .gap_1p5()
+                                                                            .px_2p5()
+                                                                            .py_2()
+                                                                            .border_b_1()
+                                                                            .border_color(cx.theme().border.opacity(0.3))
+                                                                            .child(
+                                                                                // Simple header
+                                                                                h_flex()
+                                                                                    .w_full()
+                                                                                    .items_center()
+                                                                                    .gap_1p5()
+                                                                                    .child(
+                                                                                        div()
+                                                                                            .flex_shrink_0()
+                                                                                            .text_xs()
+                                                                                            .font_semibold()
+                                                                                            .text_color(cx.theme().muted_foreground)
+                                                                                            .child("FOLDERS")
+                                                                                    )
+                                                                            )
+                                                                            .child(
+                                                                                // Compact search
+                                                                                div()
+                                                                                    .w_full()
+                                                                                    .h(px(28.))
+                                                                                    .px_2()
+                                                                                    .py_1()
+                                                                                    .rounded(px(5.))
+                                                                                    .bg(cx.theme().background.opacity(0.8))
+                                                                                    .border_1()
+                                                                                    .border_color(cx.theme().border.opacity(0.5))
+                                                                                    .flex()
+                                                                                    .items_center()
+                                                                                    .gap_1p5()
+                                                                                    .child(
+                                                                                        Icon::new(IconName::Search)
+                                                                                            .size(px(12.))
+                                                                                            .text_color(cx.theme().muted_foreground.opacity(0.6))
+                                                                                    )
+                                                                                    .child(
+                                                                                        div()
+                                                                                            .text_xs()
+                                                                                            .text_color(cx.theme().muted_foreground.opacity(0.5))
+                                                                                            .child("Search...")
+                                                                                    )
+                                                                            )
+                                                                    )
+                                                                    .child(
+                                                                        // TREE CONTENT
+                                                                        div()
+                                                                            .flex_1()
+                                                                            .overflow_hidden()
+                                                                            .p_1p5()
+                                                                            .child(
+                                                                                div()
+                                                                                    .size_full()
+                                                                                    .scrollable(Axis::Vertical)
+                                                                                    .child(
+                                                                                        if let Some(tree) = &self.folder_tree {
+                                                                                            v_flex()
+                                                                                                .w_full()
+                                                                                                .gap_0p5()
+                                                                                                .children(tree.children.iter().map(
+                                                                                                    |child| {
+                                                                                                        self.render_folder_tree_node(
+                                                                                                            child, 0, cx,
+                                                                                                        )
+                                                                                                    },
+                                                                                                ))
+                                                                                                .into_any_element()
+                                                                                        } else {
+                                                                                            // Compact empty state
+                                                                                            v_flex()
+                                                                                                .w_full()
+                                                                                                .p_4()
+                                                                                                .gap_2()
+                                                                                                .items_center()
+                                                                                                .justify_center()
+                                                                                                .child(
+                                                                                                    Icon::new(IconName::Folder)
+                                                                                                        .size(px(40.))
+                                                                                                        .text_color(cx.theme().muted_foreground.opacity(0.25))
+                                                                                                )
+                                                                                                .child(
+                                                                                                    div()
+                                                                                                        .text_xs()
+                                                                                                        .font_medium()
+                                                                                                        .text_color(cx.theme().muted_foreground.opacity(0.6))
+                                                                                                        .child("No Project")
+                                                                                                )
+                                                                                                .into_any_element()
+                                                                                        },
+                                                                                    ),
+                                                                            ),
+                                                                    ),
+                                                            ),
+                                                    )
+                                                    .child(
+                                                        resizable_panel().child(
+                                                            v_flex()
+                                                                .size_full()
+                                                                .bg(cx.theme().background)
+                                                                .child(
+                                                                    // COMPACT CONTENT HEADER
+                                                                    v_flex()
+                                                                        .w_full()
+                                                                        .gap_1p5()
+                                                                        .px_2p5()
+                                                                        .py_2()
+                                                                        .border_b_1()
+                                                                        .border_color(cx.theme().border.opacity(0.3))
+                                                                        .child(
+                                                                            h_flex()
+                                                                                .w_full()
+                                                                                .items_center()
+                                                                                .justify_between()
+                                                                                .child(
+                                                                                    h_flex()
+                                                                                        .items_center()
+                                                                                        .gap_1p5()
+                                                                                        .child(
+                                                                                            Icon::new(IconName::Page)
+                                                                                                .size(px(14.))
+                                                                                                .text_color(cx.theme().primary)
+                                                                                        )
+                                                                                        .child(
+                                                                                            div()
+                                                                                                .text_xs()
+                                                                                                .font_semibold()
+                                                                                                .text_color(cx.theme().foreground)
+                                                                                                .children(self.selected_folder.as_ref().and_then(
+                                                                                                    |p| {
+                                                                                                        p.file_name()
+                                                                                                            .and_then(|n| n.to_str())
+                                                                                                            .map(|s| s.to_string())
+                                                                                                    },
+                                                                                                ))
+                                                                                                .when(self.selected_folder.is_none(), |this| {
+                                                                                                    this.child("No Selection")
+                                                                                                })
+                                                                                        )
+                                                                                        .child(
+                                                                                            div()
+                                                                                                .px_1p5()
+                                                                                                .py_0p5()
+                                                                                                .rounded(px(3.))
+                                                                                                .bg(cx.theme().muted.opacity(0.3))
+                                                                                                .child(
+                                                                                                    div()
+                                                                                                        .text_xs()
+                                                                                                        .text_color(cx.theme().muted_foreground)
+                                                                                                        .child(format!("{}", contents.len()))
+                                                                                                )
+                                                                                        )
+                                                                                )
+                                                                                .child(
+                                                                                    // Compact view toggles
+                                                                                    h_flex()
+                                                                                        .gap_0p5()
+                                                                                        .child(
+                                                                                            Button::new("view-grid")
+                                                                                                .ghost()
+                                                                                                .compact()
+                                                                                                .primary()
+                                                                                                .icon(IconName::LayoutDashboard)
+                                                                                                .tooltip("Grid")
+                                                                                        )
+                                                                                        .child(
+                                                                                            Button::new("view-list")
+                                                                                                .ghost()
+                                                                                                .compact()
+                                                                                                .icon(IconName::List)
+                                                                                                .tooltip("List")
+                                                                                        )
+                                                                                )
+                                                                        )
+                                                                )
+                                                                .child(
+                                                                    // CONTENT GRID
+                                                                    div().flex_1().overflow_hidden().p_2().child({
+                                                                        let selected_folder_for_menu = self.selected_folder.clone();
+                                                                        div()
+                                                                            .id("content-area-wrapper")
+                                                                            .size_full()
+                                                                            .context_menu(move |menu, _window, _cx| {
+                                                                                if let Some(folder) = &selected_folder_for_menu {
+                                                                                    let folder_str =
+                                                                                        folder.to_string_lossy().to_string();
+                                                                                    menu.menu(
+                                                                                        "New Folder",
+                                                                                        Box::new(NewFolder {
+                                                                                            folder_path: folder_str.clone(),
+                                                                                        }),
+                                                                                    )
+                                                                                    .menu(
+                                                                                        "New Class",
+                                                                                        Box::new(NewClass {
+                                                                                            folder_path: folder_str.clone(),
+                                                                                        }),
+                                                                                    )
+                                                                                    .menu(
+                                                                                        "New File",
+                                                                                        Box::new(NewFile {
+                                                                                            folder_path: folder_str.clone(),
+                                                                                        }),
+                                                                                    )
+                                                                                } else {
+                                                                                    menu
+                                                                                }
+                                                                            })
+                                                                            .child(
+                                                                                div().size_full().scrollable(Axis::Vertical).child(
+                                                                                    h_flex().w_full().flex_wrap().gap_1p5().children(
+                                                                                        contents.iter().map(|item| {
+                                                                                            self.render_content_item(item, cx)
+                                                                                        }),
+                                                                                    ),
+                                                                                ),
+                                                                            )
+                                                                    })
+                                                                )
+                                                        ),
+                                                    )
                                             )
-                                    }),
-                                ),
-                        ),
-                    ),
+                                    )
+                            )
+                    )
             )
     }
 }

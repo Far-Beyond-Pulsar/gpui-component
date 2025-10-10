@@ -85,6 +85,7 @@ impl NodeGraphRenderer {
             .child(Self::render_viewport_bounds_debug(panel, cx))
             .child(Self::render_debug_overlay(panel, cx))
             .child(Self::render_graph_controls(panel, cx))
+            .child(super::minimap::MinimapRenderer::render(panel, cx))
             .on_mouse_down(
                 gpui::MouseButton::Right,
                 cx.listener(|panel, event: &MouseDownEvent, _window, cx| {

@@ -4,7 +4,7 @@ use gpui_component::{
     dropdown::{Dropdown, DropdownState, DropdownItem, SearchableVec},
     input::InputState,
     h_flex, v_flex,
-    ActiveTheme as _, StyledExt, Icon, IconName, AxisExt as _,
+    ActiveTheme as _, StyledExt, Icon, IconName, Colorize,
 };
 
 use super::*;
@@ -60,19 +60,22 @@ impl DropdownItem for TypeItem {
                 .child(
                     // Colored dot
                     div()
-                        .w(px(8.))
-                        .h(px(8.))
+                        .w(px(10.))
+                        .h(px(10.))
                         .rounded_full()
                         .bg(gpui::Rgba { r: pin_color.r, g: pin_color.g, b: pin_color.b, a: pin_color.a })
+                        .border_1()
+                        .border_color(gpui::Rgba { r: 0.3, g: 0.3, b: 0.3, a: 1.0 })
                 )
                 .child(
                     div()
+                        .flex_1()
                         .child(self.display_name.clone())
                 )
                 .child(
                     div()
                         .text_xs()
-                        .text_color(gpui::Rgba { r: 0.6, g: 0.6, b: 0.6, a: 1.0 })
+                        .text_color(gpui::Rgba { r: 0.5, g: 0.5, b: 0.5, a: 1.0 })
                         .child(format!("({})", self.type_str))
                 )
                 .into_any_element()
@@ -90,44 +93,121 @@ impl VariablesRenderer {
     pub fn render(panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
         v_flex()
             .size_full()
-            .gap_2()
+            .bg(cx.theme().sidebar)
             .child(
-                h_flex()
+                // STUDIO-QUALITY HEADER
+                v_flex()
                     .w_full()
-                    .p_2()
-                    .justify_between()
-                    .items_center()
                     .child(
-                        div()
-                            .text_sm()
-                            .font_semibold()
-                            .text_color(cx.theme().foreground)
-                            .child("Variables")
+                        // Main header with gradient background
+                        h_flex()
+                            .w_full()
+                            .px_4()
+                            .py_3()
+                            .bg(cx.theme().secondary)
+                            .border_b_2()
+                            .border_color(cx.theme().border)
+                            .items_center()
+                            .justify_between()
+                            .child(
+                                h_flex()
+                                    .gap_3()
+                                    .items_center()
+                                    .child(
+                                        // Icon with subtle glow effect
+                                        div()
+                                            .flex_shrink_0()
+                                            .w(px(32.0))
+                                            .h(px(32.0))
+                                            .rounded(px(6.0))
+                                            .bg(cx.theme().accent.opacity(0.15))
+                                            .border_1()
+                                            .border_color(cx.theme().accent.opacity(0.3))
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .child(
+                                                div()
+                                                    .text_lg()
+                                                    .child("📋")
+                                            )
+                                    )
+                                    .child(
+                                        v_flex()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .text_sm()
+                                                    .font_bold()
+                                                    .text_color(cx.theme().foreground)
+                                                    .child("My Blueprint")
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(cx.theme().muted_foreground)
+                                                    .child(format!("{} variable{}", 
+                                                        panel.class_variables.len(),
+                                                        if panel.class_variables.len() == 1 { "" } else { "s" }
+                                                    ))
+                                            )
+                                    )
+                            )
+                            .child(
+                                Button::new("add-variable")
+                                    .icon(IconName::Plus)
+                                    .primary()
+                                    .tooltip("Add New Variable")
+                                    .on_click(cx.listener(|panel, _, window, cx| {
+                                        panel.start_creating_variable(window, cx);
+                                    }))
+                            )
                     )
                     .child(
-                        Button::new("add-variable")
-                            .ghost()
-                            .icon(IconName::Plus)
-                            .on_click(cx.listener(|panel, _, window, cx| {
-                                panel.start_creating_variable(window, cx);
-                            }))
+                        // Category/Section bar
+                        h_flex()
+                            .w_full()
+                            .px_4()
+                            .py_2()
+                            .bg(cx.theme().sidebar.darken(0.03))
+                            .border_b_1()
+                            .border_color(cx.theme().border.opacity(0.3))
+                            .items_center()
+                            .justify_between()
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_semibold()
+                                            .text_color(cx.theme().accent)
+                                            .child("VARIABLES")
+                                    )
+                            )
+                            .child(
+                                div()
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.0))
+                                    .bg(cx.theme().accent.opacity(0.15))
+                                    .text_xs()
+                                    .font_family("JetBrainsMono-Regular")
+                                    .text_color(cx.theme().accent)
+                                    .child(format!("{}", panel.class_variables.len()))
+                            )
                     )
             )
             .child(
-                div()
+                // CONTENT AREA - clean scrollable list
+                v_flex()
                     .flex_1()
-                    .overflow_y_hidden()
-                    .child(
-                        v_flex()
-                            .w_full()
-                            .p_2()
-                            .bg(cx.theme().background)
-                            .border_1()
-                            .border_color(cx.theme().border)
-                            .rounded(cx.theme().radius)
-                            .scrollable(Axis::Vertical)
-                            .child(Self::render_variables_list(panel, cx))
-                    )
+                    .overflow_hidden()
+                    .p_3()
+                    .gap_2()
+                    .scrollable(Axis::Vertical)
+                    .child(Self::render_variables_list(panel, cx))
             )
     }
 
@@ -177,66 +257,104 @@ impl VariablesRenderer {
         let drag_var_name = var_name.clone();
         let drag_var_type = var_type.clone();
 
+        // STUDIO-QUALITY VARIABLE ROW (Unreal Engine style)
         h_flex()
             .w_full()
-            .p_2()
-            .gap_2()
-            .bg(cx.theme().sidebar)
+            .px_3()
+            .py_3()
+            .gap_3()
+            .bg(cx.theme().background)
             .border_1()
-            .border_color(cx.theme().border)
-            .rounded(cx.theme().radius)
-            .hover(|style| style.bg(cx.theme().muted.opacity(0.3)))
+            .border_color(cx.theme().border.opacity(0.4))
+            .rounded(px(8.0))
+            .cursor_grab()
+            .hover(|style| {
+                style
+                    .bg(cx.theme().accent.opacity(0.08))
+                    .border_color(cx.theme().accent.opacity(0.6))
+                    .shadow_md()
+            })
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |panel, _event, _window, cx| {
                 panel.start_dragging_variable(drag_var_name.clone(), drag_var_type.clone(), cx);
             }))
             .child(
+                // Type indicator with enhanced styling
+                div()
+                    .flex_shrink_0()
+                    .w(px(14.))
+                    .h(px(14.))
+                    .rounded_full()
+                    .bg(gpui::Rgba { r: pin_color.r, g: pin_color.g, b: pin_color.b, a: pin_color.a })
+                    .border_2()
+                    .border_color(cx.theme().border)
+                    .shadow_sm()
+            )
+            .child(
+                // Variable info section
                 v_flex()
                     .flex_1()
-                    .gap_1()
+                    .gap_1p5()
                     .child(
+                        // Variable name with drag indicator
                         h_flex()
-                            .gap_2()
                             .items_center()
+                            .gap_2()
                             .child(
                                 div()
                                     .text_sm()
-                                    .font_medium()
+                                    .font_semibold()
                                     .text_color(cx.theme().foreground)
                                     .child(var.name.clone())
                             )
-                    )
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
                             .child(
-                                div()
-                                    .w(px(8.))
-                                    .h(px(8.))
-                                    .rounded_full()
-                                    .bg(gpui::Rgba { r: pin_color.r, g: pin_color.g, b: pin_color.b, a: pin_color.a })
-                            )
-                            .child(
+                                // Drag handle icon
                                 div()
                                     .text_xs()
+                                    .text_color(cx.theme().muted_foreground.opacity(0.4))
+                                    .child("⋮⋮")
+                            )
+                    )
+                    .child(
+                        // Type information with formatted name
+                        h_flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.0))
+                                    .bg(cx.theme().muted.opacity(0.2))
+                                    .text_xs()
+                                    .font_family("JetBrainsMono-Regular")
                                     .text_color(cx.theme().muted_foreground)
                                     .child(crate::compiler::type_extractor::get_type_display_name(&var.var_type))
                             )
                     )
                     .children(var.default_value.as_ref().map(|default| {
                         div()
+                            .px_2()
+                            .py_1()
+                            .rounded(px(4.0))
+                            .bg(cx.theme().success.opacity(0.1))
                             .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("Default: {}", default))
+                            .text_color(cx.theme().success)
+                            .child(format!("= {}", default))
                     }))
             )
             .child(
-                Button::new(("delete-var", var_hash))
-                    .ghost()
-                    .icon(IconName::Close)
-                    .on_click(cx.listener(move |panel, _, _, cx| {
-                        panel.remove_variable(&var_name, cx);
-                    }))
+                // Action buttons (on hover)
+                h_flex()
+                    .gap_1()
+                    .child(
+                        Button::new(("delete-var", var_hash))
+                            .icon(IconName::Close)
+                            .ghost()
+                            .tooltip("Remove Variable")
+                            .on_click(cx.listener(move |panel, _, _, cx| {
+                                panel.remove_variable(&var_name, cx);
+                            }))
+                    )
             )
             .into_any_element()
     }

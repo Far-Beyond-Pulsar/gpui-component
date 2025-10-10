@@ -13,10 +13,12 @@ use super::{
     editors::EditorType,
     entry_screen::EntryScreen,
     project_selector::ProjectSelected,
-    file_manager_drawer::{FileManagerDrawer, FileSelected, FileType},
+    file_manager_drawer::{FileManagerDrawer, FileSelected, FileType, PopoutFileManagerEvent},
+    file_manager_window::FileManagerWindow,
     menu::AppTitleBar,
     panels::{BlueprintEditorPanel, DawEditorPanel, LevelEditorPanel, ScriptEditorPanel},
     problems_drawer::ProblemsDrawer,
+    problems_window::ProblemsWindow,
     rust_analyzer_manager::{RustAnalyzerManager, AnalyzerEvent, AnalyzerStatus},
 };
 
@@ -37,7 +39,6 @@ pub struct PulsarApp {
     file_manager_drawer: Entity<FileManagerDrawer>,
     drawer_open: bool,
     problems_drawer: Entity<ProblemsDrawer>,
-    problems_drawer_open: bool,
     // Tab management
     center_tabs: Entity<TabPanel>,
     script_editor: Option<Entity<ScriptEditorPanel>>,
@@ -206,6 +207,8 @@ impl PulsarApp {
             cx.new(|cx| FileManagerDrawer::new(project_path.clone(), window, cx));
         cx.subscribe_in(&file_manager_drawer, window, Self::on_file_selected)
             .detach();
+        cx.subscribe_in(&file_manager_drawer, window, Self::on_popout_file_manager)
+            .detach();
 
         // Create problems drawer
         let problems_drawer = cx.new(|cx| ProblemsDrawer::new(window, cx));
@@ -249,7 +252,6 @@ impl PulsarApp {
             file_manager_drawer,
             drawer_open: false,
             problems_drawer,
-            problems_drawer_open: false,
             center_tabs,
             script_editor,
             blueprint_editors,
@@ -357,7 +359,7 @@ impl PulsarApp {
         cx: &mut Context<Self>,
     ) {
         eprintln!("DEBUG: FileSelected event received - path: {:?}, type: {:?}", event.path, event.file_type);
-        
+
         match event.file_type {
             FileType::Class => {
                 eprintln!("DEBUG: Opening blueprint tab");
@@ -381,14 +383,84 @@ impl PulsarApp {
         cx.notify();
     }
 
+    fn on_popout_file_manager(
+        &mut self,
+        _drawer: &Entity<FileManagerDrawer>,
+        event: &PopoutFileManagerEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
+        use gpui_component::Root;
+
+        let project_path = event.project_path.clone();
+
+        // Close the drawer when popping out
+        self.drawer_open = false;
+        cx.notify();
+
+        // Open the file manager window
+        let _ = cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds {
+                    origin: Point { x: px(100.0), y: px(100.0) },
+                    size: size(px(1000.0), px(700.0)),
+                })),
+                titlebar: None,
+                kind: WindowKind::Normal,
+                window_min_size: Some(gpui::Size {
+                    width: px(600.),
+                    height: px(400.),
+                }),
+                ..Default::default()
+            },
+            move |window, cx| {
+                // Create a new file manager drawer for the window (use new_in_window)
+                let new_drawer = cx.new(|cx| {
+                    FileManagerDrawer::new_in_window(project_path.clone(), window, cx)
+                });
+
+                let file_manager_window = cx.new(|cx| {
+                    FileManagerWindow::new(new_drawer, window, cx)
+                });
+
+                cx.new(|cx| Root::new(file_manager_window.into(), window, cx))
+            },
+        );
+    }
+
     fn toggle_drawer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.drawer_open = !self.drawer_open;
         cx.notify();
     }
 
-    fn toggle_problems(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.problems_drawer_open = !self.problems_drawer_open;
-        cx.notify();
+    fn toggle_problems(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
+        use gpui_component::Root;
+
+        // Open problems in a separate window
+        let problems_drawer = self.problems_drawer.clone();
+        
+        let _ = cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds {
+                    origin: Point { x: px(100.0), y: px(100.0) },
+                    size: size(px(900.0), px(600.0)),
+                })),
+                titlebar: None,
+                kind: WindowKind::Normal,
+                window_min_size: Some(gpui::Size {
+                    width: px(500.),
+                    height: px(300.),
+                }),
+                ..Default::default()
+            },
+            |window, cx| {
+                let problems_window = cx.new(|cx| ProblemsWindow::new(problems_drawer, window, cx));
+                
+                cx.new(|cx| Root::new(problems_window.into(), window, cx))
+            },
+        );
     }
 
     fn on_toggle_file_manager(
@@ -659,7 +731,6 @@ impl Render for PulsarApp {
         }
 
         let drawer_open = self.drawer_open;
-        let problems_open = self.problems_drawer_open;
 
         v_flex()
             .size_full()
@@ -713,51 +784,17 @@ impl Render for PulsarApp {
                                 ),
                         )
                     })
-                    .when(problems_open, |this| {
-                        this.child(
-                            // Overlay background for problems
-                            div()
-                                .absolute()
-                                .top_0()
-                                .left_0()
-                                .size_full()
-                                .bg(Hsla::black().opacity(0.3))
-                                .on_mouse_down(
-                                    MouseButton::Left,
-                                    cx.listener(|app, _, _window, cx| {
-                                        app.problems_drawer_open = false;
-                                        cx.notify();
-                                    }),
-                                ),
-                        )
-                        .child(
-                            // Problems drawer at bottom
-                            div()
-                                .absolute()
-                                .bottom_0()
-                                .left_0()
-                                .right_0()
-                                .h(px(300.))
-                                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                                .child(self.problems_drawer.clone())
-                                .with_animation(
-                                    "slide-up-problems",
-                                    Animation::new(Duration::from_secs_f64(0.2)),
-                                    |this, delta| this.bottom(px(-300.) + delta * px(300.)),
-                                ),
-                        )
-                    }),
             )
             .child(
                 // Footer with rust analyzer status and controls
-                self.render_footer(drawer_open, problems_open, cx)
+                self.render_footer(drawer_open, cx)
             )
             .into_any_element()
     }
 }
 
 impl PulsarApp {
-    fn render_footer(&self, drawer_open: bool, problems_open: bool, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_footer(&self, drawer_open: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let analyzer = self.rust_analyzer.read(cx);
         let status = analyzer.status();
         let is_running = analyzer.is_running();
@@ -769,160 +806,185 @@ impl PulsarApp {
             crate::ui::problems_drawer::DiagnosticSeverity::Warning
         );
         
+        // STUDIO-QUALITY STATUS BAR
         h_flex()
             .w_full()
-            .h(px(32.))
-            .px_2()
+            .h(px(34.))
+            .px_3()
             .items_center()
-            .gap_3()
-            .bg(cx.theme().sidebar)
-            .border_t_1()
+            .gap_4()
+            .bg(cx.theme().secondary)
+            .border_t_2()
             .border_color(cx.theme().border)
             .child(
-                // Left side - drawer toggles
+                // LEFT SECTION - Actions
                 h_flex()
                     .gap_2()
+                    .items_center()
                     .child(
+                        // Project Files Toggle
                         Button::new("toggle-drawer")
                             .ghost()
-                            .icon(if drawer_open {
-                                IconName::ChevronDown
-                            } else {
-                                IconName::ChevronUp
-                            })
-                            .label("Project Files")
+                            .icon(IconName::Folder)
+                            .label("Files")
+                            .when(drawer_open, |btn| btn.primary())
+                            .tooltip("Toggle Project Files (Ctrl+B)")
                             .on_click(cx.listener(|app, _, window, cx| {
                                 app.toggle_drawer(window, cx);
-                            })),
+                            }))
                     )
                     .child(
-                        Button::new("toggle-problems")
+                        // Problems Window Button - with smart styling
+                        Button::new("open-problems")
                             .ghost()
                             .when(error_count > 0, |btn| {
                                 btn.with_variant(gpui_component::button::ButtonVariant::Danger)
                             })
                             .when(error_count == 0 && warning_count > 0, |btn| {
-                                btn.with_variant(gpui_component::button::ButtonVariant::Primary)
+                                btn.with_variant(gpui_component::button::ButtonVariant::Warning)
                             })
                             .icon(if error_count > 0 {
                                 IconName::Close
                             } else if warning_count > 0 {
-                                IconName::Anytype_dark
+                                IconName::TriangleAlert
                             } else {
-                                IconName::Info
+                                IconName::CheckCircle
                             })
-                            .label(format!(
-                                "Problems ({})",
-                                error_count + warning_count
-                            ))
+                            .label(if error_count + warning_count > 0 {
+                                format!("{} {}", 
+                                    error_count + warning_count,
+                                    if error_count > 0 { "Problems" } else { "Warnings" }
+                                )
+                            } else {
+                                "No Problems".to_string()
+                            })
+                            .tooltip("Open Problems Window")
                             .on_click(cx.listener(|app, _, window, cx| {
                                 app.toggle_problems(window, cx);
-                            })),
-                    )
-            )
-            .child(
-                // Center - Rust Analyzer Section
-                h_flex()
-                    .flex_1()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        // Analyzer status indicator
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_1p5()
-                            .child(
-                                // Status icon/spinner
-                                div()
-                                    .w(px(8.))
-                                    .h(px(8.))
-                                    .rounded_full()
-                                    .bg(match status {
-                                        AnalyzerStatus::Ready => Hsla {
-                                            h: 120.0,
-                                            s: 1.0,
-                                            l: 0.5,
-                                            a: 1.0,
-                                        },
-                                        AnalyzerStatus::Indexing { .. } | AnalyzerStatus::Starting => Hsla {
-                                            h: 60.0,
-                                            s: 1.0,
-                                            l: 0.5,
-                                            a: 1.0,
-                                        },
-                                        AnalyzerStatus::Error(_) => Hsla {
-                                            h: 0.0,
-                                            s: 1.0,
-                                            l: 0.5,
-                                            a: 1.0,
-                                        },
-                                        _ => cx.theme().muted_foreground,
-                                    })
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().foreground)
-                                    .child(format!("rust-analyzer: {}", self.analyzer_status_text))
-                            )
-                    )
-                    .when(is_running, |this| {
-                        this.child(
-                            // Stop button
-                            Button::new("stop-analyzer")
-                                .ghost()
-                                .icon(IconName::Close)
-                                .tooltip("Stop rust-analyzer")
-                                .on_click(cx.listener(|app, _, window, cx| {
-                                    app.rust_analyzer.update(cx, |analyzer, cx| {
-                                        analyzer.stop(window, cx);
-                                    });
-                                }))
-                        )
-                    })
-                    .when(!is_running, |this| {
-                        this.child(
-                            // Start/Restart button
-                            Button::new("start-analyzer")
-                                .ghost()
-                                .icon(IconName::ArrowRight)
-                                .tooltip("Start rust-analyzer")
-                                .on_click(cx.listener(|app, _, window, cx| {
-                                    if let Some(project) = app.project_path.clone() {
-                                        app.rust_analyzer.update(cx, |analyzer, cx| {
-                                            analyzer.start(project, window, cx);
-                                        });
-                                    }
-                                }))
-                        )
-                    })
-                    .child(
-                        // Restart button (always visible)
-                        Button::new("restart-analyzer")
-                            .ghost()
-                            .icon(IconName::Undo)
-                            .tooltip("Restart rust-analyzer")
-                            .when(!is_running, |btn| btn.opacity(0.5))
-                            .on_click(cx.listener(move |app, _, window, cx| {
-                                if is_running {
-                                    app.rust_analyzer.update(cx, |analyzer, cx| {
-                                        analyzer.restart(window, cx);
-                                    });
-                                }
                             }))
                     )
             )
             .child(
-                // Right side - project path
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .children(
-                        self.project_path
-                            .as_ref()
-                            .map(|path| path.display().to_string()),
-                    ),
+                // CENTER SECTION - Rust Analyzer Status
+                h_flex()
+                    .flex_1()
+                    .items_center()
+                    .justify_center()
+                    .gap_3()
+                    .child(
+                        // Professional status indicator
+                        h_flex()
+                            .items_center()
+                            .gap_2()
+                            .px_3()
+                            .py_1p5()
+                            .rounded(px(6.0))
+                            .bg(cx.theme().background.opacity(0.5))
+                            .border_1()
+                            .border_color(cx.theme().border.opacity(0.5))
+                            .child(
+                                // Animated status dot
+                                div()
+                                    .w(px(10.))
+                                    .h(px(10.))
+                                    .rounded_full()
+                                    .bg(match status {
+                                        AnalyzerStatus::Ready => cx.theme().success,
+                                        AnalyzerStatus::Indexing { .. } | AnalyzerStatus::Starting => cx.theme().warning,
+                                        AnalyzerStatus::Error(_) => cx.theme().danger,
+                                        _ => cx.theme().muted_foreground,
+                                    })
+                                    .shadow_sm()
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_medium()
+                                    .text_color(cx.theme().foreground)
+                                    .child("rust-analyzer")
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("·")
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(match status {
+                                        AnalyzerStatus::Ready => cx.theme().success,
+                                        AnalyzerStatus::Indexing { .. } => cx.theme().warning,
+                                        AnalyzerStatus::Error(_) => cx.theme().danger,
+                                        _ => cx.theme().muted_foreground,
+                                    })
+                                    .child(self.analyzer_status_text.clone())
+                            )
+                    )
+                    .child(
+                        // Analyzer controls
+                        h_flex()
+                            .gap_1()
+                            .items_center()
+                            .when(is_running, |this| {
+                                this.child(
+                                    Button::new("stop-analyzer")
+                                        .ghost()
+                                        .icon(IconName::Close)
+                                        .tooltip("Stop rust-analyzer")
+                                        .xsmall()
+                                        .on_click(cx.listener(|app, _, window, cx| {
+                                            app.rust_analyzer.update(cx, |analyzer, cx| {
+                                                analyzer.stop(window, cx);
+                                            });
+                                        }))
+                                )
+                            })
+                            .child(
+                                Button::new("restart-analyzer")
+                                    .ghost()
+                                    .icon(IconName::Undo)
+                                    .tooltip(if is_running { "Restart rust-analyzer" } else { "Start rust-analyzer" })
+                                    .xsmall()
+                                    .on_click(cx.listener(move |app, _, window, cx| {
+                                        if let Some(project) = app.project_path.clone() {
+                                            app.rust_analyzer.update(cx, |analyzer, cx| {
+                                                if is_running {
+                                                    analyzer.restart(window, cx);
+                                                } else {
+                                                    analyzer.start(project, window, cx);
+                                                }
+                                            });
+                                        }
+                                    }))
+                            )
+                    )
+            )
+            .child(
+                // RIGHT SECTION - Project Path
+                h_flex()
+                    .items_center()
+                    .px_3()
+                    .py_1p5()
+                    .rounded(px(6.0))
+                    .bg(cx.theme().background.opacity(0.3))
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_family("JetBrainsMono-Regular")
+                            .text_color(cx.theme().muted_foreground)
+                            .children(
+                                self.project_path
+                                    .as_ref()
+                                    .and_then(|path| path.file_name())
+                                    .map(|name| name.to_string_lossy().to_string())
+                                    .or_else(|| {
+                                        self.project_path
+                                            .as_ref()
+                                            .map(|path| path.display().to_string())
+                                    })
+                            )
+                    )
             )
     }
 }

@@ -6,7 +6,7 @@ use gpui_component::{
     dock::{Panel, PanelEvent},
     input::{InputEvent, InputState},
     resizable::{h_resizable, resizable_panel, ResizableState},
-    v_flex, ActiveTheme as _, PixelsExt, StyledExt,
+    v_flex, h_flex, ActiveTheme as _, PixelsExt, StyledExt,
 };
 use smol::Timer;
 use std::time::Duration;
@@ -77,6 +77,8 @@ pub struct BlueprintEditorPanel {
     pub comment_text_input: Entity<gpui_component::input::InputState>,
     // Store subscriptions to keep them alive
     pub subscriptions: Vec<gpui::Subscription>,
+    // Compilation status for UI feedback
+    pub compilation_status: super::CompilationStatus,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -426,6 +428,7 @@ impl BlueprintEditorPanel {
                 gpui_component::input::InputState::new(window, cx).placeholder("Comment text...")
             }),
             subscriptions: Vec::<gpui::Subscription>::new(),
+            compilation_status: super::CompilationStatus::default(),
         };
 
         result
@@ -2300,6 +2303,109 @@ impl BlueprintEditorPanel {
         cx.notify();
     }
 
+    // Stub methods for node library (not currently used)
+    pub fn get_search_input_state(&self) -> &Entity<gpui_component::input::InputState> {
+        &self.variable_name_input // Reuse existing input state
+    }
+
+    pub fn get_search_query(&self) -> &str {
+        "" // Return empty string for now
+    }
+
+    /// Start the compilation process with progress tracking
+    pub fn start_compilation(&mut self, cx: &mut Context<Self>) {
+        self.compilation_status = super::CompilationStatus {
+            state: super::CompilationState::Compiling,
+            message: "Starting compilation...".to_string(),
+            progress: 0.0,
+            is_compiling: true,
+        };
+        cx.notify();
+
+        // Spawn async compilation task
+        cx.spawn(async move |view, mut cx| {
+            // Phase 1: Validate blueprint
+            cx.update(|cx| {
+                view.update(cx, |panel, cx| {
+                    panel.compilation_status.message = "Validating blueprint graph...".to_string();
+                    panel.compilation_status.progress = 0.2;
+                    cx.notify();
+                }).ok();
+            }).ok();
+
+            smol::Timer::after(std::time::Duration::from_millis(100)).await;
+
+            // Phase 2: Generate code
+            let compile_result = cx.update(|cx| {
+                view.update(cx, |panel, cx| {
+                    panel.compilation_status.message = "Generating Rust code...".to_string();
+                    panel.compilation_status.progress = 0.5;
+                    cx.notify();
+                    panel.compile_to_class_directory()
+                }).ok()
+            }).ok().flatten();
+
+            smol::Timer::after(std::time::Duration::from_millis(100)).await;
+
+            // Phase 3: Write files
+            cx.update(|cx| {
+                view.update(cx, |panel, cx| {
+                    panel.compilation_status.message = "Writing files...".to_string();
+                    panel.compilation_status.progress = 0.8;
+                    cx.notify();
+                }).ok();
+            }).ok();
+
+            smol::Timer::after(std::time::Duration::from_millis(100)).await;
+
+            // Phase 4: Complete
+            cx.update(|cx| {
+                view.update(cx, |panel, cx| {
+                    match compile_result {
+                        Some(Ok(())) => {
+                            panel.compilation_status = super::CompilationStatus {
+                                state: super::CompilationState::Success,
+                                message: "Compilation successful!".to_string(),
+                                progress: 1.0,
+                                is_compiling: false,
+                            };
+                            println!("✅ Blueprint compiled successfully!");
+                        }
+                        Some(Err(e)) => {
+                            panel.compilation_status = super::CompilationStatus {
+                                state: super::CompilationState::Error,
+                                message: format!("Compilation failed: {}", e),
+                                progress: 0.0,
+                                is_compiling: false,
+                            };
+                            eprintln!("❌ Compilation error: {}", e);
+                        }
+                        None => {
+                            panel.compilation_status = super::CompilationStatus {
+                                state: super::CompilationState::Error,
+                                message: "Compilation cancelled".to_string(),
+                                progress: 0.0,
+                                is_compiling: false,
+                            };
+                        }
+                    }
+                    cx.notify();
+                }).ok();
+            }).ok();
+
+            // Reset to idle after 3 seconds
+            smol::Timer::after(std::time::Duration::from_secs(3)).await;
+            cx.update(|cx| {
+                view.update(cx, |panel, cx| {
+                    if panel.compilation_status.state != super::CompilationState::Compiling {
+                        panel.compilation_status = super::CompilationStatus::default();
+                        cx.notify();
+                    }
+                }).ok();
+            }).ok();
+        }).detach();
+    }
+
     /// Create a getter node for a variable at the specified position
     pub fn create_getter_node(
         &mut self,
@@ -2459,12 +2565,27 @@ impl Panel for BlueprintEditorPanel {
         "Blueprint Editor"
     }
 
-    fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
-        if let Some(title) = &self.tab_title {
-            div().child(title.clone()).into_any_element()
-        } else {
-            div().child("Blueprint Editor").into_any_element()
-        }
+    fn title(&self, _window: &Window, cx: &App) -> AnyElement {
+        // STUDIO-QUALITY TAB TITLE with icon
+        h_flex()
+            .gap_2()
+            .items_center()
+            .child(
+                // Blueprint icon
+                div()
+                    .text_sm()
+                    .child("⚡")
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .child(if let Some(title) = &self.tab_title {
+                        title.clone()
+                    } else {
+                        "Blueprint Editor".to_string()
+                    })
+            )
+            .into_any_element()
     }
 
     fn dump(&self, _cx: &App) -> gpui_component::dock::PanelState {
@@ -2511,41 +2632,16 @@ impl Render for BlueprintEditorPanel {
                             resizable_panel()
                                 .size(px(280.))
                                 .size_range(px(200.)..px(400.))
-                                .child(
-                                    div()
-                                        .size_full()
-                                        .bg(cx.theme().sidebar)
-                                        .border_1()
-                                        .border_color(cx.theme().border)
-                                        .rounded(cx.theme().radius)
-                                        .p_2()
-                                        .child(super::variables::VariablesRenderer::render(
-                                            self, cx,
-                                        )),
-                                ),
+                                .child(super::variables::VariablesRenderer::render(self, cx))
                         )
                         .child(
-                            resizable_panel().child(
-                                div()
-                                    .size_full()
-                                    .p_2()
-                                    .child(NodeGraphRenderer::render(self, cx)),
-                            ),
+                            resizable_panel().child(NodeGraphRenderer::render(self, cx))
                         )
                         .child(
                             resizable_panel()
                                 .size(px(320.))
                                 .size_range(px(250.)..px(500.))
-                                .child(
-                                    div()
-                                        .size_full()
-                                        .bg(cx.theme().sidebar)
-                                        .border_1()
-                                        .border_color(cx.theme().border)
-                                        .rounded(cx.theme().radius)
-                                        .p_2()
-                                        .child(PropertiesRenderer::render(self, cx)),
-                                ),
+                                .child(super::properties::PropertiesRenderer::render(self, cx))
                         ),
                 ),
             )
