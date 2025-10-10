@@ -394,6 +394,9 @@ impl PulsarApp {
         use gpui_component::Root;
 
         let project_path = event.project_path.clone();
+        
+        // Get a clone of self as Entity to pass to the file manager window
+        let parent_app = cx.entity().clone();
 
         // Close the drawer when popping out
         self.drawer_open = false;
@@ -421,7 +424,7 @@ impl PulsarApp {
                 });
 
                 let file_manager_window = cx.new(|cx| {
-                    FileManagerWindow::new(new_drawer, window, cx)
+                    FileManagerWindow::new(new_drawer, parent_app.clone(), window, cx)
                 });
 
                 cx.new(|cx| Root::new(file_manager_window.into(), window, cx))
@@ -498,6 +501,35 @@ impl PulsarApp {
             script_editor.update(cx, |editor, cx| {
                 editor.go_to_line(event.line, event.column, window, cx);
             });
+        }
+    }
+
+    /// Public handler for file selected events from external windows (like file manager window)
+    /// This is called directly from the file manager window
+    pub fn handle_file_selected_from_external_window(
+        &mut self,
+        event: &FileSelected,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        eprintln!("DEBUG: File selected from external window - path: {:?}, type: {:?}", event.path, event.file_type);
+
+        match event.file_type {
+            FileType::Class => {
+                eprintln!("DEBUG: Opening blueprint tab from external");
+                self.open_blueprint_tab(event.path.clone(), window, cx);
+            }
+            FileType::Script => {
+                eprintln!("DEBUG: Opening script tab from external");
+                self.open_script_tab(event.path.clone(), window, cx);
+            }
+            FileType::DawProject => {
+                eprintln!("DEBUG: Opening DAW tab from external: {:?}", event.path);
+                self.open_daw_tab(event.path.clone(), window, cx);
+            }
+            _ => {
+                eprintln!("DEBUG: Unknown file type from external, ignoring");
+            }
         }
     }
 

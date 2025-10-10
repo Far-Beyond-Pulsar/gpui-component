@@ -13,7 +13,6 @@ use std::sync::{Arc, Mutex};
 pub struct ViewportPanel {
     viewport: Entity<Viewport>,
     viewport_controls: ViewportControls,
-    show_performance_overlay: bool,
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
 }
 
@@ -22,7 +21,6 @@ impl ViewportPanel {
         Self {
             viewport,
             viewport_controls: ViewportControls::new(),
-            show_performance_overlay: true,
             render_enabled,
         }
     }
@@ -75,7 +73,7 @@ impl ViewportPanel {
                     .child(Self::render_viewport_options(state, cx))
             );
 
-        if self.show_performance_overlay {
+        if state.show_performance_overlay {
             viewport_div = viewport_div.child(
                 // Performance overlay (bottom-right)
                 div()
@@ -183,6 +181,15 @@ impl ViewportPanel {
                     .selected(state.show_lighting)
                     .on_click(cx.listener(|_, _, _, cx| {
                         cx.dispatch_action(&ToggleLighting);
+                    }))
+            )
+            .child(
+                Button::new("toggle_performance")
+                    .child("Stats")
+                    .xsmall()
+                    .selected(state.show_performance_overlay)
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        cx.dispatch_action(&TogglePerformanceOverlay);
                     }))
             )
     }

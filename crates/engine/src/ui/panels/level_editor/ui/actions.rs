@@ -32,6 +32,7 @@ actions!(
         ToggleGrid,
         ToggleWireframe,
         ToggleLighting,
+        TogglePerformanceOverlay,
 
         // Camera modes
         PerspectiveView,

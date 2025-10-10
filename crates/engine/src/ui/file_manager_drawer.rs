@@ -5,7 +5,6 @@ use gpui_component::{
     context_menu::ContextMenuExt,
     h_flex,
     input::{InputState, TextInput},
-    popup_menu::PopupMenu,
     resizable::{h_resizable, resizable_panel, v_resizable, ResizableState},
     v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
 };
@@ -54,13 +53,46 @@ pub struct CommitRename;
 #[action(namespace = file_manager, no_json)]
 pub struct CancelRename;
 
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager, no_json)]
+pub struct RefreshFileManager;
+
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager, no_json)]
+pub struct CollapseAllFolders;
+
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager, no_json)]
+pub struct ToggleHiddenFiles;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum FileType {
     Folder,
     Class, // A folder containing graph_save.json
     Script,
     DawProject, // .pdaw files
+    Config, // .toml files
     Other,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ViewMode {
+    Grid,
+    List,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SortBy {
+    Name,
+    DateModified,
+    Size,
+    Type,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SortOrder {
+    Ascending,
+    Descending,
 }
 
 #[derive(Clone, Debug)]
@@ -68,6 +100,8 @@ pub struct FileItem {
     pub path: PathBuf,
     pub name: String,
     pub file_type: FileType,
+    pub size: u64,
+    pub modified: Option<std::time::SystemTime>,
 }
 
 impl FileItem {
@@ -88,14 +122,22 @@ impl FileItem {
             match path.extension().and_then(|s| s.to_str()) {
                 Some("rs") => FileType::Script,
                 Some("pdaw") => FileType::DawProject,
+                Some("toml") => FileType::Config,
                 _ => FileType::Other,
             }
         };
+
+        // Get file metadata for size and modified date
+        let metadata = std::fs::metadata(path).ok();
+        let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+        let modified = metadata.and_then(|m| m.modified().ok());
 
         Some(FileItem {
             path: path.to_path_buf(),
             name,
             file_type,
+            size,
+            modified,
         })
     }
 }
@@ -176,6 +218,15 @@ pub struct FileManagerDrawer {
     renaming_item: Option<PathBuf>,
     rename_input_state: Entity<InputState>,
     is_in_window: bool, // Track if this drawer is rendered in a separate window
+    view_mode: ViewMode,
+    sort_by: SortBy,
+    sort_order: SortOrder,
+    search_query: String,
+    folder_search_state: Entity<InputState>,
+    file_filter_query: String,
+    file_filter_state: Entity<InputState>,
+    show_hidden_files: bool,
+    selected_file_types: Vec<FileType>, // Filter by file type
 }
 
 impl FileManagerDrawer {
@@ -196,6 +247,8 @@ impl FileManagerDrawer {
         let resizable_state = ResizableState::new(cx);
         let height_resizable_state = ResizableState::new(cx);
         let rename_input_state = cx.new(|cx| InputState::new(window, cx));
+        let folder_search_state = cx.new(|cx| InputState::new(window, cx));
+        let file_filter_state = cx.new(|cx| InputState::new(window, cx));
 
         // Subscribe to input events to handle Enter key for committing rename
         cx.subscribe(
@@ -211,6 +264,32 @@ impl FileManagerDrawer {
         )
         .detach();
 
+        // Subscribe to folder search input for live filtering
+        cx.subscribe(
+            &folder_search_state,
+            |drawer, _input, event: &gpui_component::input::InputEvent, cx| match event {
+                gpui_component::input::InputEvent::Change { .. } => {
+                    drawer.search_query = drawer.folder_search_state.read(cx).text().to_string();
+                    cx.notify();
+                }
+                _ => {}
+            },
+        )
+        .detach();
+
+        // Subscribe to file filter input for live filtering
+        cx.subscribe(
+            &file_filter_state,
+            |drawer, _input, event: &gpui_component::input::InputEvent, cx| match event {
+                gpui_component::input::InputEvent::Change { .. } => {
+                    drawer.file_filter_query = drawer.file_filter_state.read(cx).text().to_string();
+                    cx.notify();
+                }
+                _ => {}
+            },
+        )
+        .detach();
+
         Self {
             folder_tree: project_path.as_ref().and_then(|p| FolderNode::from_path(p)),
             project_path: project_path.clone(),
@@ -220,6 +299,15 @@ impl FileManagerDrawer {
             renaming_item: None,
             rename_input_state,
             is_in_window,
+            view_mode: ViewMode::Grid,
+            sort_by: SortBy::Name,
+            sort_order: SortOrder::Ascending,
+            search_query: String::new(),
+            folder_search_state,
+            file_filter_query: String::new(),
+            file_filter_state,
+            show_hidden_files: false,
+            selected_file_types: Vec::new(),
         }
     }
 
@@ -250,7 +338,7 @@ impl FileManagerDrawer {
             None => return Vec::new(),
         };
 
-        std::fs::read_dir(folder)
+        let mut items: Vec<FileItem> = std::fs::read_dir(folder)
             .ok()
             .map(|entries| {
                 entries
@@ -258,16 +346,65 @@ impl FileManagerDrawer {
                         let entry = entry.ok()?;
                         let path = entry.path();
 
-                        // Skip hidden files
-                        if path.file_name()?.to_str()?.starts_with('.') {
-                            return None;
+                        // Skip hidden files if toggle is off
+                        if !self.show_hidden_files {
+                            if path.file_name()?.to_str()?.starts_with('.') {
+                                return None;
+                            }
                         }
 
                         FileItem::from_path(&path)
                     })
                     .collect()
             })
-            .unwrap_or_default()
+            .unwrap_or_default();
+
+        // Apply file filter query
+        if !self.file_filter_query.is_empty() {
+            let query_lower = self.file_filter_query.to_lowercase();
+            items.retain(|item| {
+                item.name.to_lowercase().contains(&query_lower)
+            });
+        }
+
+        // Apply file type filter
+        if !self.selected_file_types.is_empty() {
+            items.retain(|item| {
+                self.selected_file_types.contains(&item.file_type)
+            });
+        }
+
+        // Sort items
+        items.sort_by(|a, b| {
+            let comparison = match self.sort_by {
+                SortBy::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+                SortBy::DateModified => {
+                    match (a.modified, b.modified) {
+                        (Some(a_time), Some(b_time)) => a_time.cmp(&b_time),
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        (None, None) => std::cmp::Ordering::Equal,
+                    }
+                }
+                SortBy::Size => a.size.cmp(&b.size),
+                SortBy::Type => {
+                    // Sort by file type, then by name
+                    let type_ord = format!("{:?}", a.file_type).cmp(&format!("{:?}", b.file_type));
+                    if type_ord == std::cmp::Ordering::Equal {
+                        a.name.to_lowercase().cmp(&b.name.to_lowercase())
+                    } else {
+                        type_ord
+                    }
+                }
+            };
+
+            match self.sort_order {
+                SortOrder::Ascending => comparison,
+                SortOrder::Descending => comparison.reverse(),
+            }
+        });
+
+        items
     }
 
     /// Handle clicking on an item in the file manager drawer
@@ -504,12 +641,126 @@ impl FileManagerDrawer {
         self.cancel_rename(cx);
     }
 
+    fn on_refresh(&mut self, _action: &RefreshFileManager, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(project_path) = &self.project_path {
+            self.folder_tree = FolderNode::from_path(project_path);
+        }
+        cx.notify();
+    }
+
+    fn on_collapse_all(&mut self, _action: &CollapseAllFolders, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(tree) = &mut self.folder_tree {
+            Self::collapse_all_recursive(tree);
+        }
+        cx.notify();
+    }
+
+    fn collapse_all_recursive(node: &mut FolderNode) {
+        node.expanded = false;
+        for child in &mut node.children {
+            Self::collapse_all_recursive(child);
+        }
+    }
+
+    fn on_toggle_hidden(&mut self, _action: &ToggleHiddenFiles, _window: &mut Window, cx: &mut Context<Self>) {
+        self.show_hidden_files = !self.show_hidden_files;
+        cx.notify();
+    }
+
+    fn toggle_view_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
+        self.view_mode = mode;
+        cx.notify();
+    }
+
+    fn set_sort_by(&mut self, sort_by: SortBy, cx: &mut Context<Self>) {
+        if self.sort_by == sort_by {
+            // Toggle sort order if same field
+            self.sort_order = match self.sort_order {
+                SortOrder::Ascending => SortOrder::Descending,
+                SortOrder::Descending => SortOrder::Ascending,
+            };
+        } else {
+            self.sort_by = sort_by;
+            self.sort_order = SortOrder::Ascending;
+        }
+        cx.notify();
+    }
+
+    fn toggle_file_type_filter(&mut self, file_type: FileType, cx: &mut Context<Self>) {
+        if let Some(pos) = self.selected_file_types.iter().position(|t| t == &file_type) {
+            self.selected_file_types.remove(pos);
+        } else {
+            self.selected_file_types.push(file_type);
+        }
+        cx.notify();
+    }
+
+    fn format_file_size(size: u64) -> String {
+        const KB: u64 = 1024;
+        const MB: u64 = KB * 1024;
+        const GB: u64 = MB * 1024;
+
+        if size >= GB {
+            format!("{:.2} GB", size as f64 / GB as f64)
+        } else if size >= MB {
+            format!("{:.2} MB", size as f64 / MB as f64)
+        } else if size >= KB {
+            format!("{:.2} KB", size as f64 / KB as f64)
+        } else {
+            format!("{} B", size)
+        }
+    }
+
+    fn format_modified_time(time: Option<std::time::SystemTime>) -> String {
+        time.and_then(|t| {
+            t.duration_since(std::time::UNIX_EPOCH).ok().map(|d| {
+                let datetime = chrono::DateTime::<chrono::Local>::from(std::time::UNIX_EPOCH + d);
+                datetime.format("%b %d, %Y %H:%M").to_string()
+            })
+        })
+        .unwrap_or_else(|| "Unknown".to_string())
+    }
+
+    fn get_breadcrumbs(&self) -> Vec<(String, PathBuf)> {
+        let mut breadcrumbs = Vec::new();
+        if let Some(selected) = &self.selected_folder {
+            if let Some(project) = &self.project_path {
+                let relative = selected.strip_prefix(project).unwrap_or(selected);
+                let mut current = project.clone();
+                
+                breadcrumbs.push(("Project".to_string(), current.clone()));
+                
+                for component in relative.components() {
+                    if let std::path::Component::Normal(name) = component {
+                        current = current.join(name);
+                        breadcrumbs.push((name.to_string_lossy().to_string(), current.clone()));
+                    }
+                }
+            }
+        }
+        breadcrumbs
+    }
+
+    fn matches_folder_search(&self, node: &FolderNode) -> bool {
+        if self.search_query.is_empty() {
+            return true;
+        }
+        let query_lower = self.search_query.to_lowercase();
+        node.name.to_lowercase().contains(&query_lower) ||
+            node.children.iter().any(|child| self.matches_folder_search(child))
+    }
+
     fn render_folder_tree_node(
         &self,
         node: &FolderNode,
         depth: usize,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    ) -> gpui::AnyElement {
+        // Skip nodes that don't match search
+        if !self.matches_folder_search(node) {
+            return div().into_any_element();
+        }
+
         let indent = (depth + 1) * 12;
         let icon = if node.is_class {
             IconName::Component
@@ -664,14 +915,16 @@ impl FileManagerDrawer {
             } else {
                 None
             })
+            .into_any_element()
     }
 
-    fn render_content_item(&self, item: &FileItem, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_content_item(&self, item: &FileItem, cx: &mut Context<Self>) -> gpui::AnyElement {
         let icon = match &item.file_type {
             FileType::Folder => IconName::Folder,
             FileType::Class => IconName::Component,
             FileType::Script => IconName::Code,
             FileType::DawProject => IconName::MusicNote,
+            FileType::Config => IconName::Settings,
             FileType::Other => IconName::Page,
         };
 
@@ -679,6 +932,21 @@ impl FileManagerDrawer {
         let item_path = item.path.clone();
         let item_type = item.file_type.clone();
 
+        match self.view_mode {
+            ViewMode::Grid => self.render_grid_item(item, icon, item_clone, item_path, item_type, cx),
+            ViewMode::List => self.render_list_item(item, icon, item_clone, item_path, item_type, cx),
+        }
+    }
+
+    fn render_grid_item(
+        &self,
+        item: &FileItem,
+        icon: IconName,
+        item_clone: FileItem,
+        item_path: PathBuf,
+        item_type: FileType,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
         // COMPACT GRID ITEM
         div()
             .id(SharedString::from(format!(
@@ -826,7 +1094,8 @@ impl FileManagerDrawer {
                                         .font_medium()
                                         .text_color(cx.theme().foreground.opacity(0.9))
                                         .overflow_hidden()
-                                        .line_clamp(2)
+                                        .text_ellipsis()
+                                        .whitespace_nowrap()
                                         .child(item.name.clone())
                                         .into_any_element()
                                 }
@@ -850,6 +1119,204 @@ impl FileManagerDrawer {
                             })
                     )
             )
+            .into_any_element()
+    }
+
+    fn render_list_item(
+        &self,
+        item: &FileItem,
+        icon: IconName,
+        item_clone: FileItem,
+        item_path: PathBuf,
+        item_type: FileType,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        // LIST VIEW ITEM
+        div()
+            .id(SharedString::from(format!(
+                "content-item-list-{}",
+                item.path.display()
+            )))
+            .w_full()
+            .h(px(38.))
+            .context_menu(move |menu, _window, _cx| {
+                let path_str = item_path.to_string_lossy().to_string();
+                match item_type {
+                    FileType::Folder => menu
+                        .menu(
+                            "New Folder",
+                            Box::new(NewFolder {
+                                folder_path: path_str.clone(),
+                            }),
+                        )
+                        .menu(
+                            "New Class",
+                            Box::new(NewClass {
+                                folder_path: path_str.clone(),
+                            }),
+                        )
+                        .separator()
+                        .menu(
+                            "Rename",
+                            Box::new(RenameItem {
+                                item_path: path_str.clone(),
+                            }),
+                        )
+                        .menu(
+                            "Delete",
+                            Box::new(DeleteItem {
+                                item_path: path_str.clone(),
+                            }),
+                        ),
+                    FileType::Class => menu
+                        .separator()
+                        .menu(
+                            "Rename",
+                            Box::new(RenameItem {
+                                item_path: path_str.clone(),
+                            }),
+                        )
+                        .menu(
+                            "Delete",
+                            Box::new(DeleteItem {
+                                item_path: path_str.clone(),
+                            }),
+                        ),
+                    _ => menu
+                        .menu(
+                            "Rename",
+                            Box::new(RenameItem {
+                                item_path: path_str.clone(),
+                            }),
+                        )
+                        .menu(
+                            "Delete",
+                            Box::new(DeleteItem {
+                                item_path: path_str.clone(),
+                            }),
+                        ),
+                }
+            })
+            .child(
+                div()
+                    .w_full()
+                    .h_full()
+                    .px_3()
+                    .py_1p5()
+                    .rounded(px(4.))
+                    .border_1()
+                    .border_color(cx.theme().border.opacity(0.2))
+                    .bg(cx.theme().background)
+                    .cursor_pointer()
+                    .hover(|this| {
+                        this.bg(cx.theme().muted.opacity(0.15))
+                            .border_color(cx.theme().primary.opacity(0.3))
+                    })
+                    .on_mouse_down(
+                        gpui::MouseButton::Left,
+                        cx.listener(move |drawer, _, _, cx| {
+                            drawer.handle_item_click(&item_clone, cx);
+                        }),
+                    )
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .h_full()
+                            .items_center()
+                            .gap_3()
+                            .child(
+                                // Icon
+                                div()
+                                    .size(px(28.))
+                                    .rounded(px(4.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .bg(match &item.file_type {
+                                        FileType::Class => cx.theme().accent.opacity(0.1),
+                                        FileType::Folder => cx.theme().primary.opacity(0.08),
+                                        FileType::Script => cx.theme().info.opacity(0.1),
+                                        FileType::DawProject => cx.theme().success.opacity(0.1),
+                                        _ => cx.theme().muted.opacity(0.06),
+                                    })
+                                    .child(
+                                        Icon::new(icon)
+                                            .size(px(16.))
+                                            .text_color(match &item.file_type {
+                                                FileType::Class => cx.theme().accent,
+                                                FileType::Folder => cx.theme().primary,
+                                                FileType::Script => cx.theme().info,
+                                                FileType::DawProject => cx.theme().success,
+                                                _ => cx.theme().muted_foreground,
+                                            })
+                                    )
+                            )
+                            .child(
+                                // Name (flex-grow)
+                                if self.renaming_item.as_ref() == Some(&item.path) {
+                                    div()
+                                        .flex_1()
+                                        .child(
+                                            TextInput::new(&self.rename_input_state)
+                                                .appearance(false)
+                                                .w_full()
+                                        )
+                                        .into_any_element()
+                                } else {
+                                    div()
+                                        .flex_1()
+                                        .text_sm()
+                                        .font_medium()
+                                        .text_color(cx.theme().foreground)
+                                        .overflow_hidden()
+                                        .text_ellipsis()
+                                        .whitespace_nowrap()
+                                        .child(item.name.clone())
+                                        .into_any_element()
+                                }
+                            )
+                            .when(matches!(item.file_type, FileType::Class), |this| {
+                                this.child(
+                                    div()
+                                        .px_1p5()
+                                        .py_0p5()
+                                        .rounded(px(3.))
+                                        .bg(cx.theme().accent.opacity(0.12))
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .font_semibold()
+                                                .text_color(cx.theme().accent)
+                                                .child("BP")
+                                        )
+                                )
+                            })
+                            .child(
+                                // Modified date
+                                div()
+                                    .w(px(140.))
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground.opacity(0.7))
+                                    .child(Self::format_modified_time(item.modified))
+                            )
+                            .child(
+                                // Size
+                                div()
+                                    .w(px(80.))
+                                    .text_xs()
+                                    .text_right()
+                                    .text_color(cx.theme().muted_foreground.opacity(0.7))
+                                    .child(
+                                        if matches!(item.file_type, FileType::Folder) {
+                                            "-".to_string()
+                                        } else {
+                                            Self::format_file_size(item.size)
+                                        }
+                                    )
+                            )
+                    )
+            )
+            .into_any_element()
     }
 }
 
@@ -870,6 +1337,7 @@ impl EventEmitter<PopoutFileManagerEvent> for FileManagerDrawer {}
 impl Render for FileManagerDrawer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let contents = self.get_folder_contents();
+        let breadcrumbs = self.get_breadcrumbs();
 
         div()
             .size_full()
@@ -885,6 +1353,9 @@ impl Render for FileManagerDrawer {
             .on_action(cx.listener(Self::on_rename_item))
             .on_action(cx.listener(Self::on_commit_rename))
             .on_action(cx.listener(Self::on_cancel_rename))
+            .on_action(cx.listener(Self::on_refresh))
+            .on_action(cx.listener(Self::on_collapse_all))
+            .on_action(cx.listener(Self::on_toggle_hidden))
             .child(
                 // Vertical resizable for drawer height with resizable from top edge
                 v_resizable("file-manager-height", self.height_resizable_state.clone())
@@ -911,43 +1382,233 @@ impl Render for FileManagerDrawer {
                                                     .w_full()
                                                     .items_center()
                                                     .justify_between()
+                                                    // .child(
+                                                    //     h_flex()
+                                                    //         .items_center()
+                                                    //         .gap_2()
+                                                    //         .child(
+                                                    //             Icon::new(IconName::Folder)
+                                                    //                 .size(px(18.))
+                                                    //                 .text_color(cx.theme().accent)
+                                                    //         )
+                                                    //         .child(
+                                                    //             div()
+                                                    //                 .text_sm()
+                                                    //                 .font_semibold()
+                                                    //                 .text_color(cx.theme().foreground)
+                                                    //                 .child("File Manager")
+                                                    //         )
+                                                    // )
+                                                )
+                                                // Combined breadcrumbs and controls bar
+                                                .child(
+                                                    h_flex()
+                                                    .w_full()
+                                                    .items_center()
+                                                    .justify_between()
+                                                    .gap_2()
                                                     .child(
+                                                        // Breadcrumb navigation
+                                                        h_flex()
+                                                        .flex_1()
+                                                        .items_center()
+                                                        .gap_1()
+                                                            .overflow_hidden()
+                                                            .children(
+                                                                breadcrumbs.iter().enumerate().flat_map(|(i, (name, path))| {
+                                                                    let path_clone = path.clone();
+                                                                    let is_last = i == breadcrumbs.len() - 1;
+                                                                    
+                                                                    let mut elements: Vec<gpui::AnyElement> = vec![];
+                                                                    
+                                                                    if i > 0 {
+                                                                        elements.push(
+                                                                            Icon::new(IconName::ChevronRight)
+                                                                                .size(px(12.))
+                                                                                .text_color(cx.theme().muted_foreground.opacity(0.4))
+                                                                                .into_any_element()
+                                                                            );
+                                                                        }
+                                                                        
+                                                                        elements.push(
+                                                                            Button::new(SharedString::from(format!("breadcrumb-{}", i)))
+                                                                            .ghost()
+                                                                            .compact()
+                                                                            .label(name.clone())
+                                                                            .when(is_last, |btn| btn.primary())
+                                                                            .on_click(cx.listener(move |drawer, _, _, cx| {
+                                                                                drawer.select_folder(path_clone.clone(), cx);
+                                                                            }))
+                                                                            .into_any_element()
+                                                                    );
+                                                                    
+                                                                    elements
+                                                                })
+                                                            )
+                                                        )
+                                                        .child(
+                                                            // Item count and controls
                                                         h_flex()
                                                             .items_center()
                                                             .gap_2()
                                                             .child(
-                                                                Icon::new(IconName::Folder)
-                                                                    .size(px(18.))
-                                                                    .text_color(cx.theme().accent)
-                                                            )
-                                                            .child(
-                                                                div()
-                                                                    .text_sm()
-                                                                    .font_semibold()
-                                                                    .text_color(cx.theme().foreground)
-                                                                    .child("File Manager")
-                                                            )
+                                                                h_flex()
+                                                                    .items_center()
+                                                                    .gap_1p5()
+                                                                    .child(
+                                                                        Icon::new(IconName::Page)
+                                                                            .size(px(14.))
+                                                                            .text_color(cx.theme().primary)
+                                                                    )
+                                                                    .child(
+                                                                        div()
+                                                                            .px_1p5()
+                                                                            .py_0p5()
+                                                                            .rounded(px(3.))
+                                                                            .bg(cx.theme().muted.opacity(0.3))
+                                                                            .child(
+                                                                                div()
+                                                                                    .text_xs()
+                                                                                    .text_color(cx.theme().muted_foreground)
+                                                                                    .child(format!("{} items", contents.len()))
+                                                                                )
+                                                                    )
+                                                                )
+                                                                .child(
+                                                                h_flex()
+                                                                .gap_0p5()
+                                                                    .when(self.selected_folder.is_some(), |this| {
+                                                                        let folder = self.selected_folder.clone().unwrap();
+                                                                        let folder_str = folder.to_string_lossy().to_string();
+                                                                        let folder_str1 = folder_str.clone();
+                                                                        let folder_str2 = folder_str.clone();
+                                                                        let folder_str3 = folder_str.clone();
+                                                                        this.child(
+                                                                            Button::new("new-folder-quick")
+                                                                                .ghost()
+                                                                                .compact()
+                                                                                .icon(IconName::FolderPlus)
+                                                                                .tooltip("New Folder")
+                                                                                .on_click(cx.listener(move |_, _, _, cx| {
+                                                                                    cx.dispatch_action(&NewFolder {
+                                                                                        folder_path: folder_str1.clone(),
+                                                                                    });
+                                                                                }))
+                                                                        )
+                                                                        .child(
+                                                                            Button::new("new-class-quick")
+                                                                                .ghost()
+                                                                                .compact()
+                                                                                .icon(IconName::Component)
+                                                                                .tooltip("New Class")
+                                                                                .on_click(cx.listener(move |_, _, _, cx| {
+                                                                                    cx.dispatch_action(&NewClass {
+                                                                                        folder_path: folder_str2.clone(),
+                                                                                    });
+                                                                                }))
+                                                                        )
+                                                                        .child(
+                                                                            Button::new("new-file-quick")
+                                                                                .ghost()
+                                                                                .compact()
+                                                                                .icon(IconName::Page)
+                                                                                .tooltip("New File")
+                                                                                .on_click(cx.listener(move |_, _, _, cx| {
+                                                                                    cx.dispatch_action(&NewFile {
+                                                                                        folder_path: folder_str3.clone(),
+                                                                                    });
+                                                                                }))
+                                                                        )
+                                                                    })
+                                                                    .child(
+                                                                        Button::new("refresh")
+                                                                            .ghost()
+                                                                            .compact()
+                                                                            .icon(IconName::Refresh)
+                                                                            .tooltip("Refresh")
+                                                                            .on_click(cx.listener(|_, _, _, cx| {
+                                                                                cx.dispatch_action(&RefreshFileManager);
+                                                                            }))
+                                                                    )
+                                                                    .child(
+                                                                        Button::new("view-grid")
+                                                                            .ghost()
+                                                                            .compact()
+                                                                            .icon(IconName::LayoutDashboard)
+                                                                            .tooltip("Grid View")
+                                                                            .when(self.view_mode == ViewMode::Grid, |btn| btn.primary())
+                                                                            .on_click(cx.listener(|drawer, _, _, cx| {
+                                                                                drawer.toggle_view_mode(ViewMode::Grid, cx);
+                                                                            }))
+                                                                    )
+                                                                    .child(
+                                                                        Button::new("view-list")
+                                                                            .ghost()
+                                                                            .compact()
+                                                                            .icon(IconName::List)
+                                                                            .tooltip("List View")
+                                                                            .when(self.view_mode == ViewMode::List, |btn| btn.primary())
+                                                                            .on_click(cx.listener(|drawer, _, _, cx| {
+                                                                                drawer.toggle_view_mode(ViewMode::List, cx);
+                                                                            }))
+                                                                    )
+                                                                    .child(
+                                                                        Button::new("sort-button")
+                                                                            .ghost()
+                                                                            .compact()
+                                                                            .icon(IconName::ChevronsUpDown)
+                                                                            .tooltip("Sort By")
+                                                                            .on_click(cx.listener(|drawer, _, _, cx| {
+                                                                                let next_sort = match drawer.sort_by {
+                                                                                    SortBy::Name => SortBy::DateModified,
+                                                                                    SortBy::DateModified => SortBy::Size,
+                                                                                    SortBy::Size => SortBy::Type,
+                                                                                    SortBy::Type => SortBy::Name,
+                                                                                };
+                                                                                drawer.set_sort_by(next_sort, cx);
+                                                                            }))
+                                                                    )
+                                                                    .child(
+                                                                        Button::new("filter-button")
+                                                                            .ghost()
+                                                                            .compact()
+                                                                            .icon(IconName::Filter)
+                                                                            .tooltip("Filter")
+                                                                            .when(!self.selected_file_types.is_empty(), |btn| btn.primary())
+                                                                        )
+                                                                        .child(
+                                                                            Button::new("toggle-hidden")
+                                                                            .ghost()
+                                                                            .compact()
+                                                                            .icon(IconName::Eye)
+                                                                            .tooltip(if self.show_hidden_files { "Hide Hidden Files" } else { "Show Hidden Files" })
+                                                                            .when(self.show_hidden_files, |btn| btn.primary())
+                                                                            .on_click(cx.listener(|_, _, _, cx| {
+                                                                                cx.dispatch_action(&ToggleHiddenFiles);
+                                                                            }))
+                                                                        )
+                                                                    )
+                                                                    .when(!self.is_in_window, |this| {
+                                                                        this.child(
+                                                                            // Popout button - only show when in drawer
+                                                                            Button::new("popout-drawer")
+                                                                                .ghost()
+                                                                                .compact()
+                                                                                .icon(IconName::ExternalLink)
+                                                                                .tooltip("Open in Separate Window")
+                                                                                .on_click(cx.listener(|drawer, _, _, cx| {
+                                                                                    let project_path = drawer.project_path.clone();
+                                                                                    cx.emit(PopoutFileManagerEvent { project_path });
+                                                                                }))
+                                                                        )
+                                                                    })
                                                     )
-                                                    .when(!self.is_in_window, |this| {
-                                                        this.child(
-                                                            // Popout button - only show when in drawer
-                                                            Button::new("popout-drawer")
-                                                                .ghost()
-                                                                .compact()
-                                                                .icon(IconName::ExternalLink)
-                                                                .tooltip("Open in Separate Window")
-                                                                .on_click(cx.listener(|drawer, _, _, cx| {
-                                                                    let project_path = drawer.project_path.clone();
-                                                                    cx.emit(PopoutFileManagerEvent { project_path });
-                                                                }))
-                                                        )
-                                                    })
                                             )
                                     )
                                     .child(
                                         // Content split: tree and grid
                                         div()
-                                            .flex_1()
+                                        .flex_1()
                                             .overflow_hidden()
                                             .child(
                                                 h_resizable("file-manager-split", self.resizable_state.clone())
@@ -971,11 +1632,11 @@ impl Render for FileManagerDrawer {
                                                                             .border_b_1()
                                                                             .border_color(cx.theme().border.opacity(0.3))
                                                                             .child(
-                                                                                // Simple header
+                                                                                // Header with actions
                                                                                 h_flex()
                                                                                     .w_full()
                                                                                     .items_center()
-                                                                                    .gap_1p5()
+                                                                                    .justify_between()
                                                                                     .child(
                                                                                         div()
                                                                                             .flex_shrink_0()
@@ -984,31 +1645,29 @@ impl Render for FileManagerDrawer {
                                                                                             .text_color(cx.theme().muted_foreground)
                                                                                             .child("FOLDERS")
                                                                                     )
+                                                                                    .child(
+                                                                                        h_flex()
+                                                                                            .gap_0p5()
+                                                                                            .child(
+                                                                                                Button::new("collapse-all-folders")
+                                                                                                    .ghost()
+                                                                                                    .compact()
+                                                                                                    .icon(IconName::Minimize)
+                                                                                                    .tooltip("Collapse All")
+                                                                                                    .on_click(cx.listener(|_, _, _, cx| {
+                                                                                                        cx.dispatch_action(&CollapseAllFolders);
+                                                                                                    }))
+                                                                                            )
+                                                                                    )
                                                                             )
                                                                             .child(
-                                                                                // Compact search
+                                                                                // Functional search
                                                                                 div()
                                                                                     .w_full()
-                                                                                    .h(px(28.))
-                                                                                    .px_2()
-                                                                                    .py_1()
-                                                                                    .rounded(px(5.))
-                                                                                    .bg(cx.theme().background.opacity(0.8))
-                                                                                    .border_1()
-                                                                                    .border_color(cx.theme().border.opacity(0.5))
-                                                                                    .flex()
-                                                                                    .items_center()
-                                                                                    .gap_1p5()
                                                                                     .child(
-                                                                                        Icon::new(IconName::Search)
-                                                                                            .size(px(12.))
-                                                                                            .text_color(cx.theme().muted_foreground.opacity(0.6))
-                                                                                    )
-                                                                                    .child(
-                                                                                        div()
-                                                                                            .text_xs()
-                                                                                            .text_color(cx.theme().muted_foreground.opacity(0.5))
-                                                                                            .child("Search...")
+                                                                                        TextInput::new(&self.folder_search_state)
+                                                                                            .prefix(Icon::new(IconName::Search).size(px(12.)))
+                                                                                            .w_full()
                                                                                     )
                                                                             )
                                                                     )
@@ -1077,73 +1736,18 @@ impl Render for FileManagerDrawer {
                                                                         .border_b_1()
                                                                         .border_color(cx.theme().border.opacity(0.3))
                                                                         .child(
-                                                                            h_flex()
+                                                                            // File filter search
+                                                                            div()
                                                                                 .w_full()
-                                                                                .items_center()
-                                                                                .justify_between()
                                                                                 .child(
-                                                                                    h_flex()
-                                                                                        .items_center()
-                                                                                        .gap_1p5()
-                                                                                        .child(
-                                                                                            Icon::new(IconName::Page)
-                                                                                                .size(px(14.))
-                                                                                                .text_color(cx.theme().primary)
-                                                                                        )
-                                                                                        .child(
-                                                                                            div()
-                                                                                                .text_xs()
-                                                                                                .font_semibold()
-                                                                                                .text_color(cx.theme().foreground)
-                                                                                                .children(self.selected_folder.as_ref().and_then(
-                                                                                                    |p| {
-                                                                                                        p.file_name()
-                                                                                                            .and_then(|n| n.to_str())
-                                                                                                            .map(|s| s.to_string())
-                                                                                                    },
-                                                                                                ))
-                                                                                                .when(self.selected_folder.is_none(), |this| {
-                                                                                                    this.child("No Selection")
-                                                                                                })
-                                                                                        )
-                                                                                        .child(
-                                                                                            div()
-                                                                                                .px_1p5()
-                                                                                                .py_0p5()
-                                                                                                .rounded(px(3.))
-                                                                                                .bg(cx.theme().muted.opacity(0.3))
-                                                                                                .child(
-                                                                                                    div()
-                                                                                                        .text_xs()
-                                                                                                        .text_color(cx.theme().muted_foreground)
-                                                                                                        .child(format!("{}", contents.len()))
-                                                                                                )
-                                                                                        )
-                                                                                )
-                                                                                .child(
-                                                                                    // Compact view toggles
-                                                                                    h_flex()
-                                                                                        .gap_0p5()
-                                                                                        .child(
-                                                                                            Button::new("view-grid")
-                                                                                                .ghost()
-                                                                                                .compact()
-                                                                                                .primary()
-                                                                                                .icon(IconName::LayoutDashboard)
-                                                                                                .tooltip("Grid")
-                                                                                        )
-                                                                                        .child(
-                                                                                            Button::new("view-list")
-                                                                                                .ghost()
-                                                                                                .compact()
-                                                                                                .icon(IconName::List)
-                                                                                                .tooltip("List")
-                                                                                        )
+                                                                                    TextInput::new(&self.file_filter_state)
+                                                                                        .prefix(Icon::new(IconName::Search).size(px(12.)))
+                                                                                        .w_full()
                                                                                 )
                                                                         )
                                                                 )
                                                                 .child(
-                                                                    // CONTENT GRID
+                                                                    // CONTENT GRID/LIST
                                                                     div().flex_1().overflow_hidden().p_2().child({
                                                                         let selected_folder_for_menu = self.selected_folder.clone();
                                                                         div()
@@ -1177,11 +1781,24 @@ impl Render for FileManagerDrawer {
                                                                             })
                                                                             .child(
                                                                                 div().size_full().scrollable(Axis::Vertical).child(
-                                                                                    h_flex().w_full().flex_wrap().gap_1p5().children(
-                                                                                        contents.iter().map(|item| {
-                                                                                            self.render_content_item(item, cx)
-                                                                                        }),
-                                                                                    ),
+                                                                                    match self.view_mode {
+                                                                                        ViewMode::Grid => {
+                                                                                            h_flex().w_full().flex_wrap().gap_1p5().children(
+                                                                                                contents.iter().map(|item| {
+                                                                                                    self.render_content_item(item, cx)
+                                                                                                }),
+                                                                                            )
+                                                                                            .into_any_element()
+                                                                                        }
+                                                                                        ViewMode::List => {
+                                                                                            v_flex().w_full().gap_1().children(
+                                                                                                contents.iter().map(|item| {
+                                                                                                    self.render_content_item(item, cx)
+                                                                                                }),
+                                                                                            )
+                                                                                            .into_any_element()
+                                                                                        }
+                                                                                    }
                                                                                 ),
                                                                             )
                                                                     })

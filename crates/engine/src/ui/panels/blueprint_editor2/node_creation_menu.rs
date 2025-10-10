@@ -418,13 +418,9 @@ impl Render for NodeCreationMenu {
                             .border_color(cx.theme().border)
                             .child(
                                 h_flex()
+                                    .w_full()
                                     .items_center()
-                                    .gap_2()
-                                    .child(
-                                        div()
-                                            .text_sm()
-                                            .child("🔍")
-                                    )
+                                    .justify_center()
                                     .child(
                                         div()
                                             .text_sm()

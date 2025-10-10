@@ -279,6 +279,11 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
+    fn on_toggle_performance_overlay(&mut self, _: &TogglePerformanceOverlay, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_performance_overlay();
+        cx.notify();
+    }
+
     fn on_perspective_view(&mut self, _: &PerspectiveView, _: &mut Window, cx: &mut Context<Self>) {
         self.state.set_camera_mode(CameraMode::Perspective);
         cx.notify();
@@ -366,6 +371,7 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_toggle_grid))
             .on_action(cx.listener(Self::on_toggle_wireframe))
             .on_action(cx.listener(Self::on_toggle_lighting))
+            .on_action(cx.listener(Self::on_toggle_performance_overlay))
             // Camera modes
             .on_action(cx.listener(Self::on_perspective_view))
             .on_action(cx.listener(Self::on_orthographic_view))
