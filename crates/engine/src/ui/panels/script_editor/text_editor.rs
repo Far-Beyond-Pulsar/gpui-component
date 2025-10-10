@@ -1143,22 +1143,17 @@ impl TextEditor {
                     .child("UTF-8")
                     .child("LF")
             )
-            .child(
+            .child({
+                let mut flex = h_flex().gap_4();
+                
                 if self.show_performance_stats {
-                    h_flex()
-                        .gap_4()
-                        .child(cache_info)
-                        .child("Ln 1, Col 1")
-                        .child("Spaces: 4")
-                        .child(file_info.1)
-                } else {
-                    h_flex()
-                        .gap_4()
-                        .child("Ln 1, Col 1")
-                        .child("Spaces: 4")
-                        .child(file_info.1)
+                    flex = flex.child(cache_info.clone());
                 }
-            )
+                
+                flex.child("Ln 1, Col 1")
+                    .child("Spaces: 4")
+                    .child(file_info.1)
+            })
     }
 }
 

@@ -227,10 +227,26 @@ impl TextInput {
                     if show_minimap {
                         use super::minimap::{MinimapConfig, render_minimap_content, render_viewport_indicator, calculate_viewport_indicator};
                         use gpui::{Bounds, point, size};
+                        use ropey::LineType;
                         
                         let total_lines = state.text.len_lines(ropey::LineType::LF);
                         let visible_range = last_layout.visible_range.clone();
                         let config = MinimapConfig::default();
+                        
+                        // Calculate minimap bounds
+                        let minimap_bounds = Bounds::new(
+                            point(px(0.0), px(0.0)),
+                            size(config.width, px(100.0)),
+                        );
+                        
+                        // Render minimap content lines
+                        let minimap_content_elements = render_minimap_content(
+                            &state.text,
+                            visible_range.clone(),
+                            total_lines,
+                            &config,
+                            minimap_bounds,
+                        );
                         
                         container = container.child(
                             div()
@@ -242,6 +258,7 @@ impl TextInput {
                                 .bg(cx.theme().secondary.opacity(0.3))
                                 .rounded_md()
                                 .overflow_hidden()
+                                .children(minimap_content_elements)
                                 .child(
                                     // Viewport indicator showing current scroll position
                                     div()
