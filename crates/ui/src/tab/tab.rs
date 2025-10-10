@@ -49,20 +49,20 @@ impl TabVariant {
     fn height(&self, size: Size) -> Pixels {
         match size {
             Size::XSmall => match self {
-                TabVariant::Underline => px(26.),
-                _ => px(20.),
+                TabVariant::Underline => px(28.),  // Increased from 26
+                _ => px(24.),                      // Increased from 20
             },
             Size::Small => match self {
-                TabVariant::Underline => px(30.),
-                _ => px(24.),
+                TabVariant::Underline => px(34.),  // Increased from 30
+                _ => px(28.),                      // Increased from 24
             },
             Size::Large => match self {
-                TabVariant::Underline => px(44.),
-                _ => px(36.),
+                TabVariant::Underline => px(48.),  // Increased from 44
+                _ => px(40.),                      // Increased from 36
             },
             _ => match self {
-                TabVariant::Underline => px(36.),
-                _ => px(32.),
+                TabVariant::Underline => px(40.),  // Increased from 36
+                _ => px(36.),                      // Increased from 32 (default)
             },
         }
     }
@@ -70,36 +70,36 @@ impl TabVariant {
     fn inner_height(&self, size: Size) -> Pixels {
         match size {
             Size::XSmall => match self {
-                TabVariant::Tab | TabVariant::Outline | TabVariant::Pill => px(18.),
-                TabVariant::Segmented => px(16.),
-                TabVariant::Underline => px(20.),
+                TabVariant::Tab | TabVariant::Outline | TabVariant::Pill => px(22.),  // Increased from 18
+                TabVariant::Segmented => px(20.),                                      // Increased from 16
+                TabVariant::Underline => px(24.),                                      // Increased from 20
             },
             Size::Small => match self {
-                TabVariant::Tab | TabVariant::Outline | TabVariant::Pill => px(22.),
-                TabVariant::Segmented => px(20.),
-                TabVariant::Underline => px(22.),
+                TabVariant::Tab | TabVariant::Outline | TabVariant::Pill => px(26.),  // Increased from 22
+                TabVariant::Segmented => px(24.),                                      // Increased from 20
+                TabVariant::Underline => px(26.),                                      // Increased from 22
             },
             Size::Large => match self {
-                TabVariant::Tab | TabVariant::Outline | TabVariant::Pill => px(36.),
-                TabVariant::Segmented => px(28.),
-                TabVariant::Underline => px(32.),
+                TabVariant::Tab | TabVariant::Outline | TabVariant::Pill => px(40.),  // Increased from 36
+                TabVariant::Segmented => px(32.),                                      // Increased from 28
+                TabVariant::Underline => px(36.),                                      // Increased from 32
             },
             _ => match self {
-                TabVariant::Tab => px(30.),
-                TabVariant::Outline | TabVariant::Pill => px(26.),
-                TabVariant::Segmented => px(24.),
-                TabVariant::Underline => px(26.),
+                TabVariant::Tab => px(34.),                                            // Increased from 30
+                TabVariant::Outline | TabVariant::Pill => px(30.),                     // Increased from 26
+                TabVariant::Segmented => px(28.),                                      // Increased from 24
+                TabVariant::Underline => px(30.),                                      // Increased from 26
             },
         }
     }
 
-    /// Default px(12) to match panel px_3, See [`crate::dock::TabPanel`]
+    /// More spacious padding for professional appearance
     fn inner_paddings(&self, size: Size) -> Edges<Pixels> {
         let mut padding_x = match size {
-            Size::XSmall => px(8.),
-            Size::Small => px(10.),
-            Size::Large => px(16.),
-            _ => px(12.),
+            Size::XSmall => px(12.),      // Increased from 8
+            Size::Small => px(16.),       // Increased from 10
+            Size::Large => px(20.),       // Increased from 16
+            _ => px(18.),                 // Increased from 12 (default)
         };
 
         if matches!(self, TabVariant::Underline) {
@@ -162,6 +162,7 @@ impl TabVariant {
                     ..Default::default()
                 },
                 border_color: cx.theme().transparent,
+                radius: px(4.),  // Subtle rounding even when inactive
                 ..Default::default()
             },
             TabVariant::Outline => TabStyle {
@@ -204,14 +205,15 @@ impl TabVariant {
         match self {
             TabVariant::Tab => TabStyle {
                 fg: cx.theme().tab_foreground,
-                bg: cx.theme().transparent,
+                bg: cx.theme().tab_active.opacity(0.5),  // Subtle hover background
                 borders: Edges {
                     top: px(1.),
                     left: px(1.),
                     right: px(1.),
                     ..Default::default()
                 },
-                border_color: cx.theme().transparent,
+                border_color: cx.theme().border.opacity(0.5),
+                radius: px(6.),  // Slightly rounded on hover
                 ..Default::default()
             },
             TabVariant::Outline => TabStyle {
@@ -234,7 +236,7 @@ impl TabVariant {
                 inner_bg: if selected {
                     cx.theme().background
                 } else {
-                    cx.theme().transparent
+                    cx.theme().muted.opacity(0.3)  // Hover effect
                 },
                 inner_radius: cx.theme().radius,
                 ..Default::default()
@@ -243,13 +245,13 @@ impl TabVariant {
                 fg: cx.theme().tab_foreground,
                 bg: cx.theme().transparent,
                 radius: px(0.),
-                inner_bg: cx.theme().transparent,
+                inner_bg: cx.theme().muted.opacity(0.2),  // Hover effect
                 inner_radius: cx.theme().radius,
                 borders: Edges {
                     bottom: px(2.),
                     ..Default::default()
                 },
-                border_color: cx.theme().transparent,
+                border_color: cx.theme().border.opacity(0.5),
                 ..Default::default()
             },
         }
@@ -267,6 +269,8 @@ impl TabVariant {
                     ..Default::default()
                 },
                 border_color: cx.theme().border,
+                radius: px(8.),  // Add rounded corners to active tabs
+                shadow: true,    // Add subtle shadow
                 ..Default::default()
             },
             TabVariant::Outline => TabStyle {
