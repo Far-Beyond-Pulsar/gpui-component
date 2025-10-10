@@ -54,10 +54,6 @@ pub struct CommitRename;
 #[action(namespace = file_manager, no_json)]
 pub struct CancelRename;
 
-#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
-#[action(namespace = file_manager, no_json)]
-pub struct PopoutFileManager;
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum FileType {
     Folder,
@@ -493,18 +489,6 @@ impl FileManagerDrawer {
         self.cancel_rename(cx);
     }
 
-    fn on_popout_file_manager(
-        &mut self,
-        _action: &PopoutFileManager,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let project_path = self.project_path.clone();
-        
-        // Emit an event that the app can handle to open the window
-        cx.emit(PopoutFileManagerEvent { project_path });
-    }
-
     fn render_folder_tree_node(
         &self,
         node: &FolderNode,
@@ -886,7 +870,6 @@ impl Render for FileManagerDrawer {
             .on_action(cx.listener(Self::on_rename_item))
             .on_action(cx.listener(Self::on_commit_rename))
             .on_action(cx.listener(Self::on_cancel_rename))
-            .on_action(cx.listener(Self::on_popout_file_manager))
             .child(
                 // Vertical resizable for drawer height with resizable from top edge
                 v_resizable("file-manager-height", self.height_resizable_state.clone())
@@ -937,8 +920,9 @@ impl Render for FileManagerDrawer {
                                                             .compact()
                                                             .icon(IconName::ExternalLink)
                                                             .tooltip("Open in Separate Window")
-                                                            .on_click(cx.listener(|_, _, _, cx| {
-                                                                cx.dispatch_action(&PopoutFileManager);
+                                                            .on_click(cx.listener(|drawer, _, _, cx| {
+                                                                let project_path = drawer.project_path.clone();
+                                                                cx.emit(PopoutFileManagerEvent { project_path });
                                                             }))
                                                     )
                                             )
