@@ -496,34 +496,13 @@ impl FileManagerDrawer {
     fn on_popout_file_manager(
         &mut self,
         _action: &PopoutFileManager,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Create a new file manager drawer for the window
-        let new_drawer = cx.new(|cx| {
-            FileManagerDrawer::new(self.project_path.clone(), window, cx)
-        });
-
-        // Open the file manager window
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(Bounds {
-                    origin: point(px(100.), px(100.)),
-                    size: size(px(1000.), px(700.)),
-                })),
-                titlebar: Some(TitlebarOptions {
-                    title: Some("File Manager".into()),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
-            |window, cx| {
-                let file_manager_window = cx.new(|cx| {
-                    crate::ui::file_manager_window::FileManagerWindow::new(new_drawer, window, cx)
-                });
-                file_manager_window
-            },
-        );
+        let project_path = self.project_path.clone();
+        
+        // Emit an event that the app can handle to open the window
+        cx.emit(PopoutFileManagerEvent { project_path });
     }
 
     fn render_folder_tree_node(
@@ -881,7 +860,13 @@ pub struct FileSelected {
     pub file_type: FileType,
 }
 
+#[derive(Clone, Debug)]
+pub struct PopoutFileManagerEvent {
+    pub project_path: Option<PathBuf>,
+}
+
 impl EventEmitter<FileSelected> for FileManagerDrawer {}
+impl EventEmitter<PopoutFileManagerEvent> for FileManagerDrawer {}
 
 impl Render for FileManagerDrawer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

@@ -13,7 +13,8 @@ use super::{
     editors::EditorType,
     entry_screen::EntryScreen,
     project_selector::ProjectSelected,
-    file_manager_drawer::{FileManagerDrawer, FileSelected, FileType},
+    file_manager_drawer::{FileManagerDrawer, FileSelected, FileType, PopoutFileManagerEvent},
+    file_manager_window::FileManagerWindow,
     menu::AppTitleBar,
     panels::{BlueprintEditorPanel, DawEditorPanel, LevelEditorPanel, ScriptEditorPanel},
     problems_drawer::ProblemsDrawer,
@@ -206,6 +207,8 @@ impl PulsarApp {
             cx.new(|cx| FileManagerDrawer::new(project_path.clone(), window, cx));
         cx.subscribe_in(&file_manager_drawer, window, Self::on_file_selected)
             .detach();
+        cx.subscribe_in(&file_manager_drawer, window, Self::on_popout_file_manager)
+            .detach();
 
         // Create problems drawer
         let problems_drawer = cx.new(|cx| ProblemsDrawer::new(window, cx));
@@ -356,7 +359,7 @@ impl PulsarApp {
         cx: &mut Context<Self>,
     ) {
         eprintln!("DEBUG: FileSelected event received - path: {:?}, type: {:?}", event.path, event.file_type);
-        
+
         match event.file_type {
             FileType::Class => {
                 eprintln!("DEBUG: Opening blueprint tab");
@@ -378,6 +381,38 @@ impl PulsarApp {
         // Close the drawer after opening a file
         self.drawer_open = false;
         cx.notify();
+    }
+
+    fn on_popout_file_manager(
+        &mut self,
+        _drawer: &Entity<FileManagerDrawer>,
+        event: &PopoutFileManagerEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Create a new file manager drawer for the window
+        let new_drawer = cx.new(|cx| {
+            FileManagerDrawer::new(event.project_path.clone(), window, cx)
+        });
+
+        // Open the file manager window
+        cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds {
+                    origin: Point { x: px(100.0), y: px(100.0) },
+                    size: size(px(1000.0), px(700.0)),
+                })),
+                titlebar: None,
+                kind: WindowKind::Normal,
+                ..Default::default()
+            },
+            |window, cx| {
+                let file_manager_window = cx.new(|cx| {
+                    FileManagerWindow::new(new_drawer, window, cx)
+                });
+                file_manager_window
+            },
+        ).ok();
     }
 
     fn toggle_drawer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
