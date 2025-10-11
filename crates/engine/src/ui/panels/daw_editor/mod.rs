@@ -69,20 +69,28 @@ impl DawEditorPanel {
     }
 
     fn initialize_audio_service(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let daw_panel = self.daw_panel.clone();
+
         cx.spawn(async move |this, mut cx| {
             match AudioService::new().await {
                 Ok(service) => {
                     let service = Arc::new(service);
-                    
+
                     cx.update(|cx| {
+                        // Set audio service on DawEditorPanel
                         this.update(cx, |this, cx| {
-                            this.audio_service = Some(service);
+                            this.audio_service = Some(service.clone());
                             cx.notify();
+                        }).ok();
+
+                        // Set audio service on DawPanel
+                        daw_panel.update(cx, |panel, cx| {
+                            panel.set_audio_service(service, cx);
                         }).ok();
                     }).ok();
                 }
                 Err(e) => {
-                    eprintln!("Failed to initialize audio service: {}", e);
+                    eprintln!("❌ Failed to initialize audio service: {}", e);
                 }
             }
         })
