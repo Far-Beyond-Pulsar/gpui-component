@@ -4,12 +4,12 @@ use anyhow::{Context as AnyhowContext, Result};
 use dashmap::DashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use smol::channel;
 
 /// Asset manager handles async loading and caching of audio files
 pub struct AssetManager {
     cache: Arc<DashMap<PathBuf, Arc<AudioAssetData>>>,
-    loading: Arc<DashMap<PathBuf, Arc<tokio::sync::Notify>>>,
+    loading: Arc<DashMap<PathBuf, Arc<channel::Sender<()>>>>,
 }
 
 impl AssetManager {
@@ -26,27 +26,30 @@ impl AssetManager {
             return Ok(cached.clone());
         }
 
-        let notify = {
+        let (tx, rx) = {
             if let Some(loading) = self.loading.get(&path) {
-                let notify = loading.clone();
+                let tx = loading.clone();
                 drop(loading);
-                notify.notified().await;
-                
+                let (_, mut rx) = channel::bounded::<()>(1);
+                // Wait for the loading to complete
+                let _ = rx.recv().await;
+
                 if let Some(cached) = self.cache.get(&path) {
                     return Ok(cached.clone());
                 }
                 return Err(anyhow::anyhow!("Asset loading failed"));
             }
 
-            let notify = Arc::new(tokio::sync::Notify::new());
-            self.loading.insert(path.clone(), notify.clone());
-            notify
+            let (tx, rx) = channel::bounded::<()>(1);
+            let tx = Arc::new(tx);
+            self.loading.insert(path.clone(), tx.clone());
+            (tx, rx)
         };
 
         let result = self.load_asset_internal(&path).await;
 
         self.loading.remove(&path);
-        notify.notify_waiters();
+        let _ = tx.send(()).await; // Notify waiters
 
         match result {
             Ok(data) => {
@@ -75,8 +78,8 @@ impl AssetManager {
 
     async fn load_wav(&self, path: &Path) -> Result<AudioAssetData> {
         let path = path.to_owned();
-        
-        tokio::task::spawn_blocking(move || {
+
+        smol::unblock(move || {
             let mut reader = hound::WavReader::open(&path)
                 .context("Failed to open WAV file")?;
             
@@ -114,13 +117,13 @@ impl AssetManager {
                 samples: Arc::new(samples),
             })
         })
-        .await?
+        .await
     }
 
     async fn load_ogg(&self, path: &Path) -> Result<AudioAssetData> {
         let path = path.to_owned();
-        
-        tokio::task::spawn_blocking(move || {
+
+        smol::unblock(move || {
             let file = std::fs::File::open(&path)?;
             let mut reader = lewton::inside_ogg::OggStreamReader::new(file)?;
             
@@ -150,13 +153,13 @@ impl AssetManager {
                 samples: Arc::new(samples),
             })
         })
-        .await?
+        .await
     }
 
     async fn load_flac(&self, path: &Path) -> Result<AudioAssetData> {
         let path = path.to_owned();
-        
-        tokio::task::spawn_blocking(move || {
+
+        smol::unblock(move || {
             let mut reader = claxon::FlacReader::open(&path)?;
             let info = reader.streaminfo();
             
@@ -188,7 +191,7 @@ impl AssetManager {
                 samples: Arc::new(samples),
             })
         })
-        .await?
+        .await
     }
 
     /// Simple linear resampling
@@ -245,24 +248,13 @@ impl AssetManager {
 
     /// Preload multiple assets
     pub async fn preload_assets(&self, paths: Vec<PathBuf>) -> Vec<Result<Arc<AudioAssetData>>> {
-        let mut handles = Vec::new();
-        
-        for path in paths {
+        // Load assets concurrently using futures::future::join_all
+        let futures: Vec<_> = paths.into_iter().map(|path| {
             let manager = self.clone();
-            handles.push(tokio::spawn(async move {
-                manager.load_asset(path).await
-            }));
-        }
+            async move { manager.load_asset(path).await }
+        }).collect();
 
-        let mut results = Vec::new();
-        for handle in handles {
-            match handle.await {
-                Ok(result) => results.push(result),
-                Err(e) => results.push(Err(anyhow::anyhow!("Task join error: {}", e))),
-            }
-        }
-
-        results
+        futures::future::join_all(futures).await
     }
 }
 
