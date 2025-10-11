@@ -512,8 +512,7 @@ impl DawPanel {
     fn render_inspector(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         use gpui_component::{button::*, Icon, IconName, Sizable};
 
-        let selected_track = self.state.selection.selected_track_ids.iter().next()
-            .and_then(|id| self.state.get_track(*id));
+        let selected_track_id = self.state.selection.selected_track_ids.iter().next().copied();
 
         v_flex()
             .w(px(300.0))
@@ -584,7 +583,7 @@ impl DawPanel {
                     .w_full()
                     .p_3()
                     .child(match self.state.inspector_tab {
-                        InspectorTab::Track => self.render_track_inspector(selected_track, cx).into_any_element(),
+                        InspectorTab::Track => self.render_track_inspector(selected_track_id, cx).into_any_element(),
                         InspectorTab::Clip => div().child("📼 Clip Inspector - Select a clip to view properties").into_any_element(),
                         InspectorTab::Automation => div().child("🎚️ Automation Inspector - Draw automation curves on timeline").into_any_element(),
                         InspectorTab::Effects => div().child("🎛️ Effects Inspector - Add effects to track inserts").into_any_element(),
@@ -592,8 +591,8 @@ impl DawPanel {
             )
     }
 
-    fn render_track_inspector(&mut self, track: Option<&Track>, cx: &mut Context<Self>) -> impl IntoElement {
-        if let Some(track) = track {
+    fn render_track_inspector(&mut self, track_id: Option<TrackId>, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(track) = track_id.and_then(|id| self.state.get_track(id)) {
             v_flex()
                 .w_full()
                 .gap_2()
