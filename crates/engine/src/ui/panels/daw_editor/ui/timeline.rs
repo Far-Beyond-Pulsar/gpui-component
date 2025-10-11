@@ -498,11 +498,26 @@ fn render_drop_zone(
                                                     start_time,
                                                     duration_samples,
                                                 );
+
+                                                let clip_clone = clip.clone();
                                                 track.clips.push(clip);
 
                                                 let duration_beats = (duration_samples as f64 * tempo_val as f64) / (60.0 * SAMPLE_RATE as f64);
                                                 eprintln!("📎 Created clip '{}' at beat {} on track '{}' (duration: {:.2} beats, {} samples)",
                                                     file_name_clone, snapped_beat_val, track.name, duration_beats, duration_samples);
+
+                                                // IMPORTANT: Add clip to audio service's graph too!
+                                                if let Some(ref service) = this.state.audio_service {
+                                                    let service = service.clone();
+                                                    let track_id = track_id_val;
+                                                    cx.spawn(async move |_this, _cx| {
+                                                        if let Err(e) = service.add_clip_to_track(track_id, clip_clone).await {
+                                                            eprintln!("❌ Failed to add clip to audio service: {}", e);
+                                                        } else {
+                                                            eprintln!("✅ Added clip to audio service graph");
+                                                        }
+                                                    }).detach();
+                                                }
                                             }
                                         }
                                         cx.notify();
