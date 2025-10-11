@@ -442,6 +442,9 @@ fn render_drop_zone(
 
                 let file_path_clone = file_path.clone();
                 let file_name_clone = file_name.clone();
+                let snapped_beat_val = snapped_beat;
+                let tempo_val = tempo;
+                let track_id_val = track_id;
 
                 // Load audio file asynchronously to get real duration
                 cx.spawn(async move |this, mut cx| {
@@ -449,7 +452,7 @@ fn render_drop_zone(
                     let service_opt = cx.update(|cx| {
                         this.update(cx, |this, _cx| {
                             this.state.audio_service.clone()
-                        }).ok().flatten()
+                        })
                     }).ok().flatten();
 
                     if let Some(service) = service_opt {
@@ -465,9 +468,9 @@ fn render_drop_zone(
 
                                         // Create new clip with real duration
                                         if let Some(project) = &mut this.state.project {
-                                            if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id) {
+                                            if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id_val) {
                                                 // Convert beats to samples for start time
-                                                let start_time = ((snapped_beat * 60.0 * SAMPLE_RATE as f64) / tempo as f64) as u64;
+                                                let start_time = ((snapped_beat_val * 60.0 * SAMPLE_RATE as f64) / tempo_val as f64) as u64;
 
                                                 let clip = crate::ui::panels::daw_editor::audio_types::AudioClip::new(
                                                     file_path_clone.clone(),
@@ -476,9 +479,9 @@ fn render_drop_zone(
                                                 );
                                                 track.clips.push(clip);
 
-                                                let duration_beats = (duration_samples as f64 * tempo as f64) / (60.0 * SAMPLE_RATE as f64);
+                                                let duration_beats = (duration_samples as f64 * tempo_val as f64) / (60.0 * SAMPLE_RATE as f64);
                                                 eprintln!("📎 Created clip '{}' at beat {} on track '{}' (duration: {:.2} beats, {} samples)",
-                                                    file_name_clone, snapped_beat, track.name, duration_beats, duration_samples);
+                                                    file_name_clone, snapped_beat_val, track.name, duration_beats, duration_samples);
                                             }
                                         }
                                         cx.notify();
@@ -492,9 +495,9 @@ fn render_drop_zone(
                                 cx.update(|cx| {
                                     this.update(cx, |this, cx| {
                                         if let Some(project) = &mut this.state.project {
-                                            if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id) {
-                                                let start_time = ((snapped_beat * 60.0 * SAMPLE_RATE as f64) / tempo as f64) as u64;
-                                                let duration = ((10.0 * 60.0 * SAMPLE_RATE as f64) / tempo as f64) as u64; // Fallback: 10 beats
+                                            if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id_val) {
+                                                let start_time = ((snapped_beat_val * 60.0 * SAMPLE_RATE as f64) / tempo_val as f64) as u64;
+                                                let duration = ((10.0 * 60.0 * SAMPLE_RATE as f64) / tempo_val as f64) as u64; // Fallback: 10 beats
 
                                                 let clip = crate::ui::panels::daw_editor::audio_types::AudioClip::new(
                                                     file_path_clone.clone(),
@@ -503,7 +506,7 @@ fn render_drop_zone(
                                                 );
                                                 track.clips.push(clip);
                                                 eprintln!("📎 Created clip '{}' at beat {} with fallback duration (failed to load audio)",
-                                                    file_name_clone, snapped_beat);
+                                                    file_name_clone, snapped_beat_val);
                                             }
                                         }
                                         cx.notify();
