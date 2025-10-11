@@ -8,8 +8,10 @@ use gpui::prelude::FluentBuilder;
 use gpui_component::{v_flex, h_flex, StyledExt, ActiveTheme, PixelsExt};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use crate::ui::panels::daw_editor::audio_types::SAMPLE_RATE;
-use tokio::sync::mpsc;
+use futures::channel::mpsc;
+use futures::{SinkExt, StreamExt};
 
 pub struct DawPanel {
     focus_handle: FocusHandle,
@@ -132,34 +134,39 @@ impl DawPanel {
     }
 
     /// Start a periodic task to sync playhead position from audio service
-    /// Uses a dedicated background thread to poll position without blocking UI
+    /// Uses GPUI's background executor to poll position without blocking UI
     fn start_playhead_sync(&self, cx: &mut Context<Self>) {
         if let Some(ref service) = self.state.audio_service {
             // Get a thread-safe position monitor
             let monitor = service.get_position_monitor();
 
             // Create channel for sending updates from background thread to UI
-            let (tx, mut rx) = mpsc::unbounded_channel();
+            let (tx, mut rx) = mpsc::unbounded();
 
-            // Spawn background Tokio task to poll position
-            tokio::task::spawn(async move {
-                loop {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            // Spawn background task using GPUI's background executor
+            let tx_clone = tx.clone();
+            cx.background_executor()
+                .spawn(async move {
+                    let mut tx = tx_clone;
+                    loop {
+                        // Use GPUI's Timer for async sleep
+                        Timer::after(Duration::from_millis(50)).await;
 
-                    let position = monitor.get_position();
-                    let transport = monitor.get_transport();
-                    let is_playing = transport.state == TransportState::Playing;
+                        let position = monitor.get_position();
+                        let transport = monitor.get_transport();
+                        let is_playing = transport.state == TransportState::Playing;
 
-                    // Send to UI thread
-                    if tx.send((position, is_playing)).is_err() {
-                        break; // Channel closed
+                        // Send to UI thread (use SinkExt trait)
+                        if tx.send((position, is_playing)).await.is_err() {
+                            break; // Channel closed
+                        }
                     }
-                }
-            });
+                })
+                .detach();
 
             // Receive updates in UI thread
             cx.spawn(async move |this, mut cx| {
-                while let Some((position, is_playing)) = rx.recv().await {
+                while let Some((position, is_playing)) = rx.next().await {
                     cx.update(|cx| {
                         this.update(cx, |this, cx| {
                             let tempo = this.state.get_tempo();
@@ -174,7 +181,7 @@ impl DawPanel {
                 }
             }).detach();
 
-            eprintln!("✅ Playhead sync started with background thread");
+            eprintln!("✅ Playhead sync started with GPUI background executor");
         }
     }
 

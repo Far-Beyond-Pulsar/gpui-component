@@ -5658,6 +5658,7 @@ dependencies = [
  "dashmap",
  "directories",
  "flume",
+ "futures",
  "git2",
  "gpui",
  "gpui-component",
