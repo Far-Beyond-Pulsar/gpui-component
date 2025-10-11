@@ -170,7 +170,7 @@ impl RealTimeAudio {
                         let transport = stream_transport.read().clone();
 
                         // Lock audio graph and render audio
-                        if let Ok(mut graph) = stream_audio_graph.try_write() {
+                        if let Some(mut graph) = stream_audio_graph.try_write() {
                             graph.process(
                                 &transport,
                                 &mut callback_buffer_left,
@@ -196,7 +196,7 @@ impl RealTimeAudio {
 
                         // Render next buffer
                         let transport = stream_transport.read().clone();
-                        if let Ok(mut graph) = stream_audio_graph.try_write() {
+                        if let Some(mut graph) = stream_audio_graph.try_write() {
                             graph.process(
                                 &transport,
                                 &mut callback_buffer_left,
