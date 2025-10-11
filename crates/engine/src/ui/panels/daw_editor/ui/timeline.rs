@@ -446,19 +446,40 @@ fn render_drop_zone(
                 let tempo_val = tempo;
                 let track_id_val = track_id;
 
+                // Check if audio service exists before spawning
+                let has_service = this.state.audio_service.is_some();
+                eprintln!("🔍 Audio service available: {}", has_service);
+
+                if !has_service {
+                    eprintln!("❌ No audio service - cannot load audio file");
+                    // Clear drag state
+                    this.state.drag_state = DragState::None;
+                    cx.notify();
+                    return;
+                }
+
                 // Load audio file asynchronously to get real duration
                 cx.spawn(async move |this, mut cx| {
-                    // Load the audio asset to get its duration
-                    let service_opt = cx.update(|cx| {
+                    eprintln!("🔄 Async task started for loading audio file");
+
+                    // Get the audio service
+                    let service = match cx.update(|cx| {
                         this.update(cx, |this, _cx| {
                             this.state.audio_service.clone()
                         })
-                    }).ok().flatten();
+                    }) {
+                        Ok(Ok(Some(svc))) => svc,
+                        _ => {
+                            eprintln!("❌ Failed to get audio service in async task");
+                            return;
+                        }
+                    };
 
-                    if let Some(service) = service_opt {
-                        match service.load_asset(file_path_clone.clone()).await {
+                    eprintln!("📂 Loading audio file: {:?}", file_path_clone);
+                    match service.load_asset(file_path_clone.clone()).await {
                             Ok(asset) => {
                                 let duration_samples = asset.asset_ref.duration_samples as u64;
+                                eprintln!("✅ Audio file loaded successfully: {} samples", duration_samples);
 
                                 // Update UI with the clip using real duration
                                 cx.update(|cx| {
@@ -513,7 +534,6 @@ fn render_drop_zone(
                                     }).ok();
                                 }).ok();
                             }
-                        }
                     }
                 }).detach();
 
