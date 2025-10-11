@@ -631,13 +631,33 @@ fn render_drop_zone(
                     snapped_beat, new_beat);
 
                 // Finalize clip position
-                if let Some(project) = &mut this.state.project {
+                let updated_clip = if let Some(project) = &mut this.state.project {
                     if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id) {
                         if let Some(clip) = track.clips.iter_mut().find(|c| c.id == *clip_id) {
                             clip.set_start_beat(snapped_beat, tempo);
                             eprintln!("✅ Final clip position: beat {}",
                                 snapped_beat);
-                        }
+                            Some(clip.clone())
+                        } else { None }
+                    } else { None }
+                } else { None };
+
+                // Sync updated clip to audio service
+                if let Some(clip) = updated_clip {
+                    if let Some(ref service) = this.state.audio_service {
+                        let service = service.clone();
+                        let track_id_copy = track_id;
+                        cx.spawn(async move |_this, _cx| {
+                            // Remove old clip and add updated one
+                            if let Err(e) = service.remove_clip_from_track(track_id_copy, clip.id).await {
+                                eprintln!("❌ Failed to remove old clip from audio service: {}", e);
+                            }
+                            if let Err(e) = service.add_clip_to_track(track_id_copy, clip).await {
+                                eprintln!("❌ Failed to add updated clip to audio service: {}", e);
+                            } else {
+                                eprintln!("✅ Updated clip position in audio service");
+                            }
+                        }).detach();
                     }
                 }
 
