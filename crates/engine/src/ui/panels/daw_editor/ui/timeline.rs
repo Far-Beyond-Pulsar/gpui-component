@@ -540,9 +540,23 @@ fn render_drop_zone(
                                                     start_time,
                                                     duration,
                                                 );
+                                                let clip_clone = clip.clone();
                                                 track.clips.push(clip);
                                                 eprintln!("📎 Created clip '{}' at beat {} with fallback duration (failed to load audio)",
                                                     file_name_clone, snapped_beat_val);
+
+                                                // Add to audio service even if load failed (will try again at playback)
+                                                if let Some(ref service) = this.state.audio_service {
+                                                    let service = service.clone();
+                                                    let track_id = track_id_val;
+                                                    cx.spawn(async move |_this, _cx| {
+                                                        if let Err(e) = service.add_clip_to_track(track_id, clip_clone).await {
+                                                            eprintln!("❌ Failed to add clip to audio service: {}", e);
+                                                        } else {
+                                                            eprintln!("✅ Added clip to audio service graph (fallback)");
+                                                        }
+                                                    }).detach();
+                                                }
                                             }
                                         }
                                         cx.notify();

@@ -72,6 +72,7 @@ impl AssetManager {
             "wav" => self.load_wav(path).await,
             "ogg" => self.load_ogg(path).await,
             "flac" => self.load_flac(path).await,
+            "mp3" => self.load_mp3(path).await,
             _ => Err(anyhow::anyhow!("Unsupported audio format: {}", extension)),
         }
     }
@@ -177,6 +178,55 @@ impl AssetManager {
 
             let samples = if sample_rate != SAMPLE_RATE {
                 Self::resample(&samples, sample_rate, SAMPLE_RATE, channels)
+            } else {
+                samples
+            };
+
+            Ok(AudioAssetData {
+                asset_ref: AudioAssetRef {
+                    path,
+                    sample_rate: SAMPLE_RATE,
+                    channels,
+                    duration_samples: samples.len() / channels,
+                },
+                samples: Arc::new(samples),
+            })
+        })
+        .await
+    }
+
+    async fn load_mp3(&self, path: &Path) -> Result<AudioAssetData> {
+        let path = path.to_owned();
+
+        smol::unblock(move || {
+            let data = std::fs::read(&path)?;
+            let mut decoder = minimp3::Decoder::new(std::io::Cursor::new(data));
+
+            let mut samples = Vec::new();
+            let mut sample_rate = 0;
+            let mut channels = 0;
+
+            loop {
+                match decoder.next_frame() {
+                    Ok(frame) => {
+                        if sample_rate == 0 {
+                            sample_rate = frame.sample_rate;
+                            channels = frame.channels;
+                        }
+
+                        // Convert i16 samples to f32
+                        for sample in frame.data {
+                            samples.push(sample as f32 / i16::MAX as f32);
+                        }
+                    }
+                    Err(minimp3::Error::Eof) => break,
+                    Err(e) => return Err(anyhow::anyhow!("MP3 decode error: {}", e)),
+                }
+            }
+
+            let sample_rate_f32 = sample_rate as f32;
+            let samples = if sample_rate_f32 != SAMPLE_RATE {
+                Self::resample(&samples, sample_rate_f32, SAMPLE_RATE, channels)
             } else {
                 samples
             };
