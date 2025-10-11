@@ -298,12 +298,12 @@ fn render_metronome_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) 
 
 fn handle_play_pause(state: &mut DawUiState, window: &mut Window, cx: &mut Context<DawPanel>) {
     state.is_playing = !state.is_playing;
-    
+
     if let Some(ref service) = state.audio_service {
         let service = service.clone();
         let playing = state.is_playing;
-        
-        cx.spawn(|_this, _cx| async move {
+
+        cx.spawn(async move |_this, _cx| {
             if playing {
                 let _ = service.play().await;
             } else {
@@ -311,21 +311,21 @@ fn handle_play_pause(state: &mut DawUiState, window: &mut Window, cx: &mut Conte
             }
         }).detach();
     }
-    
+
     cx.notify();
 }
 
 fn handle_stop(state: &mut DawUiState, window: &mut Window, cx: &mut Context<DawPanel>) {
     state.is_playing = false;
     state.set_playhead(0.0);
-    
+
     if let Some(ref service) = state.audio_service {
         let service = service.clone();
-        
-        cx.spawn(|_this, _cx| async move {
+
+        cx.spawn(async move |_this, _cx| {
             let _ = service.stop().await;
         }).detach();
     }
-    
+
     cx.notify();
 }

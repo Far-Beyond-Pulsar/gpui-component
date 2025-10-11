@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::ui::panels::daw_editor::audio_types::{SAMPLE_RATE, AudioClip};
+use crate::ui::panels::daw_editor::audio_types::{SAMPLE_RATE, AudioClip, AudioAssetData};
 use gpui_component::{VirtualListScrollHandle, scroll::ScrollbarState};
 
 /// Main view modes
@@ -197,7 +197,10 @@ pub struct DawUiState {
     pub project_path: Option<PathBuf>,
     pub project_dir: Option<PathBuf>,
     pub audio_service: Option<Arc<AudioService>>,
-    
+
+    // Audio asset cache for getting real durations
+    pub loaded_assets: std::collections::HashMap<PathBuf, Arc<AudioAssetData>>,
+
     // View state
     pub view_mode: ViewMode,
     pub browser_tab: BrowserTab,
@@ -264,7 +267,8 @@ impl DawUiState {
             project_path: None,
             project_dir: None,
             audio_service: None,
-            
+            loaded_assets: std::collections::HashMap::new(),
+
             view_mode: ViewMode::Arrange, // Start in arrange view with timeline
             browser_tab: BrowserTab::Files,
             inspector_tab: InspectorTab::Track,
@@ -552,5 +556,27 @@ impl DawUiState {
         } else {
             false
         }
+    }
+
+    /// Load audio asset and cache it for duration info
+    pub async fn load_audio_asset(&mut self, path: PathBuf) -> anyhow::Result<Arc<AudioAssetData>> {
+        // Check cache first
+        if let Some(asset) = self.loaded_assets.get(&path) {
+            return Ok(asset.clone());
+        }
+
+        // Load via audio service if available
+        if let Some(service) = &self.audio_service {
+            let asset = service.load_asset(path.clone()).await?;
+            self.loaded_assets.insert(path, asset.clone());
+            Ok(asset)
+        } else {
+            Err(anyhow::anyhow!("Audio service not initialized"))
+        }
+    }
+
+    /// Get audio asset duration in samples, loading if necessary
+    pub fn get_audio_duration_samples(&self, path: &PathBuf) -> Option<u64> {
+        self.loaded_assets.get(path).map(|asset| asset.asset_ref.duration_samples as u64)
     }
 }

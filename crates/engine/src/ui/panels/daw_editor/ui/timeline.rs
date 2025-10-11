@@ -437,25 +437,81 @@ fn render_drop_zone(
                     beat
                 };
 
-                // Create new clip
-                if let Some(project) = &mut this.state.project {
-                    if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id) {
-                        // Convert beats to samples: samples = beats * 60 * sample_rate / tempo
-                        let start_time = ((snapped_beat * 60.0 * SAMPLE_RATE as f64) / tempo as f64) as u64;
-                        let duration = ((10.0 * 60.0 * SAMPLE_RATE as f64) / tempo as f64) as u64; // 10 beats duration
-                        
-                        let clip = crate::ui::panels::daw_editor::audio_types::AudioClip::new(
-                            file_path.clone(),
-                            start_time,
-                            duration,
-                        );
-                        track.clips.push(clip);
-                        eprintln!("📎 Created clip '{}' at beat {} on track '{}'",
-                            file_name, snapped_beat, track.name);
-                    }
-                }
+                let file_path_clone = file_path.clone();
+                let file_name_clone = file_name.clone();
 
-                // Clear drag state
+                // Load audio file asynchronously to get real duration
+                cx.spawn(async move |this, mut cx| {
+                    // Load the audio asset to get its duration
+                    let service_opt = cx.update(|cx| {
+                        this.update(cx, |this, _cx| {
+                            this.state.audio_service.clone()
+                        }).ok().flatten()
+                    }).ok().flatten();
+
+                    if let Some(service) = service_opt {
+                        match service.load_asset(file_path_clone.clone()).await {
+                            Ok(asset) => {
+                                let duration_samples = asset.asset_ref.duration_samples as u64;
+
+                                // Update UI with the clip using real duration
+                                cx.update(|cx| {
+                                    this.update(cx, |this, cx| {
+                                        // Cache the loaded asset
+                                        this.state.loaded_assets.insert(file_path_clone.clone(), asset);
+
+                                        // Create new clip with real duration
+                                        if let Some(project) = &mut this.state.project {
+                                            if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id) {
+                                                // Convert beats to samples for start time
+                                                let start_time = ((snapped_beat * 60.0 * SAMPLE_RATE as f64) / tempo as f64) as u64;
+
+                                                let clip = crate::ui::panels::daw_editor::audio_types::AudioClip::new(
+                                                    file_path_clone.clone(),
+                                                    start_time,
+                                                    duration_samples,
+                                                );
+                                                track.clips.push(clip);
+
+                                                let duration_beats = (duration_samples as f64 * tempo as f64) / (60.0 * SAMPLE_RATE as f64);
+                                                eprintln!("📎 Created clip '{}' at beat {} on track '{}' (duration: {:.2} beats, {} samples)",
+                                                    file_name_clone, snapped_beat, track.name, duration_beats, duration_samples);
+                                            }
+                                        }
+                                        cx.notify();
+                                    }).ok();
+                                }).ok();
+                            }
+                            Err(e) => {
+                                eprintln!("❌ Failed to load audio file '{}': {}", file_name_clone, e);
+
+                                // Fallback: create clip with default duration
+                                cx.update(|cx| {
+                                    this.update(cx, |this, cx| {
+                                        if let Some(project) = &mut this.state.project {
+                                            if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id) {
+                                                let start_time = ((snapped_beat * 60.0 * SAMPLE_RATE as f64) / tempo as f64) as u64;
+                                                let duration = ((10.0 * 60.0 * SAMPLE_RATE as f64) / tempo as f64) as u64; // Fallback: 10 beats
+
+                                                let clip = crate::ui::panels::daw_editor::audio_types::AudioClip::new(
+                                                    file_path_clone.clone(),
+                                                    start_time,
+                                                    duration,
+                                                );
+                                                track.clips.push(clip);
+                                                eprintln!("📎 Created clip '{}' at beat {} with fallback duration (failed to load audio)",
+                                                    file_name_clone, snapped_beat);
+                                            }
+                                        }
+                                        cx.notify();
+                                    }).ok();
+                                }).ok();
+                            }
+                        }
+                    }
+                }).detach();
+
+                // Clear drag state immediately
                 this.state.drag_state = DragState::None;
                 cx.notify();
             }

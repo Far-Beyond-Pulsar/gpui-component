@@ -8,6 +8,7 @@ use gpui::prelude::FluentBuilder;
 use gpui_component::{v_flex, h_flex, StyledExt, ActiveTheme, PixelsExt};
 use std::path::PathBuf;
 use std::sync::Arc;
+use crate::ui::panels::daw_editor::audio_types::SAMPLE_RATE;
 
 pub struct DawPanel {
     focus_handle: FocusHandle,
@@ -29,11 +30,81 @@ impl DawPanel {
         match self.state.load_project(path) {
             Ok(_) => {
                 eprintln!("✅ DAW: Project loaded successfully");
+
+                // Sync loaded project to audio service
+                self.sync_project_to_audio_service(cx);
+
                 cx.notify();
             }
             Err(e) => {
                 eprintln!("❌ DAW: Failed to load project: {}", e);
             }
+        }
+    }
+
+    /// Sync the current project state to the audio service
+    fn sync_project_to_audio_service(&self, cx: &mut Context<Self>) {
+        if let (Some(ref project), Some(ref service)) = (&self.state.project, &self.state.audio_service) {
+            let service = service.clone();
+            let project = project.clone();
+
+            cx.spawn(async move |_this, _cx| {
+                eprintln!("🔄 Syncing project to audio service...");
+
+                // Extract values first to avoid borrow issues
+                let tempo = project.transport.tempo;
+                let loop_enabled = project.transport.loop_enabled;
+                let loop_start = project.transport.loop_start;
+                let loop_end = project.transport.loop_end;
+                let metronome_enabled = project.transport.metronome_enabled;
+                let master_volume = project.master_track.volume;
+
+                // Set tempo
+                if let Err(e) = service.set_tempo(tempo).await {
+                    eprintln!("❌ Failed to set tempo: {}", e);
+                }
+
+                // Set loop settings
+                if let Err(e) = service.set_loop(
+                    loop_enabled,
+                    loop_start,
+                    loop_end
+                ).await {
+                    eprintln!("❌ Failed to set loop: {}", e);
+                }
+
+                // Set metronome
+                if let Err(e) = service.set_metronome(metronome_enabled).await {
+                    eprintln!("❌ Failed to set metronome: {}", e);
+                }
+
+                // Add all tracks
+                for track in &project.tracks {
+                    let track_id = service.add_track(track.clone()).await;
+                    eprintln!("  ✅ Added track: '{}' ({})", track.name, track_id);
+
+                    // Sync track state
+                    if let Err(e) = service.set_track_volume(track_id, track.volume).await {
+                        eprintln!("    ❌ Failed to set volume: {}", e);
+                    }
+                    if let Err(e) = service.set_track_pan(track_id, track.pan).await {
+                        eprintln!("    ❌ Failed to set pan: {}", e);
+                    }
+                    if let Err(e) = service.set_track_mute(track_id, track.muted).await {
+                        eprintln!("    ❌ Failed to set mute: {}", e);
+                    }
+                    if let Err(e) = service.set_track_solo(track_id, track.solo).await {
+                        eprintln!("    ❌ Failed to set solo: {}", e);
+                    }
+                }
+
+                // Set master track volume
+                if let Err(e) = service.set_master_volume(master_volume).await {
+                    eprintln!("❌ Failed to set master volume: {}", e);
+                }
+
+                eprintln!("✅ Project sync complete");
+            }).detach();
         }
     }
 
@@ -44,12 +115,53 @@ impl DawPanel {
     pub fn new_project(&mut self, name: String, cx: &mut Context<Self>) {
         if let Some(ref project_dir) = self.state.project_dir {
             self.state.new_project(name, project_dir.clone());
+
+            // Sync new project to audio service
+            self.sync_project_to_audio_service(cx);
+
             cx.notify();
         }
     }
 
-    pub fn set_audio_service(&mut self, service: Arc<AudioService>) {
+    pub fn set_audio_service(&mut self, service: Arc<AudioService>, cx: &mut Context<Self>) {
         self.state.audio_service = Some(service);
+
+        // Start periodic playhead sync
+        self.start_playhead_sync(cx);
+    }
+
+    /// Start a periodic task to sync playhead position from audio service
+    fn start_playhead_sync(&self, cx: &mut Context<Self>) {
+        if let Some(ref service) = self.state.audio_service {
+            let service = service.clone();
+
+            cx.spawn(async move |this, mut cx| {
+                loop {
+                    // Update every 50ms (20 fps)
+                    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
+                    // Get current position from audio service
+                    let position = service.get_position();
+                    let transport = service.get_transport();
+
+                    // Update UI state
+                    cx.update(|cx| {
+                        this.update(cx, |this, cx| {
+                            // Convert samples to beats
+                            let tempo = this.state.get_tempo();
+                            let seconds = position as f64 / SAMPLE_RATE as f64;
+                            let beats_per_second = tempo as f64 / 60.0;
+                            let beats = seconds * beats_per_second;
+
+                            this.state.selection.playhead_position = beats;
+                            this.state.is_playing = transport.state == crate::ui::panels::daw_editor::audio_types::TransportState::Playing;
+
+                            cx.notify();
+                        }).ok();
+                    }).ok();
+                }
+            }).detach();
+        }
     }
 
     /// Convert window-relative coordinates to timeline element coordinates
@@ -164,6 +276,80 @@ impl Render for DawPanel {
             }))
             // Handle mouse up to clear drag state
             .on_mouse_up(gpui::MouseButton::Left, cx.listener(|this, _event: &MouseUpEvent, _window, cx| {
+                // Sync changes to audio service when drag completes
+                match &this.state.drag_state {
+                    DragState::DraggingFader { track_id, .. } => {
+                        let track_id_val = *track_id;
+                        if let Some(ref service) = this.state.audio_service {
+                            let service = service.clone();
+
+                            if track_id_val.is_nil() {
+                                // Master fader
+                                let volume = this.state.project.as_ref()
+                                    .map(|p| p.master_track.volume)
+                                    .unwrap_or(1.0);
+
+                                cx.spawn(async move |_this, _cx| {
+                                    let _ = service.set_master_volume(volume).await;
+                                }).detach();
+                            } else {
+                                // Track fader
+                                let volume = this.state.project.as_ref()
+                                    .and_then(|p| p.tracks.iter().find(|t| t.id == track_id_val))
+                                    .map(|t| t.volume)
+                                    .unwrap_or(1.0);
+
+                                cx.spawn(async move |_this, _cx| {
+                                    let _ = service.set_track_volume(track_id_val, volume).await;
+                                }).detach();
+                            }
+                        }
+                    }
+                    DragState::DraggingPan { track_id, .. } => {
+                        let track_id_val = *track_id;
+                        if let Some(ref service) = this.state.audio_service {
+                            let service = service.clone();
+                            let pan = this.state.project.as_ref()
+                                .and_then(|p| p.tracks.iter().find(|t| t.id == track_id_val))
+                                .map(|t| t.pan)
+                                .unwrap_or(0.0);
+
+                            cx.spawn(async move |_this, _cx| {
+                                let _ = service.set_track_pan(track_id_val, pan).await;
+                            }).detach();
+                        }
+                    }
+                    DragState::DraggingTrackHeaderVolume { track_id, .. } => {
+                        let track_id_val = *track_id;
+                        if let Some(ref service) = this.state.audio_service {
+                            let service = service.clone();
+                            let volume = this.state.project.as_ref()
+                                .and_then(|p| p.tracks.iter().find(|t| t.id == track_id_val))
+                                .map(|t| t.volume)
+                                .unwrap_or(1.0);
+
+                            cx.spawn(async move |_this, _cx| {
+                                let _ = service.set_track_volume(track_id_val, volume).await;
+                            }).detach();
+                        }
+                    }
+                    DragState::DraggingTrackHeaderPan { track_id, .. } => {
+                        let track_id_val = *track_id;
+                        if let Some(ref service) = this.state.audio_service {
+                            let service = service.clone();
+                            let pan = this.state.project.as_ref()
+                                .and_then(|p| p.tracks.iter().find(|t| t.id == track_id_val))
+                                .map(|t| t.pan)
+                                .unwrap_or(0.0);
+
+                            cx.spawn(async move |_this, _cx| {
+                                let _ = service.set_track_pan(track_id_val, pan).await;
+                            }).detach();
+                        }
+                    }
+                    _ => {}
+                }
+
                 // Clear drag state when mouse is released outside of drop zones
                 if !matches!(this.state.drag_state, DragState::None) {
                     this.state.drag_state = DragState::None;

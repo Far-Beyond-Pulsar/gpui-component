@@ -80,6 +80,16 @@ pub fn render_track_header(
                                         .on_click(cx.listener(move |this, _, _window, cx| {
                                             if let Some(t) = this.state.get_track_mut(track_id) {
                                                 t.muted = !t.muted;
+                                                let new_muted_val = t.muted;
+
+                                                // Sync to audio service
+                                                if let Some(ref service) = this.state.audio_service {
+                                                    let service = service.clone();
+                                                    cx.spawn(async move |_this, _cx| {
+                                                        let _ = service.set_track_mute(track_id, new_muted_val).await;
+                                                    }).detach();
+                                                }
+
                                                 cx.notify();
                                             }
                                         }))
@@ -92,6 +102,16 @@ pub fn render_track_header(
                                         .when(is_soloed, |b| b.primary())
                                         .on_click(cx.listener(move |this, _, _window, cx| {
                                             this.state.toggle_solo(track_id);
+                                            let is_solo_val = this.state.solo_tracks.contains(&track_id);
+
+                                            // Sync to audio service
+                                            if let Some(ref service) = this.state.audio_service {
+                                                let service = service.clone();
+                                                cx.spawn(async move |_this, _cx| {
+                                                    let _ = service.set_track_solo(track_id, is_solo_val).await;
+                                                }).detach();
+                                            }
+
                                             cx.notify();
                                         }))
                                 )
