@@ -347,22 +347,17 @@ impl Render for DawPanel {
                             }).detach();
                         }
                     }
+                    DragState::DraggingFile { .. } => {
+                        // File drop is handled by timeline drop zones
+                        // Don't clear it here
+                    }
                     _ => {}
                 }
 
-                // Don't clear drag state here - let the drop zones handle it
-                // The timeline track drop zones will handle DraggingFile
-                // Only clear for drag states that don't have drop zones
-                match &this.state.drag_state {
-                    DragState::DraggingFile { .. } => {
-                        // Let timeline drop zone handle this
-                    }
-                    DragState::None => {}
-                    _ => {
-                        // Clear other drag states
-                        this.state.drag_state = DragState::None;
-                        cx.notify();
-                    }
+                // Clear drag state when mouse is released (except for DraggingFile which is handled by drop zones)
+                if !matches!(this.state.drag_state, DragState::None | DragState::DraggingFile { .. }) {
+                    this.state.drag_state = DragState::None;
+                    cx.notify();
                 }
             }))
             .child(self.render_content(cx))
