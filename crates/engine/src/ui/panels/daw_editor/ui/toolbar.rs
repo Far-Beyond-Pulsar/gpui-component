@@ -248,9 +248,3 @@ fn handle_new_project(state: &mut DawUiState, window: &mut Window, cx: &mut Cont
     state.new_project("New Project".to_string(), default_dir);
     cx.notify();
 }
-
-fn handle_open_project(state: &mut DawUiState, window: &mut Window, cx: &mut Context<DawPanel>) {
-    // TODO: Implement file picker dialog
-    eprintln!("Open project dialog not yet implemented");
-    cx.notify();
-}
