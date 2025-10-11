@@ -100,9 +100,9 @@ fn render_position_display(state: &mut DawUiState, cx: &mut Context<DawPanel>) -
     let tempo = state.project.as_ref()
         .map(|p| p.transport.tempo)
         .unwrap_or(120.0);
-    
+
     // Convert beats to time format
-    let seconds = (position / tempo) * 60.0;
+    let seconds = (position / tempo as f64) * 60.0;
     let minutes = (seconds / 60.0).floor() as u32;
     let secs = (seconds % 60.0).floor() as u32;
     let millis = ((seconds % 1.0) * 1000.0).floor() as u32;
@@ -180,7 +180,7 @@ fn render_tempo_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> i
                         .child(
                             div()
                                 .text_xs()
-                                .text_color(cx.theme().muted_foreground.into())
+                                .text_color(cx.theme().muted_foreground)
                                 .child("BPM")
                         )
                 )
