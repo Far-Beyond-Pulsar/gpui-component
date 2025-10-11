@@ -91,7 +91,7 @@ impl DawEditorPanel {
                         // Set audio service on DawPanel
                         daw_panel.update(cx, |panel, cx| {
                             panel.set_audio_service(service, cx);
-                        }).ok();
+                        });
                     }).ok();
                 }
                 Err(e) => {
