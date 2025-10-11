@@ -36,13 +36,18 @@ pub struct DawEditorPanel {
 impl DawEditorPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let daw_panel = cx.new(|cx| DawPanel::new(window, cx));
-        
-        Self {
+
+        let mut panel = Self {
             focus_handle: cx.focus_handle(),
             daw_panel,
             project_path: None,
             audio_service: None,
-        }
+        };
+
+        // Initialize audio service
+        panel.initialize_audio_service(window, cx);
+
+        panel
     }
 
     pub fn new_with_project(
