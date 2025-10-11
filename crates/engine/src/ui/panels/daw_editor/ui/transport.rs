@@ -46,9 +46,7 @@ fn render_transport_buttons(state: &mut DawUiState, cx: &mut Context<DawPanel>) 
                 .icon(Icon::new(IconName::ChevronLeft))
                 .ghost()
                 .small()
-                .tooltip(move |_window, _cx| {
-                    Tooltip::new("Go to Start")
-                })
+                .tooltip("Go to Start")
                 .on_click(cx.listener(|this, _, _window, cx| {
                     this.state.set_playhead(0.0);
                     cx.notify();
@@ -60,34 +58,27 @@ fn render_transport_buttons(state: &mut DawUiState, cx: &mut Context<DawPanel>) 
                 .icon(Icon::new(IconName::Square))
                 .ghost()
                 .small()
-                .tooltip(move |_window, _cx| {
-                    Tooltip::new("Stop")
-                })
+                .tooltip("Stop")
                 .on_click(cx.listener(|this, _, window, cx| {
                     handle_stop(&mut this.state, window, cx);
                 }))
         )
         // Play/Pause
-        .child(
+        .child({
+            let tooltip_text = if state.is_playing { "Pause" } else { "Play" };
             Button::new("transport-play")
-                .icon(Icon::new(if state.is_playing { 
-                    IconName::Pause 
-                } else { 
-                    IconName::Play 
+                .icon(Icon::new(if state.is_playing {
+                    IconName::Pause
+                } else {
+                    IconName::Play
                 }))
                 .primary()
                 .small()
-                .tooltip(move |_window, _cx| {
-                    if state.is_playing { 
-                        Tooltip::new("Pause") 
-                    } else { 
-                        Tooltip::new("Play")
-                    }
-                })
+                .tooltip(tooltip_text)
                 .on_click(cx.listener(|this, _, window, cx| {
                     handle_play_pause(&mut this.state, window, cx);
                 }))
-        )
+        })
         // Record
         .child(
             Button::new("transport-record")
@@ -96,10 +87,7 @@ fn render_transport_buttons(state: &mut DawUiState, cx: &mut Context<DawPanel>) 
                 .ghost()
                 .when(state.is_recording, |b| b.danger())
                 .small()
-                
-                .tooltip(move |_window, _cx| {
-                    Tooltip::new("Record")
-                })
+                .tooltip("Record")
                 .on_click(cx.listener(|this, _, _window, cx| {
                     this.state.is_recording = !this.state.is_recording;
                     cx.notify();
@@ -230,9 +218,7 @@ fn render_loop_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> im
                 .ghost()
                 .small()
                 .when(state.is_looping, |b| b.primary())
-                .tooltip(move |_window, _cx| {
-                    Tooltip::new("Loop")
-                })
+                .tooltip("Loop")
                 .on_click(cx.listener(|this, _, _window, cx| {
                     this.state.is_looping = !this.state.is_looping;
                     cx.notify();
@@ -270,9 +256,7 @@ fn render_metronome_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) 
                 .ghost()
                 .small()
                 .when(state.metronome_enabled, |b| b.primary())
-                .tooltip(move |_window, _cx| {
-                    Tooltip::new("Metronome")
-                })
+                .tooltip("Metronome")
                 .on_click(cx.listener(|this, _, _window, cx| {
                     this.state.metronome_enabled = !this.state.metronome_enabled;
                     cx.notify();
@@ -284,9 +268,7 @@ fn render_metronome_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) 
                 .ghost()
                 .small()
                 .when(state.count_in_enabled, |b| b.primary())
-                .tooltip(move |_window, _cx| {
-                    Tooltip::new("Count-In")
-                })
+                .tooltip("Count-In")
                 .on_click(cx.listener(|this, _, _window, cx| {
                     this.state.count_in_enabled = !this.state.count_in_enabled;
                     cx.notify();

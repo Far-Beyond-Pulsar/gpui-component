@@ -427,13 +427,7 @@ impl DawPanel {
     }
 
     fn render_transport(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .w_full()
-            .h(px(60.0))
-            .bg(cx.theme().muted.opacity(0.2))
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .child("Transport Placeholder")
+        super::transport::render_transport(&mut self.state, cx)
     }
 
     fn render_main_area(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
