@@ -583,7 +583,7 @@ impl DawPanel {
                     .flex_1()
                     .w_full()
                     .p_3()
-                    .overflow_y_scroll()
+                    .overflow_y_auto()
                     .child(match self.state.inspector_tab {
                         InspectorTab::Track => self.render_track_inspector(selected_track, cx).into_any_element(),
                         InspectorTab::Clip => div().child("📼 Clip Inspector - Select a clip to view properties").into_any_element(),

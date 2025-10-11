@@ -616,6 +616,8 @@ fn render_send_row(
     send_idx: usize,
     cx: &mut Context<DawPanel>,
 ) -> impl IntoElement {
+    let tooltip_text = format!("Send {}: {}%", label, (value * 100.0) as i32);
+
     h_flex()
         .w_full()
         .gap_1()
@@ -672,7 +674,7 @@ fn render_send_row(
                     eprintln!("📤 Send {} level control clicked", send_idx);
                     cx.notify();
                 }))
-                .tooltip(format!("Send {}: {}%", label, (value * 100.0) as i32))
+                .tooltip(&tooltip_text)
                 .child(
                     div()
                         .text_xs()
