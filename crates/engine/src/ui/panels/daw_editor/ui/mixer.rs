@@ -300,10 +300,14 @@ fn render_insert_slots(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoEl
                             eprintln!("📦 Insert slot {} clicked for track {}", slot_idx, track_id);
                             cx.notify();
                         }))
-                        .tooltip(if has_effect {
-                            "Click to change effect"
-                        } else {
-                            "Click to add effect"
+                        .tooltip(move |_window, cx| {
+                            div()
+                                .child(if has_effect {
+                                    "Click to change effect"
+                                } else {
+                                    "Click to add effect"
+                                })
+                                .into_any()
                         })
                         .child(if has_effect {
                             "FX".to_string()
@@ -568,7 +572,9 @@ fn render_output_routing(
                     eprintln!("🔌 Output routing clicked for track {}", track_id);
                     cx.notify();
                 }))
-                .tooltip("Select output destination")
+                .tooltip(|_window, cx| {
+                    div().child("Select output destination").into_any()
+                })
                 .child(
                     div()
                         .text_xs()
@@ -674,7 +680,9 @@ fn render_send_row(
                     eprintln!("📤 Send {} level control clicked", send_idx);
                     cx.notify();
                 }))
-                .tooltip(tooltip_text.clone())
+                .tooltip(move |_window, cx| {
+                    div().child(tooltip_text.clone()).into_any()
+                })
                 .child(
                     div()
                         .text_xs()
