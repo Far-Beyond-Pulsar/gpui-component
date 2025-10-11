@@ -182,6 +182,12 @@ pub enum DragState {
         start_mouse_x: Pixels,
         start_value: f32,
     },
+    DraggingSend {
+        track_id: TrackId,
+        send_idx: usize,
+        start_mouse_x: f32,
+        start_amount: f32,
+    },
 }
 
 impl Default for DragState {

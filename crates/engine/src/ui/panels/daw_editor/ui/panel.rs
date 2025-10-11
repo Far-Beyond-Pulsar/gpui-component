@@ -283,13 +283,18 @@ impl Render for DawPanel {
                         let delta_y = *start_mouse_y - current_y; // Inverted: up = increase
                         let delta_volume = delta_y / 100.0; // Sensitivity factor
                         let new_volume = (*start_volume + delta_volume).clamp(0.0, 1.5);
-                        
+
+                        eprintln!("🎚️ FADER DRAG: start_y={}, current_y={}, delta_y={}, delta_vol={:.3}, start_vol={:.3}, new_vol={:.3}",
+                            start_mouse_y, current_y, delta_y, delta_volume, start_volume, new_volume);
+
                         if let Some(ref mut project) = this.state.project {
                             // Handle master fader (nil UUID)
                             if track_id.is_nil() {
                                 project.master_track.volume = new_volume;
+                                eprintln!("🔊 Master volume set to {:.3} ({:+.1} dB)", new_volume, 20.0 * new_volume.log10());
                             } else if let Some(track) = project.tracks.iter_mut().find(|t| t.id == *track_id) {
                                 track.volume = new_volume;
+                                eprintln!("🔊 Track '{}' volume set to {:.3} ({:+.1} dB)", track.name, new_volume, 20.0 * new_volume.log10());
                             }
                         }
                         cx.notify();
@@ -332,13 +337,38 @@ impl Render for DawPanel {
                         let delta_px = current_x - *start_mouse_x;
                         let delta_value = delta_px / px(100.0); // Sensitivity factor (100 pixels = full range)
                         let new_value = (*start_value + delta_value).clamp(0.0, 1.0);
-                        
+
                         // Convert slider value (0..1) to pan (-1..1)
                         let pan = (new_value * 2.0 - 1.0) as f32;
-                        
+
                         if let Some(ref mut project) = this.state.project {
                             if let Some(track) = project.tracks.iter_mut().find(|t| t.id == *track_id) {
                                 track.pan = pan.clamp(-1.0, 1.0);
+                            }
+                        }
+                        cx.notify();
+                    }
+                    DragState::DraggingSend { track_id, send_idx, start_mouse_x, start_amount } => {
+                        // Update send level (horizontal drag)
+                        let current_x = event.position.x.as_f32();
+                        let delta_x = current_x - *start_mouse_x;
+                        let delta_amount = delta_x / 100.0; // Sensitivity: 100 pixels = full range (0.0 to 1.0)
+                        let new_amount = (*start_amount + delta_amount).clamp(0.0, 1.0);
+
+                        if let Some(ref mut project) = this.state.project {
+                            if let Some(track) = project.tracks.iter_mut().find(|t| t.id == *track_id) {
+                                // Ensure send exists
+                                while track.sends.len() <= *send_idx {
+                                    track.sends.push(super::super::audio_types::Send {
+                                        target_track: None,
+                                        amount: 0.0,
+                                        pre_fader: false,
+                                        enabled: false,
+                                    });
+                                }
+                                if let Some(send) = track.sends.get_mut(*send_idx) {
+                                    send.amount = new_amount;
+                                }
                             }
                         }
                         cx.notify();
@@ -352,6 +382,7 @@ impl Render for DawPanel {
                 match &this.state.drag_state {
                     DragState::DraggingFader { track_id, .. } => {
                         let track_id_val = *track_id;
+                        eprintln!("🖱️ Mouse up - Syncing fader to audio service...");
                         if let Some(ref service) = this.state.audio_service {
                             let service = service.clone();
 
@@ -361,8 +392,10 @@ impl Render for DawPanel {
                                     .map(|p| p.master_track.volume)
                                     .unwrap_or(1.0);
 
+                                eprintln!("🔊 Syncing master volume to audio service: {:.3} ({:+.1} dB)", volume, 20.0 * volume.log10());
                                 cx.spawn(async move |_this, _cx| {
                                     let _ = service.set_master_volume(volume).await;
+                                    eprintln!("✅ Master volume synced to audio service");
                                 }).detach();
                             } else {
                                 // Track fader
@@ -371,10 +404,14 @@ impl Render for DawPanel {
                                     .map(|t| t.volume)
                                     .unwrap_or(1.0);
 
+                                eprintln!("🔊 Syncing track volume to audio service: {:.3} ({:+.1} dB)", volume, 20.0 * volume.log10());
                                 cx.spawn(async move |_this, _cx| {
                                     let _ = service.set_track_volume(track_id_val, volume).await;
+                                    eprintln!("✅ Track volume synced to audio service");
                                 }).detach();
                             }
+                        } else {
+                            eprintln!("⚠️ No audio service available for sync");
                         }
                     }
                     DragState::DraggingPan { track_id, .. } => {
@@ -417,6 +454,22 @@ impl Render for DawPanel {
                             cx.spawn(async move |_this, _cx| {
                                 let _ = service.set_track_pan(track_id_val, pan).await;
                             }).detach();
+                        }
+                    }
+                    DragState::DraggingSend { track_id, send_idx, .. } => {
+                        let track_id_val = *track_id;
+                        let send_idx_val = *send_idx;
+                        if let Some(ref service) = this.state.audio_service {
+                            let service = service.clone();
+                            let send_amount = this.state.project.as_ref()
+                                .and_then(|p| p.tracks.iter().find(|t| t.id == track_id_val))
+                                .and_then(|t| t.sends.get(send_idx_val))
+                                .map(|s| s.amount)
+                                .unwrap_or(0.0);
+
+                            // Future: Sync send levels to audio service
+                            eprintln!("🎚️ Send {} level set to: {:.0}%", send_idx_val, send_amount * 100.0);
+                            // let _ = service.set_send_level(track_id_val, send_idx_val, send_amount).await;
                         }
                     }
                     DragState::DraggingFile { .. } => {
