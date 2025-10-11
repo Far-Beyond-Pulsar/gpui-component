@@ -32,7 +32,8 @@
       "Bash(timeout 90 cargo build -p pulsar_engine --release)",
       "Read(//c/Users/redst/OneDrive/Documents/GitHub/GPML/crates/story/**)",
       "Bash(timeout 60 cargo check -p ui)",
-      "Bash(timeout 120 cargo check -p pulsar_engine)"
+      "Bash(timeout 120 cargo check -p pulsar_engine)",
+      "Bash(timeout 90 cargo check -p pulsar_engine)"
     ],
     "deny": [],
     "ask": []

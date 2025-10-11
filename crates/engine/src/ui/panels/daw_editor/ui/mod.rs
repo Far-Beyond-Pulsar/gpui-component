@@ -10,7 +10,7 @@ mod timeline;
 mod transport;
 // mod inspector;
 mod browser;
-// mod toolbar;
+mod toolbar;
 mod track_header;
 // mod clip_editor;
 // mod automation;

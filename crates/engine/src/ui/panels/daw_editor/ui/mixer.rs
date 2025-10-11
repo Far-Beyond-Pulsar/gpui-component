@@ -231,7 +231,7 @@ fn render_channel_strip(
         // Send levels (A and B with pre/post toggle)
         .child(render_send_controls(track, track_id, cx))
         // Peak meter LEDs
-        .child(render_peak_meters(track, cx))
+        .child(render_peak_meters(track, state, cx))
         // Vertical output fader slider (routes to selected output)
         .child(render_fader_slider(track, track_id, cx))
         // Volume readout
@@ -282,10 +282,13 @@ fn render_insert_slots(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoEl
         )
 }
 
-fn render_peak_meters(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoElement {
-    // Simulate stereo peak meters
-    let left_peak = track.volume * 0.8;
-    let right_peak = track.volume * 0.75;
+fn render_peak_meters(track: &Track, state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
+    // Get actual meter data from audio service
+    let (left_peak, right_peak) = if let Some(meter) = state.track_meters.get(&track.id) {
+        (meter.peak_left, meter.peak_right)
+    } else {
+        (0.0, 0.0)
+    };
 
     h_flex()
         .w_full()
@@ -668,16 +671,15 @@ fn render_master_channel(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl
 }
 
 fn render_master_meters(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
-    let master_volume = state.project.as_ref()
-        .map(|p| p.master_track.volume)
-        .unwrap_or(1.0);
-    
+    // Get actual master meter data from audio service
+    let (left_peak, right_peak) = (state.master_meter.peak_left, state.master_meter.peak_right);
+
     h_flex()
         .w_full()
         .h(px(48.0))
         .gap_1()
-        .child(render_meter_bar(master_volume * 0.9, cx))
-        .child(render_meter_bar(master_volume * 0.85, cx))
+        .child(render_meter_bar(left_peak, cx))
+        .child(render_meter_bar(right_peak, cx))
 }
 
 fn render_master_fader(master_volume: f32, cx: &mut Context<DawPanel>) -> impl IntoElement {

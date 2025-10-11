@@ -134,6 +134,9 @@ impl DawPanel {
 
         // Start periodic playhead sync
         self.start_playhead_sync(cx);
+
+        // Start periodic meter sync
+        self.start_meter_sync(cx);
     }
 
     /// Start a periodic task to sync playhead position from audio service
@@ -185,6 +188,51 @@ impl DawPanel {
             }).detach();
 
             eprintln!("✅ Playhead sync started with GPUI background executor");
+        }
+    }
+
+    /// Start a periodic task to sync meter data from audio service
+    /// Updates visual meters at 30 FPS for smooth visualization
+    fn start_meter_sync(&self, cx: &mut Context<Self>) {
+        if let Some(ref service) = self.state.audio_service {
+            let service = service.clone();
+
+            // Poll meters at 30 FPS (every ~33ms)
+            cx.spawn(async move |this, mut cx| {
+                loop {
+                    Timer::after(Duration::from_millis(33)).await;
+
+                    // Get meter data from audio service
+                    let master_meter = service.get_master_meter().await;
+
+                    // Get all track IDs first
+                    let track_ids: Vec<TrackId> = cx.update(|cx| {
+                        this.upgrade()
+                            .and_then(|entity| entity.read(cx).state.project.as_ref()
+                                .map(|p| p.tracks.iter().map(|t| t.id).collect()))
+                            .unwrap_or_default()
+                    }).ok().unwrap_or_default();
+
+                    // Get meter data for all tracks
+                    let mut track_meters = std::collections::HashMap::new();
+                    for track_id in track_ids {
+                        if let Some(meter) = service.get_track_meter(track_id).await {
+                            track_meters.insert(track_id, meter);
+                        }
+                    }
+
+                    // Update UI state
+                    cx.update(|cx| {
+                        this.update(cx, |this, cx| {
+                            this.state.master_meter = master_meter;
+                            this.state.track_meters = track_meters;
+                            cx.notify();
+                        }).ok();
+                    }).ok();
+                }
+            }).detach();
+
+            eprintln!("✅ Meter sync started at 30 FPS");
         }
     }
 
@@ -418,15 +466,9 @@ impl DawPanel {
             )
     }
 
-    // Placeholder implementations - to be filled in panel by panel
+    // Toolbar implementation
     fn render_toolbar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .w_full()
-            .h(px(40.0))
-            .bg(cx.theme().muted.opacity(0.3))
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .child("Toolbar Placeholder")
+        super::toolbar::render_toolbar(&mut self.state, cx)
     }
 
     fn render_transport(&mut self, cx: &mut Context<Self>) -> impl IntoElement {

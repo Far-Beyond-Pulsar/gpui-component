@@ -6,9 +6,10 @@ use super::panel::DawPanel;
 use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
-    button::*, h_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, 
+    button::*, h_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme,
     Selectable, divider::Divider, tooltip::Tooltip,
 };
+use crate::ui::panels::daw_editor::audio_types::SAMPLE_RATE;
 
 pub fn render_transport(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     h_flex()
@@ -219,9 +220,8 @@ fn render_loop_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> im
                 .small()
                 .when(state.is_looping, |b| b.primary())
                 .tooltip("Loop")
-                .on_click(cx.listener(|this, _, _window, cx| {
-                    this.state.is_looping = !this.state.is_looping;
-                    cx.notify();
+                .on_click(cx.listener(|this, _, window, cx| {
+                    handle_loop_toggle(&mut this.state, window, cx);
                 }))
         )
         .when(state.is_looping, |flex| {
@@ -257,9 +257,8 @@ fn render_metronome_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) 
                 .small()
                 .when(state.metronome_enabled, |b| b.primary())
                 .tooltip("Metronome")
-                .on_click(cx.listener(|this, _, _window, cx| {
-                    this.state.metronome_enabled = !this.state.metronome_enabled;
-                    cx.notify();
+                .on_click(cx.listener(|this, _, window, cx| {
+                    handle_metronome_toggle(&mut this.state, window, cx);
                 }))
         )
         .child(
@@ -306,6 +305,46 @@ fn handle_stop(state: &mut DawUiState, window: &mut Window, cx: &mut Context<Daw
 
         cx.spawn(async move |_this, _cx| {
             let _ = service.stop().await;
+        }).detach();
+    }
+
+    cx.notify();
+}
+
+fn handle_loop_toggle(state: &mut DawUiState, window: &mut Window, cx: &mut Context<DawPanel>) {
+    state.is_looping = !state.is_looping;
+
+    // Get loop points in samples
+    let tempo = state.get_tempo();
+    let loop_start_beats = state.selection.loop_start.unwrap_or(0.0);
+    let loop_end_beats = state.selection.loop_end.unwrap_or(16.0);
+
+    // Convert beats to samples
+    let samples_per_beat = (SAMPLE_RATE * 60.0) / tempo;
+    let loop_start_samples = (loop_start_beats * samples_per_beat as f64) as u64;
+    let loop_end_samples = (loop_end_beats * samples_per_beat as f64) as u64;
+
+    if let Some(ref service) = state.audio_service {
+        let service = service.clone();
+        let enabled = state.is_looping;
+
+        cx.spawn(async move |_this, _cx| {
+            let _ = service.set_loop(enabled, loop_start_samples, loop_end_samples).await;
+        }).detach();
+    }
+
+    cx.notify();
+}
+
+fn handle_metronome_toggle(state: &mut DawUiState, window: &mut Window, cx: &mut Context<DawPanel>) {
+    state.metronome_enabled = !state.metronome_enabled;
+
+    if let Some(ref service) = state.audio_service {
+        let service = service.clone();
+        let enabled = state.metronome_enabled;
+
+        cx.spawn(async move |_this, _cx| {
+            let _ = service.set_metronome(enabled).await;
         }).detach();
     }
 

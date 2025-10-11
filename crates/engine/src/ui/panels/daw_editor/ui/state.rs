@@ -242,6 +242,10 @@ pub struct DawUiState {
     pub mixer_scroll_handle: VirtualListScrollHandle,
     pub mixer_scroll_state: ScrollbarState,
 
+    // Metering data
+    pub track_meters: std::collections::HashMap<TrackId, MeterData>,
+    pub master_meter: MeterData,
+
     // Virtual list scroll handles for performance
     pub timeline_scroll_handle: VirtualListScrollHandle,  // For horizontal scrolling
     pub timeline_scroll_state: ScrollbarState,
@@ -302,6 +306,9 @@ impl DawUiState {
             mixer_width: 80.0,
             mixer_scroll_handle: VirtualListScrollHandle::new(),
             mixer_scroll_state: ScrollbarState::default(),
+
+            track_meters: std::collections::HashMap::new(),
+            master_meter: MeterData::default(),
 
             timeline_scroll_handle: VirtualListScrollHandle::new(),
             timeline_scroll_state: ScrollbarState::default(),
