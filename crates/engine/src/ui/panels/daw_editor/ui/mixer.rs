@@ -278,7 +278,7 @@ fn render_insert_slots(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoEl
                         .bg(if has_effect {
                             cx.theme().accent.opacity(0.6)
                         } else {
-                            cx.theme().secondary.opacity(0.4))
+                            cx.theme().secondary.opacity(0.4)
                         })
                         .rounded_sm()
                         .border_1()
@@ -536,6 +536,9 @@ fn render_output_routing(
     track_id: TrackId,
     cx: &mut Context<DawPanel>,
 ) -> impl IntoElement {
+    // For now, all tracks route to Master (could expand to Aux/Group buses later)
+    let output_name = "Master";
+
     v_flex()
         .w_full()
         .gap_0p5()
@@ -547,23 +550,31 @@ fn render_output_routing(
         )
         .child(
             div()
+                .id(ElementId::Name(format!("output-routing-{}", track_id).into()))
                 .w_full()
                 .h(px(24.0))
                 .px_2()
                 .flex()
                 .items_center()
                 .justify_center()
-                .bg(cx.theme().secondary.opacity(0.6))
+                .bg(cx.theme().accent.opacity(0.3))
                 .rounded_sm()
                 .border_1()
-                .border_color(cx.theme().border)
+                .border_color(cx.theme().accent.opacity(0.6))
                 .cursor_pointer()
-                .hover(|style| style.bg(cx.theme().secondary.opacity(0.8)))
+                .hover(|style| style.bg(cx.theme().accent.opacity(0.4)))
+                .on_mouse_down(MouseButton::Left, cx.listener(move |_panel, _event: &MouseDownEvent, _window, cx| {
+                    // TODO: Show routing dropdown menu to select output (Master, Aux 1, Aux 2, etc.)
+                    eprintln!("🔌 Output routing clicked for track {}", track_id);
+                    cx.notify();
+                }))
+                .tooltip("Select output destination")
                 .child(
                     div()
                         .text_xs()
-                        .text_color(cx.theme().foreground)
-                        .child("Master") // Default routing
+                        .font_medium()
+                        .text_color(cx.theme().accent_foreground)
+                        .child(output_name)
                 )
         )
 }

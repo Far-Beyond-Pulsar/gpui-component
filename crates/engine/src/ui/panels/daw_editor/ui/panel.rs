@@ -510,13 +510,138 @@ impl DawPanel {
     }
 
     fn render_inspector(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
+        use gpui_component::{button::*, Icon, IconName, Sizable};
+
+        let selected_track = self.state.selection.selected_track_ids.iter().next()
+            .and_then(|id| self.state.get_track(*id));
+
+        v_flex()
             .w(px(300.0))
             .h_full()
-            .bg(cx.theme().muted.opacity(0.1))
+            .bg(cx.theme().muted.opacity(0.15))
             .border_l_1()
             .border_color(cx.theme().border)
-            .child("Inspector Placeholder")
+            // Tab bar
+            .child(
+                h_flex()
+                    .w_full()
+                    .h(px(40.0))
+                    .px_2()
+                    .gap_1()
+                    .items_center()
+                    .bg(cx.theme().muted.opacity(0.3))
+                    .border_b_1()
+                    .border_color(cx.theme().border)
+                    .child(
+                        Button::new("inspector-tab-track")
+                            .label("Track")
+                            .small()
+                            .when(self.state.inspector_tab == InspectorTab::Track, |b| b.primary())
+                            .when(self.state.inspector_tab != InspectorTab::Track, |b| b.ghost())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.state.inspector_tab = InspectorTab::Track;
+                                cx.notify();
+                            }))
+                    )
+                    .child(
+                        Button::new("inspector-tab-clip")
+                            .label("Clip")
+                            .small()
+                            .when(self.state.inspector_tab == InspectorTab::Clip, |b| b.primary())
+                            .when(self.state.inspector_tab != InspectorTab::Clip, |b| b.ghost())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.state.inspector_tab = InspectorTab::Clip;
+                                cx.notify();
+                            }))
+                    )
+                    .child(
+                        Button::new("inspector-tab-automation")
+                            .label("Auto")
+                            .small()
+                            .when(self.state.inspector_tab == InspectorTab::Automation, |b| b.primary())
+                            .when(self.state.inspector_tab != InspectorTab::Automation, |b| b.ghost())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.state.inspector_tab = InspectorTab::Automation;
+                                cx.notify();
+                            }))
+                    )
+                    .child(
+                        Button::new("inspector-tab-effects")
+                            .label("FX")
+                            .small()
+                            .when(self.state.inspector_tab == InspectorTab::Effects, |b| b.primary())
+                            .when(self.state.inspector_tab != InspectorTab::Effects, |b| b.ghost())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.state.inspector_tab = InspectorTab::Effects;
+                                cx.notify();
+                            }))
+                    )
+            )
+            // Content area
+            .child(
+                div()
+                    .flex_1()
+                    .w_full()
+                    .p_3()
+                    .overflow_y_scroll()
+                    .child(match self.state.inspector_tab {
+                        InspectorTab::Track => self.render_track_inspector(selected_track, cx).into_any_element(),
+                        InspectorTab::Clip => div().child("📼 Clip Inspector - Select a clip to view properties").into_any_element(),
+                        InspectorTab::Automation => div().child("🎚️ Automation Inspector - Draw automation curves on timeline").into_any_element(),
+                        InspectorTab::Effects => div().child("🎛️ Effects Inspector - Add effects to track inserts").into_any_element(),
+                    })
+            )
+    }
+
+    fn render_track_inspector(&mut self, track: Option<&Track>, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(track) = track {
+            v_flex()
+                .w_full()
+                .gap_2()
+                .child(
+                    div()
+                        .text_sm()
+                        .font_semibold()
+                        .child(format!("Track: {}", track.name))
+                )
+                .child(
+                    v_flex()
+                        .w_full()
+                        .gap_1()
+                        .child(div().text_xs().text_color(cx.theme().muted_foreground).child("Type"))
+                        .child(div().text_sm().child(format!("{:?}", track.track_type)))
+                )
+                .child(
+                    v_flex()
+                        .w_full()
+                        .gap_1()
+                        .child(div().text_xs().text_color(cx.theme().muted_foreground).child("Volume"))
+                        .child(div().text_sm().child(format!("{:+.1} dB", track.volume_db())))
+                )
+                .child(
+                    v_flex()
+                        .w_full()
+                        .gap_1()
+                        .child(div().text_xs().text_color(cx.theme().muted_foreground).child("Pan"))
+                        .child(div().text_sm().child(format!("{:.0}%", track.pan * 100.0)))
+                )
+                .child(
+                    v_flex()
+                        .w_full()
+                        .gap_1()
+                        .child(div().text_xs().text_color(cx.theme().muted_foreground).child("Clips"))
+                        .child(div().text_sm().child(format!("{} clips", track.clips.len())))
+                )
+                .into_any_element()
+        } else {
+            div()
+                .w_full()
+                .p_4()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child("No track selected")
+                .into_any_element()
+        }
     }
 
     fn render_timeline(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
