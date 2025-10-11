@@ -674,7 +674,7 @@ fn render_send_row(
                     eprintln!("📤 Send {} level control clicked", send_idx);
                     cx.notify();
                 }))
-                .tooltip(&tooltip_text)
+                .tooltip(tooltip_text.clone())
                 .child(
                     div()
                         .text_xs()
