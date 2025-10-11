@@ -7,6 +7,7 @@ use super::real_time_audio::{AudioCommand, AudioMessage, RealTimeAudio};
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+ use std::marker::Send;
 
 /// Main DAW audio service
 pub struct AudioService {
@@ -18,14 +19,34 @@ pub struct AudioService {
     performance_metrics: Arc<RwLock<PerformanceMetrics>>,
 }
 
+/// Thread-safe position monitor that can be cloned and sent across threads
+#[derive(Clone)]
+pub struct PositionMonitor {
+    real_time_audio: Arc<RealTimeAudio>,
+}
+
+impl PositionMonitor {
+    pub fn get_position(&self) -> SampleTime {
+        self.real_time_audio.get_position()
+    }
+
+    pub fn get_transport(&self) -> Transport {
+        self.real_time_audio.get_transport()
+    }
+}
+
+// Implement Send + Sync for PositionMonitor (safe because RealTimeAudio methods are thread-safe)
+unsafe impl Send for PositionMonitor {}
+unsafe impl Sync for PositionMonitor {}
+
 impl AudioService {
     pub async fn new() -> Result<Self> {
         let asset_manager = Arc::new(AssetManager::new());
         let audio_graph = Arc::new(RwLock::new(AudioGraph::new(asset_manager.as_ref().clone())));
-        
+
         let real_time_audio = Arc::new(RealTimeAudio::new()?);
         let transport = Arc::new(parking_lot::RwLock::new(Transport::default()));
-        
+
         let gpu_dsp = match GpuDsp::new().await {
             Ok(dsp) => Arc::new(RwLock::new(Some(dsp))),
             Err(e) => {
@@ -177,6 +198,13 @@ impl AudioService {
         self.real_time_audio.get_position()
     }
 
+    /// Get a thread-safe position monitor that can be sent across threads
+    pub fn get_position_monitor(&self) -> PositionMonitor {
+        PositionMonitor {
+            real_time_audio: self.real_time_audio.clone(),
+        }
+    }
+
     pub async fn load_asset(&self, path: std::path::PathBuf) -> Result<Arc<AudioAssetData>> {
         self.asset_manager.load_asset(path).await
     }
@@ -295,9 +323,9 @@ mod tests {
         if let Ok(service) = AudioService::new().await {
             let track = Track::new("Test", TrackType::Audio);
             let id = service.add_track(track).await;
-            
+
             assert!(service.get_track(id).await.is_some());
-            
+
             service.remove_track(id).await;
             assert!(service.get_track(id).await.is_none());
         }

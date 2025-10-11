@@ -9,6 +9,7 @@ use gpui_component::{v_flex, h_flex, StyledExt, ActiveTheme, PixelsExt};
 use std::path::PathBuf;
 use std::sync::Arc;
 use crate::ui::panels::daw_editor::audio_types::SAMPLE_RATE;
+use tokio::sync::mpsc;
 
 pub struct DawPanel {
     focus_handle: FocusHandle,
@@ -131,36 +132,49 @@ impl DawPanel {
     }
 
     /// Start a periodic task to sync playhead position from audio service
+    /// Uses a dedicated background thread to poll position without blocking UI
     fn start_playhead_sync(&self, cx: &mut Context<Self>) {
         if let Some(ref service) = self.state.audio_service {
-            let service = service.clone();
+            // Get a thread-safe position monitor
+            let monitor = service.get_position_monitor();
 
-            cx.spawn(async move |this, mut cx| {
+            // Create channel for sending updates from background thread to UI
+            let (tx, mut rx) = mpsc::unbounded_channel();
+
+            // Spawn background Tokio task to poll position
+            tokio::task::spawn(async move {
                 loop {
-                    // Update every 50ms (20 fps)
                     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
-                    // Get current position from audio service
-                    let position = service.get_position();
-                    let transport = service.get_transport();
+                    let position = monitor.get_position();
+                    let transport = monitor.get_transport();
+                    let is_playing = transport.state == TransportState::Playing;
 
-                    // Update UI state
+                    // Send to UI thread
+                    if tx.send((position, is_playing)).is_err() {
+                        break; // Channel closed
+                    }
+                }
+            });
+
+            // Receive updates in UI thread
+            cx.spawn(async move |this, mut cx| {
+                while let Some((position, is_playing)) = rx.recv().await {
                     cx.update(|cx| {
                         this.update(cx, |this, cx| {
-                            // Convert samples to beats
                             let tempo = this.state.get_tempo();
                             let seconds = position as f64 / SAMPLE_RATE as f64;
-                            let beats_per_second = tempo as f64 / 60.0;
-                            let beats = seconds * beats_per_second;
+                            let beats = (seconds * tempo as f64) / 60.0;
 
                             this.state.selection.playhead_position = beats;
-                            this.state.is_playing = transport.state == crate::ui::panels::daw_editor::audio_types::TransportState::Playing;
-
+                            this.state.is_playing = is_playing;
                             cx.notify();
                         }).ok();
                     }).ok();
                 }
             }).detach();
+
+            eprintln!("✅ Playhead sync started with background thread");
         }
     }
 
