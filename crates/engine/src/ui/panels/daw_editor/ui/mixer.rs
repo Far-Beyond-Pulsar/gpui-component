@@ -249,6 +249,8 @@ fn render_channel_strip(
 }
 
 fn render_insert_slots(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoElement {
+    let track_id = track.id;
+
     v_flex()
         .w_full()
         .gap_0p5()
@@ -262,22 +264,52 @@ fn render_insert_slots(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoEl
             h_flex()
                 .w_full()
                 .gap_0p5()
-                .children((0..3).map(|slot_idx| {
+                .children((0..3).map(move |slot_idx| {
+                    // Check if this slot has an effect loaded
+                    let has_effect = false; // TODO: Check track.effects[slot_idx]
+
                     div()
+                        .id(ElementId::Name(format!("insert-{}-{}", track_id, slot_idx).into()))
                         .w(px(24.0))
                         .h(px(20.0))
                         .flex()
                         .items_center()
                         .justify_center()
-                        .bg(cx.theme().secondary.opacity(0.6))  // Better contrast
+                        .bg(if has_effect {
+                            cx.theme().accent.opacity(0.6)
+                        } else {
+                            cx.theme().secondary.opacity(0.4))
+                        })
                         .rounded_sm()
                         .border_1()
-                        .border_color(cx.theme().border.opacity(0.7))  // Better contrast
+                        .border_color(if has_effect {
+                            cx.theme().accent
+                        } else {
+                            cx.theme().border.opacity(0.5)
+                        })
                         .text_xs()
-                        .text_color(cx.theme().muted_foreground)
+                        .text_color(if has_effect {
+                            cx.theme().accent_foreground
+                        } else {
+                            cx.theme().muted_foreground
+                        })
                         .cursor_pointer()
-                        .hover(|style| style.bg(cx.theme().secondary.opacity(0.6)))
-                        .child(format!("{}", slot_idx + 1))
+                        .hover(|style| style.bg(cx.theme().accent.opacity(0.3)))
+                        .on_mouse_down(MouseButton::Left, cx.listener(move |_panel, _event: &MouseDownEvent, _window, cx| {
+                            // TODO: Show effect browser/menu
+                            eprintln!("📦 Insert slot {} clicked for track {}", slot_idx, track_id);
+                            cx.notify();
+                        }))
+                        .tooltip(if has_effect {
+                            "Click to change effect"
+                        } else {
+                            "Click to add effect"
+                        })
+                        .child(if has_effect {
+                            "FX".to_string()
+                        } else {
+                            format!("{}", slot_idx + 1)
+                        })
                 }))
         )
 }
@@ -541,6 +573,12 @@ fn render_send_controls(
     track_id: TrackId,
     cx: &mut Context<DawPanel>,
 ) -> impl IntoElement {
+    // Get send values from track if available
+    let send_a_amount = track.sends.get(0).map(|s| s.amount).unwrap_or(0.0);
+    let send_a_pre = track.sends.get(0).map(|s| s.pre_fader).unwrap_or(false);
+    let send_b_amount = track.sends.get(1).map(|s| s.amount).unwrap_or(0.0);
+    let send_b_pre = track.sends.get(1).map(|s| s.pre_fader).unwrap_or(false);
+
     v_flex()
         .w_full()
         .gap_0p5()
@@ -554,8 +592,8 @@ fn render_send_controls(
             v_flex()
                 .w_full()
                 .gap_1()
-                .child(render_send_row("Send A", 0.0, false, track_id, 0, cx))
-                .child(render_send_row("Send B", 0.0, false, track_id, 1, cx))
+                .child(render_send_row("Send A", send_a_amount, send_a_pre, track_id, 0, cx))
+                .child(render_send_row("Send B", send_b_amount, send_b_pre, track_id, 1, cx))
         )
 }
 
@@ -578,28 +616,60 @@ fn render_send_row(
                 .compact()
                 .small()
                 .when(is_pre_fader, |b| b.primary())
+                .when(!is_pre_fader, |b| b.ghost())
                 .tooltip("Pre/Post Fader")
                 .flex_shrink_0()
+                .on_click(cx.listener(move |panel, _, _window, cx| {
+                    // Toggle pre/post fader
+                    if let Some(ref mut project) = panel.state.project {
+                        if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id) {
+                            if let Some(send) = track.sends.get_mut(send_idx) {
+                                send.pre_fader = !send.pre_fader;
+                                eprintln!("🎚️ Send {} set to {}", send_idx, if send.pre_fader { "PRE" } else { "POST" });
+                            }
+                        }
+                    }
+                    cx.notify();
+                }))
         )
         // Send level knob (mini)
         .child(
             div()
+                .id(ElementId::Name(format!("send-{}-{}-level", track_id, send_idx).into()))
                 .flex_1()
                 .h(px(20.0))
                 .px_1()
                 .flex()
                 .items_center()
                 .justify_center()
-                .bg(cx.theme().secondary.opacity(0.4))
+                .bg(if value > 0.0 {
+                    cx.theme().accent.opacity(0.4)
+                } else {
+                    cx.theme().secondary.opacity(0.3)
+                })
                 .rounded_sm()
                 .border_1()
-                .border_color(cx.theme().border)
+                .border_color(if value > 0.0 {
+                    cx.theme().accent.opacity(0.6)
+                } else {
+                    cx.theme().border.opacity(0.5)
+                })
                 .cursor_pointer()
-                .hover(|style| style.bg(cx.theme().secondary.opacity(0.6)))
+                .hover(|style| style.bg(cx.theme().accent.opacity(0.5)))
+                .on_mouse_down(MouseButton::Left, cx.listener(move |_panel, _event: &MouseDownEvent, _window, cx| {
+                    // TODO: Implement send level dragging or show send routing menu
+                    eprintln!("📤 Send {} level control clicked", send_idx);
+                    cx.notify();
+                }))
+                .tooltip(format!("Send {}: {}%", label, (value * 100.0) as i32))
                 .child(
                     div()
                         .text_xs()
-                        .text_color(cx.theme().foreground)
+                        .text_color(if value > 0.0 {
+                            cx.theme().accent_foreground
+                        } else {
+                            cx.theme().muted_foreground
+                        })
                         .child(format!("{:.0}%", value * 100.0))
                 )
         )
