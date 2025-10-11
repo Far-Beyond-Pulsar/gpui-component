@@ -129,6 +129,9 @@ impl DawPanel {
     pub fn set_audio_service(&mut self, service: Arc<AudioService>, cx: &mut Context<Self>) {
         self.state.audio_service = Some(service);
 
+        // Sync existing project to audio service if one exists
+        self.sync_project_to_audio_service(cx);
+
         // Start periodic playhead sync
         self.start_playhead_sync(cx);
     }
