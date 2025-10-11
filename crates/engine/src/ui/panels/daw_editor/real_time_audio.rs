@@ -1,4 +1,5 @@
 /// Real-time audio thread using CPAL for cross-platform audio I/O
+use super::audio_graph::AudioGraph;
 use super::audio_types::*;
 use anyhow::{Context as AnyhowContext, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -88,7 +89,7 @@ pub struct RealTimeAudio {
 }
 
 impl RealTimeAudio {
-    pub fn new() -> Result<Self> {
+    pub fn new(audio_graph: Arc<parking_lot::RwLock<AudioGraph>>) -> Result<Self> {
         let host = cpal::default_host();
         let device = host
             .default_output_device()
@@ -119,6 +120,7 @@ impl RealTimeAudio {
 
         let stream_comm = comm.clone();
         let stream_transport = transport.clone();
+        let stream_audio_graph = audio_graph.clone();
 
         let mut callback_buffer_left = vec![0.0f32; BUFFER_SIZE];
         let mut callback_buffer_right = vec![0.0f32; BUFFER_SIZE];
@@ -163,9 +165,22 @@ impl RealTimeAudio {
                 let transport_state = stream_transport.read().state;
 
                 if transport_state == TransportState::Playing {
+                    // Render new buffer if we've consumed the current one
                     if buffer_position == 0 {
-                        callback_buffer_left.fill(0.0);
-                        callback_buffer_right.fill(0.0);
+                        let transport = stream_transport.read().clone();
+
+                        // Lock audio graph and render audio
+                        if let Ok(mut graph) = stream_audio_graph.try_write() {
+                            graph.process(
+                                &transport,
+                                &mut callback_buffer_left,
+                                &mut callback_buffer_right,
+                            );
+                        } else {
+                            // If we can't get the lock, output silence to avoid blocking
+                            callback_buffer_left.fill(0.0);
+                            callback_buffer_right.fill(0.0);
+                        }
                     }
                 } else {
                     data.fill(0.0);
@@ -178,8 +193,19 @@ impl RealTimeAudio {
                 for _ in 0..frames_needed {
                     if buffer_position >= BUFFER_SIZE {
                         buffer_position = 0;
-                        callback_buffer_left.fill(0.0);
-                        callback_buffer_right.fill(0.0);
+
+                        // Render next buffer
+                        let transport = stream_transport.read().clone();
+                        if let Ok(mut graph) = stream_audio_graph.try_write() {
+                            graph.process(
+                                &transport,
+                                &mut callback_buffer_left,
+                                &mut callback_buffer_right,
+                            );
+                        } else {
+                            callback_buffer_left.fill(0.0);
+                            callback_buffer_right.fill(0.0);
+                        }
                     }
 
                     data[out_idx] = callback_buffer_left[buffer_position];
