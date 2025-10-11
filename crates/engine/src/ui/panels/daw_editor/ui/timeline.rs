@@ -411,6 +411,7 @@ fn render_drop_zone(
     div()
         .absolute()
         .inset_0()
+        // Make sure we capture pointer events when dragging
         .when(is_drag_target, |d| {
             d.border_2()
                 .border_color(cx.theme().accent.opacity(0.3))
@@ -418,7 +419,9 @@ fn render_drop_zone(
         })
         // Handle mouse up to drop files onto track
         .on_mouse_up(gpui::MouseButton::Left, cx.listener(move |this, event: &MouseUpEvent, _window, cx| {
+            eprintln!("🖱️ Mouse up on track {} with drag state: {:?}", track_id, this.state.drag_state);
             if let DragState::DraggingFile { file_path, file_name } = &this.state.drag_state.clone() {
+                eprintln!("📁 Dropping file '{}' onto track {}", file_name, track_id);
                 // Convert window position to element-local position
                 let element_pos = DawPanel::window_to_timeline_pos(event.position, this);
                 let mouse_x = element_pos.x.as_f32();
