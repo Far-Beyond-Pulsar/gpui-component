@@ -284,17 +284,29 @@ impl Render for DawPanel {
                         let delta_volume = delta_y / 100.0; // Sensitivity factor
                         let new_volume = (*start_volume + delta_volume).clamp(0.0, 1.5);
 
-                        eprintln!("🎚️ FADER DRAG: start_y={}, current_y={}, delta_y={}, delta_vol={:.3}, start_vol={:.3}, new_vol={:.3}",
-                            start_mouse_y, current_y, delta_y, delta_volume, start_volume, new_volume);
-
                         if let Some(ref mut project) = this.state.project {
                             // Handle master fader (nil UUID)
                             if track_id.is_nil() {
                                 project.master_track.volume = new_volume;
-                                eprintln!("🔊 Master volume set to {:.3} ({:+.1} dB)", new_volume, 20.0 * new_volume.log10());
+
+                                // Sync to audio service in real-time
+                                if let Some(ref service) = this.state.audio_service {
+                                    let service = service.clone();
+                                    cx.spawn(async move |_this, _cx| {
+                                        let _ = service.set_master_volume(new_volume).await;
+                                    }).detach();
+                                }
                             } else if let Some(track) = project.tracks.iter_mut().find(|t| t.id == *track_id) {
                                 track.volume = new_volume;
-                                eprintln!("🔊 Track '{}' volume set to {:.3} ({:+.1} dB)", track.name, new_volume, 20.0 * new_volume.log10());
+
+                                // Sync to audio service in real-time
+                                if let Some(ref service) = this.state.audio_service {
+                                    let service = service.clone();
+                                    let track_id_val = *track_id;
+                                    cx.spawn(async move |_this, _cx| {
+                                        let _ = service.set_track_volume(track_id_val, new_volume).await;
+                                    }).detach();
+                                }
                             }
                         }
                         cx.notify();
@@ -305,10 +317,19 @@ impl Render for DawPanel {
                         let delta_x = current_x - *start_mouse_x;
                         let delta_pan = delta_x / 50.0; // Sensitivity factor
                         let new_pan = (*start_pan + delta_pan).clamp(-1.0, 1.0);
-                        
+
                         if let Some(ref mut project) = this.state.project {
                             if let Some(track) = project.tracks.iter_mut().find(|t| t.id == *track_id) {
                                 track.pan = new_pan;
+
+                                // Sync to audio service in real-time
+                                if let Some(ref service) = this.state.audio_service {
+                                    let service = service.clone();
+                                    let track_id_val = *track_id;
+                                    cx.spawn(async move |_this, _cx| {
+                                        let _ = service.set_track_pan(track_id_val, new_pan).await;
+                                    }).detach();
+                                }
                             }
                         }
                         cx.notify();
@@ -319,14 +340,24 @@ impl Render for DawPanel {
                         let delta_px = current_x - *start_mouse_x;
                         let delta_value = delta_px / px(200.0); // Sensitivity factor (200 pixels = full range)
                         let new_value = (*start_value + delta_value).clamp(0.0, 1.0);
-                        
+
                         // Convert slider value (0..1) to dB then to linear
                         let db = (new_value * 72.0) - 60.0; // Map 0..1 to -60..+12 dB
                         let linear = 10f32.powf(db / 20.0);
-                        
+
                         if let Some(ref mut project) = this.state.project {
                             if let Some(track) = project.tracks.iter_mut().find(|t| t.id == *track_id) {
                                 track.volume = linear.clamp(0.0, 2.0);
+
+                                // Sync to audio service in real-time
+                                if let Some(ref service) = this.state.audio_service {
+                                    let service = service.clone();
+                                    let track_id_val = *track_id;
+                                    let volume = track.volume;
+                                    cx.spawn(async move |_this, _cx| {
+                                        let _ = service.set_track_volume(track_id_val, volume).await;
+                                    }).detach();
+                                }
                             }
                         }
                         cx.notify();
@@ -344,6 +375,15 @@ impl Render for DawPanel {
                         if let Some(ref mut project) = this.state.project {
                             if let Some(track) = project.tracks.iter_mut().find(|t| t.id == *track_id) {
                                 track.pan = pan.clamp(-1.0, 1.0);
+
+                                // Sync to audio service in real-time
+                                if let Some(ref service) = this.state.audio_service {
+                                    let service = service.clone();
+                                    let track_id_val = *track_id;
+                                    cx.spawn(async move |_this, _cx| {
+                                        let _ = service.set_track_pan(track_id_val, pan).await;
+                                    }).detach();
+                                }
                             }
                         }
                         cx.notify();
