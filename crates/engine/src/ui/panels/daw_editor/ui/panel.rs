@@ -420,81 +420,17 @@ impl Render for DawPanel {
             .on_mouse_up(gpui::MouseButton::Left, cx.listener(|this, _event: &MouseUpEvent, _window, cx| {
                 // Sync changes to audio service when drag completes
                 match &this.state.drag_state {
-                    DragState::DraggingFader { track_id, .. } => {
-                        let track_id_val = *track_id;
-                        eprintln!("🖱️ Mouse up - Syncing fader to audio service...");
-                        if let Some(ref service) = this.state.audio_service {
-                            let service = service.clone();
-
-                            if track_id_val.is_nil() {
-                                // Master fader
-                                let volume = this.state.project.as_ref()
-                                    .map(|p| p.master_track.volume)
-                                    .unwrap_or(1.0);
-
-                                eprintln!("🔊 Syncing master volume to audio service: {:.3} ({:+.1} dB)", volume, 20.0 * volume.log10());
-                                cx.spawn(async move |_this, _cx| {
-                                    let _ = service.set_master_volume(volume).await;
-                                    eprintln!("✅ Master volume synced to audio service");
-                                }).detach();
-                            } else {
-                                // Track fader
-                                let volume = this.state.project.as_ref()
-                                    .and_then(|p| p.tracks.iter().find(|t| t.id == track_id_val))
-                                    .map(|t| t.volume)
-                                    .unwrap_or(1.0);
-
-                                eprintln!("🔊 Syncing track volume to audio service: {:.3} ({:+.1} dB)", volume, 20.0 * volume.log10());
-                                cx.spawn(async move |_this, _cx| {
-                                    let _ = service.set_track_volume(track_id_val, volume).await;
-                                    eprintln!("✅ Track volume synced to audio service");
-                                }).detach();
-                            }
-                        } else {
-                            eprintln!("⚠️ No audio service available for sync");
-                        }
+                    DragState::DraggingFader { .. } => {
+                        // Volume already synced in real-time during drag
                     }
-                    DragState::DraggingPan { track_id, .. } => {
-                        let track_id_val = *track_id;
-                        if let Some(ref service) = this.state.audio_service {
-                            let service = service.clone();
-                            let pan = this.state.project.as_ref()
-                                .and_then(|p| p.tracks.iter().find(|t| t.id == track_id_val))
-                                .map(|t| t.pan)
-                                .unwrap_or(0.0);
-
-                            cx.spawn(async move |_this, _cx| {
-                                let _ = service.set_track_pan(track_id_val, pan).await;
-                            }).detach();
-                        }
+                    DragState::DraggingPan { .. } => {
+                        // Pan already synced in real-time during drag
                     }
-                    DragState::DraggingTrackHeaderVolume { track_id, .. } => {
-                        let track_id_val = *track_id;
-                        if let Some(ref service) = this.state.audio_service {
-                            let service = service.clone();
-                            let volume = this.state.project.as_ref()
-                                .and_then(|p| p.tracks.iter().find(|t| t.id == track_id_val))
-                                .map(|t| t.volume)
-                                .unwrap_or(1.0);
-
-                            cx.spawn(async move |_this, _cx| {
-                                let _ = service.set_track_volume(track_id_val, volume).await;
-                            }).detach();
-                        }
+                    DragState::DraggingTrackHeaderVolume { .. } => {
+                        // Volume already synced in real-time during drag
                     }
-                    DragState::DraggingTrackHeaderPan { track_id, .. } => {
-                        let track_id_val = *track_id;
-                        if let Some(ref service) = this.state.audio_service {
-                            let service = service.clone();
-                            let pan = this.state.project.as_ref()
-                                .and_then(|p| p.tracks.iter().find(|t| t.id == track_id_val))
-                                .map(|t| t.pan)
-                                .unwrap_or(0.0);
-
-                            cx.spawn(async move |_this, _cx| {
-                                let _ = service.set_track_pan(track_id_val, pan).await;
-                            }).detach();
-                        }
+                    DragState::DraggingTrackHeaderPan { .. } => {
+                        // Pan already synced in real-time during drag
                     }
                     DragState::DraggingSend { track_id, send_idx, .. } => {
                         let track_id_val = *track_id;

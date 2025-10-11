@@ -439,7 +439,6 @@ fn render_fader_slider(
                         .cursor_ns_resize()
                         // Click on track to jump to position
                         .on_mouse_down(MouseButton::Left, cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
-                            eprintln!("🖱️ Track fader mouse down: track_id={}, start_y={}, start_volume={:.3}", track_id, event.position.y.as_f32(), volume);
                             panel.state.drag_state = DragState::DraggingFader {
                                 track_id,
                                 start_mouse_y: event.position.y.as_f32(),
@@ -478,7 +477,6 @@ fn render_fader_slider(
                                     style.shadow_xl()
                                 })
                                 .on_mouse_down(MouseButton::Left, cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
-                                    eprintln!("🖱️ Track fader THUMB mouse down: track_id={}, start_y={}, start_volume={:.3}", track_id, event.position.y.as_f32(), volume);
                                     panel.state.drag_state = DragState::DraggingFader {
                                         track_id,
                                         start_mouse_y: event.position.y.as_f32(),
@@ -783,7 +781,6 @@ fn render_master_fader(master_volume: f32, cx: &mut Context<DawPanel>) -> impl I
                         .rounded_sm()
                         .cursor_ns_resize()
                         .on_mouse_down(MouseButton::Left, cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
-                            eprintln!("🖱️ Master fader mouse down: start_y={}, start_volume={:.3}", event.position.y.as_f32(), master_volume);
                             panel.state.drag_state = DragState::DraggingFader {
                                 track_id: uuid::Uuid::nil(),
                                 start_mouse_y: event.position.y.as_f32(),
@@ -820,7 +817,6 @@ fn render_master_fader(master_volume: f32, cx: &mut Context<DawPanel>) -> impl I
                                     style.shadow_2xl()
                                 })
                                 .on_mouse_down(MouseButton::Left, cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
-                                    eprintln!("🖱️ Master fader THUMB mouse down: start_y={}, start_volume={:.3}", event.position.y.as_f32(), master_volume);
                                     panel.state.drag_state = DragState::DraggingFader {
                                         track_id: uuid::Uuid::nil(),
                                         start_mouse_y: event.position.y.as_f32(),
