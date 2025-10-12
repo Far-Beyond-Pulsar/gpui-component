@@ -2,7 +2,7 @@ use gpui::{prelude::*, Animation, AnimationExt as _, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
-    h_flex, v_flex, ActiveTheme as _, IconName, StyledExt, Sizable as _,
+    h_flex, v_flex, ActiveTheme as _, IconName, Sizable as _, StyledExt,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -12,14 +12,16 @@ use std::{sync::Arc, time::Duration};
 use super::{
     editors::EditorType,
     entry_screen::EntryScreen,
-    project_selector::ProjectSelected,
     file_manager_drawer::{FileManagerDrawer, FileSelected, FileType, PopoutFileManagerEvent},
     file_manager_window::FileManagerWindow,
     menu::AppTitleBar,
     panels::{BlueprintEditorPanel, DawEditorPanel, LevelEditorPanel, ScriptEditorPanel},
     problems_drawer::ProblemsDrawer,
     problems_window::ProblemsWindow,
-    rust_analyzer_manager::{RustAnalyzerManager, AnalyzerEvent, AnalyzerStatus},
+    project_selector::ProjectSelected,
+    rust_analyzer_manager::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager},
+    terminal_drawer::TerminalDrawer,
+    terminal_window::TerminalWindow,
 };
 
 // Action to toggle the file manager drawer
@@ -32,6 +34,11 @@ pub struct ToggleFileManager;
 #[action(namespace = pulsar_app)]
 pub struct ToggleProblems;
 
+// Action to toggle the terminal
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = pulsar_app)]
+pub struct ToggleTerminal;
+
 pub struct PulsarApp {
     dock_area: Entity<DockArea>,
     project_path: Option<PathBuf>,
@@ -39,6 +46,7 @@ pub struct PulsarApp {
     file_manager_drawer: Entity<FileManagerDrawer>,
     drawer_open: bool,
     problems_drawer: Entity<ProblemsDrawer>,
+    terminal_drawer: Entity<TerminalDrawer>,
     // Tab management
     center_tabs: Entity<TabPanel>,
     script_editor: Option<Entity<ScriptEditorPanel>>,
@@ -60,7 +68,10 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        eprintln!("DEBUG: PulsarApp::new_with_project called with path: {:?}", project_path);
+        eprintln!(
+            "DEBUG: PulsarApp::new_with_project called with path: {:?}",
+            project_path
+        );
         Self::new_internal(Some(project_path), None, true, window, cx)
     }
 
@@ -152,12 +163,11 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        // TODO: Load last opened tabs if editor settings allow
-        // TODO: Dynamic layout allowing tabs to be split screened
+        // Create the main dock area
         let dock_area = cx.new(|cx| DockArea::new("main-dock", Some(1), window, cx));
         let weak_dock = dock_area.downgrade();
 
-        // Only create level editor tab if requested (not for detached windows)
+        // Create center dock item with level editor tab if requested
         let center_dock_item = if create_level_editor {
             let level_editor = cx.new(|cx| LevelEditorPanel::new(window, cx));
             DockItem::tabs(
@@ -212,7 +222,11 @@ impl PulsarApp {
 
         // Create problems drawer
         let problems_drawer = cx.new(|cx| ProblemsDrawer::new(window, cx));
-        cx.subscribe_in(&problems_drawer, window, Self::on_navigate_to_diagnostic).detach();
+        cx.subscribe_in(&problems_drawer, window, Self::on_navigate_to_diagnostic)
+            .detach();
+
+        // Create terminal drawer
+        let terminal_drawer = cx.new(|cx| TerminalDrawer::new(window, cx));
 
         // Create rust analyzer manager or use shared one
         let rust_analyzer = if let Some(shared_analyzer) = shared_rust_analyzer {
@@ -233,12 +247,13 @@ impl PulsarApp {
         };
 
         // Subscribe to analyzer events
-        cx.subscribe_in(&rust_analyzer, window, Self::on_analyzer_event).detach();
+        cx.subscribe_in(&rust_analyzer, window, Self::on_analyzer_event)
+            .detach();
 
         // Subscribe to PanelEvent on center_tabs to handle tab close and cleanup
         cx.subscribe_in(&center_tabs, window, Self::on_tab_panel_event)
             .detach();
-        
+
         // Subscribe to ProjectSelected events from entry screen or project selector
         if let Some(screen) = &entry_screen {
             cx.subscribe_in(screen, window, Self::on_project_selected)
@@ -252,6 +267,7 @@ impl PulsarApp {
             file_manager_drawer,
             drawer_open: false,
             problems_drawer,
+            terminal_drawer,
             center_tabs,
             script_editor,
             blueprint_editors,
@@ -284,7 +300,8 @@ impl PulsarApp {
                 cx.notify();
             }
             AnalyzerEvent::IndexingProgress { progress, message } => {
-                self.analyzer_status_text = format!("Indexing: {} ({:.0}%)", message, progress * 100.0);
+                self.analyzer_status_text =
+                    format!("Indexing: {} ({:.0}%)", message, progress * 100.0);
                 cx.notify();
             }
             AnalyzerEvent::Ready => {
@@ -358,7 +375,10 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        eprintln!("DEBUG: FileSelected event received - path: {:?}, type: {:?}", event.path, event.file_type);
+        eprintln!(
+            "DEBUG: FileSelected event received - path: {:?}, type: {:?}",
+            event.path, event.file_type
+        );
 
         match event.file_type {
             FileType::Class => {
@@ -394,7 +414,7 @@ impl PulsarApp {
         use gpui_component::Root;
 
         let project_path = event.project_path.clone();
-        
+
         // Get a clone of self as Entity to pass to the file manager window
         let parent_app = cx.entity().clone();
 
@@ -406,7 +426,10 @@ impl PulsarApp {
         let _ = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds {
-                    origin: Point { x: px(100.0), y: px(100.0) },
+                    origin: Point {
+                        x: px(100.0),
+                        y: px(100.0),
+                    },
                     size: size(px(1000.0), px(700.0)),
                 })),
                 titlebar: None,
@@ -419,13 +442,11 @@ impl PulsarApp {
             },
             move |window, cx| {
                 // Create a new file manager drawer for the window (use new_in_window)
-                let new_drawer = cx.new(|cx| {
-                    FileManagerDrawer::new_in_window(project_path.clone(), window, cx)
-                });
+                let new_drawer =
+                    cx.new(|cx| FileManagerDrawer::new_in_window(project_path.clone(), window, cx));
 
-                let file_manager_window = cx.new(|cx| {
-                    FileManagerWindow::new(new_drawer, parent_app.clone(), window, cx)
-                });
+                let file_manager_window =
+                    cx.new(|cx| FileManagerWindow::new(new_drawer, parent_app.clone(), window, cx));
 
                 cx.new(|cx| Root::new(file_manager_window.into(), window, cx))
             },
@@ -443,11 +464,14 @@ impl PulsarApp {
 
         // Open problems in a separate window
         let problems_drawer = self.problems_drawer.clone();
-        
+
         let _ = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds {
-                    origin: Point { x: px(100.0), y: px(100.0) },
+                    origin: Point {
+                        x: px(100.0),
+                        y: px(100.0),
+                    },
                     size: size(px(900.0), px(600.0)),
                 })),
                 titlebar: None,
@@ -460,8 +484,40 @@ impl PulsarApp {
             },
             |window, cx| {
                 let problems_window = cx.new(|cx| ProblemsWindow::new(problems_drawer, window, cx));
-                
+
                 cx.new(|cx| Root::new(problems_window.into(), window, cx))
+            },
+        );
+    }
+
+    fn toggle_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
+        use gpui_component::Root;
+
+        // Open terminal in a separate window
+        let terminal_drawer = self.terminal_drawer.clone();
+
+        let _ = cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds {
+                    origin: Point {
+                        x: px(150.0),
+                        y: px(150.0),
+                    },
+                    size: size(px(1000.0), px(700.0)),
+                })),
+                titlebar: None,
+                kind: WindowKind::Normal,
+                window_min_size: Some(gpui::Size {
+                    width: px(600.),
+                    height: px(400.),
+                }),
+                ..Default::default()
+            },
+            |window, cx| {
+                let terminal_window = cx.new(|cx| TerminalWindow::new(terminal_drawer, window, cx));
+
+                cx.new(|cx| Root::new(terminal_window.into(), window, cx))
             },
         );
     }
@@ -484,6 +540,15 @@ impl PulsarApp {
         self.toggle_problems(window, cx);
     }
 
+    fn on_toggle_terminal(
+        &mut self,
+        _: &ToggleTerminal,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.toggle_terminal(window, cx);
+    }
+
     fn on_navigate_to_diagnostic(
         &mut self,
         _drawer: &Entity<ProblemsDrawer>,
@@ -491,11 +556,14 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        println!("📂 Navigating to diagnostic: {:?} at line {}, column {}", event.file_path, event.line, event.column);
-        
+        println!(
+            "📂 Navigating to diagnostic: {:?} at line {}, column {}",
+            event.file_path, event.line, event.column
+        );
+
         // Open the file in the script editor
         self.open_script_tab(event.file_path.clone(), window, cx);
-        
+
         // Navigate to the specific line and column
         if let Some(script_editor) = &self.script_editor {
             script_editor.update(cx, |editor, cx| {
@@ -512,7 +580,10 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        eprintln!("DEBUG: File selected from external window - path: {:?}, type: {:?}", event.path, event.file_type);
+        eprintln!(
+            "DEBUG: File selected from external window - path: {:?}, type: {:?}",
+            event.path, event.file_type
+        );
 
         match event.file_type {
             FileType::Class => {
@@ -623,7 +694,7 @@ impl PulsarApp {
         script_editor.update(cx, |editor, cx| {
             editor.set_rust_analyzer(analyzer, cx);
         });
-        
+
         // Load project in file explorer if we have a project path
         if let Some(ref project_path) = self.project_path {
             script_editor.update(cx, |editor, cx| {
@@ -633,14 +704,15 @@ impl PulsarApp {
 
         // Note: ScriptEditor now handles LSP notifications internally via set_rust_analyzer
         // We only subscribe here for non-LSP events (RunScriptRequested, etc.)
-        cx.subscribe_in(&script_editor, window, Self::on_text_editor_event).detach();
+        cx.subscribe_in(&script_editor, window, Self::on_text_editor_event)
+            .detach();
 
         // Open the specific file
         script_editor.update(cx, |editor, cx| {
             editor.open_file(file_path, window, cx);
         });
 
-        // Add the tab
+        // Add the tab to the tab panel
         self.center_tabs.update(cx, |tabs, cx| {
             tabs.add_panel(Arc::new(script_editor.clone()), window, cx);
         });
@@ -652,45 +724,32 @@ impl PulsarApp {
     /// Open a DAW editor tab for the given project path
     fn open_daw_tab(&mut self, project_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         eprintln!("DEBUG: open_daw_tab called with path: {:?}", project_path);
-        
-        // Check if a DAW editor for this project is already open
-        let already_open = self
-            .daw_editors
-            .iter()
-            .enumerate()
-            .find_map(|(ix, editor)| {
-                let state = editor.read(cx).dump(cx);
-                if let gpui_component::dock::PanelInfo::Panel(info) = state.info {
-                    info.get("project_path")
-                        .and_then(|v| v.as_str())
-                        .map(|p| p == project_path.to_string_lossy())
-                        .unwrap_or(false)
-                        .then_some(ix)
-                } else {
-                    None
-                }
-            });
 
-        if let Some(ix) = already_open {
-            eprintln!("DEBUG: DAW tab already open at index {}, focusing", ix);
-            // Focus the correct tab
-            if let Some(editor_entity) = self.daw_editors.get(ix) {
-                let target_id = editor_entity.entity_id();
-                self.center_tabs.update(cx, |tabs, cx| {
-                    if let Some(tab_ix) = tabs.index_of_panel_by_entity_id(target_id) {
-                        tabs.set_active_tab(tab_ix, window, cx);
-                    }
-                });
-            }
+        // For now, just check if we have any DAW editors open
+        // TODO: Improve tracking to match by project path
+        if !self.daw_editors.is_empty() {
+            eprintln!("DEBUG: DAW editor already exists, focusing first one");
+            // Just focus the first DAW tab for now
+            // In a more complete implementation, we'd track which tab corresponds to which editor
             return;
         }
 
         eprintln!("DEBUG: Creating new DAW editor panel");
-        // Create new DAW editor tab
-        let daw_editor = cx.new(|cx| DawEditorPanel::new_with_project(project_path.clone(), window, cx));
+        self.next_tab_id += 1;
 
-        eprintln!("DEBUG: Adding DAW editor to tabs");
-        // Add the tab
+        // Create new DAW editor tab
+        let daw_editor =
+            cx.new(|cx| DawEditorPanel::new_with_project(project_path.clone(), window, cx));
+
+        // Extract project name for tab label
+        let project_name = project_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("DAW")
+            .to_string();
+
+        eprintln!("DEBUG: Adding DAW editor to tab panel");
+        // Add the tab to the tab panel
         self.center_tabs.update(cx, |tabs, cx| {
             tabs.add_panel(Arc::new(daw_editor.clone()), window, cx);
         });
@@ -698,7 +757,7 @@ impl PulsarApp {
         eprintln!("DEBUG: Storing DAW editor reference");
         // Store the DAW editor reference
         self.daw_editors.push(daw_editor);
-        
+
         eprintln!("DEBUG: DAW tab opened successfully");
     }
 
@@ -710,7 +769,7 @@ impl PulsarApp {
         cx: &mut Context<Self>,
     ) {
         use super::panels::TextEditorEvent;
-        
+
         match event {
             // LSP notifications are now handled by ScriptEditor internally
             // We only handle app-level events here
@@ -718,7 +777,7 @@ impl PulsarApp {
                 // No-op: ScriptEditor handles didOpen
             }
             TextEditorEvent::FileSaved { .. } => {
-                // No-op: ScriptEditor handles didSave  
+                // No-op: ScriptEditor handles didSave
             }
             TextEditorEvent::FileClosed { .. } => {
                 // No-op: ScriptEditor handles didClose
@@ -756,7 +815,7 @@ impl Render for PulsarApp {
         self.rust_analyzer.update(cx, |analyzer, cx| {
             analyzer.update_progress_from_thread(cx);
         });
-        
+
         // Show entry screen if no project is loaded
         if let Some(screen) = &self.entry_screen {
             return screen.clone().into_any_element();
@@ -769,6 +828,7 @@ impl Render for PulsarApp {
             .bg(cx.theme().background)
             .on_action(cx.listener(Self::on_toggle_file_manager))
             .on_action(cx.listener(Self::on_toggle_problems))
+            .on_action(cx.listener(Self::on_toggle_terminal))
             .child(
                 // Menu bar
                 {
@@ -777,7 +837,7 @@ impl Render for PulsarApp {
                 },
             )
             .child(
-                // Main dock area with overlays
+                // Main dock area
                 div()
                     .flex_1()
                     .relative()
@@ -815,11 +875,11 @@ impl Render for PulsarApp {
                                     |this, delta| this.bottom(px(-300.) + delta * px(300.)),
                                 ),
                         )
-                    })
+                    }),
             )
             .child(
                 // Footer with rust analyzer status and controls
-                self.render_footer(drawer_open, cx)
+                self.render_footer(drawer_open, cx),
             )
             .into_any_element()
     }
@@ -830,14 +890,16 @@ impl PulsarApp {
         let analyzer = self.rust_analyzer.read(cx);
         let status = analyzer.status();
         let is_running = analyzer.is_running();
-        
-        let error_count = self.problems_drawer.read(cx).count_by_severity(
-            crate::ui::problems_drawer::DiagnosticSeverity::Error
-        );
-        let warning_count = self.problems_drawer.read(cx).count_by_severity(
-            crate::ui::problems_drawer::DiagnosticSeverity::Warning
-        );
-        
+
+        let error_count = self
+            .problems_drawer
+            .read(cx)
+            .count_by_severity(crate::ui::problems_drawer::DiagnosticSeverity::Error);
+        let warning_count = self
+            .problems_drawer
+            .read(cx)
+            .count_by_severity(crate::ui::problems_drawer::DiagnosticSeverity::Warning);
+
         // STUDIO-QUALITY STATUS BAR
         h_flex()
             .w_full()
@@ -863,7 +925,7 @@ impl PulsarApp {
                             .tooltip("Toggle Project Files (Ctrl+B)")
                             .on_click(cx.listener(|app, _, window, cx| {
                                 app.toggle_drawer(window, cx);
-                            }))
+                            })),
                     )
                     .child(
                         // Problems Window Button - with smart styling
@@ -883,9 +945,14 @@ impl PulsarApp {
                                 IconName::CheckCircle
                             })
                             .label(if error_count + warning_count > 0 {
-                                format!("{} {}", 
+                                format!(
+                                    "{} {}",
                                     error_count + warning_count,
-                                    if error_count > 0 { "Problems" } else { "Warnings" }
+                                    if error_count > 0 {
+                                        "Problems"
+                                    } else {
+                                        "Warnings"
+                                    }
                                 )
                             } else {
                                 "No Problems".to_string()
@@ -893,8 +960,19 @@ impl PulsarApp {
                             .tooltip("Open Problems Window")
                             .on_click(cx.listener(|app, _, window, cx| {
                                 app.toggle_problems(window, cx);
-                            }))
+                            })),
                     )
+                    .child(
+                        // Terminal Window Button
+                        Button::new("open-terminal")
+                            .ghost()
+                            .icon(IconName::Terminal)
+                            .label("Terminal")
+                            .tooltip("Open Terminal Window")
+                            .on_click(cx.listener(|app, _, window, cx| {
+                                app.toggle_terminal(window, cx);
+                            })),
+                    ),
             )
             .child(
                 // CENTER SECTION - Rust Analyzer Status
@@ -922,24 +1000,25 @@ impl PulsarApp {
                                     .rounded_full()
                                     .bg(match status {
                                         AnalyzerStatus::Ready => cx.theme().success,
-                                        AnalyzerStatus::Indexing { .. } | AnalyzerStatus::Starting => cx.theme().warning,
+                                        AnalyzerStatus::Indexing { .. }
+                                        | AnalyzerStatus::Starting => cx.theme().warning,
                                         AnalyzerStatus::Error(_) => cx.theme().danger,
                                         _ => cx.theme().muted_foreground,
                                     })
-                                    .shadow_sm()
+                                    .shadow_sm(),
                             )
                             .child(
                                 div()
                                     .text_sm()
                                     .font_medium()
                                     .text_color(cx.theme().foreground)
-                                    .child("rust-analyzer")
+                                    .child("rust-analyzer"),
                             )
                             .child(
                                 div()
                                     .text_sm()
                                     .text_color(cx.theme().muted_foreground)
-                                    .child("·")
+                                    .child("·"),
                             )
                             .child(
                                 div()
@@ -950,8 +1029,8 @@ impl PulsarApp {
                                         AnalyzerStatus::Error(_) => cx.theme().danger,
                                         _ => cx.theme().muted_foreground,
                                     })
-                                    .child(self.analyzer_status_text.clone())
-                            )
+                                    .child(self.analyzer_status_text.clone()),
+                            ),
                     )
                     .child(
                         // Analyzer controls
@@ -969,14 +1048,18 @@ impl PulsarApp {
                                             app.rust_analyzer.update(cx, |analyzer, cx| {
                                                 analyzer.stop(window, cx);
                                             });
-                                        }))
+                                        })),
                                 )
                             })
                             .child(
                                 Button::new("restart-analyzer")
                                     .ghost()
                                     .icon(IconName::Undo)
-                                    .tooltip(if is_running { "Restart rust-analyzer" } else { "Start rust-analyzer" })
+                                    .tooltip(if is_running {
+                                        "Restart rust-analyzer"
+                                    } else {
+                                        "Start rust-analyzer"
+                                    })
                                     .xsmall()
                                     .on_click(cx.listener(move |app, _, window, cx| {
                                         if let Some(project) = app.project_path.clone() {
@@ -988,9 +1071,9 @@ impl PulsarApp {
                                                 }
                                             });
                                         }
-                                    }))
-                            )
-                    )
+                                    })),
+                            ),
+                    ),
             )
             .child(
                 // RIGHT SECTION - Project Path
@@ -1014,9 +1097,9 @@ impl PulsarApp {
                                         self.project_path
                                             .as_ref()
                                             .map(|path| path.display().to_string())
-                                    })
-                            )
-                    )
+                                    }),
+                            ),
+                    ),
             )
     }
 }
@@ -1281,3 +1364,5 @@ impl EditorPanel {
         )
     }
 }
+
+

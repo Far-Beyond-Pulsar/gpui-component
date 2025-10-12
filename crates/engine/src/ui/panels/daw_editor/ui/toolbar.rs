@@ -46,34 +46,19 @@ fn render_file_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> im
                 .icon(Icon::new(IconName::Plus))
                 .ghost()
                 .small()
-                .tooltip(move |_window, _cx| {
-                    Tooltip::new("New Project")
-                })
+                .tooltip("New Project")
                 .on_click(cx.listener(|this, _, window, cx| {
                     handle_new_project(&mut this.state, window, cx);
                 }))
         )
-        .child(
-            Button::new("toolbar-open")
-                .icon(Icon::new(IconName::FolderOpen))
-                .ghost()
-                .small()
-                .tooltip(move |_window, _cx| {
-                    Tooltip::new("Open Project")
-                })
-                .on_click(cx.listener(|this, _, window, cx| {
-                    handle_open_project(&mut this.state, window, cx);
-                }))
-        )
+        // Open button removed - DAW opens via engine asset selection
         .child(
             Button::new("toolbar-save")
-                .icon(Icon::new(IconName::Save))
+                .icon(Icon::new(IconName::Download))
                 .ghost()
                 .small()
                 .disabled(state.project.is_none())
-                .tooltip(move |_window, _cx| {
-                    Tooltip::new("Save Project")
-                })
+                .tooltip("Save Project")
                 .on_click(cx.listener(|this, _, _window, cx| {
                     if let Err(e) = this.state.save_project() {
                         eprintln!("❌ Save failed: {}", e);
@@ -89,9 +74,7 @@ fn render_file_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> im
                 .ghost()
                 .small()
                 .disabled(state.project.is_none())
-                .tooltip(move |_window, _cx| {
-                    Tooltip::new("Export Audio")
-                })
+                .tooltip("Export Audio")
         )
 }
 
@@ -102,12 +85,10 @@ fn render_tools_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> i
         .child(
             Button::new("tool-select")
                 .icon(Icon::new(IconName::CursorPointer))
-                .ghost()
+                .when(state.current_tool == EditTool::Select, |b| b.primary())
+                .when(state.current_tool != EditTool::Select, |b| b.ghost())
                 .small()
-                
-                .tooltip(move |_window, _cx| {
-                    Tooltip::new("Select Tool")
-                })
+                .tooltip("Select Tool")
                 .on_click(cx.listener(|this, _, _window, cx| {
                     this.state.current_tool = EditTool::Select;
                     cx.notify();
@@ -116,12 +97,10 @@ fn render_tools_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> i
         .child(
             Button::new("tool-draw")
                 .icon(Icon::new(IconName::EditPencil))
-                .ghost()
+                .when(state.current_tool == EditTool::Draw, |b| b.primary())
+                .when(state.current_tool != EditTool::Draw, |b| b.ghost())
                 .small()
-                
-                .tooltip(move |_window, _cx| {
-                    Tooltip::new("Draw Tool")
-                })
+                .tooltip("Draw Tool")
                 .on_click(cx.listener(|this, _, _window, cx| {
                     this.state.current_tool = EditTool::Draw;
                     cx.notify();
@@ -130,12 +109,10 @@ fn render_tools_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> i
         .child(
             Button::new("tool-cut")
                 .icon(Icon::new(IconName::Scissor))
-                .ghost()
+                .when(state.current_tool == EditTool::Cut, |b| b.primary())
+                .when(state.current_tool != EditTool::Cut, |b| b.ghost())
                 .small()
-                
-                .tooltip(move |_window, _cx| {
-                    Tooltip::new("Cut Tool")
-                })
+                .tooltip("Cut Tool")
                 .on_click(cx.listener(|this, _, _window, cx| {
                     this.state.current_tool = EditTool::Cut;
                     cx.notify();
@@ -143,13 +120,11 @@ fn render_tools_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> i
         )
         .child(
             Button::new("tool-erase")
-                .icon(Icon::new(IconName::Eraser))
-                .ghost()
+                .icon(Icon::new(IconName::Trash))
+                .when(state.current_tool == EditTool::Erase, |b| b.primary())
+                .when(state.current_tool != EditTool::Erase, |b| b.ghost())
                 .small()
-                
-                .tooltip(move |_window, _cx| {
-                    Tooltip::new("Erase Tool")
-                })
+                .tooltip("Erase Tool")
                 .on_click(cx.listener(|this, _, _window, cx| {
                     this.state.current_tool = EditTool::Erase;
                     cx.notify();
@@ -164,9 +139,9 @@ fn render_view_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> im
         .child(
             Button::new("view-arrange")
                 .label("Arrange")
-                .ghost()
+                .when(state.view_mode == ViewMode::Arrange, |b| b.primary())
+                .when(state.view_mode != ViewMode::Arrange, |b| b.ghost())
                 .small()
-                
                 .on_click(cx.listener(|this, _, _window, cx| {
                     this.state.view_mode = ViewMode::Arrange;
                     cx.notify();
@@ -175,9 +150,9 @@ fn render_view_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> im
         .child(
             Button::new("view-mix")
                 .label("Mix")
-                .ghost()
+                .when(state.view_mode == ViewMode::Mix, |b| b.primary())
+                .when(state.view_mode != ViewMode::Mix, |b| b.ghost())
                 .small()
-                
                 .on_click(cx.listener(|this, _, _window, cx| {
                     this.state.view_mode = ViewMode::Mix;
                     cx.notify();
@@ -186,9 +161,9 @@ fn render_view_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> im
         .child(
             Button::new("view-edit")
                 .label("Edit")
-                .ghost()
+                .when(state.view_mode == ViewMode::Edit, |b| b.primary())
+                .when(state.view_mode != ViewMode::Edit, |b| b.ghost())
                 .small()
-                
                 .on_click(cx.listener(|this, _, _window, cx| {
                     this.state.view_mode = ViewMode::Edit;
                     cx.notify();
@@ -202,13 +177,11 @@ fn render_snap_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> im
         .items_center()
         .child(
             Button::new("snap-toggle")
-                .icon(Icon::new(IconName::Grid3x3))
-                .ghost()
+                .icon(Icon::new(IconName::Menu))
+                .when(state.snap_mode != SnapMode::Off, |b| b.primary())
+                .when(state.snap_mode == SnapMode::Off, |b| b.ghost())
                 .small()
-                
-                .tooltip(move |_window, _cx| {
-                    Tooltip::new("Toggle Snap")
-                })
+                .tooltip("Toggle Snap")
                 .on_click(cx.listener(|this, _, _window, cx| {
                     this.state.snap_mode = match this.state.snap_mode {
                         SnapMode::Off => SnapMode::Grid,
@@ -222,9 +195,7 @@ fn render_snap_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> im
                 .label(state.snap_value.label())
                 .ghost()
                 .small()
-                .tooltip(move |_window, _cx| {
-                    Tooltip::new("Snap Value")
-                })
+                .tooltip("Snap Value")
                 .on_click(cx.listener(|this, _, _window, cx| {
                     // Cycle through snap values
                     this.state.snap_value = match this.state.snap_value {
@@ -276,22 +247,4 @@ fn handle_new_project(state: &mut DawUiState, window: &mut Window, cx: &mut Cont
     let default_dir = env::temp_dir().join("pulsar_projects");
     state.new_project("New Project".to_string(), default_dir);
     cx.notify();
-}
-
-fn handle_open_project(state: &mut DawUiState, window: &mut Window, cx: &mut Context<DawPanel>) {
-    cx.spawn(|this, mut cx| async move {
-        let file = rfd::AsyncFileDialog::new()
-            .add_filter("Pulsar DAW Project", &["pdaw"])
-            .pick_file()
-            .await;
-
-        if let Some(file) = file {
-            let path = file.path().to_path_buf();
-            cx.update(|cx| {
-                this.update(cx, |this, cx| {
-                    this.load_project(path, cx);
-                }).ok();
-            }).ok();
-        }
-    }).detach();
 }

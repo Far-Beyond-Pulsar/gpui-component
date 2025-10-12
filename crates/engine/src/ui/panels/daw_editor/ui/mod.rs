@@ -7,10 +7,10 @@ mod mixer;
 
 // Individual panels - to be implemented one by one
 mod timeline;
-// mod transport;
+mod transport;
 // mod inspector;
 mod browser;
-// mod toolbar;
+mod toolbar;
 mod track_header;
 // mod clip_editor;
 // mod automation;

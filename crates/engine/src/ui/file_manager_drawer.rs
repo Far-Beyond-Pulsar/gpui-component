@@ -1672,52 +1672,51 @@ impl Render for FileManagerDrawer {
                                                                             )
                                                                     )
                                                                     .child(
-                                                                        // TREE CONTENT
+                                                                        // TREE CONTENT with proper sizing
                                                                         div()
                                                                             .flex_1()
-                                                                            .overflow_hidden()
-                                                                            .p_1p5()
+                                                                            .w_full()
                                                                             .child(
                                                                                 div()
-                                                                                    .size_full()
+                                                                                    .p_1p5()
                                                                                     .scrollable(Axis::Vertical)
                                                                                     .child(
-                                                                                        if let Some(tree) = &self.folder_tree {
-                                                                                            v_flex()
-                                                                                                .w_full()
-                                                                                                .gap_0p5()
-                                                                                                .children(tree.children.iter().map(
-                                                                                                    |child| {
-                                                                                                        self.render_folder_tree_node(
-                                                                                                            child, 0, cx,
-                                                                                                        )
-                                                                                                    },
-                                                                                                ))
-                                                                                                .into_any_element()
-                                                                                        } else {
-                                                                                            // Compact empty state
-                                                                                            v_flex()
-                                                                                                .w_full()
-                                                                                                .p_4()
-                                                                                                .gap_2()
-                                                                                                .items_center()
-                                                                                                .justify_center()
-                                                                                                .child(
-                                                                                                    Icon::new(IconName::Folder)
-                                                                                                        .size(px(40.))
-                                                                                                        .text_color(cx.theme().muted_foreground.opacity(0.25))
+                                                                                if let Some(tree) = &self.folder_tree {
+                                                                                    v_flex()
+                                                                                        .w_full()
+                                                                                        .gap_0p5()
+                                                                                        .children(tree.children.iter().map(
+                                                                                            |child| {
+                                                                                                self.render_folder_tree_node(
+                                                                                                    child, 0, cx,
                                                                                                 )
-                                                                                                .child(
-                                                                                                    div()
-                                                                                                        .text_xs()
-                                                                                                        .font_medium()
-                                                                                                        .text_color(cx.theme().muted_foreground.opacity(0.6))
-                                                                                                        .child("No Project")
-                                                                                                )
-                                                                                                .into_any_element()
-                                                                                        },
-                                                                                    ),
-                                                                            ),
+                                                                                            },
+                                                                                        ))
+                                                                                        .into_any_element()
+                                                                                } else {
+                                                                                    // Compact empty state
+                                                                                    v_flex()
+                                                                                        .w_full()
+                                                                                        .p_4()
+                                                                                        .gap_2()
+                                                                                        .items_center()
+                                                                                        .justify_center()
+                                                                                        .child(
+                                                                                            Icon::new(IconName::Folder)
+                                                                                                .size(px(40.))
+                                                                                                .text_color(cx.theme().muted_foreground.opacity(0.25))
+                                                                                        )
+                                                                                        .child(
+                                                                                            div()
+                                                                                                .text_xs()
+                                                                                                .font_medium()
+                                                                                                .text_color(cx.theme().muted_foreground.opacity(0.6))
+                                                                                                .child("No Project")
+                                                                                        )
+                                                                                        .into_any_element()
+                                                                                },
+                                                                            )
+                                                                        ),
                                                                     ),
                                                             ),
                                                     )
@@ -1747,13 +1746,14 @@ impl Render for FileManagerDrawer {
                                                                         )
                                                                 )
                                                                 .child(
-                                                                    // CONTENT GRID/LIST
-                                                                    div().flex_1().overflow_hidden().p_2().child({
-                                                                        let selected_folder_for_menu = self.selected_folder.clone();
-                                                                        div()
-                                                                            .id("content-area-wrapper")
-                                                                            .size_full()
-                                                                            .context_menu(move |menu, _window, _cx| {
+                                                                    // CONTENT GRID/LIST with proper sizing - wrap the child in scrollable
+                                                                    div()
+                                                                        .id("file-manager-content-area")
+                                                                        .flex_1()
+                                                                        .w_full()
+                                                                        .context_menu({
+                                                                            let selected_folder_for_menu = self.selected_folder.clone();
+                                                                            move |menu, _window, _cx| {
                                                                                 if let Some(folder) = &selected_folder_for_menu {
                                                                                     let folder_str =
                                                                                         folder.to_string_lossy().to_string();
@@ -1778,30 +1778,33 @@ impl Render for FileManagerDrawer {
                                                                                 } else {
                                                                                     menu
                                                                                 }
-                                                                            })
-                                                                            .child(
-                                                                                div().size_full().scrollable(Axis::Vertical).child(
-                                                                                    match self.view_mode {
-                                                                                        ViewMode::Grid => {
-                                                                                            h_flex().w_full().flex_wrap().gap_1p5().children(
-                                                                                                contents.iter().map(|item| {
-                                                                                                    self.render_content_item(item, cx)
-                                                                                                }),
-                                                                                            )
-                                                                                            .into_any_element()
-                                                                                        }
-                                                                                        ViewMode::List => {
-                                                                                            v_flex().w_full().gap_1().children(
-                                                                                                contents.iter().map(|item| {
-                                                                                                    self.render_content_item(item, cx)
-                                                                                                }),
-                                                                                            )
-                                                                                            .into_any_element()
-                                                                                        }
-                                                                                    }
-                                                                                ),
-                                                                            )
-                                                                    })
+                                                                            }
+                                                                        })
+                                                                        .child(
+                                                                            div()
+                                                                                .p_2()
+                                                                                .scrollable(Axis::Vertical)
+                                                                                .child(
+                                                                            match self.view_mode {
+                                                                                ViewMode::Grid => {
+                                                                                    h_flex().w_full().flex_wrap().gap_1p5().children(
+                                                                                        contents.iter().map(|item| {
+                                                                                            self.render_content_item(item, cx)
+                                                                                        }),
+                                                                                    )
+                                                                                    .into_any_element()
+                                                                                }
+                                                                                ViewMode::List => {
+                                                                                    v_flex().w_full().gap_1().children(
+                                                                                        contents.iter().map(|item| {
+                                                                                            self.render_content_item(item, cx)
+                                                                                        }),
+                                                                                    )
+                                                                                    .into_any_element()
+                                                                                }
+                                                                            }
+                                                                        )
+                                                                    )
                                                                 )
                                                         ),
                                                     )

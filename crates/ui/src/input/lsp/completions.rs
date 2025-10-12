@@ -93,7 +93,6 @@ impl InputState {
         
         // ALWAYS request new completions from server on every keystroke
         // The server does all filtering, sorting, and prioritization
-        println!("📡 Requesting completions at offset {} (char: '{}')", new_offset, last_char);
         
         self.request_completions_now(new_offset, start, new_text, provider, self.text.clone(), existing_menu, window, cx);
     }
@@ -109,8 +108,6 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        println!("🚀 Requesting completions from rust-analyzer at offset {}", new_offset);
-
         // Create or get the menu
         let menu = existing_menu.unwrap_or_else(|| {
             let new_menu = CompletionMenu::new(cx.entity(), window, cx);

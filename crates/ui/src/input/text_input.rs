@@ -157,7 +157,7 @@ impl TextInput {
         input_state: &Entity<InputState>,
         state: &InputState,
         window: &Window,
-        _cx: &App,
+        cx: &App,
     ) -> impl IntoElement {
         let base_size = window.text_style().font_size;
         let rem_size = window.rem_size();
@@ -182,6 +182,9 @@ impl TextInput {
         };
 
         const MIN_SCROLL_PADDING: Pixels = px(2.0);
+        
+        // Determine if we should show minimap
+        let show_minimap = state.show_minimap && state.mode.is_code_editor();
 
         v_flex()
             .size_full()
@@ -203,13 +206,14 @@ impl TextInput {
                         &last_layout
                     );
 
+                    // Always use standard scrollbar for interaction
                     let scrollbar = if !state.soft_wrap {
                         Scrollbar::both(&state.scroll_state, &state.scroll_handle)
                     } else {
                         Scrollbar::vertical(&state.scroll_state, &state.scroll_handle)
                     };
 
-                    this.relative().child(
+                    let mut container = this.relative().child(
                         div()
                             .absolute()
                             .top(-paddings.top + MIN_SCROLL_PADDING)
@@ -217,7 +221,70 @@ impl TextInput {
                             .right(-paddings.right + MIN_SCROLL_PADDING)
                             .bottom(-paddings.bottom + MIN_SCROLL_PADDING)
                             .child(scrollbar.scroll_size(scroll_size)),
-                    )
+                    );
+                    
+                    // Add minimap overlay if enabled
+                    if show_minimap {
+                        use super::minimap::{MinimapConfig, render_minimap_content, render_viewport_indicator, calculate_viewport_indicator};
+                        use gpui::{Bounds, point, size};
+                        use ropey::LineType;
+                        
+                        let total_lines = state.text.len_lines(ropey::LineType::LF);
+                        let visible_range = last_layout.visible_range.clone();
+                        let config = MinimapConfig::default();
+                        
+                        // Calculate minimap bounds
+                        let minimap_bounds = Bounds::new(
+                            point(px(0.0), px(0.0)),
+                            size(config.width, px(100.0)),
+                        );
+                        
+                        // Render minimap content lines
+                        let minimap_content_elements = render_minimap_content(
+                            &state.text,
+                            visible_range.clone(),
+                            total_lines,
+                            &config,
+                            minimap_bounds,
+                        );
+                        
+                        container = container.child(
+                            div()
+                                .absolute()
+                                .right_0()
+                                .top_0()
+                                .w(config.width)
+                                .h_full()
+                                .bg(cx.theme().secondary.opacity(0.3))
+                                .rounded_md()
+                                .overflow_hidden()
+                                .children(minimap_content_elements)
+                                .child(
+                                    // Viewport indicator showing current scroll position
+                                    div()
+                                        .id("minimap-indicator")
+                                        .absolute()
+                                        .w_full()
+                                        .border_2()
+                                        .border_color(cx.theme().accent)
+                                        .bg(cx.theme().accent.opacity(0.15))
+                                        .rounded_sm()
+                                        // Position calculated based on scroll position
+                                        .when(total_lines > 0, |div| {
+                                            let start_ratio = visible_range.start as f32 / total_lines as f32;
+                                            let height_ratio = (visible_range.len() as f32 / total_lines as f32).min(1.0);
+                                            let min_height_px = 20.0;
+                                            let calculated_height = height_ratio.max(min_height_px / 100.0); // Convert to relative
+                                            
+                                            div
+                                                .top(relative(start_ratio))
+                                                .h(relative(calculated_height))
+                                        })
+                                )
+                        );
+                    }
+                    
+                    container
                 } else {
                     this
                 }

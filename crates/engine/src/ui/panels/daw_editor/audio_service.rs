@@ -7,10 +7,11 @@ use super::real_time_audio::{AudioCommand, AudioMessage, RealTimeAudio};
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use std::marker::Send;
 
 /// Main DAW audio service
 pub struct AudioService {
-    audio_graph: Arc<RwLock<AudioGraph>>,
+    audio_graph: Arc<parking_lot::RwLock<AudioGraph>>,
     real_time_audio: Arc<RealTimeAudio>,
     asset_manager: Arc<AssetManager>,
     gpu_dsp: Arc<RwLock<Option<GpuDsp>>>,
@@ -18,14 +19,34 @@ pub struct AudioService {
     performance_metrics: Arc<RwLock<PerformanceMetrics>>,
 }
 
+/// Thread-safe position monitor that can be cloned and sent across threads
+#[derive(Clone)]
+pub struct PositionMonitor {
+    real_time_audio: Arc<RealTimeAudio>,
+}
+
+impl PositionMonitor {
+    pub fn get_position(&self) -> SampleTime {
+        self.real_time_audio.get_position()
+    }
+
+    pub fn get_transport(&self) -> Transport {
+        self.real_time_audio.get_transport()
+    }
+}
+
+// Implement Send + Sync for PositionMonitor (safe because RealTimeAudio methods are thread-safe)
+unsafe impl Send for PositionMonitor {}
+unsafe impl Sync for PositionMonitor {}
+
 impl AudioService {
     pub async fn new() -> Result<Self> {
         let asset_manager = Arc::new(AssetManager::new());
-        let audio_graph = Arc::new(RwLock::new(AudioGraph::new(asset_manager.as_ref().clone())));
-        
-        let real_time_audio = Arc::new(RealTimeAudio::new()?);
+        let audio_graph = Arc::new(parking_lot::RwLock::new(AudioGraph::new(asset_manager.as_ref().clone())));
+
+        let real_time_audio = Arc::new(RealTimeAudio::new(audio_graph.clone())?);
         let transport = Arc::new(parking_lot::RwLock::new(Transport::default()));
-        
+
         let gpu_dsp = match GpuDsp::new().await {
             Ok(dsp) => Arc::new(RwLock::new(Some(dsp))),
             Err(e) => {
@@ -49,17 +70,17 @@ impl AudioService {
     }
 
     pub async fn add_track(&self, track: Track) -> TrackId {
-        let mut graph = self.audio_graph.write().await;
+        let mut graph = self.audio_graph.write();
         graph.add_track(track)
     }
 
     pub async fn remove_track(&self, id: TrackId) {
-        let mut graph = self.audio_graph.write().await;
+        let mut graph = self.audio_graph.write();
         graph.remove_track(id);
     }
 
     pub async fn get_track(&self, id: TrackId) -> Option<Track> {
-        let graph = self.audio_graph.read().await;
+        let graph = self.audio_graph.read();
         graph.get_track(id).cloned()
     }
 
@@ -67,25 +88,25 @@ impl AudioService {
     where
         F: FnOnce(&mut Track),
     {
-        let mut graph = self.audio_graph.write().await;
+        let mut graph = self.audio_graph.write();
         if let Some(track) = graph.get_track_mut(id) {
             f(track);
         }
     }
 
     pub async fn get_all_tracks(&self) -> Vec<Track> {
-        let graph = self.audio_graph.read().await;
+        let graph = self.audio_graph.read();
         graph.get_all_tracks().into_iter().cloned().collect()
     }
 
     pub async fn get_master_track(&self) -> Track {
-        let graph = self.audio_graph.read().await;
+        let graph = self.audio_graph.read();
         graph.get_master_track().clone()
     }
 
     pub async fn set_master_volume(&self, volume: f32) -> Result<()> {
         {
-            let mut graph = self.audio_graph.write().await;
+            let mut graph = self.audio_graph.write();
             graph.get_master_track_mut().volume = volume;
         }
         self.real_time_audio
@@ -94,7 +115,7 @@ impl AudioService {
 
     pub async fn set_track_volume(&self, track_id: TrackId, volume: f32) -> Result<()> {
         {
-            let mut graph = self.audio_graph.write().await;
+            let mut graph = self.audio_graph.write();
             if let Some(track) = graph.get_track_mut(track_id) {
                 track.volume = volume;
             }
@@ -105,7 +126,7 @@ impl AudioService {
 
     pub async fn set_track_pan(&self, track_id: TrackId, pan: f32) -> Result<()> {
         {
-            let mut graph = self.audio_graph.write().await;
+            let mut graph = self.audio_graph.write();
             if let Some(track) = graph.get_track_mut(track_id) {
                 track.pan = pan;
             }
@@ -116,7 +137,7 @@ impl AudioService {
 
     pub async fn set_track_mute(&self, track_id: TrackId, muted: bool) -> Result<()> {
         {
-            let mut graph = self.audio_graph.write().await;
+            let mut graph = self.audio_graph.write();
             if let Some(track) = graph.get_track_mut(track_id) {
                 track.muted = muted;
             }
@@ -127,7 +148,7 @@ impl AudioService {
 
     pub async fn set_track_solo(&self, track_id: TrackId, solo: bool) -> Result<()> {
         {
-            let mut graph = self.audio_graph.write().await;
+            let mut graph = self.audio_graph.write();
             if let Some(track) = graph.get_track_mut(track_id) {
                 track.solo = solo;
             }
@@ -177,6 +198,13 @@ impl AudioService {
         self.real_time_audio.get_position()
     }
 
+    /// Get a thread-safe position monitor that can be sent across threads
+    pub fn get_position_monitor(&self) -> PositionMonitor {
+        PositionMonitor {
+            real_time_audio: self.real_time_audio.clone(),
+        }
+    }
+
     pub async fn load_asset(&self, path: std::path::PathBuf) -> Result<Arc<AudioAssetData>> {
         self.asset_manager.load_asset(path).await
     }
@@ -186,7 +214,7 @@ impl AudioService {
         track_id: TrackId,
         clip: AudioClip,
     ) -> Result<()> {
-        let mut graph = self.audio_graph.write().await;
+        let mut graph = self.audio_graph.write();
         if let Some(track) = graph.get_track_mut(track_id) {
             track.clips.push(clip);
             Ok(())
@@ -200,7 +228,7 @@ impl AudioService {
         track_id: TrackId,
         clip_id: ClipId,
     ) -> Result<()> {
-        let mut graph = self.audio_graph.write().await;
+        let mut graph = self.audio_graph.write();
         if let Some(track) = graph.get_track_mut(track_id) {
             track.clips.retain(|c| c.id != clip_id);
             Ok(())
@@ -215,7 +243,7 @@ impl AudioService {
         parameter: AutomationParameter,
         point: AutomationPoint,
     ) -> Result<()> {
-        let mut graph = self.audio_graph.write().await;
+        let mut graph = self.audio_graph.write();
         if let Some(track) = graph.get_track_mut(track_id) {
             track.get_automation_lane_mut(parameter).add_point(point);
             Ok(())
@@ -230,7 +258,7 @@ impl AudioService {
         parameter: AutomationParameter,
         point_id: AutomationId,
     ) -> Result<()> {
-        let mut graph = self.audio_graph.write().await;
+        let mut graph = self.audio_graph.write();
         if let Some(track) = graph.get_track_mut(track_id) {
             track.get_automation_lane_mut(parameter).remove_point(point_id);
             Ok(())
@@ -240,12 +268,12 @@ impl AudioService {
     }
 
     pub async fn get_track_meter(&self, track_id: TrackId) -> Option<MeterData> {
-        let graph = self.audio_graph.read().await;
+        let graph = self.audio_graph.read();
         graph.get_track_meter(track_id)
     }
 
     pub async fn get_master_meter(&self) -> MeterData {
-        let graph = self.audio_graph.read().await;
+        let graph = self.audio_graph.read();
         graph.get_master_meter()
     }
 
@@ -295,9 +323,9 @@ mod tests {
         if let Ok(service) = AudioService::new().await {
             let track = Track::new("Test", TrackType::Audio);
             let id = service.add_track(track).await;
-            
+
             assert!(service.get_track(id).await.is_some());
-            
+
             service.remove_track(id).await;
             assert!(service.get_track(id).await.is_none());
         }

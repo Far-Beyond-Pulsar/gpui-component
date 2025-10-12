@@ -36,6 +36,7 @@ tracing = "0.1.41"
 notify = "7.0.0"
 lsp-types = "0.97.0"
 directories = "5"
+itertools = "0.13"
 
 [workspace.dependencies.windows]
 features = ["Wdk", "Wdk_System", "Wdk_System_SystemServices", "Win32_System_Threading", "Win32_System_SystemInformation"]

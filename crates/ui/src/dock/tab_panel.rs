@@ -72,26 +72,28 @@ impl Render for DragPanel {
             .cursor_grab()
             .py_1()
             .px_3()
-            .w_24()
+            .min_w_24()
+            .max_w_64()
             .overflow_hidden()
             .whitespace_nowrap()
-            .border_1()
             .rounded(cx.theme().radius)
             .when(is_outside_bounds, |this| {
-                // Visual feedback for creating new window
+                // Visual feedback for creating new window - make it look like a floating window
                 this.border_2()
-                    .border_color(cx.theme().primary)
+                    .border_color(cx.theme().accent)
                     .text_color(cx.theme().primary_foreground)
-                    .bg(cx.theme().primary)
-                    .opacity(0.9)
-                    .shadow_lg()
+                    .bg(cx.theme().accent)
+                    .opacity(0.95)
+                    .shadow_2xl()
             })
             .when(!is_outside_bounds, |this| {
-                // Normal drag appearance
-                this.border_color(cx.theme().border)
+                // Normal drag appearance - subtle ghost-like
+                this.border_1()
+                    .border_color(cx.theme().border)
                     .text_color(cx.theme().tab_foreground)
                     .bg(cx.theme().tab_active)
-                    .opacity(0.75)
+                    .opacity(0.8)
+                    .shadow_md()
             })
             .child(self.panel.title(window, cx))
     }
@@ -449,9 +451,37 @@ impl TabPanel {
 
     /// Return true if the tab panel is draggable.
     ///
-    /// E.g. if the parent and self only have one panel, it is not draggable.
+    /// Tabs are draggable unless:
+    /// - The dock area is locked
+    /// - The panel is zoomed
+    /// - It's the last panel in a stack with a parent (prevents breaking the layout)
+    ///
+    /// Note: Single tabs without a parent stack are draggable to allow creating new windows.
     fn draggable(&self, cx: &App) -> bool {
-        !self.is_locked(cx) && !self.is_last_panel(cx)
+        let Some(dock_area) = self.dock_area.upgrade() else {
+            return false;
+        };
+
+        if dock_area.read(cx).is_locked() {
+            return false;
+        }
+
+        if self.zoomed {
+            return false;
+        }
+
+        // If we have a stack panel parent, check if we're the last panel
+        // (don't allow dragging the last panel as it would break the layout)
+        if let Some(parent) = &self.stack_panel {
+            if let Some(stack_panel) = parent.upgrade() {
+                if stack_panel.read(cx).is_last_panel(cx) && self.panels.len() <= 1 {
+                    return false;
+                }
+            }
+        }
+
+        // Allow dragging for all other cases (including single tabs without parent)
+        true
     }
 
     /// Return true if the tab panel is droppable.
@@ -804,7 +834,12 @@ impl TabPanel {
                                 )
                                 .on_drag_move(cx.listener(|this, event: &DragMoveEvent<DragPanel>, window, cx| {
                                     // Track mouse position to detect when dragging outside window
-                                    this.check_drag_outside_window(event.event.position, window, cx);
+                                    let is_outside = this.check_drag_outside_window(event.event.position, window, cx);
+
+                                    // Clear split placement when dragging outside window
+                                    if is_outside {
+                                        this.will_split_placement = None;
+                                    }
                                 }))
                             })
                             .when(state.droppable, |this| {
@@ -1014,6 +1049,9 @@ impl TabPanel {
     /// NOTE: This creates a minimal window container. The panel itself maintains its
     /// references to shared services (like rust analyzer) from the main window,
     /// so there's no duplication of services.
+    ///
+    /// The window is positioned so the tab bar appears directly under the cursor,
+    /// giving the impression that the tab "follows" the mouse during the drag.
     fn create_window_with_panel(
         panel: Arc<dyn PanelView>,
         position: Point<Pixels>,
@@ -1022,11 +1060,15 @@ impl TabPanel {
     ) {
         let window_size = size(px(800.), px(600.));
 
-        // Position window at cursor, adjusted so cursor is on the tab bar
+        // Approximate height of title bar in the new window
+        let title_bar_height = px(36.0);
+
+        // Position window so the cursor is over the tab area (just below title bar)
+        // This creates the illusion that the tab is "stuck" to the cursor
         let window_bounds = Bounds::new(
             Point {
-                x: position.x - px(100.0),
-                y: position.y - px(30.0),
+                x: position.x - px(100.0), // Offset horizontally so cursor is near tab start
+                y: position.y - title_bar_height - px(4.0), // Offset so cursor is on the tab itself
             },
             window_size,
         );

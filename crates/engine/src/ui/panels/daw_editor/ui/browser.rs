@@ -359,6 +359,7 @@ fn render_audio_file_item(
         // Handle click to start drag
         .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _event: &MouseDownEvent, _window, cx| {
             // Set drag state
+            eprintln!("🎵 Starting drag for file: {} at path: {:?}", file_name_for_closure, file_path);
             this.state.drag_state = DragState::DraggingFile {
                 file_path: file_path.clone(),
                 file_name: file_name_for_closure.clone(),

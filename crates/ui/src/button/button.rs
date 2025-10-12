@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use crate::{
     h_flex, indicator::Indicator, tooltip::Tooltip, ActiveTheme, Colorize as _, Disableable,
     FocusableExt as _, Icon, Selectable, Sizable, Size, StyleSized, StyledExt,
@@ -10,6 +8,7 @@ use gpui::{
     Pixels, RenderOnce, SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement,
     Styled, Window,
 };
+use std::rc::Rc;
 
 #[derive(Default, Clone, Copy)]
 pub enum ButtonRounded {

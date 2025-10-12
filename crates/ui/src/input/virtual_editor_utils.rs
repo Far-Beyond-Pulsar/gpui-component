@@ -44,7 +44,7 @@ impl Default for VirtualEditorConfig {
             tab_size: 4,
             font_size: px(14.0),
             line_height: 1.5,
-            buffer_lines: 5,
+            buffer_lines: 2, // Minimal buffer - only render visible + 2 lines above/below
             max_cache_size: 500,
         }
     }
@@ -52,8 +52,8 @@ impl Default for VirtualEditorConfig {
 
 /// Calculate the visible range of lines based on scroll offset and viewport height.
 ///
-/// This is the core virtualization algorithm that determines which lines
-/// need to be rendered.
+/// This is the studio-quality virtualization algorithm that determines which lines
+/// need to be rendered with pixel-perfect accuracy.
 ///
 /// # Arguments
 ///
@@ -75,9 +75,9 @@ impl Default for VirtualEditorConfig {
 ///     px(400.0),                    // 400px viewport
 ///     px(20.0),                     // 20px per line
 ///     10000,                        // 10k total lines
-///     5                             // 5 line buffer
+///     2                             // 2 line buffer (minimal)
 /// );
-/// // visible_range might be 5..30 (20 visible + 10 buffer)
+/// // visible_range might be 8..23 (15 visible + 4 buffer total)
 /// ```
 pub fn calculate_visible_range(
     scroll_offset: Point<Pixels>,
@@ -90,14 +90,34 @@ pub fn calculate_visible_range(
         return 0..0;
     }
     
-    // Calculate first and last visible line
+    // Calculate first and last visible line with pixel-perfect precision
     let scroll_top = scroll_offset.y.abs();
-    let first_visible = (scroll_top / line_height).floor() as usize;
-    let last_visible = ((scroll_top + viewport_height) / line_height).ceil() as usize;
     
-    // Add buffer zone for smooth scrolling
+    // Use floor for first visible to ensure we render from the first partially visible line
+    // This ensures smooth rendering even at fractional scroll positions
+    let first_visible = (scroll_top / line_height).floor() as usize;
+    
+    // Calculate exactly how many lines fit in the viewport
+    // Use ceil to capture the last partially visible line
+    let visible_line_count = (viewport_height / line_height).ceil() as usize;
+    let last_visible = first_visible + visible_line_count;
+    
+    // Add minimal buffer zone - only what's needed for smooth high-speed scrolling
+    // This is the key to performance: only render what you see + tiny buffer
     let start = first_visible.saturating_sub(buffer_lines);
-    let end = min(last_visible + buffer_lines, total_lines);
+    let end = (last_visible + buffer_lines).min(total_lines);
+    
+    // Ensure we have at least one line to render
+    if start >= end {
+        return start..(start + 1).min(total_lines);
+    }
+    
+    // CRITICAL: Cap the maximum range to prevent rendering too many lines at once
+    // This handles edge cases like very small line heights or zoom
+    const MAX_VISIBLE_LINES: usize = 200; // Sensible maximum for any normal viewport
+    if end - start > MAX_VISIBLE_LINES {
+        return start..(start + MAX_VISIBLE_LINES);
+    }
     
     start..end
 }
@@ -122,6 +142,37 @@ pub fn calculate_content_size(
     Size {
         width: max_line_width,
         height,
+    }
+}
+
+/// Calculate optimal buffer size based on scroll velocity for high-speed scrolling.
+/// 
+/// When scrolling fast, we want to render a bit more to avoid blank frames.
+/// When scrolling slowly or not at all, minimize buffer to save performance.
+///
+/// # Arguments
+///
+/// * `scroll_velocity` - Pixels per second scrolling speed (absolute value)
+/// * `base_buffer` - Base buffer lines from config
+///
+/// # Returns
+///
+/// Optimal buffer line count
+pub fn calculate_adaptive_buffer(
+    scroll_velocity: f32,
+    base_buffer: usize,
+) -> usize {
+    // If scrolling very fast (> 2000 px/s), double the buffer
+    if scroll_velocity.abs() > 2000.0 {
+        base_buffer * 2
+    }
+    // If scrolling moderately (> 500 px/s), add 50% more buffer
+    else if scroll_velocity.abs() > 500.0 {
+        base_buffer + (base_buffer / 2)
+    }
+    // Otherwise use base buffer
+    else {
+        base_buffer
     }
 }
 

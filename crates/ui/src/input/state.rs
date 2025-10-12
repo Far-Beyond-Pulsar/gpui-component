@@ -315,6 +315,9 @@ pub struct InputState {
     /// Optimized line cache for improved rendering performance
     pub(super) line_cache: crate::input::line_cache::OptimizedLineCache,
 
+    /// Whether to show VSCode-style minimap scrollbar
+    pub(super) show_minimap: bool,
+
     /// Popover
     diagnostic_popover: Option<Entity<DiagnosticPopover>>,
     /// Completion/CodeAction context menu
@@ -411,6 +414,7 @@ impl InputState {
             placeholder: SharedString::default(),
             mask_pattern: MaskPattern::default(),
             line_cache: crate::input::line_cache::OptimizedLineCache::default(),
+            show_minimap: false,
             lsp: Lsp::default(),
             diagnostic_popover: None,
             context_menu: None,
@@ -497,6 +501,13 @@ impl InputState {
         if let InputMode::CodeEditor { line_number: l, .. } = &mut self.mode {
             *l = line_number;
         }
+        self
+    }
+
+    /// Enable VSCode-style minimap scrollbar for large files.
+    /// Only works in code editor mode.
+    pub fn minimap(mut self, show_minimap: bool) -> Self {
+        self.show_minimap = show_minimap;
         self
     }
 

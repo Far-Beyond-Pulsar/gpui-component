@@ -51,6 +51,8 @@ pub fn render_timeline(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> im
 fn render_ruler(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     let _tempo = state.project.as_ref().map(|p| p.transport.tempo).unwrap_or(120.0);
     let _zoom = state.viewport.zoom;
+    let horizontal_scroll_handle = state.timeline_scroll_handle.clone();
+    let view = cx.entity().clone();
 
     h_flex()
         .w_full()
@@ -76,56 +78,109 @@ fn render_ruler(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElem
                         .child("TRACKS")
                 )
         )
-        // Timeline ruler with beat markings
+        // Timeline ruler with beat markings - now scrollable!
         .child(
             div()
                 .flex_1()
                 .h_full()
                 .relative()
-                .child(render_ruler_markings(state, cx))
+                .overflow_hidden()
+                .child(
+                    h_virtual_list(
+                        view,
+                        "ruler",
+                        {
+                            let total_width = state.beats_to_pixels(500.0);
+                            let segment_width = 100.0;
+                            let num_segments = (total_width / segment_width).ceil() as usize;
+                            Rc::new(
+                                (0..num_segments).map(|_| Size {
+                                    width: px(segment_width),
+                                    height: px(TIMELINE_HEADER_HEIGHT),
+                                }).collect()
+                            )
+                        },
+                        move |panel, visible_range, _window, cx| {
+                            let total_width = panel.state.beats_to_pixels(500.0);
+                            let segment_width = 100.0;
+                            
+                            visible_range.into_iter().map(|segment_idx| {
+                                let start_x = segment_idx as f32 * segment_width;
+                                render_ruler_segment(&panel.state, start_x, segment_width, total_width, cx)
+                            }).collect()
+                        },
+                    )
+                    .track_scroll(&horizontal_scroll_handle)
+                )
         )
 }
 
-fn render_ruler_markings(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
-    let zoom = state.viewport.zoom;
-    let total_beats = 500.0; // Total beats in project
-    let total_width = state.beats_to_pixels(total_beats);
-
+/// Render a segment of the ruler for horizontal virtual scrolling
+fn render_ruler_segment(
+    state: &DawUiState,
+    start_x: f32,
+    segment_width: f32,
+    total_width: f32,
+    cx: &mut Context<DawPanel>,
+) -> impl IntoElement {
     div()
+        .w(px(segment_width))
         .h_full()
-        .w(px(total_width))
         .relative()
-        // Render beat markings
-        .children((0..=125).map(|bar| {  // 500 beats / 4 = 125 bars
-            let beat = (bar * 4) as f64;
-            let x = state.beats_to_pixels(beat);
-
+        .bg(cx.theme().muted)
+        // Render beat markings that intersect with this segment
+        .child(
             div()
                 .absolute()
-                .left(px(x))
+                .left(px(-start_x))  // Offset to account for segment position
+                .top_0()
+                .w(px(total_width))  // Full timeline width
                 .h_full()
-                .child(
-                    v_flex()
-                        .h_full()
-                        .child(
-                            div()
-                                .px_2()
-                                .text_xs()
-                                .font_family("monospace")
-                                .text_color(cx.theme().foreground)
-                                .child(format!("{}", bar + 1))
-                        )
-                        .child(
-                            div()
-                                .w_px()
-                                .flex_1()
-                                .bg(cx.theme().border)
-                        )
-                )
-        }))
-        // Playhead
-        .child(render_playhead(state, cx))
+                .children((0..=125).filter_map(|bar| {  // 500 beats / 4 = 125 bars
+                    let beat = (bar * 4) as f64;
+                    let x = state.beats_to_pixels(beat);
+                    
+                    // Only render if bar marking intersects with this segment
+                    if x >= start_x && x < start_x + segment_width {
+                        Some(div()
+                            .absolute()
+                            .left(px(x))
+                            .h_full()
+                            .child(
+                                v_flex()
+                                    .h_full()
+                                    .child(
+                                        div()
+                                            .px_2()
+                                            .text_xs()
+                                            .font_family("monospace")
+                                            .text_color(cx.theme().foreground)
+                                            .child(format!("{}", bar + 1))
+                                    )
+                                    .child(
+                                        div()
+                                            .w_px()
+                                            .flex_1()
+                                            .bg(cx.theme().border)
+                                    )
+                            ))
+                    } else {
+                        None
+                    }
+                }))
+        )
+        // Playhead (full width, offset to account for segment position)
+        .child(
+            div()
+                .absolute()
+                .left(px(-start_x))  // Offset to account for segment position
+                .top_0()
+                .w(px(total_width))  // Full timeline width
+                .h_full()
+                .child(render_playhead(state, cx))
+        )
 }
+
 
 fn render_playhead(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     let x = state.beats_to_pixels(state.selection.playhead_position);
@@ -411,6 +466,7 @@ fn render_drop_zone(
     div()
         .absolute()
         .inset_0()
+        // Make sure we capture pointer events when dragging
         .when(is_drag_target, |d| {
             d.border_2()
                 .border_color(cx.theme().accent.opacity(0.3))
@@ -418,7 +474,9 @@ fn render_drop_zone(
         })
         // Handle mouse up to drop files onto track
         .on_mouse_up(gpui::MouseButton::Left, cx.listener(move |this, event: &MouseUpEvent, _window, cx| {
+            eprintln!("🖱️ Mouse up on track {} with drag state: {:?}", track_id, this.state.drag_state);
             if let DragState::DraggingFile { file_path, file_name } = &this.state.drag_state.clone() {
+                eprintln!("📁 Dropping file '{}' onto track {}", file_name, track_id);
                 // Convert window position to element-local position
                 let element_pos = DawPanel::window_to_timeline_pos(event.position, this);
                 let mouse_x = element_pos.x.as_f32();
@@ -437,25 +495,133 @@ fn render_drop_zone(
                     beat
                 };
 
-                // Create new clip
-                if let Some(project) = &mut this.state.project {
-                    if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id) {
-                        // Convert beats to samples: samples = beats * 60 * sample_rate / tempo
-                        let start_time = ((snapped_beat * 60.0 * SAMPLE_RATE as f64) / tempo as f64) as u64;
-                        let duration = ((10.0 * 60.0 * SAMPLE_RATE as f64) / tempo as f64) as u64; // 10 beats duration
-                        
-                        let clip = crate::ui::panels::daw_editor::audio_types::AudioClip::new(
-                            file_path.clone(),
-                            start_time,
-                            duration,
-                        );
-                        track.clips.push(clip);
-                        eprintln!("📎 Created clip '{}' at beat {} on track '{}'",
-                            file_name, snapped_beat, track.name);
-                    }
+                let file_path_clone = file_path.clone();
+                let file_name_clone = file_name.clone();
+                let snapped_beat_val = snapped_beat;
+                let tempo_val = tempo;
+                let track_id_val = track_id;
+
+                // Check if audio service exists before spawning
+                let has_service = this.state.audio_service.is_some();
+                eprintln!("🔍 Audio service available: {}", has_service);
+
+                if !has_service {
+                    eprintln!("❌ No audio service - cannot load audio file");
+                    // Clear drag state
+                    this.state.drag_state = DragState::None;
+                    cx.notify();
+                    return;
                 }
 
-                // Clear drag state
+                // Load audio file asynchronously to get real duration
+                cx.spawn(async move |this, mut cx| {
+                    eprintln!("🔄 Async task started for loading audio file");
+
+                    // Get the audio service
+                    let service = match cx.update(|cx| {
+                        this.update(cx, |this, _cx| {
+                            this.state.audio_service.clone()
+                        })
+                    }) {
+                        Ok(Ok(Some(svc))) => svc,
+                        _ => {
+                            eprintln!("❌ Failed to get audio service in async task");
+                            return;
+                        }
+                    };
+
+                    eprintln!("📂 Loading audio file: {:?}", file_path_clone);
+                    match service.load_asset(file_path_clone.clone()).await {
+                            Ok(asset) => {
+                                let duration_samples = asset.asset_ref.duration_samples as u64;
+                                eprintln!("✅ Audio file loaded successfully: {} samples", duration_samples);
+
+                                // Update UI with the clip using real duration
+                                cx.update(|cx| {
+                                    this.update(cx, |this, cx| {
+                                        // Cache the loaded asset
+                                        this.state.loaded_assets.insert(file_path_clone.clone(), asset);
+
+                                        // Create new clip with real duration
+                                        if let Some(project) = &mut this.state.project {
+                                            if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id_val) {
+                                                // Convert beats to samples for start time
+                                                let start_time = ((snapped_beat_val * 60.0 * SAMPLE_RATE as f64) / tempo_val as f64) as u64;
+
+                                                let clip = crate::ui::panels::daw_editor::audio_types::AudioClip::new(
+                                                    file_path_clone.clone(),
+                                                    start_time,
+                                                    duration_samples,
+                                                );
+
+                                                let clip_clone = clip.clone();
+                                                track.clips.push(clip);
+
+                                                let duration_beats = (duration_samples as f64 * tempo_val as f64) / (60.0 * SAMPLE_RATE as f64);
+                                                eprintln!("📎 Created clip '{}' at beat {} on track '{}' (duration: {:.2} beats, {} samples)",
+                                                    file_name_clone, snapped_beat_val, track.name, duration_beats, duration_samples);
+
+                                                // IMPORTANT: Add clip to audio service's graph too!
+                                                if let Some(ref service) = this.state.audio_service {
+                                                    let service = service.clone();
+                                                    let track_id = track_id_val;
+                                                    cx.spawn(async move |_this, _cx| {
+                                                        if let Err(e) = service.add_clip_to_track(track_id, clip_clone).await {
+                                                            eprintln!("❌ Failed to add clip to audio service: {}", e);
+                                                        } else {
+                                                            eprintln!("✅ Added clip to audio service graph");
+                                                        }
+                                                    }).detach();
+                                                }
+                                            }
+                                        }
+                                        cx.notify();
+                                    }).ok();
+                                }).ok();
+                            }
+                            Err(e) => {
+                                eprintln!("❌ Failed to load audio file '{}': {}", file_name_clone, e);
+
+                                // Fallback: create clip with default duration
+                                cx.update(|cx| {
+                                    this.update(cx, |this, cx| {
+                                        if let Some(project) = &mut this.state.project {
+                                            if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id_val) {
+                                                let start_time = ((snapped_beat_val * 60.0 * SAMPLE_RATE as f64) / tempo_val as f64) as u64;
+                                                let duration = ((10.0 * 60.0 * SAMPLE_RATE as f64) / tempo_val as f64) as u64; // Fallback: 10 beats
+
+                                                let clip = crate::ui::panels::daw_editor::audio_types::AudioClip::new(
+                                                    file_path_clone.clone(),
+                                                    start_time,
+                                                    duration,
+                                                );
+                                                let clip_clone = clip.clone();
+                                                track.clips.push(clip);
+                                                eprintln!("📎 Created clip '{}' at beat {} with fallback duration (failed to load audio)",
+                                                    file_name_clone, snapped_beat_val);
+
+                                                // Add to audio service even if load failed (will try again at playback)
+                                                if let Some(ref service) = this.state.audio_service {
+                                                    let service = service.clone();
+                                                    let track_id = track_id_val;
+                                                    cx.spawn(async move |_this, _cx| {
+                                                        if let Err(e) = service.add_clip_to_track(track_id, clip_clone).await {
+                                                            eprintln!("❌ Failed to add clip to audio service: {}", e);
+                                                        } else {
+                                                            eprintln!("✅ Added clip to audio service graph (fallback)");
+                                                        }
+                                                    }).detach();
+                                                }
+                                            }
+                                        }
+                                        cx.notify();
+                                    }).ok();
+                                }).ok();
+                            }
+                    }
+                }).detach();
+
+                // Clear drag state immediately
                 this.state.drag_state = DragState::None;
                 cx.notify();
             }
@@ -520,13 +686,33 @@ fn render_drop_zone(
                     snapped_beat, new_beat);
 
                 // Finalize clip position
-                if let Some(project) = &mut this.state.project {
+                let updated_clip = if let Some(project) = &mut this.state.project {
                     if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id) {
                         if let Some(clip) = track.clips.iter_mut().find(|c| c.id == *clip_id) {
                             clip.set_start_beat(snapped_beat, tempo);
                             eprintln!("✅ Final clip position: beat {}",
                                 snapped_beat);
-                        }
+                            Some(clip.clone())
+                        } else { None }
+                    } else { None }
+                } else { None };
+
+                // Sync updated clip to audio service
+                if let Some(clip) = updated_clip {
+                    if let Some(ref service) = this.state.audio_service {
+                        let service = service.clone();
+                        let track_id_copy = track_id;
+                        cx.spawn(async move |_this, _cx| {
+                            // Remove old clip and add updated one
+                            if let Err(e) = service.remove_clip_from_track(track_id_copy, clip.id).await {
+                                eprintln!("❌ Failed to remove old clip from audio service: {}", e);
+                            }
+                            if let Err(e) = service.add_clip_to_track(track_id_copy, clip).await {
+                                eprintln!("❌ Failed to add updated clip to audio service: {}", e);
+                            } else {
+                                eprintln!("✅ Updated clip position in audio service");
+                            }
+                        }).detach();
                     }
                 }
 

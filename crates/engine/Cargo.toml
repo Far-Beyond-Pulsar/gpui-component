@@ -3,7 +3,7 @@ edition = "2021"
 name = "pulsar_engine"
 description = "A modern high-performance game engine written in Rust"
 publish = false
-version = "0.1.32"
+version = "0.1.33"
 
 [profile.dev.package."*"]
 opt-level = 3
@@ -50,11 +50,18 @@ pulsar_std = { path = "../pulsar_std" }
 cpal = "0.15"      # Audio I/O library
 hound = "3.5"
 lewton = "0.10"
-claxon = "0.4"   
+claxon = "0.4"
+minimp3 = "0.5"    # MP3 decoder
 crossbeam = "0.8.4"  # Concurrency utilities
 wgpu = "0.20"      # GPU compute and rendering
 bytemuck = { version = "1.14", features = ["derive"] }
 ron = "0.8"
+futures = "0.3"    # Async primitives for GPUI compatibility
+portable-pty = "0.8"  # PTY support for terminal emulator
+which = "6"  # Find executables in PATH
+alacritty_terminal = { git = "https://github.com/zed-industries/alacritty.git", branch = "add-hush-login-flag" }  # Professional terminal emulator
+itertools.workspace = true  # Iterator utilities
+libc = "0.2"  # Low-level system calls for PTY
 
 [dev-dependencies]
 tempfile = "3.8"

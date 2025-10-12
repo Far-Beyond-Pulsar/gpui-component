@@ -11,14 +11,17 @@ mod recent_projects;
 pub use assets::Assets;
 use serde::Deserialize;
 
-// Compile-time info from Cargo.toml
-pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const ENGINE_NAME: &str = env!("CARGO_PKG_NAME");
-pub const ENGINE_AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
-pub const ENGINE_DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
-pub const ENGINE_HOMEPAGE: &str = env!("CARGO_PKG_HOMEPAGE");
-pub const ENGINE_REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
-pub const ENGINE_LICENSE: &str = env!("CARGO_PKG_LICENSE");
+// +--------------------------------------------+
+// |  Compile-time engine info from Cargo.toml  |
+// +--------------------------------------------+
+
+pub const ENGINE_NAME:         &str = env!("CARGO_PKG_NAME");
+pub const ENGINE_LICENSE:      &str = env!("CARGO_PKG_LICENSE");
+pub const ENGINE_AUTHORS:      &str = env!("CARGO_PKG_AUTHORS");
+pub const ENGINE_VERSION:      &str = env!("CARGO_PKG_VERSION");
+pub const ENGINE_HOMEPAGE:     &str = env!("CARGO_PKG_HOMEPAGE");
+pub const ENGINE_REPOSITORY:   &str = env!("CARGO_PKG_REPOSITORY");
+pub const ENGINE_DESCRIPTION:  &str = env!("CARGO_PKG_DESCRIPTION");
 pub const ENGINE_LICENSE_FILE: &str = env!("CARGO_PKG_LICENSE_FILE");
 
 // pub mod renderer;
@@ -28,6 +31,10 @@ pub mod themes;
 use gpui::Action;
 use gpui::SharedString;
 use gpui_component::scroll::ScrollbarShow;
+
+// +----------------------------------+
+// |   Actions for settings changes   |
+// +----------------------------------+
 
 #[derive(Action, Clone, PartialEq, Eq, Deserialize)]
 #[action(namespace = story, no_json)]
@@ -71,8 +78,8 @@ fn main() {
     let proj_dirs = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
         .expect("Could not determine app data directory");
     let appdata_dir = proj_dirs.data_dir();
-    let themes_dir = appdata_dir.join("themes");
-    let config_dir = appdata_dir.join("configs");
+    let themes_dir  = appdata_dir.join("themes");
+    let config_dir  = appdata_dir.join("configs");
     let config_file = config_dir.join("engine.toml");
 
     println!("App data directory: {:?}", appdata_dir);
@@ -133,6 +140,7 @@ fn main() {
 
         gpui_component::init(cx);
         crate::themes::init(cx);
+        crate::ui::terminal::init(cx);  // Initialize terminal keybindings (Tab handling)
 
         cx.bind_keys([KeyBinding::new("ctrl-,", OpenSettings, None)]);
         cx.on_action(|_: &OpenSettings, cx| {
