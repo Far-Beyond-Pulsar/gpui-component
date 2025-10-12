@@ -172,7 +172,7 @@ impl Render for DraggableTabBar {
                                     let view_clone = view.clone();
                                     let tab_bar_id = tab_bar_element_id.clone();
 
-                                    Tab::new(("tab", ix))
+                                    Tab::new(format!("tab-{}", ix))
                                         .child(label.clone())
                                         .selected(is_selected)
                                         .on_click(cx.listener(move |this, _event, _window, cx| {
@@ -236,7 +236,7 @@ impl Render for DraggableTabBar {
                                                     )))
                                                     .icon(IconName::Close)
                                                     .ghost()
-                                                    .xsmall()
+                                                    .with_size(crate::Size::XSmall)
                                                     .on_click(cx.listener(
                                                         move |this, _event, _window, cx| {
                                                             this.remove_tab(ix);
@@ -264,4 +264,5 @@ impl Render for DraggableTabBar {
             )
     }
 }
+
 
