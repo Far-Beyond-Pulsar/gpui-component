@@ -10,6 +10,8 @@ pub mod panels;
 pub mod problems_drawer;
 pub mod problems_window;
 pub mod project_selector;
+pub mod terminal_drawer;
+pub mod terminal_window;
 pub mod rainbow_engine_final;
 pub mod rust_analyzer_manager;
 pub mod settings_screen;

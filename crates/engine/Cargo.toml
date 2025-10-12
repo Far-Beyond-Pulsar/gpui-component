@@ -57,6 +57,8 @@ wgpu = "0.20"      # GPU compute and rendering
 bytemuck = { version = "1.14", features = ["derive"] }
 ron = "0.8"
 futures = "0.3"    # Async primitives for GPUI compatibility
+portable-pty = "0.8"  # PTY support for terminal emulator
+which = "6"  # Find executables in PATH
 
 [dev-dependencies]
 tempfile = "3.8"

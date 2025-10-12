@@ -22,6 +22,8 @@ use super::{
     problems_window::ProblemsWindow,
     project_selector::ProjectSelected,
     rust_analyzer_manager::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager},
+    terminal_drawer::TerminalDrawer,
+    terminal_window::TerminalWindow,
 };
 
 // Action to toggle the file manager drawer
@@ -34,6 +36,11 @@ pub struct ToggleFileManager;
 #[action(namespace = pulsar_app)]
 pub struct ToggleProblems;
 
+// Action to toggle the terminal
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = pulsar_app)]
+pub struct ToggleTerminal;
+
 pub struct PulsarApp {
     tab_bar: Entity<DraggableTabBar>,
     project_path: Option<PathBuf>,
@@ -41,6 +48,7 @@ pub struct PulsarApp {
     file_manager_drawer: Entity<FileManagerDrawer>,
     drawer_open: bool,
     problems_drawer: Entity<ProblemsDrawer>,
+    terminal_drawer: Entity<TerminalDrawer>,
     // Tab management
     script_editor: Option<Entity<ScriptEditorPanel>>,
     blueprint_editors: Vec<Entity<BlueprintEditorPanel>>,
@@ -143,6 +151,9 @@ impl PulsarApp {
         cx.subscribe_in(&problems_drawer, window, Self::on_navigate_to_diagnostic)
             .detach();
 
+        // Create terminal drawer
+        let terminal_drawer = cx.new(|cx| TerminalDrawer::new(window, cx));
+
         // Create rust analyzer manager or use shared one
         let rust_analyzer = if let Some(shared_analyzer) = shared_rust_analyzer {
             // Use the shared rust analyzer from another window
@@ -182,6 +193,7 @@ impl PulsarApp {
             file_manager_drawer,
             drawer_open: false,
             problems_drawer,
+            terminal_drawer,
             script_editor,
             blueprint_editors,
             daw_editors,
@@ -408,6 +420,38 @@ impl PulsarApp {
         );
     }
 
+    fn toggle_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
+        use gpui_component::Root;
+
+        // Open terminal in a separate window
+        let terminal_drawer = self.terminal_drawer.clone();
+
+        let _ = cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds {
+                    origin: Point {
+                        x: px(150.0),
+                        y: px(150.0),
+                    },
+                    size: size(px(1000.0), px(700.0)),
+                })),
+                titlebar: None,
+                kind: WindowKind::Normal,
+                window_min_size: Some(gpui::Size {
+                    width: px(600.),
+                    height: px(400.),
+                }),
+                ..Default::default()
+            },
+            |window, cx| {
+                let terminal_window = cx.new(|cx| TerminalWindow::new(terminal_drawer, window, cx));
+
+                cx.new(|cx| Root::new(terminal_window.into(), window, cx))
+            },
+        );
+    }
+
     fn on_toggle_file_manager(
         &mut self,
         _: &ToggleFileManager,
@@ -424,6 +468,15 @@ impl PulsarApp {
         cx: &mut Context<Self>,
     ) {
         self.toggle_problems(window, cx);
+    }
+
+    fn on_toggle_terminal(
+        &mut self,
+        _: &ToggleTerminal,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.toggle_terminal(window, cx);
     }
 
     fn on_navigate_to_diagnostic(
@@ -633,7 +686,7 @@ impl PulsarApp {
 
         eprintln!("DEBUG: Adding DAW editor to tab bar");
         // Add the tab to the tab bar
-        let tab_id = format!("daw-{}", self.next_tab_id);
+        let tab_id = ElementId::Name(SharedString::from(format!("daw-{}", self.next_tab_id)));
         self.tab_bar.update(cx, |bar, _cx| {
             bar.add_tab(
                 tab_id,
@@ -717,6 +770,7 @@ impl Render for PulsarApp {
             .bg(cx.theme().background)
             .on_action(cx.listener(Self::on_toggle_file_manager))
             .on_action(cx.listener(Self::on_toggle_problems))
+            .on_action(cx.listener(Self::on_toggle_terminal))
             .child(
                 // Menu bar
                 {
@@ -848,6 +902,17 @@ impl PulsarApp {
                             .tooltip("Open Problems Window")
                             .on_click(cx.listener(|app, _, window, cx| {
                                 app.toggle_problems(window, cx);
+                            })),
+                    )
+                    .child(
+                        // Terminal Window Button
+                        Button::new("open-terminal")
+                            .ghost()
+                            .icon(IconName::Terminal)
+                            .label("Terminal")
+                            .tooltip("Open Terminal Window")
+                            .on_click(cx.listener(|app, _, window, cx| {
+                                app.toggle_terminal(window, cx);
                             })),
                     ),
             )
@@ -1241,4 +1306,5 @@ impl EditorPanel {
         )
     }
 }
+
 
