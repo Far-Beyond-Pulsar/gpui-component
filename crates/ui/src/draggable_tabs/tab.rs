@@ -1,13 +1,12 @@
-use std::sync::Arc;
 use std::rc::Rc;
 
 use gpui::{
-    div, px, AnyElement, AnyView, App, AppContext, ClickEvent, Div, DragMoveEvent, ElementId,
-    InteractiveElement, IntoElement, ParentElement, Pixels, Point, RenderOnce,
-    SharedString, StatefulInteractiveElement, Styled, StyleRefinement, Window,
+    px, AnyElement, AnyView, App, ClickEvent, ElementId,
+    IntoElement, Pixels, Point,
+    SharedString, Window,
 };
 
-use crate::{h_flex, ActiveTheme, Icon, IconName, Sizable, Size, StyledExt};
+use crate::{Icon, Sizable, Size};
 
 /// Data carried during tab drag operations
 #[derive(Clone, Debug)]
@@ -21,6 +20,8 @@ pub struct DraggedTab {
 }
 
 /// A single draggable tab with Chrome-like behavior
+/// Note: This is a data structure, not meant to be rendered directly
+/// Rendering is handled by DraggableTabBar
 pub struct DraggableTab {
     pub id: ElementId,
     pub label: SharedString,
@@ -114,69 +115,5 @@ impl Sizable for DraggableTab {
     fn with_size(mut self, size: impl Into<Size>) -> Self {
         self.size = size.into();
         self
-    }
-}
-
-impl RenderOnce for DraggableTab {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let on_click = self.on_click.clone();
-        let on_close = self.on_close.clone();
-        let closable = self.closable;
-        
-        let mut tab = h_flex()
-            .id(self.id)
-            .h(px(32.))
-            .px_3()
-            .gap_2()
-            .items_center()
-            .rounded_t_md()
-            .border_1()
-            .border_b_0()
-            .border_color(if self.selected {
-                cx.theme().border
-            } else {
-                cx.theme().transparent
-            })
-            .bg(if self.selected {
-                cx.theme().tab_active
-            } else {
-                cx.theme().tab
-            })
-            .hover(|this| this.bg(cx.theme().tab_active));
-        
-        if let Some(handler) = on_click {
-            tab = tab.on_click(move |event, window, cx| {
-                (handler)(event, window, cx);
-            });
-        }
-        
-        if let Some(icon) = self.icon {
-            tab = tab.child(icon);
-        }
-        
-        if let Some(prefix) = self.prefix {
-            tab = tab.child(prefix);
-        }
-        
-        tab = tab.child(self.label);
-        
-        if let Some(suffix) = self.suffix {
-            tab = tab.child(suffix);
-        }
-        
-        if closable {
-            if let Some(handler) = on_close {
-                tab = tab.child(
-                    div()
-                        .child(IconName::Close)
-                        .on_click(move |event, window, cx| {
-                            cx.stop_propagation();
-                            (handler)(event, window, cx);
-                        })
-                );
-            }
-        }
-        
-        tab
     }
 }

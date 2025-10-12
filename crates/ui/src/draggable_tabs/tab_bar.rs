@@ -1,15 +1,16 @@
-use gpui::ParentElement;
-use gpui::{
-    div, px, size, AnyElement, AnyView, App, Bounds, Context, DragMoveEvent, ElementId,
-    EventEmitter, FocusHandle, Focusable, IntoElement, Pixels, Point, Render, SharedString,
-    StatefulInteractiveElement, Window, WindowBounds, WindowKind, WindowOptions,
-};
-
-use super::{DraggableTab, DraggedTab};
-use crate::{h_flex, v_flex, ActiveTheme, IconName, Root, StyledExt};
+use super::DraggedTab;
+use crate::button::ButtonVariant;
+use crate::styled::Sizable;
+use crate::{button::Button, h_flex, v_flex, ActiveTheme, IconName, Root, StyledExt};
 use gpui::prelude::FluentBuilder;
+use gpui::AppContext;
+use gpui::ParentElement;
 use gpui::Styled;
-
+use gpui::{
+    div, px, size, AnyElement, AnyView, App, Bounds, Context, ElementId, EventEmitter, FocusHandle,
+    Focusable, IntoElement, Pixels, Point, Render, SharedString, Window, WindowBounds, WindowKind,
+    WindowOptions,
+};
 /// Events emitted by DraggableTabBar
 #[derive(Clone, Debug)]
 pub enum TabBarEvent {
@@ -93,31 +94,8 @@ impl DraggableTabBar {
         self.suffix = Some(suffix.into_any_element());
     }
 
-    /// Check if drag position is outside window bounds
-    fn check_drag_outside(
-        &mut self,
-        position: Point<Pixels>,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        let bounds = window.bounds();
-        let margin = px(20.0);
-
-        let is_outside = position.x < bounds.left() - margin
-            || position.x > bounds.right() + margin
-            || position.y < bounds.top() - margin
-            || position.y > bounds.bottom() + margin;
-
-        if is_outside != self.dragging_outside {
-            self.dragging_outside = is_outside;
-            cx.notify();
-        }
-
-        is_outside
-    }
-
     /// Create a new window with the given tab
-    fn create_window_with_tab(
+    /*fn create_window_with_tab(
         tab_id: ElementId,
         label: SharedString,
         content: AnyView,
@@ -154,7 +132,7 @@ impl DraggableTabBar {
             })
         })
         .ok();
-    }
+    }*/
 
     fn reorder_tab(&mut self, from: usize, to: usize, cx: &mut Context<Self>) {
         if from != to && from < self.tabs.len() && to < self.tabs.len() {
@@ -185,10 +163,6 @@ impl Focusable for DraggableTabBar {
 
 impl Render for DraggableTabBar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let view = cx.entity().clone();
-        let view_entity_id = view.entity_id();
-        let tab_bar_element_id = ElementId::Name(SharedString::from(format!("tab-bar-{}", view_entity_id.as_u64())));
-
         v_flex()
             .size_full()
             .child(
@@ -208,7 +182,7 @@ impl Render for DraggableTabBar {
                                     let label = label.clone();
                                     let closable = *closable;
 
-                                    // Render simple tab for now (can add drag later)
+                                    // Render simple tab using Button
                                     h_flex()
                                         .h(px(32.))
                                         .px_3()
@@ -227,24 +201,32 @@ impl Render for DraggableTabBar {
                                         } else {
                                             cx.theme().tab
                                         })
-                                        .hover(|this| this.bg(cx.theme().tab_active))
-                                        .on_click(cx.listener(move |this, _event, _window, cx| {
-                                            this.set_selected(ix);
-                                            cx.emit(TabBarEvent::TabSelected(ix));
-                                            cx.notify();
-                                        }))
-                                        .child(label.clone())
+                                        .child(
+                                            Button::new(SharedString::from(format!("tab-{}", ix)))
+                                                .label(label.clone())
+                                                .on_click(cx.listener(
+                                                    move |this, _event, _window, cx| {
+                                                        this.set_selected(ix);
+                                                        cx.emit(TabBarEvent::TabSelected(ix));
+                                                        cx.notify();
+                                                    },
+                                                )),
+                                        )
                                         .when(closable, |this| {
                                             this.child(
-                                                h_flex()
-                                                    .ml_2()
-                                                    .child(IconName::Close)
-                                                    .on_click(cx.listener(move |this, _event, _window, cx| {
-                                                        cx.stop_propagation();
+                                                Button::new(SharedString::from(format!(
+                                                    "tab-close-{}",
+                                                    ix
+                                                )))
+                                                .icon(IconName::Close)
+                                                .small()
+                                                .on_click(cx.listener(
+                                                    move |this, _event, _window, cx| {
                                                         this.remove_tab(ix);
                                                         cx.emit(TabBarEvent::TabClosed(ix));
                                                         cx.notify();
-                                                    }))
+                                                    },
+                                                )),
                                             )
                                         })
                                 },
