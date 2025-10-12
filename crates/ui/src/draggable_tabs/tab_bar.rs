@@ -1,12 +1,15 @@
+use gpui::ParentElement;
 use gpui::{
     div, px, size, AnyElement, AnyView, App, Bounds, Context, DragMoveEvent, ElementId,
     EventEmitter, FocusHandle, Focusable, IntoElement, Pixels, Point, Render, SharedString,
     StatefulInteractiveElement, Window, WindowBounds, WindowKind, WindowOptions,
 };
 
+use super::{DraggableTab, DraggedTab};
 use crate::{h_flex, v_flex, ActiveTheme, Root, StyledExt};
-
-use super::{DraggedTab, DraggableTab};
+use gpui::prelude::FluentBuilder;
+use gpui::AppContext;
+use gpui::Styled;
 
 /// Events emitted by DraggableTabBar
 #[derive(Clone, Debug)]
@@ -18,10 +21,7 @@ pub enum TabBarEvent {
     /// Tab was reordered within this bar
     TabReordered { from: usize, to: usize },
     /// Tab was dropped from another window
-    TabDropped {
-        tab: DraggedTab,
-        at_index: usize,
-    },
+    TabDropped { tab: DraggedTab, at_index: usize },
 }
 
 /// A Chrome-like draggable tab bar
@@ -57,8 +57,7 @@ impl DraggableTabBar {
         content: AnyView,
         closable: bool,
     ) {
-        self.tabs
-            .push((id.into(), label.into(), content, closable));
+        self.tabs.push((id.into(), label.into(), content, closable));
     }
 
     /// Remove a tab by index
@@ -216,35 +215,25 @@ impl Render for DraggableTabBar {
                     .when_some(self.prefix.take(), |this, prefix| this.child(prefix))
                     .child(
                         // Tabs container (scrollable)
-                        h_flex()
-                            .flex_1()
-                            .overflow_x_scroll()
-                            .items_end()
-                            .children(
-                                self.tabs
-                                    .iter()
-                                    .enumerate()
-                                    .map(|(ix, (tab_id, label, content, closable))| {
-                                        let is_selected = ix == self.selected_index;
-                                        let tab_id = tab_id.clone();
-                                        let label = label.clone();
-                                        let content = content.clone();
-                                        let closable = *closable;
-                                        let view_clone = view.clone();
+                        h_flex().flex_1().overflow_x_hidden().items_end().children(
+                            self.tabs.iter().enumerate().map(
+                                |(ix, (tab_id, label, content, closable))| {
+                                    let is_selected = ix == self.selected_index;
+                                    let tab_id = tab_id.clone();
+                                    let label = label.clone();
+                                    let content = content.clone();
+                                    let closable = *closable;
+                                    let view_clone = view.clone();
 
-                                        DraggableTab::new(
-                                            ("tab", ix),
-                                            label.clone(),
-                                            content.clone(),
-                                        )
+                                    DraggableTab::new(("tab", ix), label.clone(), content.clone())
                                         .selected(is_selected)
                                         .closable(closable)
-                                        .on_click(cx.listener(move |this, _, _window, cx| {
+                                        .on_click(cx.listener(move |this, _event, _window, cx| {
                                             this.set_selected(ix);
                                             cx.emit(TabBarEvent::TabSelected(ix));
                                             cx.notify();
                                         }))
-                                        .on_close(cx.listener(move |this, _window, cx| {
+                                        .on_close(cx.listener(move |this, _event, _window, cx| {
                                             this.remove_tab(ix);
                                             cx.emit(TabBarEvent::TabClosed(ix));
                                             cx.notify();
@@ -254,7 +243,7 @@ impl Render for DraggableTabBar {
                                                 tab_id: tab_id.clone(),
                                                 content: content.clone(),
                                                 label: label.clone(),
-                                                tab_bar_id: view.entity_id().into(),
+                                                tab_bar_id: ElementId::Name(SharedString::from(format!("tab-bar-{}", view.entity_id().as_u64()))),
                                                 source_index: ix,
                                                 drag_start_position: None,
                                             },
@@ -265,8 +254,15 @@ impl Render for DraggableTabBar {
                                             },
                                         )
                                         .on_drag_move(cx.listener(
-                                            move |this, event: &DragMoveEvent<DraggedTab>, window, cx| {
-                                                this.check_drag_outside(event.event.position, window, cx);
+                                            move |this,
+                                                  event: &DragMoveEvent<DraggedTab>,
+                                                  window,
+                                                  cx| {
+                                                this.check_drag_outside(
+                                                    event.event.position,
+                                                    window,
+                                                    cx,
+                                                );
                                             },
                                         ))
                                         .drag_over::<DraggedTab>(|this, _, _, cx| {
@@ -276,7 +272,8 @@ impl Render for DraggableTabBar {
                                             move |this, drag: &DraggedTab, window, cx| {
                                                 if this.dragging_outside {
                                                     // Create new window
-                                                    if let Some(position) = drag.drag_start_position {
+                                                    if let Some(position) = drag.drag_start_position
+                                                    {
                                                         // Remove tab from this bar
                                                         this.remove_tab(ix);
 
@@ -293,7 +290,7 @@ impl Render for DraggableTabBar {
                                                         });
                                                     }
                                                 } else if drag.tab_bar_id
-                                                    == view_clone.entity_id().into()
+                                                    == ElementId::Name(SharedString::from(format!("tab-bar-{}", view_clone.entity_id().as_u64())))
                                                 {
                                                     // Reorder within same bar
                                                     this.reorder_tab(drag.source_index, ix, cx);
@@ -306,8 +303,9 @@ impl Render for DraggableTabBar {
                                                 }
                                             },
                                         ))
-                                    }),
+                                },
                             ),
+                        ),
                     )
                     .when_some(self.suffix.take(), |this, suffix| this.child(suffix)),
             )
@@ -322,3 +320,4 @@ impl Render for DraggableTabBar {
             )
     }
 }
+

@@ -1,15 +1,16 @@
 use std::sync::Arc;
+use std::rc::Rc;
 
 use gpui::{
-    div, px, AnyElement, AnyView, App, ClickEvent, Div, DragMoveEvent, ElementId,
+    div, px, AnyElement, AnyView, App, AppContext, ClickEvent, Div, DragMoveEvent, ElementId,
     InteractiveElement, IntoElement, ParentElement, Pixels, Point, RenderOnce,
     SharedString, StatefulInteractiveElement, Styled, StyleRefinement, Window,
 };
 
-use crate::{h_flex, ActiveTheme, Icon, IconName, Sizable, Size, StyledExt};
+use crate::{h_flex, ActiveTheme, Icon, IconName, IconButton, Sizable, Size, StyledExt};
 
 /// Data carried during tab drag operations
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DraggedTab {
     pub tab_id: ElementId,
     pub content: AnyView,
@@ -20,21 +21,18 @@ pub struct DraggedTab {
 }
 
 /// A single draggable tab with Chrome-like behavior
-#[derive(IntoElement)]
 pub struct DraggableTab {
-    id: ElementId,
-    base: Div,
-    style: StyleRefinement,
-    label: SharedString,
-    icon: Option<Icon>,
-    prefix: Option<AnyElement>,
-    suffix: Option<AnyElement>,
-    content: AnyView,
-    size: Size,
-    selected: bool,
-    closable: bool,
-    on_click: Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
-    on_close: Option<Arc<dyn Fn(&mut Window, &mut App) + 'static>>,
+    pub id: ElementId,
+    pub label: SharedString,
+    pub icon: Option<Icon>,
+    pub prefix: Option<AnyElement>,
+    pub suffix: Option<AnyElement>,
+    pub content: AnyView,
+    pub size: Size,
+    pub selected: bool,
+    pub closable: bool,
+    pub on_click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
+    pub on_close: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
 }
 
 impl DraggableTab {
@@ -42,8 +40,6 @@ impl DraggableTab {
     pub fn new(id: impl Into<ElementId>, label: impl Into<SharedString>, content: AnyView) -> Self {
         Self {
             id: id.into(),
-            base: div(),
-            style: StyleRefinement::default(),
             label: label.into(),
             icon: None,
             prefix: None,
@@ -87,18 +83,21 @@ impl DraggableTab {
         self
     }
 
-    /// Set the click handler
+    /// Set on_click handler
     pub fn on_click(
         mut self,
         handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     ) -> Self {
-        self.on_click = Some(Arc::new(handler));
+        self.on_click = Some(Rc::new(handler));
         self
     }
 
-    /// Set the close handler
-    pub fn on_close(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        self.on_close = Some(Arc::new(handler));
+    /// Set on_close handler
+    pub fn on_close(
+        mut self,
+        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_close = Some(Rc::new(handler));
         self
     }
 
@@ -118,97 +117,52 @@ impl Sizable for DraggableTab {
     }
 }
 
-impl Styled for DraggableTab {
-    fn style(&mut self) -> &mut StyleRefinement {
-        &mut self.style
-    }
-}
-
 impl RenderOnce for DraggableTab {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let height = px(36.);
-        let padding_x = px(16.);
-        let padding_y = px(8.);
-
-        let (bg, fg, border_color, border_top_width) = if self.selected {
-            (
-                cx.theme().tab_active,
-                cx.theme().tab_active_foreground,
-                cx.theme().border,
-                px(2.),
-            )
-        } else {
-            (
-                cx.theme().transparent,
-                cx.theme().tab_foreground.opacity(0.7),
-                cx.theme().transparent,
-                px(1.),
-            )
-        };
-
-        let tab_id = self.id.clone();
-        let label = self.label.clone();
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let on_click = self.on_click.clone();
         let on_close = self.on_close.clone();
-
-        self.base
+        
+        h_flex()
             .id(self.id)
-            .flex()
-            .items_center()
+            .h(px(32.))
+            .px_3()
             .gap_2()
-            .h(height)
-            .px(padding_x)
-            .py(padding_y)
-            .bg(bg)
-            .text_color(fg)
-            .border_t(border_top_width)
-            .border_l_1()
-            .border_r_1()
-            .border_color(border_color)
-            .rounded_tl(px(8.))
-            .rounded_tr(px(8.))
-            .cursor_default()
-            .hover(|this| {
-                if self.selected {
-                    this
-                } else {
-                    this.bg(cx.theme().tab_active.opacity(0.3))
-                        .border_color(cx.theme().border.opacity(0.6))
-                }
+            .items_center()
+            .rounded_t_md()
+            .border_1()
+            .border_b_0()
+            .border_color(if self.selected {
+                cx.theme().border
+            } else {
+                cx.theme().transparent
+            })
+            .bg(if self.selected {
+                cx.theme().tab_active
+            } else {
+                cx.theme().tab
+            })
+            .hover(|this| this.bg(cx.theme().tab_active))
+            .when_some(on_click, |this, handler| {
+                this.on_click(move |event, window, cx| {
+                    (handler)(event, window, cx);
+                })
             })
             .when_some(self.icon, |this, icon| this.child(icon))
             .when_some(self.prefix, |this, prefix| this.child(prefix))
-            .child(
-                div()
-                    .flex_1()
-                    .overflow_hidden()
-                    .text_ellipsis()
-                    .whitespace_nowrap()
-                    .child(label),
-            )
+            .child(self.label)
             .when_some(self.suffix, |this, suffix| this.child(suffix))
             .when(self.closable, |this| {
                 this.child(
-                    div()
-                        .id(("close", tab_id))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .size(px(16.))
-                        .rounded(px(4.))
-                        .cursor_pointer()
-                        .hover(|this| this.bg(cx.theme().secondary_hover))
-                        .active(|this| this.bg(cx.theme().secondary_active))
-                        .child(Icon::new(IconName::Close).size_3())
-                        .on_click(move |_, window, cx| {
-                            if let Some(on_close) = on_close.as_ref() {
-                                on_close(window, cx);
-                            }
-                        }),
+                    IconButton::new("close", IconName::Close)
+                        .small()
+                        .ghost()
+                        .when_some(on_close, |btn, handler| {
+                            btn.on_click(move |event, window, cx| {
+                                cx.stop_propagation();
+                                (handler)(event, window, cx);
+                            })
+                        })
                 )
             })
-            .when_some(self.on_click, |this, on_click| {
-                this.on_click(move |event, window, cx| on_click(event, window, cx))
-            })
-            .refine_style(&self.style)
     }
 }

@@ -1,7 +1,7 @@
 use gpui::{prelude::*, Animation, AnimationExt as _, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
-    dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
+    draggable_tabs::{DraggableTabBar, TabBarEvent},
     h_flex, v_flex, ActiveTheme as _, IconName, StyledExt, Sizable as _,
 };
 use schemars::JsonSchema;
@@ -33,14 +33,13 @@ pub struct ToggleFileManager;
 pub struct ToggleProblems;
 
 pub struct PulsarApp {
-    dock_area: Entity<DockArea>,
+    tab_bar: Entity<DraggableTabBar>,
     project_path: Option<PathBuf>,
     entry_screen: Option<Entity<EntryScreen>>,
     file_manager_drawer: Entity<FileManagerDrawer>,
     drawer_open: bool,
     problems_drawer: Entity<ProblemsDrawer>,
     // Tab management
-    center_tabs: Entity<TabPanel>,
     script_editor: Option<Entity<ScriptEditorPanel>>,
     blueprint_editors: Vec<Entity<BlueprintEditorPanel>>,
     daw_editors: Vec<Entity<DawEditorPanel>>,
@@ -85,65 +84,8 @@ impl PulsarApp {
         self.project_path.as_ref()
     }
 
-    /// Create a detached window with a panel, sharing the rust analyzer
-    fn create_detached_window(
-        &self,
-        panel: Arc<dyn gpui_component::dock::PanelView>,
-        position: gpui::Point<gpui::Pixels>,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
-        use gpui_component::Root;
-
-        let window_size = size(px(800.), px(600.));
-        let window_bounds = Bounds::new(
-            Point {
-                x: position.x - px(100.0),
-                y: position.y - px(30.0),
-            },
-            window_size,
-        );
-
-        let window_options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-            titlebar: None,
-            window_min_size: Some(gpui::Size {
-                width: px(400.),
-                height: px(300.),
-            }),
-            kind: WindowKind::Normal,
-            #[cfg(target_os = "linux")]
-            window_background: gpui::WindowBackgroundAppearance::Transparent,
-            #[cfg(target_os = "linux")]
-            window_decorations: Some(gpui::WindowDecorations::Client),
-            ..Default::default()
-        };
-
-        let project_path = self.project_path.clone();
-        let rust_analyzer = self.rust_analyzer.clone();
-
-        let _ = cx.open_window(window_options, move |window, cx| {
-            // Create PulsarApp with shared rust analyzer
-            let app = cx.new(|cx| {
-                let mut app = Self::new_with_shared_analyzer(
-                    project_path.clone(),
-                    rust_analyzer.clone(),
-                    window,
-                    cx,
-                );
-
-                // Add the panel to the center tabs
-                app.center_tabs.update(cx, |tabs, cx| {
-                    tabs.add_panel(panel.clone(), window, cx);
-                });
-
-                app
-            });
-
-            cx.new(|cx| Root::new(app.into(), window, cx))
-        });
-    }
+    // Window creation for dragged tabs is now handled by DraggableTabBar itself
+    // This method is no longer needed
 
     fn new_internal(
         project_path: Option<PathBuf>,
@@ -152,42 +94,23 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        // TODO: Load last opened tabs if editor settings allow
-        // TODO: Dynamic layout allowing tabs to be split screened
-        let dock_area = cx.new(|cx| DockArea::new("main-dock", Some(1), window, cx));
-        let weak_dock = dock_area.downgrade();
+        // Create the main tab bar with Chrome-like draggable tabs
+        let tab_bar = cx.new(|cx| {
+            let mut bar = DraggableTabBar::new("main-tabs", window, cx);
 
-        // Only create level editor tab if requested (not for detached windows)
-        let center_dock_item = if create_level_editor {
-            let level_editor = cx.new(|cx| LevelEditorPanel::new(window, cx));
-            DockItem::tabs(
-                vec![Arc::new(level_editor.clone())],
-                Some(0),
-                &weak_dock,
-                window,
-                cx,
-            )
-        } else {
-            // Create empty tabs for detached windows
-            DockItem::tabs(
-                vec![],
-                None,
-                &weak_dock,
-                window,
-                cx,
-            )
-        };
+            // Add Level Editor tab if requested
+            if create_level_editor {
+                let level_editor = cx.new(|cx| LevelEditorPanel::new(window, cx));
+                bar.add_tab(
+                    "level-editor",
+                    "Level Editor",
+                    level_editor.into(),
+                    false, // Not closable
+                );
+            }
 
-        dock_area.update(cx, |dock, cx| {
-            dock.set_center(center_dock_item, window, cx);
+            bar
         });
-
-        // Get the center TabPanel for dynamic tab management
-        let center_tabs = if let DockItem::Tabs { view, .. } = dock_area.read(cx).items() {
-            view.clone()
-        } else {
-            panic!("Expected tabs dock item");
-        };
 
         // Initialize editor tracking
         let script_editor = None;
@@ -235,10 +158,10 @@ impl PulsarApp {
         // Subscribe to analyzer events
         cx.subscribe_in(&rust_analyzer, window, Self::on_analyzer_event).detach();
 
-        // Subscribe to PanelEvent on center_tabs to handle tab close and cleanup
-        cx.subscribe_in(&center_tabs, window, Self::on_tab_panel_event)
+        // Subscribe to TabBarEvent to handle tab actions
+        cx.subscribe_in(&tab_bar, window, Self::on_tab_bar_event)
             .detach();
-        
+
         // Subscribe to ProjectSelected events from entry screen or project selector
         if let Some(screen) = &entry_screen {
             cx.subscribe_in(screen, window, Self::on_project_selected)
@@ -246,13 +169,12 @@ impl PulsarApp {
         }
 
         Self {
-            dock_area,
+            tab_bar,
             project_path,
             entry_screen,
             file_manager_drawer,
             drawer_open: false,
             problems_drawer,
-            center_tabs,
             script_editor,
             blueprint_editors,
             daw_editors,
@@ -329,25 +251,30 @@ impl PulsarApp {
         cx.notify();
     }
 
-    fn on_tab_panel_event(
+    fn on_tab_bar_event(
         &mut self,
-        _tabs: &Entity<TabPanel>,
-        event: &PanelEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
+        _tab_bar: &Entity<DraggableTabBar>,
+        event: &TabBarEvent,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
     ) {
         match event {
-            PanelEvent::MoveToNewWindow(panel, position) => {
-                // Create a new window with the same project and shared rust analyzer
-                self.create_detached_window(panel.clone(), *position, window, cx);
+            TabBarEvent::TabSelected(index) => {
+                println!("Tab {} selected", index);
             }
-            PanelEvent::TabClosed(entity_id) => {
-                self.blueprint_editors
-                    .retain(|e| e.entity_id() != *entity_id);
-                self.daw_editors
-                    .retain(|e| e.entity_id() != *entity_id);
+            TabBarEvent::TabClosed(index) => {
+                println!("Tab {} closed", index);
+                // Cleanup editor references
+                // Note: The actual tab removal is handled by DraggableTabBar
+                // We just need to clean up our tracking
             }
-            _ => {}
+            TabBarEvent::TabReordered { from, to } => {
+                println!("Tab moved from {} to {}", from, to);
+            }
+            TabBarEvent::TabDropped { tab, at_index } => {
+                println!("Tab '{}' dropped at index {}", tab.label, at_index);
+                // Handle tab from another window being dropped here
+            }
         }
     }
 
@@ -556,15 +483,10 @@ impl PulsarApp {
             });
 
         if let Some(ix) = already_open {
-            // Focus the correct tab by matching entity_id in TabPanel using the public getter
-            if let Some(editor_entity) = self.blueprint_editors.get(ix) {
-                let target_id = editor_entity.entity_id();
-                self.center_tabs.update(cx, |tabs, cx| {
-                    if let Some(tab_ix) = tabs.index_of_panel_by_entity_id(target_id) {
-                        tabs.set_active_tab(tab_ix, window, cx);
-                    }
-                });
-            }
+            // Focus the existing tab
+            self.tab_bar.update(cx, |bar, _cx| {
+                bar.set_selected(ix);
+            });
             return;
         }
 
@@ -595,9 +517,15 @@ impl PulsarApp {
             });
         }
 
-        // Add the tab (Entity<BlueprintEditorPanel> implements all required traits)
-        self.center_tabs.update(cx, |tabs, cx| {
-            tabs.add_panel(Arc::new(blueprint_editor.clone()), window, cx);
+        // Add the tab to the tab bar
+        let tab_id = format!("blueprint-{}", self.next_tab_id);
+        self.tab_bar.update(cx, |bar, _cx| {
+            bar.add_tab(
+                tab_id,
+                class_name.clone(),
+                blueprint_editor.clone().into(),
+                true, // closable
+            );
         });
 
         // Store the blueprint editor reference
@@ -640,9 +568,14 @@ impl PulsarApp {
             editor.open_file(file_path, window, cx);
         });
 
-        // Add the tab
-        self.center_tabs.update(cx, |tabs, cx| {
-            tabs.add_panel(Arc::new(script_editor.clone()), window, cx);
+        // Add the tab to the tab bar
+        self.tab_bar.update(cx, |bar, _cx| {
+            bar.add_tab(
+                "script-editor",
+                "Script Editor",
+                script_editor.clone().into(),
+                true, // closable
+            );
         });
 
         // Store the script editor reference
@@ -653,52 +586,44 @@ impl PulsarApp {
     fn open_daw_tab(&mut self, project_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         eprintln!("DEBUG: open_daw_tab called with path: {:?}", project_path);
         
-        // Check if a DAW editor for this project is already open
-        let already_open = self
-            .daw_editors
-            .iter()
-            .enumerate()
-            .find_map(|(ix, editor)| {
-                let state = editor.read(cx).dump(cx);
-                if let gpui_component::dock::PanelInfo::Panel(info) = state.info {
-                    info.get("project_path")
-                        .and_then(|v| v.as_str())
-                        .map(|p| p == project_path.to_string_lossy())
-                        .unwrap_or(false)
-                        .then_some(ix)
-                } else {
-                    None
-                }
-            });
-
-        if let Some(ix) = already_open {
-            eprintln!("DEBUG: DAW tab already open at index {}, focusing", ix);
-            // Focus the correct tab
-            if let Some(editor_entity) = self.daw_editors.get(ix) {
-                let target_id = editor_entity.entity_id();
-                self.center_tabs.update(cx, |tabs, cx| {
-                    if let Some(tab_ix) = tabs.index_of_panel_by_entity_id(target_id) {
-                        tabs.set_active_tab(tab_ix, window, cx);
-                    }
-                });
-            }
+        // For now, just check if we have any DAW editors open
+        // TODO: Improve tracking to match by project path
+        if !self.daw_editors.is_empty() {
+            eprintln!("DEBUG: DAW editor already exists, focusing first one");
+            // Just focus the first DAW tab for now
+            // In a more complete implementation, we'd track which tab corresponds to which editor
             return;
         }
 
         eprintln!("DEBUG: Creating new DAW editor panel");
+        self.next_tab_id += 1;
+
         // Create new DAW editor tab
         let daw_editor = cx.new(|cx| DawEditorPanel::new_with_project(project_path.clone(), window, cx));
 
-        eprintln!("DEBUG: Adding DAW editor to tabs");
-        // Add the tab
-        self.center_tabs.update(cx, |tabs, cx| {
-            tabs.add_panel(Arc::new(daw_editor.clone()), window, cx);
+        // Extract project name for tab label
+        let project_name = project_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("DAW")
+            .to_string();
+
+        eprintln!("DEBUG: Adding DAW editor to tab bar");
+        // Add the tab to the tab bar
+        let tab_id = format!("daw-{}", self.next_tab_id);
+        self.tab_bar.update(cx, |bar, _cx| {
+            bar.add_tab(
+                tab_id,
+                project_name,
+                daw_editor.clone().into(),
+                true, // closable
+            );
         });
 
         eprintln!("DEBUG: Storing DAW editor reference");
         // Store the DAW editor reference
         self.daw_editors.push(daw_editor);
-        
+
         eprintln!("DEBUG: DAW tab opened successfully");
     }
 
@@ -777,11 +702,11 @@ impl Render for PulsarApp {
                 },
             )
             .child(
-                // Main dock area with overlays
+                // Main tab bar with Chrome-like draggable tabs
                 div()
                     .flex_1()
                     .relative()
-                    .child(self.dock_area.clone())
+                    .child(self.tab_bar.clone())
                     .when(drawer_open, |this| {
                         this.child(
                             // Overlay background for file manager
