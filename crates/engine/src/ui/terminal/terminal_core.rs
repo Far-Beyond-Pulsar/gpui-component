@@ -152,7 +152,6 @@ pub struct TerminalSession {
     term: Arc<FairMutex<Term<ZedListener>>>,
     pty_tx: Notifier,
     _io_thread: Option<std::thread::JoinHandle<()>>,
-    events_rx: UnboundedReceiver<AlacTermEvent>,
     bounds: TerminalBounds,
     title: String,
     pub last_content: TerminalContent,  // Cache like Zed does
@@ -160,15 +159,12 @@ pub struct TerminalSession {
 }
 
 impl TerminalSession {
-    pub fn new(id: usize, name: String, working_directory: Option<PathBuf>, cx: &mut App) -> Result<Self> {
+    pub fn new_with_sender(id: usize, name: String, working_directory: Option<PathBuf>, events_tx: UnboundedSender<AlacTermEvent>, cx: &mut App) -> Result<Self> {
         // Create Alacritty configuration
         let config = Config {
             scrolling_history: 10000,
             ..Config::default()
         };
-
-        // Set up event communication
-        let (events_tx, events_rx) = unbounded();
 
         // Create the terminal with default bounds
         let term = Term::new(
@@ -228,14 +224,50 @@ impl TerminalSession {
             name: name.clone(),
             term,
             pty_tx: Notifier(pty_tx),
-            _io_thread: None, // We don't need to track this - Alacritty handles it
-            events_rx,
+            _io_thread: None,
             bounds: TerminalBounds::default(),
             title: name,
             last_content: Default::default(),
             events: VecDeque::with_capacity(10),
         })
     }
+    
+    /*
+    /// Subscribe to terminal events (Zed approach) - DISABLED due to async API mismatch
+    pub fn subscribe(mut events_rx: UnboundedReceiver<AlacTermEvent>, entity: Entity<Terminal>, cx: &mut Context<Terminal>) {
+        cx.spawn(|_terminal, mut cx| async move {
+            use futures::StreamExt;
+            
+            // Wait for events from alacritty and notify GPUI to repaint
+            while let Some(event) = events_rx.next().await {
+                // Process event and trigger repaint
+                _ = entity.update(&mut cx, |terminal, cx| -> Result<()> {
+                    if let Some(session) = terminal.active_session_mut() {
+                        match event {
+                            AlacTermEvent::Wakeup => {
+                                // Terminal content changed - trigger repaint
+                                cx.notify();
+                            }
+                            AlacTermEvent::Title(title) => {
+                                session.title = title;
+                                cx.notify();
+                            }
+                            AlacTermEvent::Bell => {
+                                cx.notify();
+                            }
+                            AlacTermEvent::Exit => {
+                                cx.notify();
+                            }
+                            _ => {}
+                        }
+                    }
+                    Ok(())
+                });
+            }
+            anyhow::Ok(())
+        }).detach();
+    }
+    */
 
     /// Set terminal size (from Zed)
     pub fn set_size(&mut self, new_bounds: TerminalBounds) {
@@ -250,13 +282,6 @@ impl TerminalSession {
 
     /// Sync terminal content (from Zed)
     pub fn sync(&mut self, window: &mut Window, cx: &mut Context<Terminal>) {
-        // Process pending events
-        let mut has_new_events = false;
-        while let Ok(Some(event)) = self.events_rx.try_next() {
-            has_new_events = true;
-            self.events.push_back(event);
-        }
-
         // Update last_content from terminal (EXACT Zed approach)
         let term = self.term.lock();
         let old_content = self.last_content.clone();
@@ -264,8 +289,7 @@ impl TerminalSession {
         
         // Check if content actually changed to trigger repaint
         let content_changed = old_content.cells.len() != self.last_content.cells.len()
-            || old_content.cursor.point != self.last_content.cursor.point
-            || has_new_events;
+            || old_content.cursor.point != self.last_content.cursor.point;
             
         if content_changed {
             drop(term); // Release the lock before notifying
@@ -319,31 +343,10 @@ impl TerminalSession {
         &self.term
     }
 
-    /// Process pending events
+    /// Process pending events (deprecated - events are now handled via subscribe)
     pub fn process_events(&mut self, cx: &mut Context<Terminal>) -> Vec<Event> {
-        let mut events = Vec::new();
-
-        while let Ok(Some(event)) = self.events_rx.try_next() {
-            match event {
-                AlacTermEvent::Title(title) => {
-                    self.title = title;
-                    events.push(Event::TitleChanged);
-                }
-                AlacTermEvent::Bell => {
-                    events.push(Event::Bell);
-                }
-                AlacTermEvent::Wakeup => {
-                    events.push(Event::Wakeup);
-                    cx.notify();
-                }
-                AlacTermEvent::Exit => {
-                    events.push(Event::CloseTerminal);
-                }
-                _ => {}
-            }
-        }
-
-        events
+        // Events are now processed in the subscribe method
+        Vec::new()
     }
 
     pub fn title(&self) -> &str {
@@ -374,37 +377,121 @@ impl Terminal {
             next_session_id: 0,
         };
 
-        // Create initial session
-        terminal.add_session(None, cx)?;
+        // Create initial session and get events channel
+        let events_rx = terminal.add_session(None, cx)?;
         
-        // Set up background polling for terminal events (Zed approach)
-        // This wakes up GPUI when alacritty has updates
-        let entity = cx.entity().clone();
-        cx.spawn(|_, mut cx| async move {
-            loop {
-                // Poll at 60fps for responsive updates
-                cx.background_executor().timer(std::time::Duration::from_millis(16)).await;
-                
-                // Notify that we should check for updates
-                _ = entity.update(&mut cx, |_terminal, cx| {
-                    cx.notify();
-                });
+        // Subscribe to events (EXACT Zed pattern) - this is the key to real-time updates!
+        cx.spawn(async move |terminal, mut cx| {
+            use futures::StreamExt;
+            use futures::FutureExt;
+            let mut events_rx = events_rx;
+            
+            // Wait for events from alacritty and notify GPUI to repaint (EXACT pattern from our codebase)
+            while let Some(event) = events_rx.next().await {
+                // Process the first event immediately for lowered latency
+                cx.update(|cx| {
+                    terminal.update(cx, |terminal, cx| {
+                        if let Some(session) = terminal.active_session_mut() {
+                            Self::process_terminal_event(session, &event, cx);
+                        }
+                    }).ok();
+                }).ok();
+
+                // Batch additional events for efficiency (from Zed)
+                'outer: loop {
+                    let mut events = Vec::new();
+                    let mut timer = cx
+                        .background_executor()
+                        .timer(std::time::Duration::from_millis(4))
+                        .fuse();
+                    let mut wakeup = false;
+                    
+                    loop {
+                        futures::select_biased! {
+                            _ = timer => break,
+                            event = events_rx.next() => {
+                                if let Some(event) = event {
+                                    if matches!(event, AlacTermEvent::Wakeup) {
+                                        wakeup = true;
+                                    } else {
+                                        events.push(event);
+                                    }
+
+                                    if events.len() > 100 {
+                                        break;
+                                    }
+                                } else {
+                                    break;
+                                }
+                            },
+                        }
+                    }
+
+                    if events.is_empty() && !wakeup {
+                        smol::future::yield_now().await;
+                        break 'outer;
+                    }
+
+                    cx.update(|cx| {
+                        terminal.update(cx, |terminal, cx| {
+                            if let Some(session) = terminal.active_session_mut() {
+                                if wakeup {
+                                    Self::process_terminal_event(session, &AlacTermEvent::Wakeup, cx);
+                                }
+
+                                for event in events {
+                                    Self::process_terminal_event(session, &event, cx);
+                                }
+                            }
+                        }).ok();
+                    }).ok();
+                    smol::future::yield_now().await;
+                }
             }
-        }).detach();
+
+            anyhow::Ok(())
+        })
+        .detach();
 
         Ok(terminal)
     }
 
-    pub fn add_session(&mut self, working_directory: Option<PathBuf>, cx: &mut Context<Self>) -> Result<()> {
+    /// Process a single terminal event (extracted for reuse)
+    fn process_terminal_event(session: &mut TerminalSession, event: &AlacTermEvent, cx: &mut Context<Terminal>) {
+        match event {
+            AlacTermEvent::Wakeup => {
+                // Terminal content changed - trigger repaint
+                cx.notify();
+            }
+            AlacTermEvent::Title(title) => {
+                session.title = title.clone();
+                cx.notify();
+            }
+            AlacTermEvent::Bell => {
+                cx.notify();
+            }
+            AlacTermEvent::Exit => {
+                cx.notify();
+            }
+            _ => {}
+        }
+    }
+
+    pub fn add_session(&mut self, working_directory: Option<PathBuf>, cx: &mut Context<Self>) -> Result<UnboundedReceiver<AlacTermEvent>> {
         let session_name = format!("Terminal {}", self.next_session_id + 1);
-        let session = TerminalSession::new(self.next_session_id, session_name, working_directory, cx)?;
+        
+        // Set up event communication BEFORE creating session
+        let (events_tx, events_rx) = unbounded();
+        
+        // Create session with events_tx
+        let session = TerminalSession::new_with_sender(self.next_session_id, session_name, working_directory, events_tx, cx)?;
 
         self.sessions.push(session);
         self.active_session = self.sessions.len() - 1;
         self.next_session_id += 1;
         cx.notify();
 
-        Ok(())
+        Ok(events_rx)
     }
 
     pub fn close_session(&mut self, index: usize, cx: &mut Context<Self>) {

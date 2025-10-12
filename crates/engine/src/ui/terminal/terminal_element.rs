@@ -5,6 +5,141 @@ use super::terminal_core::{Terminal, TerminalBounds, TerminalContent};
 use super::rendering::{layout_grid, BatchedTextRun, LayoutRect};
 use gpui::*;
 use gpui_component::ActiveTheme;
+use alacritty_terminal::vte::ansi::CursorShape as AlacCursorShape;
+
+// For cursor rendering - these types should exist in your editor crate
+// If not, we'll need to define them inline
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CursorShape {
+    Bar,
+    Block,
+    Underscore,
+    Hollow,
+}
+
+pub struct CursorLayout {
+    origin: Point<Pixels>,
+    block_width: Pixels,
+    line_height: Pixels,
+    color: Hsla,
+    shape: CursorShape,
+    text: Option<ShapedLine>,
+}
+
+impl CursorLayout {
+    pub fn new(
+        origin: Point<Pixels>,
+        block_width: Pixels,
+        line_height: Pixels,
+        color: Hsla,
+        shape: CursorShape,
+        text: Option<ShapedLine>,
+    ) -> Self {
+        Self {
+            origin,
+            block_width,
+            line_height,
+            color,
+            shape,
+            text,
+        }
+    }
+
+    pub fn bounding_rect(&self, origin: Point<Pixels>) -> Bounds<Pixels> {
+        Bounds {
+            origin: point(origin.x + self.origin.x, origin.y + self.origin.y),
+            size: size(self.block_width, self.line_height),
+        }
+    }
+
+    pub fn paint(&mut self, origin: Point<Pixels>, window: &mut Window, cx: &mut App) {
+        let position = point(origin.x + self.origin.x, origin.y + self.origin.y);
+        
+        match self.shape {
+            CursorShape::Block => {
+                // Filled block cursor
+                window.paint_quad(fill(
+                    Bounds {
+                        origin: position,
+                        size: size(self.block_width, self.line_height),
+                    },
+                    self.color,
+                ));
+                
+                // Paint the text on top if available
+                if let Some(text) = &self.text {
+                    let _ = text.paint(position, self.line_height, window, cx);
+                }
+            }
+            CursorShape::Hollow => {
+                // Hollow block cursor (just outline)
+                let bounds = Bounds {
+                    origin: position,
+                    size: size(self.block_width, self.line_height),
+                };
+                
+                // Draw outline by painting 4 rectangles
+                let thickness = px(1.0);
+                
+                // Top
+                window.paint_quad(fill(
+                    Bounds {
+                        origin: bounds.origin,
+                        size: size(bounds.size.width, thickness),
+                    },
+                    self.color,
+                ));
+                
+                // Bottom
+                window.paint_quad(fill(
+                    Bounds {
+                        origin: point(bounds.origin.x, bounds.origin.y + bounds.size.height - thickness),
+                        size: size(bounds.size.width, thickness),
+                    },
+                    self.color,
+                ));
+                
+                // Left
+                window.paint_quad(fill(
+                    Bounds {
+                        origin: bounds.origin,
+                        size: size(thickness, bounds.size.height),
+                    },
+                    self.color,
+                ));
+                
+                // Right
+                window.paint_quad(fill(
+                    Bounds {
+                        origin: point(bounds.origin.x + bounds.size.width - thickness, bounds.origin.y),
+                        size: size(thickness, bounds.size.height),
+                    },
+                    self.color,
+                ));
+            }
+            CursorShape::Bar => {
+                // Vertical bar cursor
+                window.paint_quad(fill(
+                    Bounds {
+                        origin: position,
+                        size: size(px(2.0), self.line_height),
+                    },
+                    self.color,
+                ));
+            }
+            CursorShape::Underscore => {
+                // Underscore cursor at the bottom
+                window.paint_quad(fill(
+                    Bounds {
+                        origin: point(position.x, position.y + self.line_height - px(2.0)),
+                        size: size(self.block_width, px(2.0)),
+                    },
+                    self.color,
+                ));
+            }
+        }
+    }
+}
 
 /// Simple terminal input handler (simplified from Zed)
 struct TerminalInputHandler {
@@ -61,9 +196,33 @@ pub struct LayoutState {
     pub hitbox: Hitbox,
     pub batched_text_runs: Vec<BatchedTextRun>,
     pub rects: Vec<LayoutRect>,
+    pub cursor: Option<CursorLayout>,
     pub background_color: Hsla,
     pub dimensions: TerminalBounds,
     pub text_style: TextStyle,
+}
+
+/// Helper struct for converting data between Alacritty's cursor points, and displayed cursor points (from Zed)
+struct DisplayCursor {
+    line: i32,
+    col: usize,
+}
+
+impl DisplayCursor {
+    fn from(cursor_point: alacritty_terminal::index::Point, display_offset: usize) -> Self {
+        Self {
+            line: cursor_point.line.0 + display_offset as i32,
+            col: cursor_point.column.0,
+        }
+    }
+
+    pub fn line(&self) -> i32 {
+        self.line
+    }
+
+    pub fn col(&self) -> usize {
+        self.col
+    }
 }
 
 /// Terminal element with full interactivity (adapted from Zed)
@@ -71,6 +230,7 @@ pub struct TerminalElement {
     terminal: Entity<Terminal>,
     focus: FocusHandle,
     focused: bool,
+    cursor_visible: bool,
     interactivity: Interactivity,
 }
 
@@ -88,9 +248,38 @@ impl TerminalElement {
             terminal,
             focus: focus.clone(),
             focused,
+            cursor_visible: true,
             interactivity: Interactivity::default(),
         }
         .track_focus(&focus)
+    }
+
+    /// Computes the cursor position and expected block width (from Zed)
+    /// May return a zero width if x_for_index returns the same position for sequential indexes. Use em_width instead
+    fn shape_cursor(
+        cursor_point: DisplayCursor,
+        size: &TerminalBounds,
+        text_fragment: &ShapedLine,
+    ) -> Option<(Point<Pixels>, Pixels)> {
+        if cursor_point.line() < size.num_lines() as i32 {
+            let cursor_width = if text_fragment.width == Pixels::ZERO {
+                size.cell_width
+            } else {
+                text_fragment.width
+            };
+
+            // Cursor should always surround as much of the text as possible,
+            // hence when on pixel boundaries round the origin down and the width up
+            Some((
+                point(
+                    (cursor_point.col() as f32 * size.cell_width).floor(),
+                    (cursor_point.line() as f32 * size.line_height).floor(),
+                ),
+                cursor_width.ceil(),
+            ))
+        } else {
+            None
+        }
     }
 
     // Adapted from Zed's register_mouse_listeners
@@ -276,10 +465,69 @@ impl Element for TerminalElement {
                     }
                 };
 
+                // Layout cursor (from Zed) - Rectangle is used for IME, so we should lay it out even if we don't end up showing it
+                let cursor = {
+                    let terminal_read = self.terminal.read(cx);
+                    if let Some(session) = terminal_read.active_session() {
+                        let cursor = &session.last_content.cursor;
+                        let cursor_char = session.last_content.cursor_char;
+                        let display_offset = session.last_content.display_offset;
+                        
+                        if let AlacCursorShape::Hidden = cursor.shape {
+                            None
+                        } else {
+                            let cursor_point = DisplayCursor::from(cursor.point, display_offset);
+                            let cursor_text = {
+                                let str_text = cursor_char.to_string();
+                                let len = str_text.len();
+                                window.text_system().shape_line(
+                                    str_text.into(),
+                                    text_style.font_size.to_pixels(window.rem_size()),
+                                    &[TextRun {
+                                        len,
+                                        font: text_style.font(),
+                                        color: background_color,
+                                        background_color: None,
+                                        underline: Default::default(),
+                                        strikethrough: None,
+                                    }],
+                                    None,
+                                )
+                            };
+
+                            let focused = self.focused;
+                            Self::shape_cursor(cursor_point, &dimensions, &cursor_text).map(
+                                move |(cursor_position, block_width)| {
+                                    let (shape, text) = match cursor.shape {
+                                        AlacCursorShape::Block if !focused => (CursorShape::Hollow, None),
+                                        AlacCursorShape::Block => (CursorShape::Block, Some(cursor_text)),
+                                        AlacCursorShape::Underline => (CursorShape::Underscore, None),
+                                        AlacCursorShape::Beam => (CursorShape::Bar, None),
+                                        AlacCursorShape::HollowBlock => (CursorShape::Hollow, None),
+                                        AlacCursorShape::Hidden => unreachable!(),
+                                    };
+
+                                    CursorLayout::new(
+                                        cursor_position,
+                                        block_width,
+                                        dimensions.line_height,
+                                        foreground_color,  // Use theme foreground as cursor color
+                                        shape,
+                                        text,
+                                    )
+                                },
+                            )
+                        }
+                    } else {
+                        None
+                    }
+                };
+
                 LayoutState {
                     hitbox,
                     batched_text_runs,
                     rects,
+                    cursor,
                     background_color,
                     dimensions,
                     text_style,
@@ -349,6 +597,13 @@ impl Element for TerminalElement {
                 // Paint batched text runs (Zed's optimization)
                 for batch in &layout.batched_text_runs {
                     batch.paint(origin, &layout.dimensions, window, cx);
+                }
+
+                // Paint cursor (from Zed)
+                if self.cursor_visible {
+                    if let Some(mut cursor) = layout.cursor.take() {
+                        cursor.paint(origin, window, cx);
+                    }
                 }
             },
         );
