@@ -251,13 +251,26 @@ impl TerminalSession {
     /// Sync terminal content (from Zed)
     pub fn sync(&mut self, window: &mut Window, cx: &mut Context<Terminal>) {
         // Process pending events
+        let mut has_new_events = false;
         while let Ok(Some(event)) = self.events_rx.try_next() {
+            has_new_events = true;
             self.events.push_back(event);
         }
 
         // Update last_content from terminal (EXACT Zed approach)
         let term = self.term.lock();
+        let old_content = self.last_content.clone();
         self.last_content = Self::make_content(&term, &self.last_content);
+        
+        // Check if content actually changed to trigger repaint
+        let content_changed = old_content.cells.len() != self.last_content.cells.len()
+            || old_content.cursor.point != self.last_content.cursor.point
+            || has_new_events;
+            
+        if content_changed {
+            drop(term); // Release the lock before notifying
+            cx.notify();
+        }
     }
 
     /// Make terminal content from Alacritty term (from Zed - EXACT copy)
@@ -363,16 +376,6 @@ impl Terminal {
 
         // Create initial session
         terminal.add_session(None, cx)?;
-        
-        // Subscribe to updates - poll terminal for events (Zed-style)
-        cx.spawn_in(window, async move |terminal, cx| {
-            loop {
-                cx.background_executor().timer(std::time::Duration::from_millis(16)).await;
-                terminal.update(cx, |terminal, cx| {
-                    terminal.update_events(window, cx);
-                }).ok();
-            }
-        }).detach();
 
         Ok(terminal)
     }

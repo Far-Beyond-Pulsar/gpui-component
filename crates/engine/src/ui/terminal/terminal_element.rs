@@ -198,29 +198,35 @@ impl Element for TerminalElement {
             cx,
             |_, _, hitbox, window, cx| {
                 let hitbox = hitbox.unwrap();
-                let theme = cx.theme();
+                
+                // Clone theme colors we need before any borrows
+                let (background_color, foreground_color) = {
+                    let theme = cx.theme();
+                    (theme.background, theme.foreground)
+                };
                 
                 // Create text style exactly like script editor (JetBrains Mono)
                 let text_style = TextStyle {
-                    font_family: "monospace".into(),
+                    font_family: "JetBrains Mono".into(),
                     font_features: FontFeatures::default(),
                     font_weight: FontWeight::NORMAL,
-                    font_fallbacks: None,
+                    font_fallbacks: Some(FontFallbacks::from_fonts(vec!["monospace".to_string()])),
                     font_size: px(13.0).into(),
                     font_style: FontStyle::Normal,
                     line_height: px(20.0).into(),
-                    background_color: Some(theme.background),
+                    background_color: Some(background_color),
                     white_space: WhiteSpace::Normal,
-                    color: theme.foreground,
+                    color: foreground_color,
                     ..Default::default()
                 };
 
-                // Use JetBrains Mono font like script editor
+                // Use JetBrains Mono font like script editor - EXACT match
                 let font = Font {
-                    family: "Jetbrains Mono".to_string().into(),
+                    family: "JetBrains Mono".to_string().into(),
                     weight: FontWeight::NORMAL,
                     style: FontStyle::Normal,
                     features: FontFeatures::default(),
+                    fallbacks: Some(FontFallbacks::from_fonts(vec!["monospace".to_string()])),
                 };
 
                 // Calculate terminal dimensions exactly like Zed does
@@ -228,10 +234,10 @@ impl Element for TerminalElement {
                 let rem_size = window.rem_size();
                 let font_pixels = text_style.font_size.to_pixels(rem_size);
                 
-                // Use 'M' character for cell width (standard terminal practice like Zed)
+                // Use lowercase 'm' for cell width (proper monospace calculation like Zed)
                 let cell_width = cx
                     .text_system()
-                    .advance(font_id, font_pixels, 'M')
+                    .advance(font_id, font_pixels, 'm')
                     .unwrap()
                     .width;
                     
@@ -240,14 +246,26 @@ impl Element for TerminalElement {
 
                 let dimensions = TerminalBounds::new(line_height, cell_width, bounds);
 
-                // Update terminal size if changed
-                self.terminal.update(cx, |terminal, cx| {
-                    if let Some(session) = terminal.active_session_mut() {
-                        session.set_size(dimensions);
-                    }
+                // Update terminal size and sync content (release borrow immediately)
+                {
+                    self.terminal.update(cx, |terminal, cx| {
+                        if let Some(session) = terminal.active_session_mut() {
+                            session.set_size(dimensions);
+                            // Sync to process any new events and update content
+                            session.sync(window, cx);
+                        }
+                    });
+                }
+                
+                // Request another frame to keep checking for updates (like Zed does)
+                // This ensures the terminal updates continuously
+                window.on_next_frame(|window, cx| {
+                    window.refresh();
                 });
 
                 // Get terminal content - read only in prepaint (Zed approach)
+                // Need to get theme again for layout_grid
+                let theme = cx.theme();
                 let (rects, batched_text_runs) = {
                     let terminal_read = self.terminal.read(cx);
                     if let Some(session) = terminal_read.active_session() {
@@ -268,7 +286,7 @@ impl Element for TerminalElement {
                     hitbox,
                     batched_text_runs,
                     rects,
-                    background_color: theme.background,
+                    background_color,
                     dimensions,
                     text_style,
                 }
