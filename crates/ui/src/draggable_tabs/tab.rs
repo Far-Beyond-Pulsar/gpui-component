@@ -1,12 +1,12 @@
 use std::rc::Rc;
 
 use gpui::{
-    px, AnyElement, AnyView, App, ClickEvent, ElementId,
-    IntoElement, Pixels, Point,
+    div, px, AnyElement, AnyView, App, ClickEvent, Context, ElementId,
+    IntoElement, Pixels, Point, Render,
     SharedString, Window,
 };
 
-use crate::{Icon, Sizable, Size};
+use crate::{Icon, Sizable, Size, v_flex, h_flex, ActiveTheme, StyledExt};
 
 /// Data carried during tab drag operations
 #[derive(Clone, Debug)]
@@ -17,6 +17,18 @@ pub struct DraggedTab {
     pub tab_bar_id: ElementId,
     pub source_index: usize,
     pub drag_start_position: Option<Point<Pixels>>,
+}
+
+impl Render for DraggedTab {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px_3()
+            .py_1p5()
+            .rounded(px(6.0))
+            .bg(cx.theme().primary)
+            .text_color(cx.theme().primary_foreground)
+            .child(self.label.clone())
+    }
 }
 
 /// A single draggable tab with Chrome-like behavior
