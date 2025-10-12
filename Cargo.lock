@@ -5770,6 +5770,7 @@ dependencies = [
  "gpui-component",
  "horizon",
  "hound",
+ "itertools 0.13.0",
  "lewton",
  "libc",
  "lsp-types",

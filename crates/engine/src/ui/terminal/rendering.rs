@@ -257,34 +257,36 @@ pub fn layout_grid(
     font: &Font,
     theme: &gpui_component::Theme,
 ) -> (Vec<LayoutRect>, Vec<BatchedTextRun>) {
-    let font_size = text_style.font_size;
+    use itertools::Itertools;
     
+    let font_size = text_style.font_size;
+
     let mut batched_runs = Vec::new();
     let mut rects = Vec::new();
     let mut current_batch: Option<BatchedTextRun> = None;
     let mut current_rect: Option<LayoutRect> = None;
 
-    let grid: Vec<_> = grid_iter.collect();
-    let mut current_line = None;
+    // Group cells by line, then enumerate to get viewport line numbers
+    // This matches Zed's approach: regardless of what line the cells claim to be on,
+    // we render them sequentially starting from line 0 in the viewport.
+    // This is crucial for proper scrolling: when display_offset > 0 (scrolled up),
+    // Alacritty's display_iter returns cells from scrollback, but we need to render
+    // them at viewport positions 0, 1, 2, ... not at their original line numbers.
+    let linegroups = grid_iter.chunk_by(|cell| cell.point.line);
     
-    for indexed_cell in grid {
-        // Convert terminal grid line (which includes scrollback) to viewport line
-        // display_offset tells us how many lines we're scrolled back
-        // Zed renders cells with their point.line adjusted by display_offset
-        let viewport_line = indexed_cell.point.line.0;
+    for (viewport_line, (_, line)) in linegroups.into_iter().enumerate() {
+        let viewport_line = viewport_line as i32;
         
-        // Flush batches when line changes
-        if current_line != Some(viewport_line) {
-            if let Some(batch) = current_batch.take() {
-                batched_runs.push(batch);
-            }
-            if let Some(rect) = current_rect.take() {
-                rects.push(rect);
-            }
-            current_line = Some(viewport_line);
+        // Flush batches when starting a new line
+        if let Some(batch) = current_batch.take() {
+            batched_runs.push(batch);
+        }
+        if let Some(rect) = current_rect.take() {
+            rects.push(rect);
         }
 
-        let cell = &indexed_cell.cell;
+        for indexed_cell in line {
+            let cell = &indexed_cell.cell;
         let mut fg = cell.fg;
         let mut bg = cell.bg;
         if cell.flags.contains(Flags::INVERSE) {
@@ -359,6 +361,7 @@ pub fn layout_grid(
                 ));
             }
         }
+    }
     }
 
     // Flush any remaining batches
