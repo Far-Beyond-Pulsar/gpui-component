@@ -5,7 +5,7 @@ use alacritty_terminal::{
     event::{Event as AlacTermEvent, EventListener, Notify, WindowSize},
     event_loop::{EventLoop, Msg, Notifier},
     grid::Dimensions,
-    index::{Column, Line, Point as AlacPoint},
+    index::{Column, Line, Point as AlacPoint, Direction as AlacDirection},
     sync::FairMutex,
     term::{Config, TermMode, RenderableCursor, cell::Cell},
     tty,
@@ -357,6 +357,41 @@ impl TerminalSession {
         // Clear the terminal by writing ANSI escape sequence
         self.send_input("\x1b[2J\x1b[H");
     }
+    
+    /// Scroll the terminal - from Zed
+    pub fn scroll(&mut self, scroll: alacritty_terminal::grid::Scroll) {
+        let mut term = self.term.lock();
+        term.scroll_display(scroll);
+    }
+    
+    /// Send mouse event to terminal - from Zed
+    pub fn mouse_event(&mut self, point: AlacPoint, button: MouseButton, pressed: bool) {
+        // Simple mouse reporting for mouse mode
+        // Format: ESC[M<button><x+32><y+32>
+        let button_code: u8 = match button {
+            MouseButton::Left => if pressed { 0 } else { 3 },
+            MouseButton::Middle => if pressed { 1 } else { 3 },
+            MouseButton::Right => if pressed { 2 } else { 3 },
+            _ => return,
+        };
+        
+        let x = (point.column.0 as u8 + 32 + 1).min(255);
+        let y = (point.line.0 as u8 + 32 + 1).min(255);
+        
+        let bytes = vec![27, b'[', b'M', button_code + 32, x, y];
+        self.pty_tx.notify(bytes);
+    }
+    
+    /// Send mouse move event to terminal - from Zed
+    pub fn mouse_move_event(&mut self, point: AlacPoint) {
+        // Mouse move report
+        let button_code: u8 = 32 + 3; // Move with no button
+        let x = (point.column.0 as u8 + 32 + 1).min(255);
+        let y = (point.line.0 as u8 + 32 + 1).min(255);
+        
+        let bytes = vec![27, b'[', b'M', button_code, x, y];
+        self.pty_tx.notify(bytes);
+    }
 }
 
 /// Terminal with multiple sessions
@@ -524,6 +559,76 @@ impl Terminal {
     pub fn active_session_mut(&mut self) -> Option<&mut TerminalSession> {
         self.sessions.get_mut(self.active_session)
     }
+    
+    /// Scroll terminal up (into history) - from Zed
+    pub fn scroll_up(&mut self, lines: usize, cx: &mut Context<Self>) {
+        if let Some(session) = self.active_session_mut() {
+            session.scroll(alacritty_terminal::grid::Scroll::Delta(lines as i32));
+            cx.notify();
+        }
+    }
+    
+    /// Scroll terminal down (towards bottom) - from Zed
+    pub fn scroll_down(&mut self, lines: usize, cx: &mut Context<Self>) {
+        if let Some(session) = self.active_session_mut() {
+            session.scroll(alacritty_terminal::grid::Scroll::Delta(-(lines as i32)));
+            cx.notify();
+        }
+    }
+    
+    /// Mouse down event - from Zed
+    pub fn mouse_down(&mut self, event: &MouseDownEvent, origin: Point<Pixels>, cx: &mut Context<Self>) {
+        if let Some(session) = self.active_session_mut() {
+            let position = event.position - origin;
+            let point = grid_point(
+                position,
+                &session.last_content.terminal_bounds,
+                session.last_content.display_offset,
+            );
+            
+            // If terminal is in mouse mode, send mouse event to terminal
+            if session.last_content.mode.intersects(TermMode::MOUSE_MODE) && !event.modifiers.shift {
+                session.mouse_event(point, event.button, true);
+            }
+            cx.notify();
+        }
+    }
+    
+    /// Mouse up event - from Zed
+    pub fn mouse_up(&mut self, event: &MouseUpEvent, origin: Point<Pixels>, cx: &mut Context<Self>) {
+        if let Some(session) = self.active_session_mut() {
+            let position = event.position - origin;
+            let point = grid_point(
+                position,
+                &session.last_content.terminal_bounds,
+                session.last_content.display_offset,
+            );
+            
+            // If terminal is in mouse mode, send mouse event to terminal
+            if session.last_content.mode.intersects(TermMode::MOUSE_MODE) && !event.modifiers.shift {
+                session.mouse_event(point, event.button, false);
+            }
+            cx.notify();
+        }
+    }
+    
+    /// Mouse move event - from Zed
+    pub fn mouse_move(&mut self, event: &MouseMoveEvent, origin: Point<Pixels>) {
+        if let Some(session) = self.active_session_mut() {
+            let position = event.position - origin;
+            let point = grid_point(
+                position,
+                &session.last_content.terminal_bounds,
+                session.last_content.display_offset,
+            );
+            
+            // If terminal is in mouse mode, send mouse event to terminal
+            if session.last_content.mode.intersects(TermMode::MOUSE_MODE) && !event.modifiers.shift {
+                // Mouse move in mouse mode
+                session.mouse_move_event(point);
+            }
+        }
+    }
 
     pub fn sessions(&self) -> &[TerminalSession] {
         &self.sessions
@@ -561,22 +666,6 @@ impl Terminal {
             // Update terminal size if needed
             // Sync terminal content
             session.sync(window, cx);
-        }
-    }
-
-    pub fn scroll_up(&mut self, lines: usize, cx: &mut Context<Self>) {
-        if let Some(session) = self.active_session_mut() {
-            let mut term = session.term().lock();
-            term.scroll_display(alacritty_terminal::grid::Scroll::Delta(lines as i32));
-            cx.notify();
-        }
-    }
-
-    pub fn scroll_down(&mut self, lines: usize, cx: &mut Context<Self>) {
-        if let Some(session) = self.active_session_mut() {
-            let mut term = session.term().lock();
-            term.scroll_display(alacritty_terminal::grid::Scroll::Delta(-(lines as i32)));
-            cx.notify();
         }
     }
 }
@@ -726,4 +815,22 @@ impl Render for Terminal {
                     ))
             )
     }
+}
+
+/// Convert pixel position to grid point - from Zed
+fn grid_point(
+    position: Point<Pixels>,
+    bounds: &TerminalBounds,
+    display_offset: usize,
+) -> AlacPoint {
+    let col = (position.x / bounds.cell_width).floor() as usize;
+    let line = (position.y / bounds.line_height).floor() as i32 - display_offset as i32;
+    
+    // Calculate max columns from bounds
+    let max_col = ((bounds.bounds.size.width / bounds.cell_width).floor() as usize).saturating_sub(1);
+    
+    AlacPoint::new(
+        Line(line),
+        Column(col.min(max_col)),
+    )
 }

@@ -286,25 +286,97 @@ impl TerminalElement {
     fn register_mouse_listeners(&mut self, hitbox: &Hitbox, window: &mut Window) {
         let focus = self.focus.clone();
         let terminal = self.terminal.clone();
+        let origin = hitbox.bounds.origin;
 
-        // Left mouse button down - focus terminal
+        // Left mouse button down - focus terminal and send to terminal
         self.interactivity.on_mouse_down(MouseButton::Left, {
             let focus = focus.clone();
-            
-            move |_e, window, _cx| {
+            let terminal = terminal.clone();
+            let origin = origin.clone();
+
+            move |e, window, cx| {
                 window.focus(&focus);
+                terminal.update(cx, |terminal, cx| {
+                    terminal.mouse_down(&e, origin, cx);
+                });
+            }
+        });
+        
+        // Left mouse button up
+        self.interactivity.on_mouse_up(MouseButton::Left, {
+            let terminal = terminal.clone();
+            let origin = origin.clone();
+
+            move |e, _window, cx| {
+                terminal.update(cx, |terminal, cx| {
+                    terminal.mouse_up(&e, origin, cx);
+                });
             }
         });
 
-        // Mouse move for hover effects
+        // Right mouse button (for mouse mode programs)
+        self.interactivity.on_mouse_down(MouseButton::Right, {
+            let terminal = terminal.clone();
+            let origin = origin.clone();
+
+            move |e, _window, cx| {
+                terminal.update(cx, |terminal, cx| {
+                    terminal.mouse_down(&e, origin, cx);
+                });
+            }
+        });
+        
+        self.interactivity.on_mouse_up(MouseButton::Right, {
+            let terminal = terminal.clone();
+            let origin = origin.clone();
+
+            move |e, _window, cx| {
+                terminal.update(cx, |terminal, cx| {
+                    terminal.mouse_up(&e, origin, cx);
+                });
+            }
+        });
+        
+        // Middle mouse button
+        self.interactivity.on_mouse_down(MouseButton::Middle, {
+            let terminal = terminal.clone();
+            let origin = origin.clone();
+
+            move |e, _window, cx| {
+                terminal.update(cx, |terminal, cx| {
+                    terminal.mouse_down(&e, origin, cx);
+                });
+            }
+        });
+        
+        self.interactivity.on_mouse_up(MouseButton::Middle, {
+            let terminal = terminal.clone();
+            let origin = origin.clone();
+
+            move |e, _window, cx| {
+                terminal.update(cx, |terminal, cx| {
+                    terminal.mouse_up(&e, origin, cx);
+                });
+            }
+        });
+
+        // Mouse move for hover effects and mouse mode
         window.on_mouse_event({
             let hitbox = hitbox.clone();
-            
-            move |_e: &MouseMoveEvent, phase, _window, _cx| {
+            let terminal = terminal.clone();
+            let origin = origin.clone();
+
+            move |e: &MouseMoveEvent, phase, _window, cx| {
                 if phase != DispatchPhase::Bubble {
                     return;
                 }
-                // Hover handling would go here
+                // Check if mouse is in bounds
+                if hitbox.bounds.contains(&e.position) {
+                    terminal.update(cx, |terminal, cx| {
+                        terminal.mouse_move(&e, origin);
+                        cx.notify();
+                    });
+                }
             }
         });
 

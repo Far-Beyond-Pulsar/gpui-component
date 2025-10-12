@@ -73,13 +73,9 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
         };
         
         let trigger_char = trigger.trigger_character.clone();
-        
-        println!("📡 Requesting completions at offset {} (char: {:?})", offset, trigger_char);
-        
+                
         // Spawn immediately - do ALL potentially slow work in the async block
-        cx.spawn_in(window, async move |_, cx| {
-            println!("🚀 Requesting completions from rust-analyzer at offset {}", offset);
-            
+        cx.spawn_in(window, async move |_, cx| {            
             // Convert to position in background (can be slow for large files)
             // Ensure offset is within bounds before converting
             // Rope stores characters, so we check the length in chars
@@ -256,9 +252,7 @@ impl DefinitionProvider for GlobalRustAnalyzerCompletionProvider {
         let uri = self.path_to_uri();
         let position = text.offset_to_position(offset);
         let word = text.word_at(offset);
-        
-        println!("🔍 Requesting definition for '{}' at {}:{}", word, position.line, position.character);
-        
+                
         // Prepare the request parameters
         let params = json!({
             "textDocument": {
@@ -363,9 +357,7 @@ impl gpui_component::input::HoverProvider for GlobalRustAnalyzerCompletionProvid
         let uri = self.path_to_uri();
         let position = text.offset_to_position(offset);
         let word = text.word_at(offset);
-        
-        println!("💡 Requesting hover info for '{}' at {}:{}", word, position.line, position.character);
-        
+                
         // Prepare the request parameters
         let params = json!({
             "textDocument": {
@@ -407,7 +399,6 @@ impl gpui_component::input::HoverProvider for GlobalRustAnalyzerCompletionProvid
             // Parse the result
             if let Some(result) = response.get("result") {
                 if result.is_null() {
-                    println!("💡 No hover info found for '{}'", word);
                     return Ok(None);
                 }
                 
