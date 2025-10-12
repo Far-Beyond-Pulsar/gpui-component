@@ -70,7 +70,7 @@ impl BatchedTextRun {
                 self.text.clone().into(),
                 self.font_size.to_pixels(window.rem_size()),
                 std::slice::from_ref(&self.style),
-                Some(dimensions.cell_width),  // Use cell width like Zed for monospace alignment
+                None,  // DON'T force cell width - let text flow naturally
             );
         
         let _ = shaped.paint(pos, dimensions.line_height, window, cx);
@@ -193,7 +193,7 @@ fn cell_style(
     fg: AnsiColor,
     bg: AnsiColor,
     theme: &gpui_component::Theme,
-    font: &Font,
+    text_style: &TextStyle,
 ) -> TextRun {
     let flags = cell.flags;
     let mut fg_color = convert_color(&fg, theme);
@@ -219,7 +219,7 @@ fn cell_style(
     let weight = if flags.contains(Flags::BOLD) {
         FontWeight::BOLD
     } else {
-        font.weight
+        text_style.font_weight
     };
 
     let style = if flags.contains(Flags::ITALIC) {
@@ -233,11 +233,11 @@ fn cell_style(
         color: fg_color,
         background_color: None,
         font: Font {
-            family: font.family.clone(),
-            features: font.features.clone(),
+            family: text_style.font_family.clone(),
+            features: text_style.font_features.clone(),
             weight,
             style,
-            fallbacks: font.fallbacks.clone(),
+            fallbacks: text_style.font_fallbacks.clone(),
         },
         underline,
         strikethrough,
@@ -249,12 +249,11 @@ fn is_blank(cell: &Cell) -> bool {
     cell.c == ' ' && !cell.flags.contains(Flags::INVERSE)
 }
 
-/// Layout terminal grid into batched text runs and background rects (Zed approach)
+/// Layout terminal grid into batched text runs and background rects
 pub fn layout_grid(
     grid_iter: impl Iterator<Item = crate::ui::terminal::terminal_core::IndexedCell>,
-    display_offset: usize,
+    start_line_offset: i32,
     text_style: &TextStyle,
-    font: &Font,
     theme: &gpui_component::Theme,
 ) -> (Vec<LayoutRect>, Vec<BatchedTextRun>) {
     let font_size = text_style.font_size;
@@ -268,20 +267,17 @@ pub fn layout_grid(
     let mut current_line = None;
     
     for indexed_cell in grid {
-        // Convert terminal grid line (which includes scrollback) to viewport line
-        // display_offset tells us how many lines we're scrolled back
-        // Zed renders cells with their point.line adjusted by display_offset
-        let viewport_line = indexed_cell.point.line.0;
+        let alac_line = start_line_offset + indexed_cell.point.line.0;
         
         // Flush batches when line changes
-        if current_line != Some(viewport_line) {
+        if current_line != Some(indexed_cell.point.line.0) {
             if let Some(batch) = current_batch.take() {
                 batched_runs.push(batch);
             }
             if let Some(rect) = current_rect.take() {
                 rects.push(rect);
             }
-            current_line = Some(viewport_line);
+            current_line = Some(indexed_cell.point.line.0);
         }
 
         let cell = &indexed_cell.cell;
@@ -298,21 +294,21 @@ pub fn layout_grid(
 
             if let Some(ref mut rect) = current_rect {
                 if rect.color == color
-                    && rect.point.line.0 == viewport_line
+                    && rect.point.line.0 == alac_line
                     && (rect.point.column.0 as usize + rect.num_of_cells) == col as usize
                 {
                     rect.num_of_cells += 1;
                 } else {
                     rects.push(current_rect.take().unwrap());
                     current_rect = Some(LayoutRect::new(
-                        AlacPoint::new(alacritty_terminal::index::Line(viewport_line), alacritty_terminal::index::Column(col)),
+                        AlacPoint::new(alacritty_terminal::index::Line(alac_line), alacritty_terminal::index::Column(col)),
                         1,
                         color,
                     ));
                 }
             } else {
                 current_rect = Some(LayoutRect::new(
-                    AlacPoint::new(alacritty_terminal::index::Line(viewport_line), alacritty_terminal::index::Column(col)),
+                    AlacPoint::new(alacritty_terminal::index::Line(alac_line), alacritty_terminal::index::Column(col)),
                     1,
                     color,
                 ));
@@ -326,9 +322,9 @@ pub fn layout_grid(
 
         // Layout current cell text
         if !is_blank(cell) {
-            let cell_style_run = cell_style(cell, fg, bg, theme, font);
+            let cell_style_run = cell_style(cell, fg, bg, theme, text_style);
             let cell_point = AlacPoint::new(
-                alacritty_terminal::index::Line(viewport_line),
+                alacritty_terminal::index::Line(alac_line),
                 indexed_cell.point.column
             );
 
