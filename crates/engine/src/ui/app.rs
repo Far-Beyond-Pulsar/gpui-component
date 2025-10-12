@@ -539,7 +539,7 @@ impl PulsarApp {
         }
 
         // Add the tab to the tab bar
-        let tab_id = format!("blueprint-{}", self.next_tab_id);
+        let tab_id = ElementId::Name(SharedString::from(format!("blueprint-{}", self.next_tab_id)));
         self.tab_bar.update(cx, |bar, _cx| {
             bar.add_tab(
                 tab_id,
@@ -1241,3 +1241,4 @@ impl EditorPanel {
         )
     }
 }
+
