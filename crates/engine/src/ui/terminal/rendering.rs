@@ -294,21 +294,21 @@ pub fn layout_grid(
 
             if let Some(ref mut rect) = current_rect {
                 if rect.color == color
-                    && rect.point.line == alac_line
-                    && rect.point.column + rect.num_of_cells as i32 == col
+                    && rect.point.line.0 == alac_line
+                    && (rect.point.column.0 as usize + rect.num_of_cells) == col as usize
                 {
                     rect.num_of_cells += 1;
                 } else {
                     rects.push(current_rect.take().unwrap());
                     current_rect = Some(LayoutRect::new(
-                        AlacPoint::new(alac_line, col),
+                        AlacPoint::new(alacritty_terminal::index::Line(alac_line), alacritty_terminal::index::Column(col)),
                         1,
                         color,
                     ));
                 }
             } else {
                 current_rect = Some(LayoutRect::new(
-                    AlacPoint::new(alac_line, col),
+                    AlacPoint::new(alacritty_terminal::index::Line(alac_line), alacritty_terminal::index::Column(col)),
                     1,
                     color,
                 ));
@@ -323,13 +323,16 @@ pub fn layout_grid(
         // Layout current cell text
         if !is_blank(cell) {
             let cell_style_run = cell_style(cell, fg, bg, theme, text_style);
-            let cell_point = AlacPoint::new(alac_line, indexed_cell.point.column.0);
+            let cell_point = AlacPoint::new(
+                alacritty_terminal::index::Line(alac_line),
+                indexed_cell.point.column
+            );
 
             // Try to batch with existing run
             if let Some(ref mut batch) = current_batch {
                 if batch.can_append(&cell_style_run)
-                    && batch.start_point.line == cell_point.line
-                    && batch.start_point.column + batch.cell_count as i32 == cell_point.column
+                    && batch.start_point.line.0 == cell_point.line.0
+                    && (batch.start_point.column.0 as usize + batch.cell_count) == cell_point.column.0 as usize
                 {
                     batch.append_char(cell.c);
                 } else {

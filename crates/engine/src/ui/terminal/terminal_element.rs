@@ -80,10 +80,10 @@ impl Element for TerminalElement {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
-        let hitbox = window.insert_hitbox(bounds, false);
+        let hitbox = window.insert_hitbox(bounds, true);
         let theme = cx.theme();
         
-        // Create text style for terminal
+        // Create text style for terminal - exactly like Zed
         let text_style = TextStyle {
             font_family: "monospace".into(),
             font_features: FontFeatures::default(),
@@ -95,11 +95,7 @@ impl Element for TerminalElement {
             background_color: Some(hsla(0.0, 0.0, 0.05, 1.0)),
             white_space: WhiteSpace::Normal,
             color: hsla(0.0, 0.0, 0.9, 1.0),
-            underline: None,
-            strikethrough: None,
-            line_clamp: None,
-            text_align: None,
-            text_overflow: None,
+            ..Default::default()  // Like Zed does
         };
 
         // Calculate terminal dimensions
@@ -125,7 +121,7 @@ impl Element for TerminalElement {
                 let cells: Vec<IndexedCell> = content.display_iter
                     .map(|ic| IndexedCell {
                         point: ic.point,
-                        cell: ic.cell.clone(),
+                        cell: Cell::clone(&ic.cell),
                     })
                     .collect();
                 
