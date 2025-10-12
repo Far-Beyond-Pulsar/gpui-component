@@ -31,6 +31,7 @@ pub mod color_picker;
 pub mod description_list;
 pub mod divider;
 pub mod dock;
+pub mod draggable_tabs;
 pub mod drawer;
 pub mod dropdown;
 pub mod form;
