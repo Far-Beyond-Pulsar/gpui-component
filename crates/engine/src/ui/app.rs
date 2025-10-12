@@ -495,8 +495,7 @@ impl PulsarApp {
         use gpui_component::Root;
 
         // Open terminal in a separate window
-        let terminal_drawer = self.terminal_drawer.clone();
-
+        // Each window gets its own independent terminal instance
         let _ = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds {
@@ -515,6 +514,8 @@ impl PulsarApp {
                 ..Default::default()
             },
             |window, cx| {
+                // Create a NEW terminal drawer for this window (independent terminal session)
+                let terminal_drawer = cx.new(|cx| TerminalDrawer::new(window, cx));
                 let terminal_window = cx.new(|cx| TerminalWindow::new(terminal_drawer, window, cx));
 
                 cx.new(|cx| Root::new(terminal_window.into(), window, cx))
