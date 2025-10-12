@@ -251,7 +251,7 @@ fn is_blank(cell: &Cell) -> bool {
 
 /// Layout terminal grid into batched text runs and background rects
 pub fn layout_grid(
-    grid_iter: impl Iterator<Item = crate::ui::terminal::terminal_element::IndexedCell>,
+    grid_iter: impl Iterator<Item = crate::ui::terminal::terminal_core::IndexedCell>,
     start_line_offset: i32,
     text_style: &TextStyle,
     theme: &gpui_component::Theme,

@@ -7,7 +7,7 @@ use alacritty_terminal::{
     grid::Dimensions,
     index::{Column, Line, Point as AlacPoint},
     sync::FairMutex,
-    term::{Config, TermMode},
+    term::{Config, TermMode, RenderableCursor, cell::Cell},
     tty,
 };
 use anyhow::{Context as _, Result};
@@ -15,6 +15,49 @@ use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use gpui::*;
 use std::sync::Arc;
 use std::path::PathBuf;
+use std::collections::VecDeque;
+
+/// Indexed cell (from Zed)
+#[derive(Debug, Clone)]
+pub struct IndexedCell {
+    pub point: AlacPoint,
+    pub cell: Cell,
+}
+
+impl std::ops::Deref for IndexedCell {
+    type Target = Cell;
+
+    fn deref(&self) -> &Self::Target {
+        &self.cell
+    }
+}
+
+/// Terminal content cache (from Zed)
+#[derive(Clone)]
+pub struct TerminalContent {
+    pub cells: Vec<IndexedCell>,
+    pub mode: TermMode,
+    pub display_offset: usize,
+    pub cursor: RenderableCursor,
+    pub cursor_char: char,
+    pub terminal_bounds: TerminalBounds,
+}
+
+impl Default for TerminalContent {
+    fn default() -> Self {
+        TerminalContent {
+            cells: Default::default(),
+            mode: Default::default(),
+            display_offset: Default::default(),
+            cursor: RenderableCursor {
+                shape: alacritty_terminal::vte::ansi::CursorShape::Block,
+                point: AlacPoint::new(Line(0), Column(0)),
+            },
+            cursor_char: Default::default(),
+            terminal_bounds: Default::default(),
+        }
+    }
+}
 
 /// Events that flow upward from the terminal
 #[derive(Clone, Debug)]
@@ -112,6 +155,8 @@ pub struct TerminalSession {
     events_rx: UnboundedReceiver<AlacTermEvent>,
     bounds: TerminalBounds,
     title: String,
+    pub last_content: TerminalContent,  // Cache like Zed does
+    events: VecDeque<AlacTermEvent>,    // Event queue
 }
 
 impl TerminalSession {
@@ -187,24 +232,66 @@ impl TerminalSession {
             events_rx,
             bounds: TerminalBounds::default(),
             title: name,
+            last_content: Default::default(),
+            events: VecDeque::with_capacity(10),
         })
+    }
+
+    /// Set terminal size (from Zed)
+    pub fn set_size(&mut self, new_bounds: TerminalBounds) {
+        if self.last_content.terminal_bounds != new_bounds {
+            self.bounds = new_bounds;
+            self.last_content.terminal_bounds = new_bounds;
+            let window_size = WindowSize::from(new_bounds);
+            self.term.lock().resize(new_bounds);
+            self.pty_tx.0.send(Msg::Resize(window_size)).ok();
+        }
+    }
+
+    /// Sync terminal content (from Zed)
+    pub fn sync(&mut self, window: &mut Window, cx: &mut Context<Terminal>) {
+        // Process pending events
+        while let Ok(Some(event)) = self.events_rx.try_next() {
+            self.events.push_back(event);
+        }
+
+        // Update last_content from terminal
+        let term = self.term.lock();
+        self.last_content = Self::make_content(&term);
+    }
+
+    /// Make terminal content from Alacritty term (from Zed)
+    fn make_content(term: &parking_lot::lock_api::MutexGuard<parking_lot::RawMutex, Term<ZedListener>>) -> TerminalContent {
+        let content = term.renderable_content();
+
+        // Convert display_iter to IndexedCell vec
+        let cells: Vec<IndexedCell> = content.display_iter
+            .map(|ic| IndexedCell {
+                point: ic.point,
+                cell: Cell::clone(&ic.cell),
+            })
+            .collect();
+
+        // Get cursor char
+        let cursor_char = cells.iter()
+            .find(|ic| ic.point.line == content.cursor.point.line && ic.point.column == content.cursor.point.column)
+            .map(|ic| ic.c)
+            .unwrap_or(' ');
+
+        TerminalContent {
+            cells,
+            mode: content.mode,
+            display_offset: content.display_offset,
+            cursor: content.cursor,
+            cursor_char,
+            terminal_bounds: TerminalBounds::default(), // Will be updated by set_size
+        }
     }
 
     /// Send input to the terminal
     pub fn send_input(&mut self, input: &str) {
         let bytes = input.as_bytes().to_vec();
         self.pty_tx.0.send(Msg::Input(bytes.into())).ok();
-    }
-
-    /// Resize the terminal
-    pub fn resize(&mut self, bounds: TerminalBounds) {
-        if self.bounds != bounds {
-            self.bounds = bounds;
-            let window_size = WindowSize::from(bounds);
-            self.term.lock().resize(bounds);
-            // Send resize notification to PTY
-            self.pty_tx.0.send(Msg::Resize(window_size)).ok();
-        }
     }
 
     /// Get the terminal for rendering
@@ -320,57 +407,18 @@ impl Terminal {
         &self.sessions
     }
 
-    fn handle_keydown(&mut self, event: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
+    pub fn handle_input(&mut self, text: &str, _window: &mut Window, cx: &mut Context<Self>) {
         if let Some(session) = self.active_session_mut() {
-            // Handle special keys
-            match event.keystroke.key.as_str() {
-                "enter" => {
-                    session.send_input("\n");
-                }
-                "backspace" => {
-                    session.send_input("\x7f");
-                }
-                "tab" => {
-                    session.send_input("\t");
-                }
-                "escape" => {
-                    session.send_input("\x1b");
-                }
-                "up" => {
-                    session.send_input("\x1b[A");
-                }
-                "down" => {
-                    session.send_input("\x1b[B");
-                }
-                "right" => {
-                    session.send_input("\x1b[C");
-                }
-                "left" => {
-                    session.send_input("\x1b[D");
-                }
-                key if key.len() == 1 => {
-                    // Handle Ctrl combinations
-                    if event.keystroke.modifiers.control {
-                        if let Some(ch) = key.chars().next() {
-                            if ch.is_ascii_alphabetic() {
-                                // Ctrl+A = 0x01, Ctrl+B = 0x02, etc.
-                                let ctrl_code = (ch.to_ascii_lowercase() as u8 - b'a' + 1) as char;
-                                session.send_input(&ctrl_code.to_string());
-                                return;
-                            }
-                        }
-                    }
-                    session.send_input(key);
-                }
-                _ => {}
-            }
+            session.send_input(text);
             cx.notify();
         }
     }
 
-    pub fn update_events(&mut self, cx: &mut Context<Self>) {
+    pub fn update_events(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(session) = self.active_session_mut() {
-            session.process_events(cx);
+            // Update terminal size if needed
+            // Sync terminal content
+            session.sync(window, cx);
         }
     }
 }
@@ -384,16 +432,19 @@ impl Focusable for Terminal {
 impl EventEmitter<Event> for Terminal {}
 
 impl Render for Terminal {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use gpui_component::{v_flex, h_flex, StyledExt, ActiveTheme, button::{Button, ButtonVariants}, IconName, Sizable};
         use super::terminal_element::TerminalElement;
 
+        // Update terminal content before rendering
+        self.update_events(window, cx);
+        
         let active_session = self.active_session().map(|s| s.name.clone()).unwrap_or_default();
+        let is_focused = self.focus_handle.is_focused(window);
 
         v_flex()
             .size_full()
             .bg(cx.theme().background)
-            .on_key_down(cx.listener(Self::handle_keydown))
             .child(
                 // Header
                 h_flex()
@@ -510,7 +561,11 @@ impl Render for Terminal {
                     .flex_1()
                     .w_full()
                     .overflow_hidden()
-                    .child(TerminalElement::new(cx.entity().clone(), self.focus_handle.clone()))
+                    .child(TerminalElement::new(
+                        cx.entity().clone(),
+                        self.focus_handle.clone(),
+                        is_focused
+                    ))
             )
     }
 }

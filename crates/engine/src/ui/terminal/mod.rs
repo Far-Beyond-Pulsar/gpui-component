@@ -6,7 +6,7 @@ mod terminal_element;
 mod rendering;
 mod mappings;
 
-pub use terminal_core::{Terminal, TerminalSession, Event as TerminalEvent, TerminalBounds};
+pub use terminal_core::{Terminal, TerminalSession, Event as TerminalEvent, TerminalBounds, TerminalContent, IndexedCell};
 pub use terminal_element::TerminalElement;
 
 use gpui::*;

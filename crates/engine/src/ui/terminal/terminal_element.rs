@@ -1,28 +1,62 @@
-//! Terminal rendering element
-//! Based on Zed's terminal_element.rs implementation
+//! Complete terminal element with full interactivity
+//! Adapted from Zed's terminal_element.rs
 
-use super::terminal_core::{Terminal, TerminalBounds};
+use super::terminal_core::{Terminal, TerminalBounds, TerminalContent};
 use super::rendering::{layout_grid, BatchedTextRun, LayoutRect};
-use alacritty_terminal::term::cell::Cell;
 use gpui::*;
 use gpui_component::ActiveTheme;
 
-/// Wrapper for indexed cell
-#[derive(Debug, Clone)]
-pub struct IndexedCell {
-    pub point: alacritty_terminal::index::Point,
-    pub cell: Cell,
+/// Simple terminal input handler (simplified from Zed)
+struct TerminalInputHandler {
+    terminal: Entity<Terminal>,
 }
 
-impl std::ops::Deref for IndexedCell {
-    type Target = Cell;
+impl InputHandler for TerminalInputHandler {
+    fn selected_text_range(&mut self, _ignore_disabled_input: bool, _window: &mut Window, _cx: &mut App) -> Option<UTF16Selection> {
+        // Return empty selection
+        Some(UTF16Selection {
+            range: 0..0,
+            reversed: false,
+        })
+    }
 
-    fn deref(&self) -> &Self::Target {
-        &self.cell
+    fn marked_text_range(&mut self, _window: &mut Window, _cx: &mut App) -> Option<std::ops::Range<usize>> {
+        None
+    }
+
+    fn text_for_range(&mut self, _range: std::ops::Range<usize>, _actual_range: &mut Option<std::ops::Range<usize>>, _window: &mut Window, _cx: &mut App) -> Option<String> {
+        None
+    }
+
+    fn replace_text_in_range(&mut self, _replacement_range: Option<std::ops::Range<usize>>, text: &str, window: &mut Window, cx: &mut App) {
+        // This is the key method - send text to terminal!
+        self.terminal.update(cx, |terminal, cx| {
+            terminal.handle_input(text, window, cx);
+        });
+    }
+
+    fn replace_and_mark_text_in_range(&mut self, _range_utf16: Option<std::ops::Range<usize>>, _new_text: &str, _new_marked_range: Option<std::ops::Range<usize>>, _window: &mut Window, _cx: &mut App) {
+        // Not needed for basic terminal
+    }
+
+    fn unmark_text(&mut self, _window: &mut Window, _cx: &mut App) {
+        // Not needed for basic terminal
+    }
+
+    fn bounds_for_range(&mut self, _range_utf16: std::ops::Range<usize>, _window: &mut Window, _cx: &mut App) -> Option<Bounds<Pixels>> {
+        None
+    }
+
+    fn apple_press_and_hold_enabled(&mut self) -> bool {
+        false
+    }
+
+    fn character_index_for_point(&mut self, _point: Point<Pixels>, _window: &mut Window, _cx: &mut App) -> Option<usize> {
+        None
     }
 }
 
-/// Layout state for terminal rendering
+/// Layout state for terminal rendering (from Zed)
 pub struct LayoutState {
     pub hitbox: Hitbox,
     pub batched_text_runs: Vec<BatchedTextRun>,
@@ -32,15 +66,58 @@ pub struct LayoutState {
     pub text_style: TextStyle,
 }
 
-/// Terminal element that renders the terminal content
+/// Terminal element with full interactivity (adapted from Zed)
 pub struct TerminalElement {
     terminal: Entity<Terminal>,
     focus: FocusHandle,
+    focused: bool,
+    interactivity: Interactivity,
 }
 
+impl InteractiveElement for TerminalElement {
+    fn interactivity(&mut self) -> &mut Interactivity {
+        &mut self.interactivity
+    }
+}
+
+impl StatefulInteractiveElement for TerminalElement {}
+
 impl TerminalElement {
-    pub fn new(terminal: Entity<Terminal>, focus: FocusHandle) -> Self {
-        Self { terminal, focus }
+    pub fn new(terminal: Entity<Terminal>, focus: FocusHandle, focused: bool) -> Self {
+        TerminalElement {
+            terminal,
+            focus: focus.clone(),
+            focused,
+            interactivity: Interactivity::default(),
+        }
+        .track_focus(&focus)
+    }
+
+    // Adapted from Zed's register_mouse_listeners
+    fn register_mouse_listeners(&mut self, hitbox: &Hitbox, window: &mut Window) {
+        let focus = self.focus.clone();
+        let terminal = self.terminal.clone();
+
+        // Left mouse button down - focus terminal
+        self.interactivity.on_mouse_down(MouseButton::Left, {
+            let focus = focus.clone();
+            
+            move |_e, window, _cx| {
+                window.focus(&focus);
+            }
+        });
+
+        // Mouse move for hover effects
+        window.on_mouse_event({
+            let hitbox = hitbox.clone();
+            
+            move |_e: &MouseMoveEvent, phase, _window, _cx| {
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
+                // Hover handling would go here
+            }
+        });
     }
 }
 
@@ -49,126 +126,165 @@ impl Element for TerminalElement {
     type PrepaintState = LayoutState;
 
     fn id(&self) -> Option<ElementId> {
-        None
+        self.interactivity.element_id.clone()
     }
 
     fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
         None
     }
 
+    // Adapted from Zed's request_layout
     fn request_layout(
         &mut self,
-        _global_id: Option<&GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
+        global_id: Option<&GlobalElementId>,
+        inspector_id: Option<&gpui::InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        let mut style = Style::default();
-        style.size.width = relative(1.).into();
-        style.size.height = relative(1.).into();
-        
-        let layout_id = window.request_layout(style, None, cx);
+        let layout_id = self.interactivity.request_layout(
+            global_id,
+            inspector_id,
+            window,
+            cx,
+            |mut style, window, cx| {
+                style.size.width = relative(1.).into();
+                style.size.height = relative(1.).into();
+                window.request_layout(style, None, cx)
+            },
+        );
         (layout_id, ())
     }
 
+    // Adapted from Zed's prepaint - this is where the magic happens
     fn prepaint(
         &mut self,
-        _global_id: Option<&GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
+        global_id: Option<&GlobalElementId>,
+        inspector_id: Option<&gpui::InspectorElementId>,
         bounds: Bounds<Pixels>,
         _request_layout: &mut Self::RequestLayoutState,
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
-        let hitbox = window.insert_hitbox(bounds, true);
-        let theme = cx.theme();
-        
-        // Create text style for terminal - exactly like Zed
-        let text_style = TextStyle {
-            font_family: "monospace".into(),
-            font_features: FontFeatures::default(),
-            font_weight: FontWeight::NORMAL,
-            font_fallbacks: None,
-            font_size: px(13.0).into(),
-            font_style: FontStyle::Normal,
-            line_height: px(20.0).into(),
-            background_color: Some(hsla(0.0, 0.0, 0.05, 1.0)),
-            white_space: WhiteSpace::Normal,
-            color: hsla(0.0, 0.0, 0.9, 1.0),
-            ..Default::default()  // Like Zed does
-        };
-
-        // Calculate terminal dimensions
-        let font_id = cx.text_system().resolve_font(&text_style.font());
-        let font_pixels = text_style.font_size.to_pixels(window.rem_size());
-        let cell_width = cx
-            .text_system()
-            .advance(font_id, font_pixels, 'm')
-            .unwrap()
-            .width;
-        let line_height = font_pixels * 1.5;
-
-        let dimensions = TerminalBounds::new(line_height, cell_width, bounds);
-
-        // Get terminal content and layout it
-        let (rects, batched_text_runs) = self.terminal.read(cx).active_session()
-            .map(|session| {
-                // Resize terminal to fit bounds
-                let term = session.term().lock();
-                let content = term.renderable_content();
+        self.interactivity.prepaint(
+            global_id,
+            inspector_id,
+            bounds,
+            bounds.size,
+            window,
+            cx,
+            |_, _, hitbox, window, cx| {
+                let hitbox = hitbox.unwrap();
+                let theme = cx.theme();
                 
-                // Convert display_iter to our IndexedCell format
-                let cells: Vec<IndexedCell> = content.display_iter
-                    .map(|ic| IndexedCell {
-                        point: ic.point,
-                        cell: Cell::clone(&ic.cell),
-                    })
-                    .collect();
-                
-                // Layout the grid
-                layout_grid(
-                    cells.into_iter(),
-                    0,
-                    &text_style,
-                    &theme,
-                )
-            })
-            .unwrap_or_else(|| (Vec::new(), Vec::new()));
+                // Create text style exactly like Zed does
+                let text_style = TextStyle {
+                    font_family: "monospace".into(),
+                    font_features: FontFeatures::default(),
+                    font_weight: FontWeight::NORMAL,
+                    font_fallbacks: None,
+                    font_size: px(13.0).into(),
+                    font_style: FontStyle::Normal,
+                    line_height: px(20.0).into(),
+                    background_color: Some(hsla(0.0, 0.0, 0.05, 1.0)),
+                    white_space: WhiteSpace::Normal,
+                    color: hsla(0.0, 0.0, 0.9, 1.0),
+                    ..Default::default()
+                };
 
-        LayoutState {
-            hitbox,
-            batched_text_runs,
-            rects,
-            background_color: hsla(0.0, 0.0, 0.05, 1.0),
-            dimensions,
-            text_style,
-        }
+                // Calculate terminal dimensions like Zed does
+                let font_id = cx.text_system().resolve_font(&text_style.font());
+                let rem_size = window.rem_size();
+                let font_pixels = text_style.font_size.to_pixels(rem_size);
+                
+                // Use 'm' character for cell width (standard terminal practice)
+                let cell_width = cx
+                    .text_system()
+                    .advance(font_id, font_pixels, 'm')
+                    .unwrap()
+                    .width;
+                    
+                // Line height - simple calculation, use 1.5x font size
+                let line_height = font_pixels * 1.5;
+
+                let dimensions = TerminalBounds::new(line_height, cell_width, bounds);
+
+                // Get terminal content - read only in prepaint
+                let (rects, batched_text_runs) = {
+                    let terminal_read = self.terminal.read(cx);
+                    if let Some(session) = terminal_read.active_session() {
+                        // Use cached last_content (like Zed)
+                        layout_grid(
+                            session.last_content.cells.iter().cloned(),
+                            0,
+                            &text_style,
+                            &theme,
+                        )
+                    } else {
+                        (Vec::new(), Vec::new())
+                    }
+                };
+
+                LayoutState {
+                    hitbox,
+                    batched_text_runs,
+                    rects,
+                    background_color: hsla(0.0, 0.0, 0.05, 1.0),
+                    dimensions,
+                    text_style,
+                }
+            },
+        )
     }
 
+    // Adapted from Zed's paint method
     fn paint(
         &mut self,
-        _global_id: Option<&GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
+        global_id: Option<&GlobalElementId>,
+        inspector_id: Option<&gpui::InspectorElementId>,
         bounds: Bounds<Pixels>,
         _request_layout: &mut Self::RequestLayoutState,
         layout: &mut Self::PrepaintState,
         window: &mut Window,
         cx: &mut App,
     ) {
-        // Paint background
-        window.paint_quad(fill(bounds, layout.background_color));
-
-        let origin = bounds.origin;
-
-        // Paint background rectangles
-        for rect in &layout.rects {
-            rect.paint(origin, &layout.dimensions, window);
+        self.register_mouse_listeners(&layout.hitbox, window);
+        
+        // Set cursor style like Zed does
+        if self.focused {
+            window.set_cursor_style(CursorStyle::IBeam, &layout.hitbox);
         }
 
-        // Paint batched text runs
-        for batch in &layout.batched_text_runs {
-            batch.paint(origin, &layout.dimensions, window, cx);
-        }
+        // Paint using interactivity (Zed's approach)
+        self.interactivity.paint(
+            global_id,
+            inspector_id,
+            bounds,
+            Some(&layout.hitbox),
+            window,
+            cx,
+            |_, window, cx| {
+                // Register input handler - THIS IS KEY!
+                let input_handler = TerminalInputHandler {
+                    terminal: self.terminal.clone(),
+                };
+                window.handle_input(&self.focus, input_handler, cx);
+
+                // Paint background
+                window.paint_quad(fill(bounds, layout.background_color));
+
+                let origin = bounds.origin;
+
+                // Paint background rectangles (Zed does this)
+                for rect in &layout.rects {
+                    rect.paint(origin, &layout.dimensions, window);
+                }
+
+                // Paint batched text runs (Zed's optimization)
+                for batch in &layout.batched_text_runs {
+                    batch.paint(origin, &layout.dimensions, window, cx);
+                }
+            },
+        );
     }
 }
 
@@ -179,3 +295,4 @@ impl IntoElement for TerminalElement {
         self
     }
 }
+
