@@ -200,7 +200,7 @@ impl Element for TerminalElement {
                 let hitbox = hitbox.unwrap();
                 let theme = cx.theme();
                 
-                // Create text style exactly like Zed does
+                // Create text style exactly like script editor (JetBrains Mono)
                 let text_style = TextStyle {
                     font_family: "monospace".into(),
                     font_features: FontFeatures::default(),
@@ -209,38 +209,54 @@ impl Element for TerminalElement {
                     font_size: px(13.0).into(),
                     font_style: FontStyle::Normal,
                     line_height: px(20.0).into(),
-                    background_color: Some(hsla(0.0, 0.0, 0.05, 1.0)),
+                    background_color: Some(theme.background),
                     white_space: WhiteSpace::Normal,
-                    color: hsla(0.0, 0.0, 0.9, 1.0),
+                    color: theme.foreground,
                     ..Default::default()
                 };
 
-                // Calculate terminal dimensions like Zed does
-                let font_id = cx.text_system().resolve_font(&text_style.font());
+                // Use JetBrains Mono font like script editor
+                let font = Font {
+                    family: "Jetbrains Mono".to_string().into(),
+                    weight: FontWeight::NORMAL,
+                    style: FontStyle::Normal,
+                    features: FontFeatures::default(),
+                };
+
+                // Calculate terminal dimensions exactly like Zed does
+                let font_id = cx.text_system().resolve_font(&font);
                 let rem_size = window.rem_size();
                 let font_pixels = text_style.font_size.to_pixels(rem_size);
                 
-                // Use 'm' character for cell width (standard terminal practice)
+                // Use 'M' character for cell width (standard terminal practice like Zed)
                 let cell_width = cx
                     .text_system()
-                    .advance(font_id, font_pixels, 'm')
+                    .advance(font_id, font_pixels, 'M')
                     .unwrap()
                     .width;
                     
-                // Line height - simple calculation, use 1.5x font size
-                let line_height = font_pixels * 1.5;
+                // Line height - use font_pixels * 1.3 for better spacing
+                let line_height = font_pixels * 1.3;
 
                 let dimensions = TerminalBounds::new(line_height, cell_width, bounds);
 
-                // Get terminal content - read only in prepaint
+                // Update terminal size if changed
+                self.terminal.update(cx, |terminal, cx| {
+                    if let Some(session) = terminal.active_session_mut() {
+                        session.set_size(dimensions);
+                    }
+                });
+
+                // Get terminal content - read only in prepaint (Zed approach)
                 let (rects, batched_text_runs) = {
                     let terminal_read = self.terminal.read(cx);
                     if let Some(session) = terminal_read.active_session() {
                         // Use cached last_content (like Zed)
                         layout_grid(
                             session.last_content.cells.iter().cloned(),
-                            0,
+                            session.last_content.display_offset,
                             &text_style,
+                            &font,
                             &theme,
                         )
                     } else {
@@ -252,7 +268,7 @@ impl Element for TerminalElement {
                     hitbox,
                     batched_text_runs,
                     rects,
-                    background_color: hsla(0.0, 0.0, 0.05, 1.0),
+                    background_color: theme.background,
                     dimensions,
                     text_style,
                 }
