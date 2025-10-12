@@ -1,7 +1,7 @@
 use gpui::ParentElement;
 use gpui::{
-    div, px, size, AnyElement, AnyView, App, Bounds, Context, DragMoveEvent, ElementId,
-    EventEmitter, FocusHandle, Focusable, IntoElement, Pixels, Point, Render, SharedString,
+    div, px, size, AnyElement, AnyView, App, AppContext, Bounds, Context, DragMoveEvent, ElementId,
+    EventEmitter, FocusHandle, Focusable, IntoElement, InteractiveElement, Pixels, Point, Render, SharedString,
     StatefulInteractiveElement, Window, WindowBounds, WindowKind, WindowOptions,
 };
 
@@ -227,9 +227,9 @@ impl Render for DraggableTabBar {
                                                 }
                                             },
                                         ))
-                                        .suffix(
-                                            h_flex().gap_1().when(closable, |this| {
-                                                this.child(
+                                        .when(closable, |tab| {
+                                            tab.suffix(
+                                                h_flex().gap_1().child(
                                                     Button::new(SharedString::from(format!(
                                                         "tab-close-{}",
                                                         ix
@@ -243,10 +243,10 @@ impl Render for DraggableTabBar {
                                                             cx.emit(TabBarEvent::TabClosed(ix));
                                                             cx.notify();
                                                         },
-                                                    )),
-                                                )
-                                            }),
-                                        )
+                                                    ))
+                                                ).into_any_element()
+                                            )
+                                        })
                                 },
                             ),
                         ),
