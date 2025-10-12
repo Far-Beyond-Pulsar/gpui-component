@@ -25,6 +25,7 @@ actions!(
     terminal,
     [
         SendTab,
+        SendShiftTab,
     ]
 );
 
@@ -32,6 +33,7 @@ actions!(
 pub fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("tab", SendTab, Some(TERMINAL_CONTEXT)),
+        KeyBinding::new("shift-tab", SendShiftTab, Some(TERMINAL_CONTEXT)),
     ]);
 }
 
@@ -667,6 +669,13 @@ impl Terminal {
         self.try_keystroke(&tab_keystroke, false, cx);
     }
 
+    /// Handle Shift+Tab key action (prevents focus navigation)
+    pub fn send_shift_tab(&mut self, _action: &SendShiftTab, _window: &mut Window, cx: &mut Context<Self>) {
+        // Use the keystroke system to properly handle shift+tab
+        let shift_tab_keystroke = gpui::Keystroke::parse("shift-tab").unwrap();
+        self.try_keystroke(&shift_tab_keystroke, false, cx);
+    }
+
     pub fn try_keystroke(&mut self, keystroke: &Keystroke, alt_is_meta: bool, cx: &mut Context<Self>) -> bool {
         if let Some(session) = self.active_session_mut() {
             // Convert keystroke to escape sequence (from Zed's to_esc_str)
@@ -834,6 +843,7 @@ impl Render for Terminal {
                     .w_full()
                     .overflow_hidden()
                     .on_action(cx.listener(Terminal::send_tab))  // Handle Tab action to prevent focus navigation
+                    .on_action(cx.listener(Terminal::send_shift_tab))  // Handle Shift+Tab action
                     .child(TerminalElement::new(
                         cx.entity().clone(),
                         self.focus_handle.clone(),
