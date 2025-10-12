@@ -385,32 +385,61 @@ impl TerminalSession {
     }
     
     /// Send mouse event to terminal - from Zed
-    pub fn mouse_event(&mut self, point: AlacPoint, button: MouseButton, pressed: bool) {
-        // Simple mouse reporting for mouse mode
-        // Format: ESC[M<button><x+32><y+32>
-        let button_code: u8 = match button {
-            MouseButton::Left => if pressed { 0 } else { 3 },
-            MouseButton::Middle => if pressed { 1 } else { 3 },
-            MouseButton::Right => if pressed { 2 } else { 3 },
-            _ => return,
-        };
-        
-        let x = (point.column.0 as u8 + 32 + 1).min(255);
-        let y = (point.line.0 as u8 + 32 + 1).min(255);
-        
-        let bytes = vec![27, b'[', b'M', button_code + 32, x, y];
-        self.pty_tx.notify(bytes);
+    pub fn mouse_event(&mut self, point: AlacPoint, button: MouseButton, pressed: bool, sgr_mode: bool) {
+        if sgr_mode {
+            // SGR extended mouse mode (CSI < ... M or m)
+            // Format: ESC[<button;x;y(M for press, m for release)
+            let button_code: u8 = match button {
+                MouseButton::Left => 0,
+                MouseButton::Middle => 1,
+                MouseButton::Right => 2,
+                _ => return,
+            };
+            
+            let x = point.column.0 + 1;
+            let y = point.line.0 + 1;
+            let event_char = if pressed { 'M' } else { 'm' };
+            
+            let sequence = format!("\x1b[<{};{};{}{}", button_code, x, y, event_char);
+            self.send_input(&sequence);
+        } else {
+            // Simple mouse reporting for X10 mouse mode
+            // Format: ESC[M<button><x+32><y+32>
+            let button_code: u8 = match button {
+                MouseButton::Left => if pressed { 0 } else { 3 },
+                MouseButton::Middle => if pressed { 1 } else { 3 },
+                MouseButton::Right => if pressed { 2 } else { 3 },
+                _ => return,
+            };
+            
+            let x = (point.column.0 as u8 + 32 + 1).min(255);
+            let y = (point.line.0 as u8 + 32 + 1).min(255);
+            
+            let bytes = vec![27, b'[', b'M', button_code + 32, x, y];
+            self.pty_tx.notify(bytes);
+        }
     }
     
     /// Send mouse move event to terminal - from Zed
-    pub fn mouse_move_event(&mut self, point: AlacPoint) {
-        // Mouse move report
-        let button_code: u8 = 32 + 3; // Move with no button
-        let x = (point.column.0 as u8 + 32 + 1).min(255);
-        let y = (point.line.0 as u8 + 32 + 1).min(255);
-        
-        let bytes = vec![27, b'[', b'M', button_code, x, y];
-        self.pty_tx.notify(bytes);
+    pub fn mouse_move_event(&mut self, point: AlacPoint, sgr_mode: bool) {
+        if sgr_mode {
+            // SGR extended mouse mode (CSI < ... M)
+            // Format: ESC[<button;x;y M (button 35 is move with no button)
+            let button_code: u8 = 35; // Move with no button
+            let x = point.column.0 + 1;
+            let y = point.line.0 + 1;
+            
+            let sequence = format!("\x1b[<{};{};{}M", button_code, x, y);
+            self.send_input(&sequence);
+        } else {
+            // X10 mouse move report
+            let button_code: u8 = 32 + 3; // Move with no button
+            let x = (point.column.0 as u8 + 32 + 1).min(255);
+            let y = (point.line.0 as u8 + 32 + 1).min(255);
+            
+            let bytes = vec![27, b'[', b'M', button_code, x, y];
+            self.pty_tx.notify(bytes);
+        }
     }
     
     /// Send mouse scroll event to terminal - for programs like btop
@@ -628,8 +657,9 @@ impl Terminal {
             );
             
             // If terminal is in mouse mode, send mouse event to terminal
-            if session.last_content.mode.intersects(TermMode::MOUSE_MODE) && !event.modifiers.shift {
-                session.mouse_event(point, event.button, true);
+            if session.last_content.mode.intersects(TermMode::MOUSE_MODE | TermMode::SGR_MOUSE) && !event.modifiers.shift {
+                let sgr_mode = session.last_content.mode.contains(TermMode::SGR_MOUSE);
+                session.mouse_event(point, event.button, true, sgr_mode);
             }
             cx.notify();
         }
@@ -646,8 +676,9 @@ impl Terminal {
             );
             
             // If terminal is in mouse mode, send mouse event to terminal
-            if session.last_content.mode.intersects(TermMode::MOUSE_MODE) && !event.modifiers.shift {
-                session.mouse_event(point, event.button, false);
+            if session.last_content.mode.intersects(TermMode::MOUSE_MODE | TermMode::SGR_MOUSE) && !event.modifiers.shift {
+                let sgr_mode = session.last_content.mode.contains(TermMode::SGR_MOUSE);
+                session.mouse_event(point, event.button, false, sgr_mode);
             }
             cx.notify();
         }
@@ -664,9 +695,10 @@ impl Terminal {
             );
             
             // If terminal is in mouse mode, send mouse event to terminal
-            if session.last_content.mode.intersects(TermMode::MOUSE_MODE) && !event.modifiers.shift {
+            if session.last_content.mode.intersects(TermMode::MOUSE_MODE | TermMode::SGR_MOUSE) && !event.modifiers.shift {
+                let sgr_mode = session.last_content.mode.contains(TermMode::SGR_MOUSE);
                 // Mouse move in mouse mode
-                session.mouse_move_event(point);
+                session.mouse_move_event(point, sgr_mode);
             }
         }
     }
