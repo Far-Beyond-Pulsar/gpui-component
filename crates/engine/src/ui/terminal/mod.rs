@@ -3,6 +3,7 @@
 
 mod terminal_core;
 mod terminal_element;
+mod rendering;
 mod mappings;
 
 pub use terminal_core::{Terminal, TerminalSession, Event as TerminalEvent, TerminalBounds};

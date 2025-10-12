@@ -385,7 +385,8 @@ impl EventEmitter<Event> for Terminal {}
 
 impl Render for Terminal {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        use gpui_component::{v_flex, h_flex, StyledExt, ActiveTheme};
+        use gpui_component::{v_flex, h_flex, StyledExt, ActiveTheme, button::{Button, ButtonVariants}, IconName, Sizable};
+        use super::terminal_element::TerminalElement;
 
         let active_session = self.active_session().map(|s| s.name.clone()).unwrap_or_default();
 
@@ -402,21 +403,114 @@ impl Render for Terminal {
                     .bg(cx.theme().secondary)
                     .border_b_1()
                     .border_color(cx.theme().border)
+                    .justify_between()
+                    .items_center()
                     .child(
-                        div()
-                            .text_sm()
-                            .font_semibold()
-                            .text_color(cx.theme().foreground)
-                            .child(active_session)
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_semibold()
+                                    .text_color(cx.theme().foreground)
+                                    .child(active_session)
+                            )
+                    )
+                    .child(
+                        h_flex()
+                            .gap_1()
+                            .child(
+                                Button::new("clear-terminal")
+                                    .ghost()
+                                    .xsmall()
+                                    .icon(IconName::Trash)
+                                    .tooltip("Clear Terminal")
+                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                        if let Some(session) = this.active_session_mut() {
+                                            session.clear();
+                                        }
+                                        cx.notify();
+                                    }))
+                            )
+                            .child(
+                                Button::new("new-terminal")
+                                    .ghost()
+                                    .xsmall()
+                                    .icon(IconName::Plus)
+                                    .tooltip("New Terminal")
+                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                        if let Err(e) = this.add_session(None, cx) {
+                                            eprintln!("Failed to create new terminal: {}", e);
+                                        }
+                                    }))
+                            )
                     )
             )
             .child(
-                // Terminal rendering will go here via TerminalElement
+                // Terminal sessions tabs
+                h_flex()
+                    .w_full()
+                    .px_2()
+                    .py_1()
+                    .bg(cx.theme().secondary)
+                    .border_b_1()
+                    .border_color(cx.theme().border)
+                    .gap_1()
+                    .children(
+                        self.sessions.iter().enumerate().map(|(index, session)| {
+                            let is_active = index == self.active_session;
+                            let has_multiple = self.sessions.len() > 1;
+
+                            let mut tab = h_flex()
+                                .px_3()
+                                .py_1()
+                                .rounded(px(4.0))
+                                .gap_2()
+                                .items_center()
+                                .cursor_pointer();
+                            
+                            if is_active {
+                                tab = tab.bg(cx.theme().primary)
+                                    .text_color(cx.theme().primary_foreground);
+                            } else {
+                                tab = tab.hover(|this| this.bg(cx.theme().accent));
+                            }
+                            
+                            tab = tab.on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _window, cx| {
+                                this.switch_session(index, cx);
+                            }))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .child(session.name.clone())
+                            );
+                            
+                            if has_multiple {
+                                tab = tab.child(
+                                    div()
+                                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _window, cx| {
+                                            cx.stop_propagation();
+                                            this.close_session(index, cx);
+                                        }))
+                                        .child(
+                                            gpui_component::Icon::new(IconName::Close)
+                                                .size_3()
+                                        )
+                                );
+                            }
+                            
+                            tab
+                        })
+                    )
+            )
+            .child(
+                // Terminal rendering
                 div()
                     .flex_1()
                     .w_full()
-                    .bg(hsla(0.0, 0.0, 0.05, 1.0))
-                    .child("Terminal rendering")
+                    .overflow_hidden()
+                    .child(TerminalElement::new(cx.entity().clone(), self.focus_handle.clone()))
             )
     }
 }
