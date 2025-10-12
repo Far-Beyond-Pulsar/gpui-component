@@ -70,7 +70,7 @@ impl BatchedTextRun {
                 self.text.clone().into(),
                 self.font_size.to_pixels(window.rem_size()),
                 std::slice::from_ref(&self.style),
-                Some(dimensions.cell_width),
+                None,  // DON'T force cell width - let text flow naturally
             );
         
         let _ = shaped.paint(pos, dimensions.line_height, window, cx);

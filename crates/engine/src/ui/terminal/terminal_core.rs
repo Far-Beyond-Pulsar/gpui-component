@@ -441,6 +441,22 @@ impl Terminal {
             session.sync(window, cx);
         }
     }
+
+    pub fn scroll_up(&mut self, lines: usize, cx: &mut Context<Self>) {
+        if let Some(session) = self.active_session_mut() {
+            let mut term = session.term().lock();
+            term.scroll_display(alacritty_terminal::grid::Scroll::Delta(lines as i32));
+            cx.notify();
+        }
+    }
+
+    pub fn scroll_down(&mut self, lines: usize, cx: &mut Context<Self>) {
+        if let Some(session) = self.active_session_mut() {
+            let mut term = session.term().lock();
+            term.scroll_display(alacritty_terminal::grid::Scroll::Delta(-(lines as i32)));
+            cx.notify();
+        }
+    }
 }
 
 impl Focusable for Terminal {
