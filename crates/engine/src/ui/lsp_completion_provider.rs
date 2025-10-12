@@ -404,7 +404,6 @@ impl gpui_component::input::HoverProvider for GlobalRustAnalyzerCompletionProvid
                 
                 // Try to parse as Hover
                 if let Ok(hover) = serde_json::from_value::<lsp_types::Hover>(result.clone()) {
-                    println!("✅ Found hover info for '{}'", word);
                     return Ok(Some(hover));
                 }
                 
