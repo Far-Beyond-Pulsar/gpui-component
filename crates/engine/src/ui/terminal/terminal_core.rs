@@ -376,6 +376,21 @@ impl Terminal {
 
         // Create initial session
         terminal.add_session(None, cx)?;
+        
+        // Set up background polling for terminal events (Zed approach)
+        // This wakes up GPUI when alacritty has updates
+        let entity = cx.entity().clone();
+        cx.spawn(|_, mut cx| async move {
+            loop {
+                // Poll at 60fps for responsive updates
+                cx.background_executor().timer(std::time::Duration::from_millis(16)).await;
+                
+                // Notify that we should check for updates
+                _ = entity.update(&mut cx, |_terminal, cx| {
+                    cx.notify();
+                });
+            }
+        }).detach();
 
         Ok(terminal)
     }

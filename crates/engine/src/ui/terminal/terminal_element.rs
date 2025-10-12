@@ -256,12 +256,6 @@ impl Element for TerminalElement {
                         }
                     });
                 }
-                
-                // Request another frame to keep checking for updates (like Zed does)
-                // This ensures the terminal updates continuously
-                window.on_next_frame(|window, cx| {
-                    window.refresh();
-                });
 
                 // Get terminal content - read only in prepaint (Zed approach)
                 // Need to get theme again for layout_grid
