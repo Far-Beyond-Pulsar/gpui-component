@@ -412,6 +412,19 @@ impl TerminalSession {
         let bytes = vec![27, b'[', b'M', button_code, x, y];
         self.pty_tx.notify(bytes);
     }
+    
+    /// Send mouse scroll event to terminal - for programs like btop
+    pub fn mouse_scroll_event(&mut self, point: AlacPoint, scroll_up: bool) {
+        // Mouse wheel report using SGR extended mode (CSI < ... M)
+        // Button 64 = scroll up, 65 = scroll down
+        let button = if scroll_up { 64 } else { 65 };
+        let x = point.column.0 + 1;
+        let y = point.line.0 + 1;
+        
+        // SGR extended mouse mode
+        let sequence = format!("\x1b[<{};{};{}M", button, x, y);
+        self.send_input(&sequence);
+    }
 }
 
 /// Terminal with multiple sessions
@@ -584,6 +597,10 @@ impl Terminal {
     pub fn scroll_up(&mut self, lines: usize, cx: &mut Context<Self>) {
         if let Some(session) = self.active_session_mut() {
             session.scroll(alacritty_terminal::grid::Scroll::Delta(lines as i32));
+            // Immediately update content to reflect scroll position
+            let term = session.term.lock();
+            session.last_content = TerminalSession::make_content(&term, &session.last_content);
+            drop(term);
             cx.notify();
         }
     }
@@ -592,6 +609,10 @@ impl Terminal {
     pub fn scroll_down(&mut self, lines: usize, cx: &mut Context<Self>) {
         if let Some(session) = self.active_session_mut() {
             session.scroll(alacritty_terminal::grid::Scroll::Delta(-(lines as i32)));
+            // Immediately update content to reflect scroll position
+            let term = session.term.lock();
+            session.last_content = TerminalSession::make_content(&term, &session.last_content);
+            drop(term);
             cx.notify();
         }
     }
@@ -646,6 +667,42 @@ impl Terminal {
             if session.last_content.mode.intersects(TermMode::MOUSE_MODE) && !event.modifiers.shift {
                 // Mouse move in mouse mode
                 session.mouse_move_event(point);
+            }
+        }
+    }
+    
+    /// Mouse scroll event - for programs like btop
+    pub fn mouse_scroll(&mut self, event: &ScrollWheelEvent, origin: Point<Pixels>, cx: &mut Context<Self>) {
+        if let Some(session) = self.active_session_mut() {
+            // Check if terminal is in mouse mode - if so, send scroll to the application
+            if session.last_content.mode.intersects(TermMode::MOUSE_MODE | TermMode::SGR_MOUSE) && !event.modifiers.shift {
+                // Terminal application wants mouse events - send scroll to it
+                let position = event.position - origin;
+                let point = grid_point(
+                    position,
+                    &session.last_content.terminal_bounds,
+                    session.last_content.display_offset,
+                );
+                
+                let delta_y = event.delta.pixel_delta(px(20.0)).y;
+                if delta_y != px(0.0) {
+                    session.mouse_scroll_event(point, delta_y > px(0.0));
+                }
+                cx.notify();
+            } else {
+                // Normal scroll - scroll the terminal display
+                let delta_y = event.delta.pixel_delta(px(20.0)).y;
+                let lines_to_scroll = (delta_y / session.last_content.terminal_bounds.line_height).abs() as usize;
+                
+                if lines_to_scroll > 0 {
+                    if delta_y > px(0.0) {
+                        // Scroll up (into history)
+                        self.scroll_up(lines_to_scroll, cx);
+                    } else {
+                        // Scroll down
+                        self.scroll_down(lines_to_scroll, cx);
+                    }
+                }
             }
         }
     }

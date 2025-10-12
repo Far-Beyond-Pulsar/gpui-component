@@ -381,26 +381,14 @@ impl TerminalElement {
             }
         });
 
-        // Scroll wheel - from Zed
+        // Scroll wheel - from Zed (enhanced with mouse mode support)
         self.interactivity.on_scroll_wheel({
             let terminal = terminal.clone();
+            let origin = origin.clone();
             
             move |event: &ScrollWheelEvent, _phase, cx| {
                 terminal.update(cx, |terminal, cx| {
-                    if let Some(session) = terminal.active_session_mut() {
-                        let delta_y = event.delta.pixel_delta(px(20.0)).y;
-                        let lines_to_scroll = (delta_y / session.last_content.terminal_bounds.line_height).abs() as usize;
-                        
-                        if lines_to_scroll > 0 {
-                            if delta_y > px(0.0) {
-                                // Scroll up (into history)
-                                terminal.scroll_up(lines_to_scroll, cx);
-                            } else {
-                                // Scroll down
-                                terminal.scroll_down(lines_to_scroll, cx);
-                            }
-                        }
-                    }
+                    terminal.mouse_scroll(event, origin, cx);
                 });
             }
         });
