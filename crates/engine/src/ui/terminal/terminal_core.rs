@@ -255,28 +255,35 @@ impl TerminalSession {
             self.events.push_back(event);
         }
 
-        // Update last_content from terminal
+        // Update last_content from terminal (EXACT Zed approach)
         let term = self.term.lock();
-        self.last_content = Self::make_content(&term);
+        self.last_content = Self::make_content(&term, &self.last_content);
     }
 
-    /// Make terminal content from Alacritty term (from Zed)
-    fn make_content(term: &parking_lot::lock_api::MutexGuard<parking_lot::RawMutex, Term<ZedListener>>) -> TerminalContent {
+    /// Make terminal content from Alacritty term (from Zed - EXACT copy)
+    fn make_content(
+        term: &parking_lot::lock_api::MutexGuard<parking_lot::RawMutex, Term<ZedListener>>,
+        last_content: &TerminalContent
+    ) -> TerminalContent {
         let content = term.renderable_content();
 
-        // Convert display_iter to IndexedCell vec
-        let cells: Vec<IndexedCell> = content.display_iter
-            .map(|ic| IndexedCell {
-                point: ic.point,
-                cell: Cell::clone(&ic.cell),
-            })
-            .collect();
+        // Pre-allocate with estimated size to reduce reallocations
+        let estimated_size = content.display_iter.size_hint().0;
+        let mut cells = Vec::with_capacity(estimated_size);
+
+        cells.extend(content.display_iter.map(|ic| IndexedCell {
+            point: ic.point,
+            cell: ic.cell.clone(),
+        }));
 
         // Get cursor char
-        let cursor_char = cells.iter()
-            .find(|ic| ic.point.line == content.cursor.point.line && ic.point.column == content.cursor.point.column)
-            .map(|ic| ic.c)
-            .unwrap_or(' ');
+        let cursor_char = {
+            let cursor_point = content.cursor.point;
+            cells.iter()
+                .find(|ic| ic.point.line == cursor_point.line && ic.point.column == cursor_point.column)
+                .map(|ic| ic.c)
+                .unwrap_or(' ')
+        };
 
         TerminalContent {
             cells,
@@ -284,7 +291,7 @@ impl TerminalSession {
             display_offset: content.display_offset,
             cursor: content.cursor,
             cursor_char,
-            terminal_bounds: TerminalBounds::default(), // Will be updated by set_size
+            terminal_bounds: last_content.terminal_bounds, // Keep existing bounds
         }
     }
 
@@ -356,6 +363,16 @@ impl Terminal {
 
         // Create initial session
         terminal.add_session(None, cx)?;
+        
+        // Subscribe to updates - poll terminal for events (Zed-style)
+        cx.spawn_in(window, async move |terminal, cx| {
+            loop {
+                cx.background_executor().timer(std::time::Duration::from_millis(16)).await;
+                terminal.update(cx, |terminal, cx| {
+                    terminal.update_events(window, cx);
+                }).ok();
+            }
+        }).detach();
 
         Ok(terminal)
     }
