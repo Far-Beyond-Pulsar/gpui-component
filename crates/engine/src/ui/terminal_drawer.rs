@@ -2,6 +2,7 @@
 //! Supports PowerShell/cmd on Windows and bash/sh on Linux
 
 use gpui::*;
+use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, ActiveTheme as _, IconName, StyledExt, Sizable as _,
@@ -213,7 +214,7 @@ impl TerminalDrawer {
         }
     }
 
-    fn handle_keydown(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
+    fn handle_keydown(&mut self, event: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
         if let Some(session) = self.sessions.get_mut(self.active_session) {
             // Handle special keys
             match event.keystroke.key.as_str() {
@@ -400,7 +401,7 @@ impl Render for TerminalDrawer {
                     .w_full()
                     .p_3()
                     .bg(hsla(0.0, 0.0, 0.05, 1.0)) // Dark terminal background
-                    .overflow_y_scroll()
+                    .overflow_hidden()
                     .font_family("monospace")
                     .text_sm()
                     .child(
