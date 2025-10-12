@@ -7,7 +7,7 @@ use gpui::{
     SharedString, StatefulInteractiveElement, Styled, StyleRefinement, Window,
 };
 
-use crate::{h_flex, ActiveTheme, Icon, IconName, IconButton, Sizable, Size, StyledExt};
+use crate::{h_flex, ActiveTheme, Icon, IconName, Sizable, Size, StyledExt};
 
 /// Data carried during tab drag operations
 #[derive(Clone, Debug)]
@@ -121,8 +121,9 @@ impl RenderOnce for DraggableTab {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let on_click = self.on_click.clone();
         let on_close = self.on_close.clone();
+        let closable = self.closable;
         
-        h_flex()
+        let mut tab = h_flex()
             .id(self.id)
             .h(px(32.))
             .px_3()
@@ -141,28 +142,41 @@ impl RenderOnce for DraggableTab {
             } else {
                 cx.theme().tab
             })
-            .hover(|this| this.bg(cx.theme().tab_active))
-            .when_some(on_click, |this, handler| {
-                this.on_click(move |event, window, cx| {
-                    (handler)(event, window, cx);
-                })
-            })
-            .when_some(self.icon, |this, icon| this.child(icon))
-            .when_some(self.prefix, |this, prefix| this.child(prefix))
-            .child(self.label)
-            .when_some(self.suffix, |this, suffix| this.child(suffix))
-            .when(self.closable, |this| {
-                this.child(
-                    IconButton::new("close", IconName::Close)
-                        .small()
-                        .ghost()
-                        .when_some(on_close, |btn, handler| {
-                            btn.on_click(move |event, window, cx| {
-                                cx.stop_propagation();
-                                (handler)(event, window, cx);
-                            })
+            .hover(|this| this.bg(cx.theme().tab_active));
+        
+        if let Some(handler) = on_click {
+            tab = tab.on_click(move |event, window, cx| {
+                (handler)(event, window, cx);
+            });
+        }
+        
+        if let Some(icon) = self.icon {
+            tab = tab.child(icon);
+        }
+        
+        if let Some(prefix) = self.prefix {
+            tab = tab.child(prefix);
+        }
+        
+        tab = tab.child(self.label);
+        
+        if let Some(suffix) = self.suffix {
+            tab = tab.child(suffix);
+        }
+        
+        if closable {
+            if let Some(handler) = on_close {
+                tab = tab.child(
+                    div()
+                        .child(IconName::Close)
+                        .on_click(move |event, window, cx| {
+                            cx.stop_propagation();
+                            (handler)(event, window, cx);
                         })
-                )
-            })
+                );
+            }
+        }
+        
+        tab
     }
 }
