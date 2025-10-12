@@ -269,6 +269,21 @@ impl Element for TerminalElement {
                 };
                 window.handle_input(&self.focus, input_handler, cx);
 
+                // Register key handler for special keys (from Zed)
+                window.on_key_event({
+                    let terminal = self.terminal.clone();
+                    move |event: &KeyDownEvent, phase, _window, cx| {
+                        if phase != DispatchPhase::Bubble {
+                            return;
+                        }
+                        
+                        // Try to handle as keystroke (special keys)
+                        terminal.update(cx, |term, cx| {
+                            term.try_keystroke(&event.keystroke, false, cx);
+                        });
+                    }
+                });
+
                 // Paint background
                 window.paint_quad(fill(bounds, layout.background_color));
 

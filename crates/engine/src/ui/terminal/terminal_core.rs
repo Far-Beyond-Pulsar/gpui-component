@@ -409,8 +409,28 @@ impl Terminal {
 
     pub fn handle_input(&mut self, text: &str, _window: &mut Window, cx: &mut Context<Self>) {
         if let Some(session) = self.active_session_mut() {
+            // Regular text input - send as bytes
             session.send_input(text);
             cx.notify();
+        }
+    }
+
+    pub fn try_keystroke(&mut self, keystroke: &Keystroke, alt_is_meta: bool, cx: &mut Context<Self>) -> bool {
+        if let Some(session) = self.active_session_mut() {
+            // Convert keystroke to escape sequence (from Zed's to_esc_str)
+            let esc = super::mappings::keys::to_esc_str(keystroke, &session.last_content.mode, alt_is_meta);
+            if let Some(esc) = esc {
+                match esc {
+                    std::borrow::Cow::Borrowed(string) => session.send_input(string),
+                    std::borrow::Cow::Owned(string) => session.send_input(&string),
+                };
+                cx.notify();
+                true
+            } else {
+                false
+            }
+        } else {
+            false
         }
     }
 
