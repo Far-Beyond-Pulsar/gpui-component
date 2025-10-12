@@ -1,12 +1,12 @@
+use gpui::Styled;
+use gpui::ParentElement;
+use gpui::{
+    div, px, AnyElement, AnyView, App, ClickEvent, Context, ElementId, IntoElement, Pixels, Point,
+    Render, SharedString, Window,
+};
 use std::rc::Rc;
 
-use gpui::{
-    div, px, AnyElement, AnyView, App, ClickEvent, Context, ElementId,
-    IntoElement, Pixels, Point, Render,
-    SharedString, Window,
-};
-
-use crate::{Icon, Sizable, Size, v_flex, h_flex, ActiveTheme, StyledExt};
+use crate::{h_flex, v_flex, ActiveTheme, Icon, Sizable, Size, StyledExt};
 
 /// Data carried during tab drag operations
 #[derive(Clone, Debug)]

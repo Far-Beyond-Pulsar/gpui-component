@@ -189,10 +189,11 @@ impl Render for DraggableTabBar {
                                                 source_index: ix,
                                                 drag_start_position: None,
                                             },
-                                            move |mut drag, position, _, cx| {
-                                                drag.drag_start_position = Some(position);
+                                            move |drag, position, _, cx| {
+                                                let mut drag_data = drag.clone();
+                                                drag_data.drag_start_position = Some(position);
                                                 cx.stop_propagation();
-                                                cx.new(|_| drag)
+                                                cx.new(|_| drag_data)
                                             },
                                         )
                                         .on_drag_move(cx.listener(
