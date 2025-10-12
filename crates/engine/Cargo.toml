@@ -59,6 +59,8 @@ ron = "0.8"
 futures = "0.3"    # Async primitives for GPUI compatibility
 portable-pty = "0.8"  # PTY support for terminal emulator
 which = "6"  # Find executables in PATH
+alacritty_terminal = { git = "https://github.com/zed-industries/alacritty.git", branch = "add-hush-login-flag" }  # Professional terminal emulator
+libc = "0.2"  # Low-level system calls for PTY
 
 [dev-dependencies]
 tempfile = "3.8"
