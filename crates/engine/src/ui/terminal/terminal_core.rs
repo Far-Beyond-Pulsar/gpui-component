@@ -662,14 +662,9 @@ impl Terminal {
 
     /// Handle Tab key action (prevents focus navigation)
     pub fn send_tab(&mut self, _action: &SendTab, _window: &mut Window, cx: &mut Context<Self>) {
-        eprintln!("DEBUG: send_tab called");
-        if let Some(session) = self.active_session_mut() {
-            eprintln!("DEBUG: Sending tab to session");
-            session.send_input("\t");
-            cx.notify();
-        } else {
-            eprintln!("DEBUG: No active session!");
-        }
+        // Use the keystroke system to properly handle tab
+        let tab_keystroke = gpui::Keystroke::parse("tab").unwrap();
+        self.try_keystroke(&tab_keystroke, false, cx);
     }
 
     pub fn try_keystroke(&mut self, keystroke: &Keystroke, alt_is_meta: bool, cx: &mut Context<Self>) -> bool {
