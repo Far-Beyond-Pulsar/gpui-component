@@ -252,6 +252,7 @@ impl TerminalElement {
             interactivity: Interactivity::default(),
         }
         .track_focus(&focus)
+        .key_context(super::TERMINAL_CONTEXT)  // Set Terminal key context for Tab handling
     }
 
     /// Computes the cursor position and expected block width (from Zed)

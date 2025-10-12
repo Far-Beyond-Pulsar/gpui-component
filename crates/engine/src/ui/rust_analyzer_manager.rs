@@ -727,7 +727,6 @@ impl RustAnalyzerManager {
                                         "report" => {
                                             let message = value.get("message").and_then(|m| m.as_str()).unwrap_or("");
                                             let percentage = value.get("percentage").and_then(|p| p.as_u64()).unwrap_or(0);
-                                            println!("📊 Progress: {}% - {}", percentage, message);
                                             let _ = progress_tx.send(ProgressUpdate::Progress {
                                                 progress: (percentage as f32) / 100.0,
                                                 message: message.to_string(),
@@ -785,7 +784,6 @@ impl RustAnalyzerManager {
                                     }
                                     
                                     if !diagnostics.is_empty() {
-                                        println!("🔍 Received {} diagnostics for: {}", diagnostics.len(), uri);
                                         let _ = progress_tx.send(ProgressUpdate::Diagnostics(diagnostics));
                                     }
                                 }

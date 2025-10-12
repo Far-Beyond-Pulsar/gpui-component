@@ -140,6 +140,7 @@ fn main() {
 
         gpui_component::init(cx);
         crate::themes::init(cx);
+        crate::ui::terminal::init(cx);  // Initialize terminal keybindings (Tab handling)
 
         cx.bind_keys([KeyBinding::new("ctrl-,", OpenSettings, None)]);
         cx.on_action(|_: &OpenSettings, cx| {

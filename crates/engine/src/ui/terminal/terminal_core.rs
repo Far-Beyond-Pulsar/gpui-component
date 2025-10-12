@@ -17,6 +17,24 @@ use std::sync::Arc;
 use std::path::PathBuf;
 use std::collections::VecDeque;
 
+// Terminal key context (like Input's CONTEXT)
+pub const TERMINAL_CONTEXT: &str = "Terminal";
+
+// Terminal actions - Tab must be handled by action to prevent focus navigation
+actions!(
+    terminal,
+    [
+        SendTab,
+    ]
+);
+
+/// Initialize terminal keybindings
+pub fn init(cx: &mut App) {
+    cx.bind_keys([
+        KeyBinding::new("tab", SendTab, Some(TERMINAL_CONTEXT)),
+    ]);
+}
+
 /// Indexed cell (from Zed)
 #[derive(Debug, Clone)]
 pub struct IndexedCell {
@@ -642,6 +660,18 @@ impl Terminal {
         }
     }
 
+    /// Handle Tab key action (prevents focus navigation)
+    pub fn send_tab(&mut self, _action: &SendTab, _window: &mut Window, cx: &mut Context<Self>) {
+        eprintln!("DEBUG: send_tab called");
+        if let Some(session) = self.active_session_mut() {
+            eprintln!("DEBUG: Sending tab to session");
+            session.send_input("\t");
+            cx.notify();
+        } else {
+            eprintln!("DEBUG: No active session!");
+        }
+    }
+
     pub fn try_keystroke(&mut self, keystroke: &Keystroke, alt_is_meta: bool, cx: &mut Context<Self>) -> bool {
         if let Some(session) = self.active_session_mut() {
             // Convert keystroke to escape sequence (from Zed's to_esc_str)
@@ -808,6 +838,7 @@ impl Render for Terminal {
                     .flex_1()
                     .w_full()
                     .overflow_hidden()
+                    .on_action(cx.listener(Terminal::send_tab))  // Handle Tab action to prevent focus navigation
                     .child(TerminalElement::new(
                         cx.entity().clone(),
                         self.focus_handle.clone(),
