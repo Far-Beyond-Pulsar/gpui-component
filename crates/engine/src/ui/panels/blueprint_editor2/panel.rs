@@ -18,12 +18,14 @@ use super::toolbar::ToolbarRenderer;
 use super::*;
 use crate::graph::{DataType as GraphDataType, GraphDescription};
 
-// Sub-graph navigation entry for the tab system
+// Tab entry for the flat tab system (like Unreal)
 #[derive(Clone, Debug)]
-pub struct SubGraphNavigationEntry {
+pub struct GraphTab {
     pub id: String,
     pub name: String,
     pub graph: BlueprintGraph,
+    pub is_main: bool, // True for the main event graph
+    pub is_dirty: bool, // True if there are unsaved changes
 }
 
 // Constants for node creation menu dimensions
@@ -87,10 +89,13 @@ pub struct BlueprintEditorPanel {
     pub subscriptions: Vec<gpui::Subscription>,
     // Compilation status for UI feedback
     pub compilation_status: super::CompilationStatus,
-    // Sub-graph navigation stack (breadcrumb trail)
-    pub subgraph_navigation_stack: Vec<SubGraphNavigationEntry>,
-    // Library manager for loading sub-graphs
+    // Library manager for loading global/engine sub-graphs
     pub library_manager: crate::graph::LibraryManager,
+    // Local macros defined within this blueprint class
+    pub local_macros: Vec<crate::graph::SubGraphDefinition>,
+    // Tab system - flat navigation like Unreal
+    pub open_tabs: Vec<GraphTab>,
+    pub active_tab_index: usize,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -388,7 +393,8 @@ impl BlueprintEditorPanel {
             },
         ];
 
-        let graph = BlueprintGraph {
+        // Create the initial main event graph
+        let main_graph = BlueprintGraph {
             nodes,
             connections,
             comments: vec![],
@@ -401,7 +407,7 @@ impl BlueprintEditorPanel {
 
         let mut result = Self {
             focus_handle: cx.focus_handle(),
-            graph,
+            graph: main_graph.clone(), // Current active tab's graph
             resizable_state,
             left_sidebar_resizable_state,
             current_class_path: None,
@@ -443,7 +449,6 @@ impl BlueprintEditorPanel {
             }),
             subscriptions: Vec::<gpui::Subscription>::new(),
             compilation_status: super::CompilationStatus::default(),
-            subgraph_navigation_stack: Vec::new(),
             library_manager: {
                 let mut lib_manager = crate::graph::LibraryManager::default();
                 if let Err(e) = lib_manager.load_all_libraries() {
@@ -451,6 +456,15 @@ impl BlueprintEditorPanel {
                 }
                 lib_manager
             },
+            local_macros: Vec::new(),
+            open_tabs: vec![GraphTab {
+                id: "main".to_string(),
+                name: "EventGraph".to_string(),
+                graph: main_graph,
+                is_main: true,
+                is_dirty: false,
+            }],
+            active_tab_index: 0,
         };
 
         result
@@ -474,7 +488,160 @@ impl BlueprintEditorPanel {
             node.title, node.position
         );
         self.graph.nodes.push(node);
+        // Mark tab as dirty
+        if let Some(tab) = self.open_tabs.get_mut(self.active_tab_index) {
+            tab.is_dirty = true;
+        }
         cx.notify();
+    }
+
+    /// Sync the current graph state to the active tab
+    fn sync_graph_to_active_tab(&mut self) {
+        let tab_id = if let Some(tab) = self.open_tabs.get(self.active_tab_index) {
+            tab.id.clone()
+        } else {
+            return;
+        };
+        
+        let is_main = if let Some(tab) = self.open_tabs.get(self.active_tab_index) {
+            tab.is_main
+        } else {
+            return;
+        };
+        
+        // Update the tab
+        if let Some(tab) = self.open_tabs.get_mut(self.active_tab_index) {
+            tab.graph = self.graph.clone();
+            tab.is_dirty = true;
+        }
+        
+        // If this is a local macro tab, sync back to local_macros list
+        if !is_main && !tab_id.starts_with("🌐") {
+            if let Ok(graph_desc) = self.convert_to_graph_description() {
+                if let Some(macro_def) = self.local_macros.iter_mut().find(|m| m.id == tab_id) {
+                    macro_def.graph = graph_desc;
+                    macro_def.metadata.modified_at = chrono::Utc::now().to_rfc3339();
+                }
+            }
+        }
+    }
+
+    /// Load the active tab's graph into self.graph
+    fn load_active_tab_graph(&mut self) {
+        if let Some(tab) = self.open_tabs.get(self.active_tab_index) {
+            self.graph = tab.graph.clone();
+        }
+    }
+
+    /// Switch to a different tab
+    pub fn switch_to_tab(&mut self, tab_index: usize, cx: &mut Context<Self>) {
+        if tab_index < self.open_tabs.len() && tab_index != self.active_tab_index {
+            // Save current graph to current tab
+            self.sync_graph_to_active_tab();
+            
+            // Switch to new tab
+            self.active_tab_index = tab_index;
+            self.load_active_tab_graph();
+            
+            cx.notify();
+        }
+    }
+
+    /// Close a tab by index
+    pub fn close_tab(&mut self, tab_index: usize, cx: &mut Context<Self>) {
+        // Can't close the main event graph tab
+        if tab_index < self.open_tabs.len() && !self.open_tabs[tab_index].is_main {
+            self.open_tabs.remove(tab_index);
+            
+            // Adjust active tab index if needed
+            if self.active_tab_index >= self.open_tabs.len() {
+                self.active_tab_index = self.open_tabs.len().saturating_sub(1);
+            }
+            if self.active_tab_index >= tab_index && self.active_tab_index > 0 {
+                self.active_tab_index -= 1;
+            }
+            
+            self.load_active_tab_graph();
+            cx.notify();
+        }
+    }
+
+    /// Open a local macro in a new tab (or switch to existing tab)
+    pub fn open_local_macro(&mut self, macro_id: String, macro_name: String, cx: &mut Context<Self>) {
+        // Check if tab already exists
+        if let Some(index) = self.open_tabs.iter().position(|tab| tab.id == macro_id) {
+            self.switch_to_tab(index, cx);
+            return;
+        }
+
+        // Find the macro definition in local macros
+        if let Some(macro_def) = self.local_macros.iter().find(|m| m.id == macro_id) {
+            // Convert to BlueprintGraph
+            match self.convert_graph_description_to_blueprint(&macro_def.graph) {
+                Ok(blueprint_graph) => {
+                    // Save current graph to current tab before switching
+                    self.sync_graph_to_active_tab();
+
+                    // Create new tab
+                    let new_tab = GraphTab {
+                        id: macro_id.clone(),
+                        name: macro_name.clone(),
+                        graph: blueprint_graph,
+                        is_main: false,
+                        is_dirty: false,
+                    };
+
+                    self.open_tabs.push(new_tab);
+                    self.active_tab_index = self.open_tabs.len() - 1;
+                    self.load_active_tab_graph();
+
+                    println!("📂 Opened local macro in tab: {}", macro_name);
+                    cx.notify();
+                }
+                Err(e) => {
+                    eprintln!("Failed to convert local macro to blueprint: {}", e);
+                }
+            }
+        }
+    }
+
+    /// Open a global/engine macro in a new tab (or switch to existing tab)
+    pub fn open_global_macro(&mut self, macro_id: String, macro_name: String, cx: &mut Context<Self>) {
+        // Check if tab already exists
+        if let Some(index) = self.open_tabs.iter().position(|tab| tab.id == macro_id) {
+            self.switch_to_tab(index, cx);
+            return;
+        }
+
+        // Find the macro definition in library manager
+        if let Some(macro_def) = self.library_manager.get_subgraph(&macro_id) {
+            // Convert to BlueprintGraph
+            match self.convert_graph_description_to_blueprint(&macro_def.graph) {
+                Ok(blueprint_graph) => {
+                    // Save current graph to current tab before switching
+                    self.sync_graph_to_active_tab();
+
+                    // Create new tab (will be read-only or create override on save)
+                    let new_tab = GraphTab {
+                        id: macro_id.clone(),
+                        name: format!("🌐 {}", macro_name), // Prefix with globe to indicate it's global
+                        graph: blueprint_graph,
+                        is_main: false,
+                        is_dirty: false,
+                    };
+
+                    self.open_tabs.push(new_tab);
+                    self.active_tab_index = self.open_tabs.len() - 1;
+                    self.load_active_tab_graph();
+
+                    println!("📂 Opened global macro in tab: {}", macro_name);
+                    cx.notify();
+                }
+                Err(e) => {
+                    eprintln!("Failed to convert global macro to blueprint: {}", e);
+                }
+            }
+        }
     }
 
     /// Compile the current graph to Rust source code
@@ -716,8 +883,51 @@ impl BlueprintEditorPanel {
         // Also save variables when saving the blueprint
         if self.current_class_path.is_some() {
             self.save_variables_to_class()?;
+            
+            // Save local macros to a separate file
+            self.save_local_macros()?;
         }
 
+        Ok(())
+    }
+
+    /// Save local macros to macros.json in the class directory
+    fn save_local_macros(&self) -> Result<(), String> {
+        if let Some(class_path) = &self.current_class_path {
+            let macros_file = class_path.join("macros.json");
+            
+            // Sync all open macro tabs back to local_macros before saving
+            // This is handled elsewhere, but we ensure it here too
+            
+            let json = serde_json::to_string_pretty(&self.local_macros)
+                .map_err(|e| format!("Failed to serialize local macros: {}", e))?;
+            
+            std::fs::write(&macros_file, json)
+                .map_err(|e| format!("Failed to write macros.json: {}", e))?;
+            
+            println!("💾 Saved {} local macros to macros.json", self.local_macros.len());
+        }
+        Ok(())
+    }
+
+    /// Load local macros from macros.json in the class directory
+    fn load_local_macros(&mut self, class_path: &std::path::Path) -> Result<(), String> {
+        let macros_file = class_path.join("macros.json");
+        
+        if !macros_file.exists() {
+            // No macros file yet, that's ok - start with empty
+            self.local_macros.clear();
+            return Ok(());
+        }
+        
+        let content = std::fs::read_to_string(&macros_file)
+            .map_err(|e| format!("Failed to read macros.json: {}", e))?;
+        
+        let macros: Vec<crate::graph::SubGraphDefinition> = serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse macros.json: {}", e))?;
+        
+        self.local_macros = macros;
+        println!("📂 Loaded {} local macros from macros.json", self.local_macros.len());
         Ok(())
     }
 
@@ -744,12 +954,31 @@ impl BlueprintEditorPanel {
         // Convert back to blueprint format
         self.graph = self.convert_from_graph_description(&graph_description, window, cx)?;
 
-        // Set current_class_path to the parent directory of the loaded file
-        let path = std::path::Path::new(file_path);
-        if let Some(parent) = path.parent() {
-            self.current_class_path = Some(parent.to_path_buf());
+        // Reset to main tab only
+        self.open_tabs = vec![GraphTab {
+            id: "main".to_string(),
+            name: "EventGraph".to_string(),
+            graph: self.graph.clone(),
+            is_main: true,
+            is_dirty: false,
+        }];
+        self.active_tab_index = 0;
 
-            // Load variables from vars_save.json
+        // Set current_class_path and load local macros from macros.json
+        let file_path_buf = std::path::Path::new(file_path);
+        if let Some(parent) = file_path_buf.parent() {
+            self.current_class_path = Some(parent.to_path_buf());
+            self.load_local_macros(parent)?;
+        }
+
+        // Reload library manager to ensure engine library macros list is populated
+        self.library_manager = crate::graph::LibraryManager::default();
+        if let Err(e) = self.library_manager.load_all_libraries() {
+            eprintln!("Failed to reload sub-graph libraries: {}", e);
+        }
+
+        // Load variables from vars_save.json
+        if let Some(parent) = file_path_buf.parent() {
             self.load_variables_from_class(parent)?;
         }
 
@@ -2727,70 +2956,7 @@ impl BlueprintEditorPanel {
         })
     }
 
-    /// Open a sub-graph by navigating into it (pushes current state to navigation stack)
-    pub fn open_subgraph(&mut self, subgraph_id: String, subgraph_name: String, cx: &mut Context<Self>) {
-        // Save current graph state to navigation stack
-        let current_entry = SubGraphNavigationEntry {
-            id: if self.subgraph_navigation_stack.is_empty() {
-                "main".to_string()
-            } else {
-                self.subgraph_navigation_stack.last().unwrap().id.clone()
-            },
-            name: if self.subgraph_navigation_stack.is_empty() {
-                "Main".to_string()
-            } else {
-                self.subgraph_navigation_stack.last().unwrap().name.clone()
-            },
-            graph: self.graph.clone(),
-        };
-
-        // Only push if this isn't already the current graph
-        if self.subgraph_navigation_stack.is_empty() ||
-           self.subgraph_navigation_stack.last().unwrap().id != current_entry.id {
-            self.subgraph_navigation_stack.push(current_entry);
-        }
-
-        // Load the sub-graph from the library manager
-        let subgraph = if let Some(definition) = self.library_manager.get_subgraph(&subgraph_id) {
-            // Convert the sub-graph's GraphDescription to BlueprintGraph
-            match self.convert_graph_description_to_blueprint(&definition.graph) {
-                Ok(blueprint_graph) => blueprint_graph,
-                Err(e) => {
-                    eprintln!("Failed to convert sub-graph to blueprint: {}", e);
-                    // Create empty graph as fallback
-                    BlueprintGraph {
-                        nodes: vec![],
-                        connections: vec![],
-                        comments: definition.graph.comments.clone(),
-                        selected_nodes: vec![],
-                        selected_comments: vec![],
-                        zoom_level: 1.0,
-                        pan_offset: Point::new(0.0, 0.0),
-                        virtualization_stats: VirtualizationStats::default(),
-                    }
-                }
-            }
-        } else {
-            eprintln!("Sub-graph not found: {}", subgraph_id);
-            // Create empty graph as fallback
-            BlueprintGraph {
-                nodes: vec![],
-                connections: vec![],
-                comments: vec![],
-                selected_nodes: vec![],
-                selected_comments: vec![],
-                zoom_level: 1.0,
-                pan_offset: Point::new(0.0, 0.0),
-                virtualization_stats: VirtualizationStats::default(),
-            }
-        };
-
-        // Replace current graph with the sub-graph
-        self.graph = subgraph;
-
-        println!("📂 Opened sub-graph: {} (depth: {})", subgraph_name, self.subgraph_navigation_stack.len());
-        cx.notify();
-    }
+    // open_subgraph method removed - now using flat tab-based navigation with open_local_macro
 
     /// Create a new local macro (sub-graph) within the current blueprint class
     pub fn create_new_local_macro(&mut self, cx: &mut Context<Self>) {
@@ -2802,33 +2968,12 @@ impl BlueprintEditorPanel {
 
         let macro_name = "New Macro".to_string();
 
-        // Save current graph state to navigation stack
-        let current_entry = SubGraphNavigationEntry {
-            id: if self.subgraph_navigation_stack.is_empty() {
-                "main".to_string()
-            } else {
-                self.subgraph_navigation_stack.last().unwrap().id.clone()
-            },
-            name: if self.subgraph_navigation_stack.is_empty() {
-                "Main".to_string()
-            } else {
-                self.subgraph_navigation_stack.last().unwrap().name.clone()
-            },
-            graph: self.graph.clone(),
-        };
-
-        // Only push if this isn't already the current graph
-        if self.subgraph_navigation_stack.is_empty() ||
-           self.subgraph_navigation_stack.last().unwrap().id != current_entry.id {
-            self.subgraph_navigation_stack.push(current_entry);
-        }
-
         // Create a new empty graph with subgraph_input and subgraph_output nodes
         let input_node = BlueprintNode {
             id: "subgraph_input".to_string(),
             definition_id: "subgraph_input".to_string(),
             title: "Input".to_string(),
-            icon: "📥".to_string(),
+            icon: "⬇".to_string(),
             node_type: NodeType::Logic,
             position: Point::new(100.0, 200.0),
             size: Size::new(160.0, 80.0),
@@ -2852,7 +2997,7 @@ impl BlueprintEditorPanel {
             id: "subgraph_output".to_string(),
             definition_id: "subgraph_output".to_string(),
             title: "Output".to_string(),
-            icon: "📤".to_string(),
+            icon: "⬆".to_string(),
             node_type: NodeType::Logic,
             position: Point::new(500.0, 200.0),
             size: Size::new(160.0, 80.0),
@@ -2884,69 +3029,91 @@ impl BlueprintEditorPanel {
             virtualization_stats: VirtualizationStats::default(),
         };
 
-        // Replace current graph with the new macro
-        self.graph = new_graph;
+        // Create the macro definition with empty graph description
+        let mut graph_desc = crate::graph::GraphDescription::new(&macro_name);
+        // We'll populate this when saving
 
-        println!("✨ Created new local macro: {} (depth: {})", macro_name, self.subgraph_navigation_stack.len());
+        let macro_def = crate::graph::SubGraphDefinition {
+            id: macro_id.clone(),
+            name: macro_name.clone(),
+            description: "A custom macro".to_string(),
+            graph: graph_desc,
+            interface: crate::graph::SubGraphInterface {
+                inputs: vec![crate::graph::SubGraphPin {
+                    id: "exec_in".to_string(),
+                    name: "Body".to_string(),
+                    data_type: crate::graph::DataType::Execution,
+                    description: None,
+                }],
+                outputs: vec![],
+            },
+            metadata: crate::graph::SubGraphMetadata {
+                created_at: chrono::Utc::now().to_rfc3339(),
+                modified_at: chrono::Utc::now().to_rfc3339(),
+                author: None,
+                tags: vec![],
+            },
+        };
+
+        // Add to local macros list
+        self.local_macros.push(macro_def);
+
+        // Save current graph to current tab before switching
+        self.sync_graph_to_active_tab();
+
+        // Create and open a new tab for this macro
+        let new_tab = GraphTab {
+            id: macro_id.clone(),
+            name: macro_name.clone(),
+            graph: new_graph,
+            is_main: false,
+            is_dirty: true, // New macro is unsaved
+        };
+
+        self.open_tabs.push(new_tab);
+        self.active_tab_index = self.open_tabs.len() - 1;
+        self.load_active_tab_graph();
+
+        println!("✨ Created new local macro: {}", macro_name);
         cx.notify();
     }
 
-    /// Close the current sub-graph tab and return to the specified depth
-    fn close_subgraph_tab(&mut self, target_depth: usize, cx: &mut Context<Self>) {
-        if target_depth >= self.subgraph_navigation_stack.len() {
-            return; // Can't navigate to a depth that doesn't exist
-        }
-
-        // Pop entries until we reach the target depth
-        while self.subgraph_navigation_stack.len() > target_depth {
-            if let Some(entry) = self.subgraph_navigation_stack.pop() {
-                self.graph = entry.graph;
-                println!("📂 Closed sub-graph, returned to: {} (depth: {})",
-                    entry.name, self.subgraph_navigation_stack.len());
-            }
-        }
-
-        cx.notify();
-    }
-
-    /// Render the sub-graph navigation tab bar (breadcrumb-style)
-    fn render_subgraph_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        // Build breadcrumb trail: "Main" > "Sub1" > "Sub2" > ...
-        let mut breadcrumbs = vec![("main".to_string(), "Main".to_string())];
-
-        for entry in &self.subgraph_navigation_stack {
-            breadcrumbs.push((entry.id.clone(), entry.name.clone()));
-        }
-
-        // Render as tab bar
-        TabBar::new("subgraph-tabs")
+    /// Render the proper tab bar (Unreal-style) for graph navigation
+    fn render_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        TabBar::new("graph-tabs")
             .w_full()
             .bg(cx.theme().secondary)
             .border_b_1()
             .border_color(cx.theme().border)
-            .selected_index(breadcrumbs.len().saturating_sub(1))
-            .on_click(cx.listener(|this, depth: &usize, _window, cx| {
-                this.close_subgraph_tab(*depth, cx);
+            .selected_index(self.active_tab_index)
+            .on_click(cx.listener(|this, index: &usize, _window, cx| {
+                this.switch_to_tab(*index, cx);
             }))
             .children(
-                breadcrumbs.iter().enumerate().map(|(index, (id, name))| {
-                    let is_last = index == breadcrumbs.len() - 1;
-
-                    Tab::new(name.clone())
-                        .when(!is_last, |tab| {
-                            let index_for_closure = index;
-                            tab.child(
+                self.open_tabs.iter().enumerate().map(|(index, tab)| {
+                    Tab::new(tab.name.clone())
+                        .when(!tab.is_main, |t| {
+                            let tab_index = index;
+                            t.child(
                                 h_flex()
                                     .items_center()
                                     .gap_2()
                                     .child(
-                                        Button::new(("close-subgraph-tab", index))
+                                        Button::new(("close-tab", index))
                                             .icon(IconName::Close)
                                             .ghost()
                                             .on_click(cx.listener(move |this, _, _window, cx| {
-                                                this.close_subgraph_tab(index_for_closure, cx);
+                                                this.close_tab(tab_index, cx);
                                             }))
                                     )
+                            )
+                        })
+                        .when(tab.is_dirty, |t| {
+                            t.child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().accent)
+                                    .child("*")
                             )
                         })
                 })
@@ -3019,7 +3186,7 @@ impl Render for BlueprintEditorPanel {
                 panel.disconnect_pin(action.node_id.clone(), action.pin_id.clone(), cx);
             }))
             .child(ToolbarRenderer::render(self, cx))
-            .child(self.render_subgraph_tab_bar(cx))
+            .child(self.render_tab_bar(cx))
             .child(
                 div().flex_1().child(
                     h_resizable("blueprint-editor-panels", self.resizable_state.clone())

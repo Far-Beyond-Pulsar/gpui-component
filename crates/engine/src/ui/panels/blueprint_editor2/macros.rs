@@ -15,11 +15,11 @@ impl MacrosRenderer {
             .size_full()
             .bg(cx.theme().sidebar)
             .child(
-                // STUDIO-QUALITY HEADER
+                // HEADER
                 v_flex()
                     .w_full()
                     .child(
-                        // Main header with gradient background
+                        // Main header
                         h_flex()
                             .w_full()
                             .px_4()
@@ -34,7 +34,7 @@ impl MacrosRenderer {
                                     .gap_3()
                                     .items_center()
                                     .child(
-                                        // Icon with subtle glow effect
+                                        // Icon
                                         div()
                                             .flex_shrink_0()
                                             .w(px(32.0))
@@ -60,15 +60,15 @@ impl MacrosRenderer {
                                                     .text_sm()
                                                     .font_bold()
                                                     .text_color(cx.theme().foreground)
-                                                    .child("Macro Library")
+                                                    .child("Local Macros")
                                             )
                                             .child(
                                                 div()
                                                     .text_xs()
                                                     .text_color(cx.theme().muted_foreground)
                                                     .child(format!("{} macro{}",
-                                                        Self::count_macros(panel),
-                                                        if Self::count_macros(panel) == 1 { "" } else { "s" }
+                                                        panel.local_macros.len(),
+                                                        if panel.local_macros.len() == 1 { "" } else { "s" }
                                                     ))
                                             )
                                     )
@@ -84,7 +84,7 @@ impl MacrosRenderer {
                             )
                     )
                     .child(
-                        // Category/Section bar
+                        // Category bar
                         h_flex()
                             .w_full()
                             .px_4()
@@ -95,16 +95,11 @@ impl MacrosRenderer {
                             .items_center()
                             .justify_between()
                             .child(
-                                h_flex()
-                                    .gap_2()
-                                    .items_center()
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .font_semibold()
-                                            .text_color(cx.theme().accent)
-                                            .child("MACROS")
-                                    )
+                                div()
+                                    .text_xs()
+                                    .font_semibold()
+                                    .text_color(cx.theme().accent)
+                                    .child("THIS BLUEPRINT")
                             )
                             .child(
                                 div()
@@ -115,73 +110,57 @@ impl MacrosRenderer {
                                     .text_xs()
                                     .font_family("JetBrainsMono-Regular")
                                     .text_color(cx.theme().accent)
-                                    .child(format!("{}", Self::count_macros(panel)))
+                                    .child(format!("{}", panel.local_macros.len()))
                             )
                     )
             )
             .child(
-                // CONTENT AREA - clean scrollable list
+                // CONTENT AREA - local macros list
                 v_flex()
                     .flex_1()
                     .overflow_hidden()
                     .p_3()
                     .gap_2()
                     .scrollable(Axis::Vertical)
-                    .child(Self::render_macros_list(panel, cx))
+                    .child(Self::render_local_macros_list(panel, cx))
             )
     }
 
-    fn count_macros(panel: &BlueprintEditorPanel) -> usize {
-        panel.library_manager.get_libraries()
-            .values()
-            .map(|lib| lib.subgraphs.len())
-            .sum()
-    }
-
-    fn render_macros_list(panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
-        let libraries = panel.library_manager.get_libraries();
-
+    fn render_local_macros_list(panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
         v_flex()
-            .gap_3()
+            .gap_2()
             .children(
-                if libraries.is_empty() {
+                if panel.local_macros.is_empty() {
                     vec![
                         div()
                             .flex()
+                            .flex_col()
                             .items_center()
                             .justify_center()
-                            .h(px(100.))
-                            .text_color(cx.theme().muted_foreground)
-                            .text_sm()
-                            .child("No macro libraries loaded")
+                            .gap_3()
+                            .h(px(200.))
+                            .child(
+                                div()
+                                    .text_3xl()
+                                    .child("📦")
+                            )
+                            .child(
+                                div()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .text_sm()
+                                    .child("No local macros yet")
+                            )
+                            .child(
+                                div()
+                                    .text_color(cx.theme().muted_foreground.opacity(0.7))
+                                    .text_xs()
+                                    .child("Click + to create one")
+                            )
                             .into_any_element()
                     ]
                 } else {
-                    libraries.values().flat_map(|library| {
-                        let mut items = vec![
-                            // Library header
-                            v_flex()
-                                .w_full()
-                                .gap_1()
-                                .child(
-                                    div()
-                                        .w_full()
-                                        .px_2()
-                                        .py_2()
-                                        .text_xs()
-                                        .font_bold()
-                                        .text_color(cx.theme().foreground.opacity(0.7))
-                                        .child(library.name.clone())
-                                )
-                                .into_any_element()
-                        ];
-
-                        // Add macro items
-                        for subgraph in &library.subgraphs {
-                            items.push(Self::render_macro_row(subgraph, cx));
-                        }
-
-                        items
+                    panel.local_macros.iter().map(|subgraph| {
+                        Self::render_macro_row(subgraph, cx)
                     }).collect()
                 }
             )
@@ -191,7 +170,6 @@ impl MacrosRenderer {
         let subgraph_id = subgraph.id.clone();
         let subgraph_name = subgraph.name.clone();
 
-        // STUDIO-QUALITY MACRO ROW
         h_flex()
             .w_full()
             .px_3()
@@ -209,7 +187,7 @@ impl MacrosRenderer {
                     .shadow_md()
             })
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |panel, _, _window, cx| {
-                panel.open_subgraph(subgraph_id.clone(), subgraph_name.clone(), cx);
+                panel.open_local_macro(subgraph_id.clone(), subgraph_name.clone(), cx);
             }))
             .child(
                 // Macro icon

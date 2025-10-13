@@ -132,11 +132,11 @@ impl PropertiesRenderer {
     }
 
     fn render_properties_content(panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
-        // Check if we're inside a sub-graph and show interface editor
-        let is_in_subgraph = !panel.subgraph_navigation_stack.is_empty();
+        // Check if we're inside a macro tab (not the main event graph)
+        let is_in_macro = panel.active_tab_index < panel.open_tabs.len() && !panel.open_tabs[panel.active_tab_index].is_main;
 
-        // If in sub-graph and nothing selected, or subgraph_input/output selected, show interface editor
-        if is_in_subgraph {
+        // If in macro and nothing selected, or subgraph_input/output selected, show interface editor
+        if is_in_macro {
             let show_interface_editor = if let Some(selected_node_id) = panel.graph.selected_nodes.first() {
                 if let Some(selected_node) = panel.graph.nodes.iter().find(|n| n.id == *selected_node_id) {
                     selected_node.definition_id == "subgraph_input" || selected_node.definition_id == "subgraph_output"
@@ -544,6 +544,13 @@ impl PropertiesRenderer {
         let pin_color = type_info.generate_color();
         let pin_id = pin.id.clone();
 
+        // Generate a unique hash for the button ID
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        pin.id.hash(&mut hasher);
+        let pin_hash = hasher.finish() as usize;
+
         h_flex()
             .w_full()
             .px_3()
@@ -598,7 +605,7 @@ impl PropertiesRenderer {
             )
             .child(
                 // Remove button
-                gpui_component::button::Button::new(format!("remove-pin-{}", pin.id))
+                gpui_component::button::Button::new(("remove-pin", pin_hash))
                     .icon(IconName::Close)
                     .ghost()
                     .tooltip("Remove Pin")

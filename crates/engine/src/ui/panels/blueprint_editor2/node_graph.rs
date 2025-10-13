@@ -847,9 +847,23 @@ impl NodeGraphRenderer {
                                         // Extract sub-graph ID from definition_id (format: "subgraph:library_id.subgraph_id")
                                         let subgraph_id = node_definition_id.strip_prefix("subgraph:").unwrap_or(&node_definition_id).to_string();
 
-                                        // Open the sub-graph
-                                        panel.open_subgraph(subgraph_id, node_title.clone(), cx);
+                                        // Open ANY macro (local or global) in a tab when double-clicked
+                                        // First check local macros
+                                        let macro_found = if let Some(local_macro) = panel.local_macros.iter().find(|m| m.id == subgraph_id) {
+                                            panel.open_local_macro(subgraph_id.clone(), local_macro.name.clone(), cx);
+                                            true
+                                        } else if let Some(global_macro) = panel.library_manager.get_subgraph(&subgraph_id) {
+                                            // Open global/engine macro in a tab
+                                            panel.open_global_macro(subgraph_id.clone(), global_macro.name.clone(), cx);
+                                            true
+                                        } else {
+                                            false
+                                        };
 
+                                        if !macro_found {
+                                            println!("⚠️ Macro '{}' not found", node_title);
+                                        }
+                                        
                                         // Clear click tracking
                                         panel.last_click_time = None;
                                         panel.last_click_pos = None;

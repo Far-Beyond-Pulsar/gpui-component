@@ -24,7 +24,7 @@
                 "pin": {
                   "name": "Value",
                   "pin_type": "Output",
-                  "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+                  "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
                   "connected_to": ["conn_1"]
                 }
               },
@@ -33,7 +33,7 @@
                 "pin": {
                   "name": "Min",
                   "pin_type": "Output",
-                  "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+                  "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
                   "connected_to": ["conn_2"]
                 }
               },
@@ -42,7 +42,7 @@
                 "pin": {
                   "name": "Max",
                   "pin_type": "Output",
-                  "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+                  "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
                   "connected_to": ["conn_3"]
                 }
               }
@@ -59,7 +59,7 @@
                 "pin": {
                   "name": "A",
                   "pin_type": "Input",
-                  "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+                  "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
                   "connected_to": ["conn_1"]
                 }
               },
@@ -68,7 +68,7 @@
                 "pin": {
                   "name": "B",
                   "pin_type": "Input",
-                  "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+                  "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
                   "connected_to": ["conn_2"]
                 }
               }
@@ -79,7 +79,7 @@
                 "pin": {
                   "name": "Result",
                   "pin_type": "Output",
-                  "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+                  "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
                   "connected_to": ["conn_4"]
                 }
               }
@@ -96,7 +96,7 @@
                 "pin": {
                   "name": "A",
                   "pin_type": "Input",
-                  "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+                  "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
                   "connected_to": ["conn_4"]
                 }
               },
@@ -105,7 +105,7 @@
                 "pin": {
                   "name": "B",
                   "pin_type": "Input",
-                  "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+                  "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
                   "connected_to": ["conn_3"]
                 }
               }
@@ -116,7 +116,7 @@
                 "pin": {
                   "name": "Result",
                   "pin_type": "Output",
-                  "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+                  "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
                   "connected_to": ["conn_5"]
                 }
               }
@@ -133,7 +133,7 @@
                 "pin": {
                   "name": "Result",
                   "pin_type": "Input",
-                  "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+                  "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
                   "connected_to": ["conn_5"]
                 }
               }
@@ -197,19 +197,19 @@
           {
             "id": "value",
             "name": "Value",
-            "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+            "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
             "description": "The value to clamp"
           },
           {
             "id": "min",
             "name": "Min",
-            "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+            "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
             "description": "Minimum value"
           },
           {
             "id": "max",
             "name": "Max",
-            "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+            "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
             "description": "Maximum value"
           }
         ],
@@ -217,7 +217,7 @@
           {
             "id": "result",
             "name": "Result",
-            "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+            "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
             "description": "Clamped value"
           }
         ]
@@ -247,7 +247,7 @@
                 "pin": {
                   "name": "A",
                   "pin_type": "Output",
-                  "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+                  "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
                   "connected_to": []
                 }
               },
@@ -256,7 +256,7 @@
                 "pin": {
                   "name": "B",
                   "pin_type": "Output",
-                  "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+                  "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
                   "connected_to": []
                 }
               },
@@ -265,7 +265,7 @@
                 "pin": {
                   "name": "T",
                   "pin_type": "Output",
-                  "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+                  "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
                   "connected_to": []
                 }
               }
@@ -282,7 +282,7 @@
                 "pin": {
                   "name": "Result",
                   "pin_type": "Input",
-                  "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+                  "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
                   "connected_to": []
                 }
               }
@@ -305,19 +305,19 @@
           {
             "id": "a",
             "name": "A",
-            "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+            "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
             "description": "Start value"
           },
           {
             "id": "b",
             "name": "B",
-            "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+            "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
             "description": "End value"
           },
           {
             "id": "t",
             "name": "T",
-            "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+            "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
             "description": "Interpolation factor (0-1)"
           }
         ],
@@ -325,7 +325,7 @@
           {
             "id": "result",
             "name": "Result",
-            "data_type": { "Typed": { "base_type": "f64", "is_reference": false, "is_mutable": false, "generics": [] } },
+            "data_type": { "Typed": { "base_type": "f64", "wrappers": [], "is_wildcard": false } },
             "description": "Interpolated value"
           }
         ]
