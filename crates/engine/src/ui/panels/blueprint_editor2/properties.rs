@@ -1,5 +1,6 @@
 use gpui::*;
 use gpui_component::{
+    button::ButtonVariants as _,
     h_flex, v_flex,
     ActiveTheme as _, StyledExt, Colorize,
     IconName,
@@ -421,15 +422,29 @@ impl PropertiesRenderer {
                             .justify_between()
                             .child(Self::render_section_header("Inputs", IconName::ArrowRight, cx))
                             .child(
-                                div()
-                                    .px_2()
-                                    .py_1()
-                                    .rounded(px(4.0))
-                                    .bg(cx.theme().success.opacity(0.15))
-                                    .text_xs()
-                                    .font_family("JetBrainsMono-Regular")
-                                    .text_color(cx.theme().success)
-                                    .child(format!("{}", input_node.map(|n| n.outputs.len()).unwrap_or(0)))
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .px_2()
+                                            .py_1()
+                                            .rounded(px(4.0))
+                                            .bg(cx.theme().success.opacity(0.15))
+                                            .text_xs()
+                                            .font_family("JetBrainsMono-Regular")
+                                            .text_color(cx.theme().success)
+                                            .child(format!("{}", input_node.map(|n| n.outputs.len()).unwrap_or(0)))
+                                    )
+                                    .child(
+                                        gpui_component::button::Button::new("add-input-pin")
+                                            .icon(IconName::Plus)
+                                            .ghost()
+                                            .tooltip("Add Input Pin")
+                                            .on_click(cx.listener(|panel, _, _, cx| {
+                                                panel.add_input_pin(cx);
+                                            }))
+                                    )
                             )
                     )
                     .child(
@@ -451,15 +466,29 @@ impl PropertiesRenderer {
                             .justify_between()
                             .child(Self::render_section_header("Outputs", IconName::ArrowLeft, cx))
                             .child(
-                                div()
-                                    .px_2()
-                                    .py_1()
-                                    .rounded(px(4.0))
-                                    .bg(cx.theme().warning.opacity(0.15))
-                                    .text_xs()
-                                    .font_family("JetBrainsMono-Regular")
-                                    .text_color(cx.theme().warning)
-                                    .child(format!("{}", output_node.map(|n| n.inputs.len()).unwrap_or(0)))
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .px_2()
+                                            .py_1()
+                                            .rounded(px(4.0))
+                                            .bg(cx.theme().warning.opacity(0.15))
+                                            .text_xs()
+                                            .font_family("JetBrainsMono-Regular")
+                                            .text_color(cx.theme().warning)
+                                            .child(format!("{}", output_node.map(|n| n.inputs.len()).unwrap_or(0)))
+                                    )
+                                    .child(
+                                        gpui_component::button::Button::new("add-output-pin")
+                                            .icon(IconName::Plus)
+                                            .ghost()
+                                            .tooltip("Add Output Pin")
+                                            .on_click(cx.listener(|panel, _, _, cx| {
+                                                panel.add_output_pin(cx);
+                                            }))
+                                    )
                             )
                     )
                     .child(
@@ -513,6 +542,7 @@ impl PropertiesRenderer {
     fn render_interface_pin_row(pin: &Pin, is_input: bool, cx: &mut Context<BlueprintEditorPanel>) -> AnyElement {
         let type_info = crate::graph::TypeInfo::parse(&format!("{:?}", pin.data_type));
         let pin_color = type_info.generate_color();
+        let pin_id = pin.id.clone();
 
         h_flex()
             .w_full()
@@ -565,6 +595,20 @@ impl PropertiesRenderer {
                     .text_xs()
                     .text_color(if is_input { cx.theme().success } else { cx.theme().warning })
                     .child(if is_input { "→" } else { "←" })
+            )
+            .child(
+                // Remove button
+                gpui_component::button::Button::new(format!("remove-pin-{}", pin.id))
+                    .icon(IconName::Close)
+                    .ghost()
+                    .tooltip("Remove Pin")
+                    .on_click(cx.listener(move |panel, _, _, cx| {
+                        if is_input {
+                            panel.remove_input_pin(&pin_id, cx);
+                        } else {
+                            panel.remove_output_pin(&pin_id, cx);
+                        }
+                    }))
             )
             .into_any_element()
     }

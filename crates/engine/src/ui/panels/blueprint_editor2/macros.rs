@@ -78,8 +78,8 @@ impl MacrosRenderer {
                                     .icon(IconName::Plus)
                                     .primary()
                                     .tooltip("Create New Macro")
-                                    .on_click(cx.listener(|_panel, _, _window, _cx| {
-                                        // TODO: Implement macro creation
+                                    .on_click(cx.listener(|panel, _, _window, cx| {
+                                        panel.create_new_local_macro(cx);
                                     }))
                             )
                     )

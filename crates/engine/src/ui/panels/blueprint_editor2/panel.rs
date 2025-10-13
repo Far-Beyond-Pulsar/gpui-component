@@ -2159,6 +2159,52 @@ impl BlueprintEditorPanel {
         crate::compiler::type_extractor::extract_all_blueprint_types()
     }
 
+    /// Add a new pin to the subgraph input node
+    pub fn add_input_pin(&mut self, cx: &mut Context<Self>) {
+        if let Some(input_node) = self.graph.nodes.iter_mut().find(|n| n.definition_id == "subgraph_input") {
+            let pin_count = input_node.outputs.len();
+            let new_pin = Pin {
+                id: format!("input_{}", pin_count),
+                name: format!("Input {}", pin_count + 1),
+                pin_type: PinType::Output, // Input node has outputs
+                data_type: DataType::Execution,
+            };
+            input_node.outputs.push(new_pin);
+            cx.notify();
+        }
+    }
+
+    /// Add a new pin to the subgraph output node
+    pub fn add_output_pin(&mut self, cx: &mut Context<Self>) {
+        if let Some(output_node) = self.graph.nodes.iter_mut().find(|n| n.definition_id == "subgraph_output") {
+            let pin_count = output_node.inputs.len();
+            let new_pin = Pin {
+                id: format!("output_{}", pin_count),
+                name: format!("Output {}", pin_count + 1),
+                pin_type: PinType::Input, // Output node has inputs
+                data_type: DataType::Execution,
+            };
+            output_node.inputs.push(new_pin);
+            cx.notify();
+        }
+    }
+
+    /// Remove a pin from the subgraph input node
+    pub fn remove_input_pin(&mut self, pin_id: &str, cx: &mut Context<Self>) {
+        if let Some(input_node) = self.graph.nodes.iter_mut().find(|n| n.definition_id == "subgraph_input") {
+            input_node.outputs.retain(|p| p.id != pin_id);
+            cx.notify();
+        }
+    }
+
+    /// Remove a pin from the subgraph output node
+    pub fn remove_output_pin(&mut self, pin_id: &str, cx: &mut Context<Self>) {
+        if let Some(output_node) = self.graph.nodes.iter_mut().find(|n| n.definition_id == "subgraph_output") {
+            output_node.inputs.retain(|p| p.id != pin_id);
+            cx.notify();
+        }
+    }
+
     /// Load variables from vars_save.json
     fn load_variables_from_class(&mut self, class_path: &std::path::Path) -> Result<(), String> {
         let vars_file = class_path.join("vars_save.json");
@@ -2743,6 +2789,105 @@ impl BlueprintEditorPanel {
         self.graph = subgraph;
 
         println!("📂 Opened sub-graph: {} (depth: {})", subgraph_name, self.subgraph_navigation_stack.len());
+        cx.notify();
+    }
+
+    /// Create a new local macro (sub-graph) within the current blueprint class
+    pub fn create_new_local_macro(&mut self, cx: &mut Context<Self>) {
+        // Generate a unique ID for the new macro
+        let macro_id = format!("local_macro_{}", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis());
+
+        let macro_name = "New Macro".to_string();
+
+        // Save current graph state to navigation stack
+        let current_entry = SubGraphNavigationEntry {
+            id: if self.subgraph_navigation_stack.is_empty() {
+                "main".to_string()
+            } else {
+                self.subgraph_navigation_stack.last().unwrap().id.clone()
+            },
+            name: if self.subgraph_navigation_stack.is_empty() {
+                "Main".to_string()
+            } else {
+                self.subgraph_navigation_stack.last().unwrap().name.clone()
+            },
+            graph: self.graph.clone(),
+        };
+
+        // Only push if this isn't already the current graph
+        if self.subgraph_navigation_stack.is_empty() ||
+           self.subgraph_navigation_stack.last().unwrap().id != current_entry.id {
+            self.subgraph_navigation_stack.push(current_entry);
+        }
+
+        // Create a new empty graph with subgraph_input and subgraph_output nodes
+        let input_node = BlueprintNode {
+            id: "subgraph_input".to_string(),
+            definition_id: "subgraph_input".to_string(),
+            title: "Input".to_string(),
+            icon: "📥".to_string(),
+            node_type: NodeType::Logic,
+            position: Point::new(100.0, 200.0),
+            size: Size::new(160.0, 80.0),
+            inputs: vec![],
+            outputs: vec![
+                // Start with a default execution output
+                Pin {
+                    id: "exec_out".to_string(),
+                    name: "Body".to_string(),
+                    pin_type: PinType::Output,
+                    data_type: DataType::Execution,
+                },
+            ],
+            properties: std::collections::HashMap::new(),
+            is_selected: false,
+            description: "Interface input node for the macro".to_string(),
+            color: None,
+        };
+
+        let output_node = BlueprintNode {
+            id: "subgraph_output".to_string(),
+            definition_id: "subgraph_output".to_string(),
+            title: "Output".to_string(),
+            icon: "📤".to_string(),
+            node_type: NodeType::Logic,
+            position: Point::new(500.0, 200.0),
+            size: Size::new(160.0, 80.0),
+            inputs: vec![
+                // Start with a default execution input
+                Pin {
+                    id: "exec_in".to_string(),
+                    name: "Body".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: DataType::Execution,
+                },
+            ],
+            outputs: vec![],
+            properties: std::collections::HashMap::new(),
+            is_selected: false,
+            description: "Interface output node for the macro".to_string(),
+            color: None,
+        };
+
+        // Create the new graph
+        let new_graph = BlueprintGraph {
+            nodes: vec![input_node, output_node],
+            connections: vec![],
+            comments: vec![],
+            selected_nodes: vec![],
+            selected_comments: vec![],
+            zoom_level: 1.0,
+            pan_offset: Point::new(0.0, 0.0),
+            virtualization_stats: VirtualizationStats::default(),
+        };
+
+        // Replace current graph with the new macro
+        self.graph = new_graph;
+
+        println!("✨ Created new local macro: {} (depth: {})", macro_name, self.subgraph_navigation_stack.len());
         cx.notify();
     }
 

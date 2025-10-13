@@ -777,6 +777,21 @@ impl NodeGraphRenderer {
                                     .text_color(cx.theme().foreground)
                                     .child(node.title.clone()),
                             )
+                            // Macro indicator badge
+                            .when(node.definition_id.starts_with("subgraph:"), |style| {
+                                style.child(
+                                    div()
+                                        .px(px(6.0 * panel.graph.zoom_level))
+                                        .py(px(2.0 * panel.graph.zoom_level))
+                                        .rounded(px(4.0 * panel.graph.zoom_level))
+                                        .bg(gpui::Rgba { r: 0.61, g: 0.35, b: 0.71, a: 0.3 })
+                                        .border_1()
+                                        .border_color(gpui::Rgba { r: 0.61, g: 0.35, b: 0.71, a: 1.0 })
+                                        .text_xs()
+                                        .text_color(gpui::Rgba { r: 0.61, g: 0.35, b: 0.71, a: 1.0 })
+                                        .child("MACRO")
+                                )
+                            })
                             .on_mouse_move(cx.listener({
                                 let tooltip_content = tooltip_content.clone();
                                 move |panel, event: &MouseMoveEvent, window, cx| {
