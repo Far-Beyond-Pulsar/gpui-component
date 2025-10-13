@@ -134,6 +134,9 @@ impl MinimapRenderer {
             NodeType::Math => cx.theme().success,
             NodeType::Object => cx.theme().warning,
             NodeType::Reroute => cx.theme().accent,
+            NodeType::MacroEntry => gpui::Hsla { h: 0.75, s: 0.7, l: 0.6, a: 1.0 },
+            NodeType::MacroExit => gpui::Hsla { h: 0.75, s: 0.7, l: 0.6, a: 1.0 },
+            NodeType::MacroInstance => gpui::Hsla { h: 0.75, s: 0.5, l: 0.5, a: 1.0 },
         };
 
         let is_selected = graph.selected_nodes.contains(&node.id);

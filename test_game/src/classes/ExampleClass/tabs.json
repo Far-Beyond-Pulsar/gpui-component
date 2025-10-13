@@ -1,0 +1,23 @@
+[
+  {
+    "id": "main",
+    "name": "EventGraph",
+    "is_main": true,
+    "is_library_macro": false,
+    "library_id": null
+  },
+  {
+    "id": "local_macro_1760372445543",
+    "name": "New Macro",
+    "is_main": false,
+    "is_library_macro": false,
+    "library_id": null
+  },
+  {
+    "id": "local_macro_1760373964487",
+    "name": "New Macro",
+    "is_main": false,
+    "is_library_macro": false,
+    "library_id": null
+  }
+]

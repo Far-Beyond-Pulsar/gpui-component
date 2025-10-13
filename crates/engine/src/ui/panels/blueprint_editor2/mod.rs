@@ -3,6 +3,7 @@ pub mod node_graph;
 pub mod properties;
 pub mod variables;
 pub mod macros;
+pub mod file_drawer;
 pub mod panel;
 pub mod node_creation_menu;
 pub mod hoverable_tooltip;
@@ -76,6 +77,15 @@ pub struct DisconnectPin {
     pub pin_id: String,
 }
 
+// Event for requesting to open an engine library in main tabs
+#[derive(Clone, Debug)]
+pub struct OpenEngineLibraryRequest {
+    pub library_id: String,
+    pub library_name: String,
+    pub macro_id: Option<String>, // If specified, open this macro after opening library
+    pub macro_name: Option<String>,
+}
+
 // Shared types and state
 #[derive(Clone, Debug)]
 pub struct BlueprintNode {
@@ -109,6 +119,9 @@ pub enum NodeType {
     Math,
     Object,
     Reroute, // Visual pass-through node for organizing connections
+    MacroEntry, // Entry point for macro graphs (replaces generic subgraph_input)
+    MacroExit, // Exit point for macro graphs (replaces generic subgraph_output)
+    MacroInstance, // Instance of a macro in parent graph
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

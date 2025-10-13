@@ -42,14 +42,18 @@ impl SubGraphExpander {
             ));
         }
 
-        // Find all sub-graph instances
+        // Find all sub-graph instances (both old "subgraph:" and new "macro:" prefixes)
         let subgraph_instances: Vec<(String, String)> = graph
             .nodes
             .iter()
             .filter_map(|(id, node)| {
+                // Support both old "subgraph:" and new "macro:" prefixes
                 if node.node_type.starts_with("subgraph:") {
                     let subgraph_id = node.node_type.strip_prefix("subgraph:").unwrap();
                     Some((id.clone(), subgraph_id.to_string()))
+                } else if node.node_type.starts_with("macro:") {
+                    let macro_id = node.node_type.strip_prefix("macro:").unwrap();
+                    Some((id.clone(), macro_id.to_string()))
                 } else {
                     None
                 }
@@ -158,10 +162,21 @@ impl SubGraphExpander {
         }
 
         // Step 3: Map external connections to/from the instance node
-        // to the internal subgraph_input and subgraph_output nodes
+        // to the internal macro_entry and macro_exit nodes (or legacy subgraph_input/output)
 
-        let input_node_id = format!("{}subgraph_input", prefix);
-        let output_node_id = format!("{}subgraph_output", prefix);
+        // Try to find macro_entry first, fallback to subgraph_input for backward compatibility
+        let input_node_id = if id_mapping.contains_key("macro_entry") {
+            format!("{}macro_entry", prefix)
+        } else {
+            format!("{}subgraph_input", prefix)
+        };
+        
+        // Try to find macro_exit first, fallback to subgraph_output for backward compatibility
+        let output_node_id = if id_mapping.contains_key("macro_exit") {
+            format!("{}macro_exit", prefix)
+        } else {
+            format!("{}subgraph_output", prefix)
+        };
 
         // Find connections to the instance's input pins -> connect to internal input node outputs
         let incoming_connections: Vec<Connection> = parent_graph

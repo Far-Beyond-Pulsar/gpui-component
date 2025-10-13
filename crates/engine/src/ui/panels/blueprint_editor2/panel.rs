@@ -26,6 +26,18 @@ pub struct GraphTab {
     pub graph: BlueprintGraph,
     pub is_main: bool, // True for the main event graph
     pub is_dirty: bool, // True if there are unsaved changes
+    pub is_library_macro: bool, // True if from global library (not local)
+    pub library_id: Option<String>, // Parent library ID for library macros
+}
+
+// Serializable version of GraphTab for persistence
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct SerializedGraphTab {
+    pub id: String,
+    pub name: String,
+    pub is_main: bool,
+    pub is_library_macro: bool,
+    pub library_id: Option<String>,
 }
 
 // Constants for node creation menu dimensions
@@ -121,6 +133,30 @@ pub struct ConnectionDrag {
 
 impl BlueprintEditorPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_internal(None, window, cx)
+    }
+
+    /// Create a new blueprint editor for an engine library (virtual blueprint)
+    pub fn new_for_library(library_id: String, library_name: String, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let mut panel = Self::new_internal(None, window, cx);
+        
+        // Set a special flag or title to indicate this is a library view
+        panel.tab_title = Some(format!("📚 {} Library", library_name));
+        
+        // The EventGraph tab should show an overview or README for the library
+        if let Some(main_tab) = panel.open_tabs.get_mut(0) {
+            main_tab.name = format!("{} Overview", library_name);
+        }
+        
+        println!("📚 Created blueprint editor for library: {}", library_name);
+        panel
+    }
+
+    fn new_internal(
+        project_path: Option<std::path::PathBuf>,
+        window: &mut Window,
+        cx: &mut Context<Self>
+    ) -> Self {
         let resizable_state = ResizableState::new(cx);
         let left_sidebar_resizable_state = ResizableState::new(cx);
 
@@ -463,6 +499,8 @@ impl BlueprintEditorPanel {
                 graph: main_graph,
                 is_main: true,
                 is_dirty: false,
+                is_library_macro: false,
+                library_id: None,
             }],
             active_tab_index: 0,
         };
@@ -549,21 +587,24 @@ impl BlueprintEditorPanel {
 
     /// Close a tab by index
     pub fn close_tab(&mut self, tab_index: usize, cx: &mut Context<Self>) {
-        // Can't close the main event graph tab
-        if tab_index < self.open_tabs.len() && !self.open_tabs[tab_index].is_main {
-            self.open_tabs.remove(tab_index);
-            
-            // Adjust active tab index if needed
-            if self.active_tab_index >= self.open_tabs.len() {
-                self.active_tab_index = self.open_tabs.len().saturating_sub(1);
-            }
-            if self.active_tab_index >= tab_index && self.active_tab_index > 0 {
-                self.active_tab_index -= 1;
-            }
-            
-            self.load_active_tab_graph();
-            cx.notify();
+        // NEVER allow closing the main event graph tab
+        if tab_index >= self.open_tabs.len() || self.open_tabs[tab_index].is_main {
+            println!("⚠️ Cannot close the main EventGraph tab");
+            return;
         }
+
+        self.open_tabs.remove(tab_index);
+        
+        // Adjust active tab index if needed
+        if self.active_tab_index >= self.open_tabs.len() {
+            self.active_tab_index = self.open_tabs.len().saturating_sub(1);
+        }
+        if self.active_tab_index >= tab_index && self.active_tab_index > 0 {
+            self.active_tab_index -= 1;
+        }
+        
+        self.load_active_tab_graph();
+        cx.notify();
     }
 
     /// Open a local macro in a new tab (or switch to existing tab)
@@ -589,6 +630,8 @@ impl BlueprintEditorPanel {
                         graph: blueprint_graph,
                         is_main: false,
                         is_dirty: false,
+                        is_library_macro: false,
+                        library_id: None,
                     };
 
                     self.open_tabs.push(new_tab);
@@ -606,8 +649,9 @@ impl BlueprintEditorPanel {
     }
 
     /// Open a global/engine macro in a new tab (or switch to existing tab)
+    /// Also opens the parent library tab if needed (for engine macros navigation)
     pub fn open_global_macro(&mut self, macro_id: String, macro_name: String, cx: &mut Context<Self>) {
-        // Check if tab already exists
+        // Check if tab already exists in THIS blueprint editor
         if let Some(index) = self.open_tabs.iter().position(|tab| tab.id == macro_id) {
             self.switch_to_tab(index, cx);
             return;
@@ -615,26 +659,45 @@ impl BlueprintEditorPanel {
 
         // Find the macro definition in library manager
         if let Some(macro_def) = self.library_manager.get_subgraph(&macro_id) {
+            // Find which library this macro belongs to
+            let library_id = self.library_manager.get_libraries()
+                .iter()
+                .find(|(_, lib)| lib.subgraphs.iter().any(|sg| sg.id == macro_id))
+                .map(|(id, _)| id.clone());
+
+            // TODO: If this is being opened from a user blueprint and the macro belongs
+            // to an engine library, we should:
+            // 1. Signal the app to open/focus the engine library blueprint tab
+            // 2. Then open the macro within that context
+            // For now, we open it in the current blueprint editor context
+
             // Convert to BlueprintGraph
             match self.convert_graph_description_to_blueprint(&macro_def.graph) {
                 Ok(blueprint_graph) => {
                     // Save current graph to current tab before switching
                     self.sync_graph_to_active_tab();
 
-                    // Create new tab (will be read-only or create override on save)
+                    // Create new tab
                     let new_tab = GraphTab {
                         id: macro_id.clone(),
                         name: format!("🌐 {}", macro_name), // Prefix with globe to indicate it's global
                         graph: blueprint_graph,
                         is_main: false,
                         is_dirty: false,
+                        is_library_macro: true,
+                        library_id: library_id.clone(),
                     };
 
                     self.open_tabs.push(new_tab);
                     self.active_tab_index = self.open_tabs.len() - 1;
                     self.load_active_tab_graph();
 
-                    println!("📂 Opened global macro in tab: {}", macro_name);
+                    if let Some(lib_id) = library_id {
+                        println!("📂 Opened global macro '{}' from library '{}' in tab", macro_name, lib_id);
+                        println!("ℹ️  Note: For proper context, engine macros should be opened from their library tab");
+                    } else {
+                        println!("📂 Opened global macro '{}' in tab", macro_name);
+                    }
                     cx.notify();
                 }
                 Err(e) => {
@@ -642,6 +705,39 @@ impl BlueprintEditorPanel {
                 }
             }
         }
+    }
+
+    /// Get the library ID that a macro belongs to (for smart navigation)
+    pub fn get_macro_library_id(&self, macro_id: &str) -> Option<String> {
+        // Check local macros first
+        if self.local_macros.iter().any(|m| m.id == macro_id) {
+            return None; // Local macro, no library
+        }
+
+        // Check global libraries
+        self.library_manager.get_libraries()
+            .iter()
+            .find(|(_, lib)| lib.subgraphs.iter().any(|sg| sg.id == macro_id))
+            .map(|(id, _)| id.clone())
+    }
+
+    /// Request to open an engine library in main tabs (emits event)
+    /// This is used by file drawer and node graph to request app-level navigation
+    pub fn request_open_engine_library(
+        &self,
+        library_id: String,
+        library_name: String,
+        macro_id: Option<String>,
+        macro_name: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        // Emit the request event - app.rs will handle it
+        cx.emit(super::OpenEngineLibraryRequest {
+            library_id,
+            library_name,
+            macro_id,
+            macro_name,
+        });
     }
 
     /// Compile the current graph to Rust source code
@@ -773,11 +869,16 @@ impl BlueprintEditorPanel {
 
     /// Convert blueprint graph to graph description format
     fn convert_to_graph_description(&self) -> Result<crate::graph::GraphDescription, String> {
+        self.convert_graph_to_description(&self.graph)
+    }
+    
+    /// Convert a specific blueprint graph to graph description format
+    fn convert_graph_to_description(&self, graph: &BlueprintGraph) -> Result<crate::graph::GraphDescription, String> {
         use crate::graph::*;
         let mut graph_desc = GraphDescription::new("Blueprint Graph");
 
         // Convert nodes
-        for bp_node in &self.graph.nodes {
+        for bp_node in &graph.nodes {
             let mut node_instance = NodeInstance::new(
                 &bp_node.id,
                 &self.get_node_type_from_blueprint(&bp_node)?,
@@ -814,10 +915,9 @@ impl BlueprintEditorPanel {
         }
 
         // Convert connections
-        for connection in &self.graph.connections {
+        for connection in &graph.connections {
             // Determine connection type based on source pin's data type
-            let conn_type = self
-                .graph
+            let conn_type = graph
                 .nodes
                 .iter()
                 .find(|n| n.id == connection.from_node_id)
@@ -840,7 +940,7 @@ impl BlueprintEditorPanel {
         }
 
         // Add comments to graph description
-        graph_desc.comments = self.graph.comments.clone();
+        graph_desc.comments = graph.comments.clone();
 
         Ok(graph_desc)
     }
@@ -852,11 +952,81 @@ impl BlueprintEditorPanel {
 
     // Conversion function no longer needed since we use the unified DataType system
 
-    /// Save the current graph to a JSON file
-    pub fn save_blueprint(&self, file_path: &str) -> Result<(), String> {
-        let graph_description = self.convert_to_graph_description()?;
-        let json = serde_json::to_string_pretty(&graph_description)
-            .map_err(|e| format!("Failed to serialize graph: {}", e))?;
+    /// Save the complete blueprint to a unified JSON file (like Unreal Engine)
+    /// This saves EVERYTHING: main event graph, ALL local macros, variables, and editor state
+    pub fn save_blueprint(&mut self, file_path: &str) -> Result<(), String> {
+        // STEP 1: Sync the currently active tab's self.graph content to that tab's storage
+        // This ensures any unsaved changes in the editor are captured
+        self.sync_graph_to_active_tab();
+        
+        // STEP 2: Sync ALL open tabs back to their permanent storage
+        // - Main tab graph -> stored in main_tab.graph
+        // - Macro tab graphs -> stored in self.local_macros[i].graph
+        // This ensures all open tabs are saved, not just the active one
+        self.sync_all_tabs_to_storage();
+        
+        // STEP 3: Find the main event graph tab (must always exist)
+        let main_tab = self.open_tabs.iter()
+            .find(|tab| tab.is_main)
+            .ok_or_else(|| "No main event graph found".to_string())?;
+        
+        // STEP 4: Convert the main tab's graph to GraphDescription format for serialization
+        // This is the MAIN event graph - never a macro graph
+        let main_graph_description = self.convert_graph_to_description(&main_tab.graph)?;
+        
+        // STEP 5: Convert class variables to the serializable format
+        let variables: Vec<crate::graph::ClassVariable> = self.class_variables.iter().map(|v| {
+            crate::graph::ClassVariable {
+                id: uuid::Uuid::new_v4().to_string(), // Generate ID for compatibility
+                name: v.name.clone(),
+                data_type: crate::graph::DataType::String, // TODO: parse var_type properly
+                default_value: v.default_value.clone(),
+                description: String::new(), // UI ClassVariable doesn't have description
+            }
+        }).collect();
+        
+        // STEP 6: Build editor state (open tabs, active tab, view states)
+        let open_tab_ids: Vec<String> = self.open_tabs.iter()
+            .map(|tab| tab.id.clone())
+            .collect();
+        
+        // Collect view states for ALL open tabs (main + macros)
+        let mut graph_view_states = std::collections::HashMap::new();
+        for tab in &self.open_tabs {
+            graph_view_states.insert(
+                tab.id.clone(),
+                crate::graph::GraphViewState {
+                    pan_offset_x: tab.graph.pan_offset.x,
+                    pan_offset_y: tab.graph.pan_offset.y,
+                    zoom: tab.graph.zoom_level,
+                }
+            );
+        }
+        
+        let editor_state = crate::graph::BlueprintEditorState {
+            open_tab_ids,
+            active_tab_index: self.active_tab_index,
+            graph_view_states,
+        };
+        
+        // STEP 7: Create the unified blueprint asset with EVERYTHING
+        // - main_graph: The main event graph ONLY
+        // - local_macros: ALL local macro graphs with their content and pins
+        // - variables: All class variables
+        // - editor_state: UI state for restoration
+        // - blueprint_metadata: Blueprint type and metadata
+        let blueprint_asset = crate::graph::BlueprintAsset {
+            format_version: 1,
+            main_graph: main_graph_description,
+            local_macros: self.local_macros.clone(),
+            variables,
+            editor_state: Some(editor_state),
+            blueprint_metadata: crate::graph::BlueprintMetadata::default(),
+        };
+        
+        // Serialize to JSON
+        let json = serde_json::to_string_pretty(&blueprint_asset)
+            .map_err(|e| format!("Failed to serialize blueprint: {}", e))?;
 
         // Add header comment to JSON file
         let now = chrono::Local::now();
@@ -866,7 +1036,12 @@ impl BlueprintEditorPanel {
              // DO NOT EDIT MANUALLY - YOUR CHANGES WILL BE OVERWRITTEN\n\
              // Generated on {} - Engine version {}\n\
              //\n\
-             // This file contains the visual blueprint graph for this class.\n\
+             // This file contains the COMPLETE blueprint for this class including:\n\
+             //   - Main event graph\n\
+             //   - All local macro graphs\n\
+             //   - Class variables\n\
+             //   - Editor state (open tabs, camera positions, etc.)\n\
+             //\n\
              // You can modify the graph by opening this class in the Pulsar Blueprint Editor.\n\
              // The graph is saved in JSON format for human readability and version control.\n\
              //\n\
@@ -880,15 +1055,59 @@ impl BlueprintEditorPanel {
 
         std::fs::write(file_path, content).map_err(|e| format!("Failed to write file: {}", e))?;
 
-        // Also save variables when saving the blueprint
-        if self.current_class_path.is_some() {
-            self.save_variables_to_class()?;
-            
-            // Save local macros to a separate file
-            self.save_local_macros()?;
+        println!("💾 ═══════════════════════════════════════════════════════════════");
+        println!("💾 BLUEPRINT SAVED SUCCESSFULLY");
+        println!("💾 ═══════════════════════════════════════════════════════════════");
+        println!("💾 File: {}", file_path);
+        println!("💾");
+        println!("💾 📊 Content Summary:");
+        println!("💾   ✓ Main Event Graph: {} nodes, {} connections",
+            main_tab.graph.nodes.len(),
+            main_tab.graph.connections.len());
+        println!("💾   ✓ Local Macros: {}", self.local_macros.len());
+        for macro_def in &self.local_macros {
+            println!("💾     - {} ({})", macro_def.name, macro_def.id);
         }
+        println!("💾   ✓ Class Variables: {}", self.class_variables.len());
+        println!("💾   ✓ Open Tabs: {}", self.open_tabs.len());
+        println!("💾   ✓ Active Tab: {} ({})", 
+            self.open_tabs.get(self.active_tab_index).map(|t| t.name.as_str()).unwrap_or("Unknown"),
+            self.active_tab_index);
+        println!("💾 ═══════════════════════════════════════════════════════════════");
 
         Ok(())
+    }
+    
+    /// Sync all open tabs back to their storage locations
+    /// - Main tab: graph stays in tab.graph (used during save)
+    /// - Local macro tabs: graph goes to self.local_macros[i].graph (converted to GraphDescription)
+    /// - Library macro tabs: read-only, not synced
+    fn sync_all_tabs_to_storage(&mut self) {
+        // Collect graphs to sync (to avoid borrow checker issues)
+        // First convert all graphs to GraphDescription format
+        let mut converted_graphs: Vec<(String, crate::graph::GraphDescription)> = Vec::new();
+        
+        for tab in self.open_tabs.iter() {
+            if !tab.is_main && !tab.is_library_macro {
+                // This is a local macro tab that needs syncing
+                if let Ok(graph_desc) = self.convert_graph_to_description(&tab.graph) {
+                    converted_graphs.push((tab.id.clone(), graph_desc));
+                } else {
+                    eprintln!("⚠️  Failed to convert macro tab '{}' to GraphDescription", tab.id);
+                }
+            }
+        }
+        
+        // Now sync them to local_macros storage (mutably)
+        for (tab_id, graph_desc) in converted_graphs {
+            if let Some(macro_def) = self.local_macros.iter_mut().find(|m| m.id == tab_id) {
+                macro_def.graph = graph_desc;
+                macro_def.metadata.modified_at = chrono::Local::now().to_rfc3339();
+                println!("📝 Synced macro '{}' to storage", macro_def.name);
+            } else {
+                eprintln!("⚠️  Macro tab '{}' not found in local_macros storage", tab_id);
+            }
+        }
     }
 
     /// Save local macros to macros.json in the class directory
@@ -906,6 +1125,33 @@ impl BlueprintEditorPanel {
                 .map_err(|e| format!("Failed to write macros.json: {}", e))?;
             
             println!("💾 Saved {} local macros to macros.json", self.local_macros.len());
+        }
+        Ok(())
+    }
+
+    /// Save open tabs state to tabs.json for restoration on load
+    fn save_tabs_state(&self) -> Result<(), String> {
+        if let Some(class_path) = &self.current_class_path {
+            let tabs_file = class_path.join("tabs.json");
+            
+            // Serialize just the tab metadata (not the full graphs)
+            let serialized_tabs: Vec<SerializedGraphTab> = self.open_tabs.iter().map(|tab| {
+                SerializedGraphTab {
+                    id: tab.id.clone(),
+                    name: tab.name.clone(),
+                    is_main: tab.is_main,
+                    is_library_macro: tab.is_library_macro,
+                    library_id: tab.library_id.clone(),
+                }
+            }).collect();
+            
+            let json = serde_json::to_string_pretty(&serialized_tabs)
+                .map_err(|e| format!("Failed to serialize tabs: {}", e))?;
+            
+            std::fs::write(&tabs_file, json)
+                .map_err(|e| format!("Failed to write tabs.json: {}", e))?;
+            
+            println!("💾 Saved {} tab states to tabs.json", serialized_tabs.len());
         }
         Ok(())
     }
@@ -931,7 +1177,71 @@ impl BlueprintEditorPanel {
         Ok(())
     }
 
-    /// Load a graph from a JSON file
+    /// Restore open tabs from tabs.json after loading blueprint
+    fn restore_tabs_state(&mut self, class_path: &std::path::Path, window: &mut gpui::Window, cx: &mut Context<Self>) -> Result<(), String> {
+        let tabs_file = class_path.join("tabs.json");
+        
+        if !tabs_file.exists() {
+            // No tabs file yet, just keep the main tab
+            return Ok(());
+        }
+        
+        let content = std::fs::read_to_string(&tabs_file)
+            .map_err(|e| format!("Failed to read tabs.json: {}", e))?;
+        
+        let serialized_tabs: Vec<SerializedGraphTab> = serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse tabs.json: {}", e))?;
+        
+        // Clear all tabs except main
+        self.open_tabs.retain(|tab| tab.is_main);
+        self.active_tab_index = 0;
+        
+        // Restore each tab
+        for ser_tab in serialized_tabs {
+            if ser_tab.is_main {
+                continue; // Skip main, it's already there
+            }
+            
+            // Find the macro definition and restore the tab
+            if ser_tab.is_library_macro {
+                // Global library macro
+                if let Some(macro_def) = self.library_manager.get_subgraph(&ser_tab.id) {
+                    if let Ok(blueprint_graph) = self.convert_graph_description_to_blueprint(&macro_def.graph) {
+                        self.open_tabs.push(GraphTab {
+                            id: ser_tab.id.clone(),
+                            name: ser_tab.name.clone(),
+                            graph: blueprint_graph,
+                            is_main: false,
+                            is_dirty: false,
+                            is_library_macro: true,
+                            library_id: ser_tab.library_id.clone(),
+                        });
+                    }
+                }
+            } else {
+                // Local macro
+                if let Some(macro_def) = self.local_macros.iter().find(|m| m.id == ser_tab.id) {
+                    if let Ok(blueprint_graph) = self.convert_graph_description_to_blueprint(&macro_def.graph) {
+                        self.open_tabs.push(GraphTab {
+                            id: ser_tab.id.clone(),
+                            name: ser_tab.name.clone(),
+                            graph: blueprint_graph,
+                            is_main: false,
+                            is_dirty: false,
+                            is_library_macro: false,
+                            library_id: None,
+                        });
+                    }
+                }
+            }
+        }
+        
+        println!("📂 Restored {} tabs from tabs.json", self.open_tabs.len());
+        Ok(())
+    }
+
+    /// Load a complete blueprint from a unified JSON file
+    /// This loads EVERYTHING: main event graph, ALL local macros, variables, and editor state
     pub fn load_blueprint(
         &mut self,
         file_path: &str,
@@ -948,27 +1258,40 @@ impl BlueprintEditorPanel {
             .collect::<Vec<_>>()
             .join("\n");
 
-        let graph_description: crate::graph::GraphDescription =
-            serde_json::from_str(&json).map_err(|e| format!("Failed to parse JSON: {}", e))?;
+        // Try to load as the new unified format first
+        if let Ok(blueprint_asset) = serde_json::from_str::<crate::graph::BlueprintAsset>(&json) {
+            // New unified format
+            self.load_from_blueprint_asset(blueprint_asset, file_path, window, cx)?;
+        } else {
+            // Legacy format - try to load as GraphDescription only
+            let graph_description: crate::graph::GraphDescription =
+                serde_json::from_str(&json).map_err(|e| format!("Failed to parse JSON: {}", e))?;
+            
+            // Convert back to blueprint format
+            self.graph = self.convert_from_graph_description(&graph_description, window, cx)?;
 
-        // Convert back to blueprint format
-        self.graph = self.convert_from_graph_description(&graph_description, window, cx)?;
+            // Reset to main tab only
+            self.open_tabs = vec![GraphTab {
+                id: "main".to_string(),
+                name: "EventGraph".to_string(),
+                graph: self.graph.clone(),
+                is_main: true,
+                is_dirty: false,
+                is_library_macro: false,
+                library_id: None,
+            }];
+            self.active_tab_index = 0;
 
-        // Reset to main tab only
-        self.open_tabs = vec![GraphTab {
-            id: "main".to_string(),
-            name: "EventGraph".to_string(),
-            graph: self.graph.clone(),
-            is_main: true,
-            is_dirty: false,
-        }];
-        self.active_tab_index = 0;
-
-        // Set current_class_path and load local macros from macros.json
-        let file_path_buf = std::path::Path::new(file_path);
-        if let Some(parent) = file_path_buf.parent() {
-            self.current_class_path = Some(parent.to_path_buf());
-            self.load_local_macros(parent)?;
+            // Try to load separate files for legacy support (macros.json, tabs.json, vars_save.json)
+            let file_path_buf = std::path::Path::new(file_path);
+            if let Some(parent) = file_path_buf.parent() {
+                self.current_class_path = Some(parent.to_path_buf());
+                let _ = self.load_local_macros(parent); // Ignore errors
+                let _ = self.restore_tabs_state(parent, window, cx); // Ignore errors
+                let _ = self.load_variables_from_class(parent); // Ignore errors
+            }
+            
+            println!("📂 Loaded blueprint in legacy format (separate files)");
         }
 
         // Reload library manager to ensure engine library macros list is populated
@@ -977,13 +1300,118 @@ impl BlueprintEditorPanel {
             eprintln!("Failed to reload sub-graph libraries: {}", e);
         }
 
-        // Load variables from vars_save.json
-        if let Some(parent) = file_path_buf.parent() {
-            self.load_variables_from_class(parent)?;
-        }
-
         cx.notify();
 
+        Ok(())
+    }
+    
+    /// Load blueprint from the new unified format
+    fn load_from_blueprint_asset(
+        &mut self,
+        asset: crate::graph::BlueprintAsset,
+        file_path: &str,
+        window: &mut gpui::Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        // Set current_class_path
+        let file_path_buf = std::path::Path::new(file_path);
+        if let Some(parent) = file_path_buf.parent() {
+            self.current_class_path = Some(parent.to_path_buf());
+        }
+        
+        // Load main graph
+        self.graph = self.convert_from_graph_description(&asset.main_graph, window, cx)?;
+        
+        // Load local macros
+        self.local_macros = asset.local_macros;
+        
+        // Load variables
+        self.class_variables = asset.variables.iter().map(|v| {
+            super::variables::ClassVariable {
+                name: v.name.clone(),
+                var_type: format!("{:?}", v.data_type), // Convert DataType to string
+                default_value: v.default_value.clone(),
+            }
+        }).collect();
+        
+        // Initialize main tab
+        self.open_tabs = vec![GraphTab {
+            id: "main".to_string(),
+            name: "EventGraph".to_string(),
+            graph: self.graph.clone(),
+            is_main: true,
+            is_dirty: false,
+            is_library_macro: false,
+            library_id: None,
+        }];
+        self.active_tab_index = 0;
+        
+        // Restore editor state (open tabs, active tab, view states)
+        if let Some(editor_state) = asset.editor_state {
+            // Restore open tabs
+            for tab_id in &editor_state.open_tab_ids {
+                if tab_id == "main" {
+                    continue; // Already added
+                }
+                
+                // Check if this is a local macro
+                if let Some(macro_def) = self.local_macros.iter().find(|m| &m.id == tab_id) {
+                    if let Ok(mut blueprint_graph) = self.convert_graph_description_to_blueprint(&macro_def.graph) {
+                        // Restore view state for this tab if available
+                        if let Some(view_state) = editor_state.graph_view_states.get(tab_id) {
+                            blueprint_graph.pan_offset = gpui::Point {
+                                x: view_state.pan_offset_x,
+                                y: view_state.pan_offset_y,
+                            };
+                            blueprint_graph.zoom_level = view_state.zoom;
+                        }
+                        
+                        self.open_tabs.push(GraphTab {
+                            id: tab_id.clone(),
+                            name: macro_def.name.clone(),
+                            graph: blueprint_graph,
+                            is_main: false,
+                            is_dirty: false,
+                            is_library_macro: false,
+                            library_id: None,
+                        });
+                    }
+                }
+            }
+            
+            // Restore view state for main tab
+            if let Some(view_state) = editor_state.graph_view_states.get("main") {
+                if let Some(main_tab) = self.open_tabs.iter_mut().find(|t| t.is_main) {
+                    main_tab.graph.pan_offset = gpui::Point {
+                        x: view_state.pan_offset_x,
+                        y: view_state.pan_offset_y,
+                    };
+                    main_tab.graph.zoom_level = view_state.zoom;
+                }
+                
+                // Also update self.graph with main tab's view state
+                self.graph.pan_offset = gpui::Point {
+                    x: view_state.pan_offset_x,
+                    y: view_state.pan_offset_y,
+                };
+                self.graph.zoom_level = view_state.zoom;
+            }
+            
+            // Restore active tab index (with bounds check)
+            self.active_tab_index = editor_state.active_tab_index.min(self.open_tabs.len().saturating_sub(1));
+            
+            // Load the active tab's graph into self.graph
+            if let Some(active_tab) = self.open_tabs.get(self.active_tab_index) {
+                self.graph = active_tab.graph.clone();
+            }
+        }
+        
+        println!("📂 Loaded complete blueprint from {}", file_path);
+        println!("   ├─ Main event graph");
+        println!("   ├─ {} local macros", self.local_macros.len());
+        println!("   ├─ {} variables", self.class_variables.len());
+        println!("   └─ {} open tabs restored", self.open_tabs.len());
+        
         Ok(())
     }
 
@@ -2968,20 +3396,20 @@ impl BlueprintEditorPanel {
 
         let macro_name = "New Macro".to_string();
 
-        // Create a new empty graph with subgraph_input and subgraph_output nodes
-        let input_node = BlueprintNode {
-            id: "subgraph_input".to_string(),
-            definition_id: "subgraph_input".to_string(),
-            title: "Input".to_string(),
-            icon: "⬇".to_string(),
-            node_type: NodeType::Logic,
+        // Create a new empty graph with macro_entry and macro_exit nodes
+        let entry_node = BlueprintNode {
+            id: "macro_entry".to_string(),
+            definition_id: "macro_entry".to_string(),
+            title: "Macro Entry".to_string(),
+            icon: "→".to_string(),
+            node_type: NodeType::MacroEntry,
             position: Point::new(100.0, 200.0),
-            size: Size::new(160.0, 80.0),
+            size: Size::new(180.0, 100.0),
             inputs: vec![],
             outputs: vec![
                 // Start with a default execution output
                 Pin {
-                    id: "exec_out".to_string(),
+                    id: "exec_in".to_string(),
                     name: "Body".to_string(),
                     pin_type: PinType::Output,
                     data_type: DataType::Execution,
@@ -2989,23 +3417,23 @@ impl BlueprintEditorPanel {
             ],
             properties: std::collections::HashMap::new(),
             is_selected: false,
-            description: "Interface input node for the macro".to_string(),
-            color: None,
+            description: "Entry point for this macro. Outputs correspond to macro inputs.".to_string(),
+            color: Some("#8B5CF6".to_string()), // Purple for macros
         };
 
-        let output_node = BlueprintNode {
-            id: "subgraph_output".to_string(),
-            definition_id: "subgraph_output".to_string(),
-            title: "Output".to_string(),
-            icon: "⬆".to_string(),
-            node_type: NodeType::Logic,
-            position: Point::new(500.0, 200.0),
-            size: Size::new(160.0, 80.0),
+        let exit_node = BlueprintNode {
+            id: "macro_exit".to_string(),
+            definition_id: "macro_exit".to_string(),
+            title: "Macro Exit".to_string(),
+            icon: "←".to_string(),
+            node_type: NodeType::MacroExit,
+            position: Point::new(600.0, 200.0),
+            size: Size::new(180.0, 100.0),
             inputs: vec![
                 // Start with a default execution input
                 Pin {
-                    id: "exec_in".to_string(),
-                    name: "Body".to_string(),
+                    id: "exec_out".to_string(),
+                    name: "Then".to_string(),
                     pin_type: PinType::Input,
                     data_type: DataType::Execution,
                 },
@@ -3013,13 +3441,13 @@ impl BlueprintEditorPanel {
             outputs: vec![],
             properties: std::collections::HashMap::new(),
             is_selected: false,
-            description: "Interface output node for the macro".to_string(),
-            color: None,
+            description: "Exit point for this macro. Inputs correspond to macro outputs.".to_string(),
+            color: Some("#8B5CF6".to_string()), // Purple for macros
         };
 
         // Create the new graph
         let new_graph = BlueprintGraph {
-            nodes: vec![input_node, output_node],
+            nodes: vec![entry_node, exit_node],
             connections: vec![],
             comments: vec![],
             selected_nodes: vec![],
@@ -3029,29 +3457,51 @@ impl BlueprintEditorPanel {
             virtualization_stats: VirtualizationStats::default(),
         };
 
-        // Create the macro definition with empty graph description
-        let mut graph_desc = crate::graph::GraphDescription::new(&macro_name);
-        // We'll populate this when saving
+        // Create the macro definition with proper structure
+        let graph_desc = crate::graph::GraphDescription::new(&macro_name);
 
         let macro_def = crate::graph::SubGraphDefinition {
             id: macro_id.clone(),
             name: macro_name.clone(),
-            description: "A custom macro".to_string(),
+            description: "A custom macro for reusable graph logic".to_string(),
             graph: graph_desc,
             interface: crate::graph::SubGraphInterface {
                 inputs: vec![crate::graph::SubGraphPin {
                     id: "exec_in".to_string(),
                     name: "Body".to_string(),
                     data_type: crate::graph::DataType::Execution,
-                    description: None,
+                    description: Some("Execution input".to_string()),
+                    default_value: None,
+                    is_instance_editable: false,
+                    category: None,
                 }],
-                outputs: vec![],
+                outputs: vec![crate::graph::SubGraphPin {
+                    id: "exec_out".to_string(),
+                    name: "Then".to_string(),
+                    data_type: crate::graph::DataType::Execution,
+                    description: Some("Execution output".to_string()),
+                    default_value: None,
+                    is_instance_editable: false,
+                    category: None,
+                }],
             },
             metadata: crate::graph::SubGraphMetadata {
                 created_at: chrono::Utc::now().to_rfc3339(),
                 modified_at: chrono::Utc::now().to_rfc3339(),
                 author: None,
                 tags: vec![],
+            },
+            macro_config: crate::graph::MacroConfiguration {
+                is_pure: false,
+                compact_node_title: None,
+                category: "Macros".to_string(),
+                tooltip: None,
+                keywords: vec!["macro".to_string(), "custom".to_string()],
+                instance_editable_pins: vec![],
+                color: Some((0.545, 0.361, 0.965)), // Purple RGB
+                icon: Some("📦".to_string()),
+                parent_class_filter: vec![],
+                hide_in_palette: false,
             },
         };
 
@@ -3068,13 +3518,15 @@ impl BlueprintEditorPanel {
             graph: new_graph,
             is_main: false,
             is_dirty: true, // New macro is unsaved
+            is_library_macro: false,
+            library_id: None,
         };
 
         self.open_tabs.push(new_tab);
         self.active_tab_index = self.open_tabs.len() - 1;
         self.load_active_tab_graph();
 
-        println!("✨ Created new local macro: {}", macro_name);
+        println!("✨ Created new local macro: {} (ID: {})", macro_name, macro_id);
         cx.notify();
     }
 
@@ -3164,6 +3616,8 @@ impl Focusable for BlueprintEditorPanel {
 }
 
 impl EventEmitter<PanelEvent> for BlueprintEditorPanel {}
+
+impl EventEmitter<OpenEngineLibraryRequest> for BlueprintEditorPanel {}
 
 impl Render for BlueprintEditorPanel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

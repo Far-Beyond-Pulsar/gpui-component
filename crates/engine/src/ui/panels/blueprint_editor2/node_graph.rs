@@ -682,6 +682,9 @@ impl NodeGraphRenderer {
                 NodeType::Math => cx.theme().success,
                 NodeType::Object => cx.theme().warning,
                 NodeType::Reroute => cx.theme().accent,
+                NodeType::MacroEntry => gpui::Hsla { h: 0.75, s: 0.7, l: 0.6, a: 1.0 }, // Purple for macro entry
+                NodeType::MacroExit => gpui::Hsla { h: 0.75, s: 0.7, l: 0.6, a: 1.0 }, // Purple for macro exit
+                NodeType::MacroInstance => gpui::Hsla { h: 0.75, s: 0.5, l: 0.5, a: 1.0 }, // Darker purple for instances
             })
         } else {
             match node.node_type {
@@ -690,6 +693,9 @@ impl NodeGraphRenderer {
                 NodeType::Math => cx.theme().success,
                 NodeType::Object => cx.theme().warning,
                 NodeType::Reroute => cx.theme().accent,
+                NodeType::MacroEntry => gpui::Hsla { h: 0.75, s: 0.7, l: 0.6, a: 1.0 }, // Purple for macro entry
+                NodeType::MacroExit => gpui::Hsla { h: 0.75, s: 0.7, l: 0.6, a: 1.0 }, // Purple for macro exit
+                NodeType::MacroInstance => gpui::Hsla { h: 0.75, s: 0.5, l: 0.5, a: 1.0 }, // Darker purple for instances
             }
         };
 
@@ -847,21 +853,28 @@ impl NodeGraphRenderer {
                                         // Extract sub-graph ID from definition_id (format: "subgraph:library_id.subgraph_id")
                                         let subgraph_id = node_definition_id.strip_prefix("subgraph:").unwrap_or(&node_definition_id).to_string();
 
-                                        // Open ANY macro (local or global) in a tab when double-clicked
-                                        // First check local macros
-                                        let macro_found = if let Some(local_macro) = panel.local_macros.iter().find(|m| m.id == subgraph_id) {
-                                            panel.open_local_macro(subgraph_id.clone(), local_macro.name.clone(), cx);
-                                            true
-                                        } else if let Some(global_macro) = panel.library_manager.get_subgraph(&subgraph_id) {
-                                            // Open global/engine macro in a tab
-                                            panel.open_global_macro(subgraph_id.clone(), global_macro.name.clone(), cx);
-                                            true
+                                        // Smart navigation: check if it's an engine macro or local
+                                        if let Some(library_id) = panel.get_macro_library_id(&subgraph_id) {
+                                            // It's an engine macro - request to open in library context
+                                            let library_name = panel.library_manager.get_libraries()
+                                                .get(&library_id)
+                                                .map(|lib| lib.name.clone())
+                                                .unwrap_or_else(|| library_id.clone());
+                                            
+                                            panel.request_open_engine_library(
+                                                library_id,
+                                                library_name,
+                                                Some(subgraph_id.clone()),
+                                                Some(node_title.clone()),
+                                                cx
+                                            );
                                         } else {
-                                            false
-                                        };
-
-                                        if !macro_found {
-                                            println!("⚠️ Macro '{}' not found", node_title);
+                                            // Local macro - open in current blueprint
+                                            if let Some(local_macro) = panel.local_macros.iter().find(|m| m.id == subgraph_id) {
+                                                panel.open_local_macro(subgraph_id.clone(), local_macro.name.clone(), cx);
+                                            } else {
+                                                println!("⚠️ Macro '{}' not found", node_title);
+                                            }
                                         }
                                         
                                         // Clear click tracking
