@@ -1,12 +1,12 @@
-use crate::graph::PinInstance;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::{
-    context_menu::ContextMenuExt,
+    button::{Button, ButtonVariants as _},
     dock::{Panel, PanelEvent},
-    input::{InputEvent, InputState},
-    resizable::{h_resizable, resizable_panel, ResizableState},
-    v_flex, h_flex, ActiveTheme as _, PixelsExt, StyledExt,
+    input::InputState,
+    resizable::{h_resizable, v_resizable, resizable_panel, ResizableState},
+    tab::{Tab, TabBar},
+    v_flex, h_flex, ActiveTheme as _, PixelsExt, IconName,
 };
 use smol::Timer;
 use std::time::Duration;
@@ -14,10 +14,17 @@ use std::time::Duration;
 use super::hoverable_tooltip::HoverableTooltip;
 use super::node_creation_menu::{NodeCreationEvent, NodeCreationMenu};
 use super::node_graph::NodeGraphRenderer;
-use super::properties::PropertiesRenderer;
 use super::toolbar::ToolbarRenderer;
 use super::*;
 use crate::graph::{DataType as GraphDataType, GraphDescription};
+
+// Sub-graph navigation entry for the tab system
+#[derive(Clone, Debug)]
+pub struct SubGraphNavigationEntry {
+    pub id: String,
+    pub name: String,
+    pub graph: BlueprintGraph,
+}
 
 // Constants for node creation menu dimensions
 // These must match the values in node_creation_menu.rs
@@ -28,6 +35,7 @@ pub struct BlueprintEditorPanel {
     focus_handle: FocusHandle,
     pub graph: BlueprintGraph,
     resizable_state: Entity<ResizableState>,
+    left_sidebar_resizable_state: Entity<ResizableState>,
     // Current class path (for saving/compiling)
     pub current_class_path: Option<std::path::PathBuf>,
     // Tab title for display in the UI
@@ -79,6 +87,10 @@ pub struct BlueprintEditorPanel {
     pub subscriptions: Vec<gpui::Subscription>,
     // Compilation status for UI feedback
     pub compilation_status: super::CompilationStatus,
+    // Sub-graph navigation stack (breadcrumb trail)
+    pub subgraph_navigation_stack: Vec<SubGraphNavigationEntry>,
+    // Library manager for loading sub-graphs
+    pub library_manager: crate::graph::LibraryManager,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -105,6 +117,7 @@ pub struct ConnectionDrag {
 impl BlueprintEditorPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let resizable_state = ResizableState::new(cx);
+        let left_sidebar_resizable_state = ResizableState::new(cx);
 
         // Initialize subscriptions vector
 
@@ -390,6 +403,7 @@ impl BlueprintEditorPanel {
             focus_handle: cx.focus_handle(),
             graph,
             resizable_state,
+            left_sidebar_resizable_state,
             current_class_path: None,
             tab_title: None,
             dragging_node: None,
@@ -429,6 +443,14 @@ impl BlueprintEditorPanel {
             }),
             subscriptions: Vec::<gpui::Subscription>::new(),
             compilation_status: super::CompilationStatus::default(),
+            subgraph_navigation_stack: Vec::new(),
+            library_manager: {
+                let mut lib_manager = crate::graph::LibraryManager::default();
+                if let Err(e) = lib_manager.load_all_libraries() {
+                    eprintln!("Failed to load sub-graph libraries: {}", e);
+                }
+                lib_manager
+            },
         };
 
         result
@@ -585,8 +607,6 @@ impl BlueprintEditorPanel {
     /// Convert blueprint graph to graph description format
     fn convert_to_graph_description(&self) -> Result<crate::graph::GraphDescription, String> {
         use crate::graph::*;
-        use std::collections::HashMap;
-
         let mut graph_desc = GraphDescription::new("Blueprint Graph");
 
         // Convert nodes
@@ -2558,6 +2578,235 @@ impl BlueprintEditorPanel {
                     })),
             )
     }
+
+    // ===== Sub-graph Navigation Methods =====
+
+    /// Convert a GraphDescription to BlueprintGraph (reverse of convert_to_graph_description)
+    fn convert_graph_description_to_blueprint(&self, graph_desc: &GraphDescription) -> Result<BlueprintGraph, String> {
+        let mut blueprint_nodes = Vec::new();
+        let node_definitions = super::NodeDefinitions::load();
+
+        // Convert nodes
+        for node_instance in graph_desc.nodes.values() {
+            // Look up node definition to get visual metadata
+            let node_def = node_definitions.get_node_definition(&node_instance.node_type);
+
+            // Determine node type
+            let node_type = if let Some(def) = node_def {
+                let category = node_definitions.get_category_for_node(&def.id);
+                match category.map(|c| c.name.as_str()) {
+                    Some("Events") => super::NodeType::Event,
+                    Some("Logic") => super::NodeType::Logic,
+                    Some("Math") => super::NodeType::Math,
+                    Some("Object") => super::NodeType::Object,
+                    _ => super::NodeType::Logic,
+                }
+            } else {
+                super::NodeType::Logic
+            };
+
+            // Convert pins
+            let inputs: Vec<super::Pin> = node_instance.inputs.iter().map(|pin_inst| {
+                super::Pin {
+                    id: pin_inst.id.clone(),
+                    name: pin_inst.pin.name.clone(),
+                    pin_type: super::PinType::Input,
+                    data_type: pin_inst.pin.data_type.clone(),
+                }
+            }).collect();
+
+            let outputs: Vec<super::Pin> = node_instance.outputs.iter().map(|pin_inst| {
+                super::Pin {
+                    id: pin_inst.id.clone(),
+                    name: pin_inst.pin.name.clone(),
+                    pin_type: super::PinType::Output,
+                    data_type: pin_inst.pin.data_type.clone(),
+                }
+            }).collect();
+
+            // Convert properties
+            let properties: std::collections::HashMap<String, String> = node_instance.properties.iter()
+                .map(|(k, v)| {
+                    let value_str = match v {
+                        crate::graph::PropertyValue::String(s) => s.clone(),
+                        crate::graph::PropertyValue::Number(n) => n.to_string(),
+                        crate::graph::PropertyValue::Boolean(b) => b.to_string(),
+                        crate::graph::PropertyValue::Vector2(x, y) => format!("({}, {})", x, y),
+                        crate::graph::PropertyValue::Vector3(x, y, z) => format!("({}, {}, {})", x, y, z),
+                        crate::graph::PropertyValue::Color(r, g, b, a) => format!("({}, {}, {}, {})", r, g, b, a),
+                    };
+                    (k.clone(), value_str)
+                })
+                .collect();
+
+            let blueprint_node = BlueprintNode {
+                id: node_instance.id.clone(),
+                definition_id: node_instance.node_type.clone(),
+                title: node_def.map(|d| d.name.clone()).unwrap_or_else(|| node_instance.node_type.clone()),
+                icon: node_def.map(|d| d.icon.clone()).unwrap_or_else(|| "⚙️".to_string()),
+                node_type,
+                position: Point::new(node_instance.position.x, node_instance.position.y),
+                size: Size::new(150.0, 100.0), // Default size
+                inputs,
+                outputs,
+                properties,
+                is_selected: false,
+                description: node_def.map(|d| d.description.clone()).unwrap_or_default(),
+                color: node_def.and_then(|d| d.color.clone()),
+            };
+
+            blueprint_nodes.push(blueprint_node);
+        }
+
+        // Convert connections
+        let blueprint_connections: Vec<super::Connection> = graph_desc.connections.iter().map(|conn| {
+            super::Connection {
+                id: conn.id.clone(),
+                from_node_id: conn.source_node.clone(),
+                from_pin_id: conn.source_pin.clone(),
+                to_node_id: conn.target_node.clone(),
+                to_pin_id: conn.target_pin.clone(),
+            }
+        }).collect();
+
+        Ok(BlueprintGraph {
+            nodes: blueprint_nodes,
+            connections: blueprint_connections,
+            comments: graph_desc.comments.clone(),
+            selected_nodes: vec![],
+            selected_comments: vec![],
+            zoom_level: 1.0,
+            pan_offset: Point::new(0.0, 0.0),
+            virtualization_stats: VirtualizationStats::default(),
+        })
+    }
+
+    /// Open a sub-graph by navigating into it (pushes current state to navigation stack)
+    pub fn open_subgraph(&mut self, subgraph_id: String, subgraph_name: String, cx: &mut Context<Self>) {
+        // Save current graph state to navigation stack
+        let current_entry = SubGraphNavigationEntry {
+            id: if self.subgraph_navigation_stack.is_empty() {
+                "main".to_string()
+            } else {
+                self.subgraph_navigation_stack.last().unwrap().id.clone()
+            },
+            name: if self.subgraph_navigation_stack.is_empty() {
+                "Main".to_string()
+            } else {
+                self.subgraph_navigation_stack.last().unwrap().name.clone()
+            },
+            graph: self.graph.clone(),
+        };
+
+        // Only push if this isn't already the current graph
+        if self.subgraph_navigation_stack.is_empty() ||
+           self.subgraph_navigation_stack.last().unwrap().id != current_entry.id {
+            self.subgraph_navigation_stack.push(current_entry);
+        }
+
+        // Load the sub-graph from the library manager
+        let subgraph = if let Some(definition) = self.library_manager.get_subgraph(&subgraph_id) {
+            // Convert the sub-graph's GraphDescription to BlueprintGraph
+            match self.convert_graph_description_to_blueprint(&definition.graph) {
+                Ok(blueprint_graph) => blueprint_graph,
+                Err(e) => {
+                    eprintln!("Failed to convert sub-graph to blueprint: {}", e);
+                    // Create empty graph as fallback
+                    BlueprintGraph {
+                        nodes: vec![],
+                        connections: vec![],
+                        comments: definition.graph.comments.clone(),
+                        selected_nodes: vec![],
+                        selected_comments: vec![],
+                        zoom_level: 1.0,
+                        pan_offset: Point::new(0.0, 0.0),
+                        virtualization_stats: VirtualizationStats::default(),
+                    }
+                }
+            }
+        } else {
+            eprintln!("Sub-graph not found: {}", subgraph_id);
+            // Create empty graph as fallback
+            BlueprintGraph {
+                nodes: vec![],
+                connections: vec![],
+                comments: vec![],
+                selected_nodes: vec![],
+                selected_comments: vec![],
+                zoom_level: 1.0,
+                pan_offset: Point::new(0.0, 0.0),
+                virtualization_stats: VirtualizationStats::default(),
+            }
+        };
+
+        // Replace current graph with the sub-graph
+        self.graph = subgraph;
+
+        println!("📂 Opened sub-graph: {} (depth: {})", subgraph_name, self.subgraph_navigation_stack.len());
+        cx.notify();
+    }
+
+    /// Close the current sub-graph tab and return to the specified depth
+    fn close_subgraph_tab(&mut self, target_depth: usize, cx: &mut Context<Self>) {
+        if target_depth >= self.subgraph_navigation_stack.len() {
+            return; // Can't navigate to a depth that doesn't exist
+        }
+
+        // Pop entries until we reach the target depth
+        while self.subgraph_navigation_stack.len() > target_depth {
+            if let Some(entry) = self.subgraph_navigation_stack.pop() {
+                self.graph = entry.graph;
+                println!("📂 Closed sub-graph, returned to: {} (depth: {})",
+                    entry.name, self.subgraph_navigation_stack.len());
+            }
+        }
+
+        cx.notify();
+    }
+
+    /// Render the sub-graph navigation tab bar (breadcrumb-style)
+    fn render_subgraph_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        // Build breadcrumb trail: "Main" > "Sub1" > "Sub2" > ...
+        let mut breadcrumbs = vec![("main".to_string(), "Main".to_string())];
+
+        for entry in &self.subgraph_navigation_stack {
+            breadcrumbs.push((entry.id.clone(), entry.name.clone()));
+        }
+
+        // Render as tab bar
+        TabBar::new("subgraph-tabs")
+            .w_full()
+            .bg(cx.theme().secondary)
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .selected_index(breadcrumbs.len().saturating_sub(1))
+            .on_click(cx.listener(|this, depth: &usize, _window, cx| {
+                this.close_subgraph_tab(*depth, cx);
+            }))
+            .children(
+                breadcrumbs.iter().enumerate().map(|(index, (id, name))| {
+                    let is_last = index == breadcrumbs.len() - 1;
+
+                    Tab::new(name.clone())
+                        .when(!is_last, |tab| {
+                            let index_for_closure = index;
+                            tab.child(
+                                h_flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .child(
+                                        Button::new(("close-subgraph-tab", index))
+                                            .icon(IconName::Close)
+                                            .ghost()
+                                            .on_click(cx.listener(move |this, _, _window, cx| {
+                                                this.close_subgraph_tab(index_for_closure, cx);
+                                            }))
+                                    )
+                            )
+                        })
+                })
+            )
+    }
 }
 
 impl Panel for BlueprintEditorPanel {
@@ -2625,14 +2874,28 @@ impl Render for BlueprintEditorPanel {
                 panel.disconnect_pin(action.node_id.clone(), action.pin_id.clone(), cx);
             }))
             .child(ToolbarRenderer::render(self, cx))
+            .child(self.render_subgraph_tab_bar(cx))
             .child(
                 div().flex_1().child(
                     h_resizable("blueprint-editor-panels", self.resizable_state.clone())
                         .child(
+                            // Left sidebar with vertical split: macros (top) and variables (bottom)
                             resizable_panel()
                                 .size(px(280.))
                                 .size_range(px(200.)..px(400.))
-                                .child(super::variables::VariablesRenderer::render(self, cx))
+                                .child(
+                                    v_resizable("left-sidebar-split", self.left_sidebar_resizable_state.clone())
+                                        .child(
+                                            resizable_panel()
+                                                .size(px(200.))
+                                                .size_range(px(150.)..px(500.))
+                                                .child(super::macros::MacrosRenderer::render(self, cx))
+                                        )
+                                        .child(
+                                            resizable_panel()
+                                                .child(super::variables::VariablesRenderer::render(self, cx))
+                                        )
+                                )
                         )
                         .child(
                             resizable_panel().child(NodeGraphRenderer::render(self, cx))

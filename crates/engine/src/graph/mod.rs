@@ -485,3 +485,412 @@ impl Connection {
         }
     }
 }
+
+// ===== Sub-Graph System =====
+
+/// Definition of a sub-graph (collapsed graph/macro)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubGraphDefinition {
+    /// Unique identifier for this sub-graph type
+    pub id: String,
+
+    /// Display name
+    pub name: String,
+
+    /// Description for documentation
+    pub description: String,
+
+    /// The internal graph structure
+    pub graph: GraphDescription,
+
+    /// Custom interface pins defined by the user
+    pub interface: SubGraphInterface,
+
+    /// Metadata
+    pub metadata: SubGraphMetadata,
+}
+
+/// Interface definition for a sub-graph
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubGraphInterface {
+    /// Custom input pins (can include both exec and data pins)
+    pub inputs: Vec<SubGraphPin>,
+
+    /// Custom output pins (can include both exec and data pins)
+    pub outputs: Vec<SubGraphPin>,
+}
+
+/// A pin definition in a sub-graph interface
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubGraphPin {
+    /// Pin identifier (used for connections)
+    pub id: String,
+
+    /// Display name
+    pub name: String,
+
+    /// Pin data type (Execution or Typed)
+    pub data_type: DataType,
+
+    /// Optional description
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Metadata for a sub-graph definition
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubGraphMetadata {
+    pub created_at: String,
+    pub modified_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+impl SubGraphDefinition {
+    /// Create a new sub-graph definition
+    pub fn new(id: &str, name: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: String::new(),
+            graph: GraphDescription::new(name),
+            interface: SubGraphInterface {
+                inputs: Vec::new(),
+                outputs: Vec::new(),
+            },
+            metadata: SubGraphMetadata {
+                created_at: chrono::Utc::now().to_rfc3339(),
+                modified_at: chrono::Utc::now().to_rfc3339(),
+                author: None,
+                tags: Vec::new(),
+            },
+        }
+    }
+
+    /// Add an input pin to the interface
+    pub fn add_input_pin(&mut self, id: &str, name: &str, data_type: DataType) {
+        self.interface.inputs.push(SubGraphPin {
+            id: id.to_string(),
+            name: name.to_string(),
+            data_type,
+            description: None,
+        });
+        self.metadata.modified_at = chrono::Utc::now().to_rfc3339();
+    }
+
+    /// Add an output pin to the interface
+    pub fn add_output_pin(&mut self, id: &str, name: &str, data_type: DataType) {
+        self.interface.outputs.push(SubGraphPin {
+            id: id.to_string(),
+            name: name.to_string(),
+            data_type,
+            description: None,
+        });
+        self.metadata.modified_at = chrono::Utc::now().to_rfc3339();
+    }
+
+    /// Update the internal Input/Output nodes to match the interface
+    pub fn sync_interface_nodes(&mut self) {
+        // Find or create the subgraph_input node
+        let input_node_id = "subgraph_input";
+        if let Some(input_node) = self.graph.nodes.get_mut(input_node_id) {
+            // Update existing node
+            input_node.outputs.clear();
+            for pin in &self.interface.inputs {
+                input_node.outputs.push(PinInstance {
+                    id: pin.id.clone(),
+                    pin: Pin {
+                        name: pin.name.clone(),
+                        pin_type: PinType::Output,
+                        data_type: pin.data_type.clone(),
+                        connected_to: Vec::new(),
+                    },
+                });
+            }
+        } else {
+            // Create new input node
+            let mut input_node = NodeInstance::new(input_node_id, "subgraph_input", Position { x: 100.0, y: 200.0 });
+            for pin in &self.interface.inputs {
+                input_node.add_output_pin(&pin.id, pin.data_type.clone());
+            }
+            self.graph.add_node(input_node);
+        }
+
+        // Find or create the subgraph_output node
+        let output_node_id = "subgraph_output";
+        if let Some(output_node) = self.graph.nodes.get_mut(output_node_id) {
+            // Update existing node
+            output_node.inputs.clear();
+            for pin in &self.interface.outputs {
+                output_node.inputs.push(PinInstance {
+                    id: pin.id.clone(),
+                    pin: Pin {
+                        name: pin.name.clone(),
+                        pin_type: PinType::Input,
+                        data_type: pin.data_type.clone(),
+                        connected_to: Vec::new(),
+                    },
+                });
+            }
+        } else {
+            // Create new output node
+            let mut output_node = NodeInstance::new(output_node_id, "subgraph_output", Position { x: 800.0, y: 200.0 });
+            for pin in &self.interface.outputs {
+                output_node.add_input_pin(&pin.id, pin.data_type.clone());
+            }
+            self.graph.add_node(output_node);
+        }
+    }
+
+    /// Generate a node instance for this sub-graph (to be placed in parent graphs)
+    pub fn create_instance(&self, instance_id: &str, position: Position) -> NodeInstance {
+        let mut node = NodeInstance::new(
+            instance_id,
+            &format!("subgraph:{}", self.id),
+            position,
+        );
+
+        // Set subgraph_id property
+        node.set_property("subgraph_id", PropertyValue::String(self.id.clone()));
+
+        // Add input pins from interface
+        for pin in &self.interface.inputs {
+            node.inputs.push(PinInstance {
+                id: pin.id.clone(),
+                pin: Pin {
+                    name: pin.name.clone(),
+                    pin_type: PinType::Input,
+                    data_type: pin.data_type.clone(),
+                    connected_to: Vec::new(),
+                },
+            });
+        }
+
+        // Add output pins from interface
+        for pin in &self.interface.outputs {
+            node.outputs.push(PinInstance {
+                id: pin.id.clone(),
+                pin: Pin {
+                    name: pin.name.clone(),
+                    pin_type: PinType::Output,
+                    data_type: pin.data_type.clone(),
+                    connected_to: Vec::new(),
+                },
+            });
+        }
+
+        node
+    }
+}
+
+// ===== Sub-Graph Library System =====
+
+/// A library containing reusable sub-graph definitions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubGraphLibrary {
+    /// Library identifier
+    pub id: String,
+
+    /// Display name
+    pub name: String,
+
+    /// Library version
+    pub version: String,
+
+    /// Description
+    pub description: String,
+
+    /// Author information
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+
+    /// Library category (e.g., "std", "math", "ui", "custom")
+    pub category: String,
+
+    /// All sub-graph definitions in this library
+    pub subgraphs: Vec<SubGraphDefinition>,
+
+    /// Library metadata
+    pub metadata: LibraryMetadata,
+}
+
+/// Metadata for a library
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LibraryMetadata {
+    pub created_at: String,
+    pub modified_at: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+}
+
+impl SubGraphLibrary {
+    /// Create a new library
+    pub fn new(id: &str, name: &str, category: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            name: name.to_string(),
+            version: "1.0.0".to_string(),
+            description: String::new(),
+            author: None,
+            category: category.to_string(),
+            subgraphs: Vec::new(),
+            metadata: LibraryMetadata {
+                created_at: chrono::Utc::now().to_rfc3339(),
+                modified_at: chrono::Utc::now().to_rfc3339(),
+                tags: Vec::new(),
+                icon: None,
+            },
+        }
+    }
+
+    /// Add a sub-graph to the library
+    pub fn add_subgraph(&mut self, subgraph: SubGraphDefinition) {
+        self.subgraphs.push(subgraph);
+        self.metadata.modified_at = chrono::Utc::now().to_rfc3339();
+    }
+
+    /// Get a sub-graph by ID
+    pub fn get_subgraph(&self, id: &str) -> Option<&SubGraphDefinition> {
+        self.subgraphs.iter().find(|sg| sg.id == id)
+    }
+
+    /// Save library to JSON file
+    pub fn save_to_file(&self, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+        let json = serde_json::to_string_pretty(self)?;
+        std::fs::write(path, json)?;
+        Ok(())
+    }
+
+    /// Load library from JSON file
+    pub fn load_from_file(path: &std::path::Path) -> Result<Self, Box<dyn std::error::Error>> {
+        let json = std::fs::read_to_string(path)?;
+        let library = serde_json::from_str(&json)?;
+        Ok(library)
+    }
+}
+
+/// Manager for loading and caching sub-graph libraries
+#[derive(Debug, Clone)]
+pub struct LibraryManager {
+    /// All loaded libraries
+    libraries: HashMap<String, SubGraphLibrary>,
+
+    /// Cache of sub-graph definitions by ID for quick lookup
+    subgraph_cache: HashMap<String, SubGraphDefinition>,
+
+    /// Library search paths
+    search_paths: Vec<std::path::PathBuf>,
+}
+
+impl LibraryManager {
+    /// Create a new library manager
+    pub fn new() -> Self {
+        Self {
+            libraries: HashMap::new(),
+            subgraph_cache: HashMap::new(),
+            search_paths: Vec::new(),
+        }
+    }
+
+    /// Add a search path for libraries
+    pub fn add_search_path(&mut self, path: impl Into<std::path::PathBuf>) {
+        self.search_paths.push(path.into());
+    }
+
+    /// Load all libraries from search paths
+    pub fn load_all_libraries(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        for search_path in &self.search_paths.clone() {
+            if search_path.exists() && search_path.is_dir() {
+                self.load_libraries_from_dir(search_path)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Load all libraries from a directory
+    fn load_libraries_from_dir(&mut self, dir: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            // Load .json files as libraries
+            if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                match SubGraphLibrary::load_from_file(&path) {
+                    Ok(library) => {
+                        self.register_library(library);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to load library from {:?}: {}", path, e);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Register a library
+    pub fn register_library(&mut self, library: SubGraphLibrary) {
+        // Cache all subgraphs for quick lookup
+        for subgraph in &library.subgraphs {
+            self.subgraph_cache.insert(subgraph.id.clone(), subgraph.clone());
+        }
+
+        self.libraries.insert(library.id.clone(), library);
+    }
+
+    /// Get a sub-graph definition by ID
+    pub fn get_subgraph(&self, id: &str) -> Option<&SubGraphDefinition> {
+        self.subgraph_cache.get(id)
+    }
+
+    /// Get all libraries
+    pub fn get_libraries(&self) -> &HashMap<String, SubGraphLibrary> {
+        &self.libraries
+    }
+
+    /// Get all sub-graphs across all libraries (for node creation menu)
+    pub fn get_all_subgraphs(&self) -> Vec<&SubGraphDefinition> {
+        self.subgraph_cache.values().collect()
+    }
+
+    /// Get sub-graphs by category
+    pub fn get_subgraphs_by_category(&self, category: &str) -> Vec<&SubGraphDefinition> {
+        self.libraries
+            .values()
+            .filter(|lib| lib.category == category)
+            .flat_map(|lib| lib.subgraphs.iter())
+            .collect()
+    }
+
+    /// Create default standard library path
+    pub fn default_stdlib_path() -> std::path::PathBuf {
+        std::env::current_dir()
+            .unwrap_or_default()
+            .join("libraries")
+            .join("std")
+    }
+
+    /// Create default user library path
+    pub fn default_user_library_path() -> std::path::PathBuf {
+        std::env::current_dir()
+            .unwrap_or_default()
+            .join("libraries")
+            .join("user")
+    }
+}
+
+impl Default for LibraryManager {
+    fn default() -> Self {
+        let mut manager = Self::new();
+
+        // Add default search paths
+        manager.add_search_path(Self::default_stdlib_path());
+        manager.add_search_path(Self::default_user_library_path());
+
+        manager
+    }
+}

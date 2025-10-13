@@ -35,7 +35,11 @@
       "Bash(timeout 120 cargo check -p pulsar_engine)",
       "Bash(timeout 90 cargo check -p pulsar_engine)",
       "Bash(timeout 120 cargo check -p gpui-component)",
-      "Bash(timeout 180 cargo build -p pulsar_engine)"
+      "Bash(timeout 180 cargo build -p pulsar_engine)",
+      "Bash(timeout 60 cargo check)",
+      "Bash(timeout 90 cargo check)",
+      "Bash(timeout 120 cargo check)",
+      "Bash(cargo clean:*)"
     ],
     "deny": [],
     "ask": []

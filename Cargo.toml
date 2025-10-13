@@ -2,6 +2,7 @@
 members = [
     "crates/macros",
     "crates/engine",
+    "crates/engine_backend",
     "crates/ui",
     "crates/pulsar_macros",
     "crates/pulsar_std",

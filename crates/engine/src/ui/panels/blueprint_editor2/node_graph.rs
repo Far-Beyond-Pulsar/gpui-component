@@ -792,6 +792,8 @@ impl NodeGraphRenderer {
                             }))
                             .on_mouse_down(gpui::MouseButton::Left, {
                                 let node_id = node_id.clone();
+                                let node_definition_id = node.definition_id.clone();
+                                let node_title = node.title.clone();
                                 cx.listener(move |panel, event: &MouseDownEvent, window, cx| {
                                     // Stop event propagation to prevent main graph handler from firing
                                     cx.stop_propagation();
@@ -802,17 +804,58 @@ impl NodeGraphRenderer {
                                     // Hide tooltip when interacting
                                     panel.hide_hoverable_tooltip(cx);
 
-                                    // Only change selection if this node is not already selected
-                                    // This allows dragging multiple selected nodes
-                                    if !panel.graph.selected_nodes.contains(&node_id) {
-                                        panel.select_node(Some(node_id.clone()), cx);
-                                    }
+                                    // Check for double-click on sub-graph nodes
+                                    let now = std::time::Instant::now();
+                                    let is_subgraph_node = node_definition_id.starts_with("subgraph:");
+                                    let should_open_subgraph = if is_subgraph_node {
+                                        if let Some(last_click) = panel.last_click_time {
+                                            if now.duration_since(last_click).as_millis() < 500 {
+                                                if let Some(last_pos) = panel.last_click_pos {
+                                                    let element_pos = Self::window_to_graph_element_pos(event.position, panel);
+                                                    let current_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
+                                                    let distance = ((current_pos.x - last_pos.x).powi(2) + (current_pos.y - last_pos.y).powi(2)).sqrt();
+                                                    distance < 10.0 && panel.last_click_time.is_some()
+                                                } else {
+                                                    false
+                                                }
+                                            } else {
+                                                false
+                                            }
+                                        } else {
+                                            false
+                                        }
+                                    } else {
+                                        false
+                                    };
 
-                                    // Start dragging
-                                    // Convert to element coordinates first
-                                    let element_pos = Self::window_to_graph_element_pos(event.position, panel);
-                                    let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
-                                    panel.start_drag(node_id.clone(), graph_pos, cx);
+                                    if should_open_subgraph {
+                                        // Extract sub-graph ID from definition_id (format: "subgraph:library_id.subgraph_id")
+                                        let subgraph_id = node_definition_id.strip_prefix("subgraph:").unwrap_or(&node_definition_id).to_string();
+
+                                        // Open the sub-graph
+                                        panel.open_subgraph(subgraph_id, node_title.clone(), cx);
+
+                                        // Clear click tracking
+                                        panel.last_click_time = None;
+                                        panel.last_click_pos = None;
+                                    } else {
+                                        // Only change selection if this node is not already selected
+                                        // This allows dragging multiple selected nodes
+                                        if !panel.graph.selected_nodes.contains(&node_id) {
+                                            panel.select_node(Some(node_id.clone()), cx);
+                                        }
+
+                                        // Start dragging
+                                        // Convert to element coordinates first
+                                        let element_pos = Self::window_to_graph_element_pos(event.position, panel);
+                                        let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
+                                        panel.start_drag(node_id.clone(), graph_pos, cx);
+
+                                        // Update click tracking for next potential double-click
+                                        let current_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
+                                        panel.last_click_time = Some(now);
+                                        panel.last_click_pos = Some(current_pos);
+                                    }
                                 })
                             }),
                     )

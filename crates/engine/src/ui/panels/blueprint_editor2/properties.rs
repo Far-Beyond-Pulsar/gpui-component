@@ -131,6 +131,27 @@ impl PropertiesRenderer {
     }
 
     fn render_properties_content(panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
+        // Check if we're inside a sub-graph and show interface editor
+        let is_in_subgraph = !panel.subgraph_navigation_stack.is_empty();
+
+        // If in sub-graph and nothing selected, or subgraph_input/output selected, show interface editor
+        if is_in_subgraph {
+            let show_interface_editor = if let Some(selected_node_id) = panel.graph.selected_nodes.first() {
+                if let Some(selected_node) = panel.graph.nodes.iter().find(|n| n.id == *selected_node_id) {
+                    selected_node.definition_id == "subgraph_input" || selected_node.definition_id == "subgraph_output"
+                } else {
+                    false
+                }
+            } else {
+                // Nothing selected in sub-graph - show interface editor as default
+                true
+            };
+
+            if show_interface_editor {
+                return Self::render_interface_editor(panel, cx);
+            }
+        }
+
         if let Some(selected_node_id) = panel.graph.selected_nodes.first() {
             if let Some(selected_node) = panel.graph.nodes.iter().find(|n| n.id == *selected_node_id) {
                 v_flex()
@@ -195,7 +216,7 @@ impl PropertiesRenderer {
         }
     }
 
-    fn render_section_header(title: &str, icon: IconName, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
+    fn render_section_header(title: &str, _icon: IconName, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
         h_flex()
             .items_center()
             .gap_2()
@@ -345,5 +366,221 @@ impl PropertiesRenderer {
             })
             .collect::<Vec<String>>()
             .join(" ")
+    }
+
+    fn render_interface_editor(panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> AnyElement {
+        // Find subgraph_input and subgraph_output nodes
+        let input_node = panel.graph.nodes.iter().find(|n| n.definition_id == "subgraph_input");
+        let output_node = panel.graph.nodes.iter().find(|n| n.definition_id == "subgraph_output");
+
+        v_flex()
+            .gap_4()
+            .child(
+                // Interface header
+                v_flex()
+                    .gap_2()
+                    .child(
+                        h_flex()
+                            .items_center()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .text_2xl()
+                                    .child("⚙️")
+                            )
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_bold()
+                                    .text_color(cx.theme().foreground)
+                                    .child("Macro Interface")
+                            )
+                    )
+                    .child(
+                        div()
+                            .px_2()
+                            .py_1()
+                            .rounded(px(4.0))
+                            .bg(cx.theme().accent.opacity(0.15))
+                            .border_1()
+                            .border_color(cx.theme().accent.opacity(0.3))
+                            .text_xs()
+                            .font_semibold()
+                            .text_color(cx.theme().accent)
+                            .child("Sub-Graph Interface")
+                    )
+            )
+            .child(Self::render_separator(cx))
+            .child(
+                // Inputs section
+                v_flex()
+                    .gap_3()
+                    .child(
+                        h_flex()
+                            .items_center()
+                            .justify_between()
+                            .child(Self::render_section_header("Inputs", IconName::ArrowRight, cx))
+                            .child(
+                                div()
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.0))
+                                    .bg(cx.theme().success.opacity(0.15))
+                                    .text_xs()
+                                    .font_family("JetBrainsMono-Regular")
+                                    .text_color(cx.theme().success)
+                                    .child(format!("{}", input_node.map(|n| n.outputs.len()).unwrap_or(0)))
+                            )
+                    )
+                    .child(
+                        if let Some(node) = input_node {
+                            Self::render_interface_pins(&node.outputs, true, cx)
+                        } else {
+                            Self::render_no_pins_message("No inputs defined", cx)
+                        }
+                    )
+            )
+            .child(Self::render_separator(cx))
+            .child(
+                // Outputs section
+                v_flex()
+                    .gap_3()
+                    .child(
+                        h_flex()
+                            .items_center()
+                            .justify_between()
+                            .child(Self::render_section_header("Outputs", IconName::ArrowLeft, cx))
+                            .child(
+                                div()
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.0))
+                                    .bg(cx.theme().warning.opacity(0.15))
+                                    .text_xs()
+                                    .font_family("JetBrainsMono-Regular")
+                                    .text_color(cx.theme().warning)
+                                    .child(format!("{}", output_node.map(|n| n.inputs.len()).unwrap_or(0)))
+                            )
+                    )
+                    .child(
+                        if let Some(node) = output_node {
+                            Self::render_interface_pins(&node.inputs, false, cx)
+                        } else {
+                            Self::render_no_pins_message("No outputs defined", cx)
+                        }
+                    )
+            )
+            .child(Self::render_separator(cx))
+            .child(
+                // Help text
+                v_flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_semibold()
+                            .text_color(cx.theme().info)
+                            .child("ℹ️ Interface Editor")
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("This shows the input and output pins of the macro. To edit the interface, modify the subgraph_input and subgraph_output nodes in the graph.")
+                    )
+            )
+            .into_any_element()
+    }
+
+    fn render_interface_pins(pins: &[Pin], is_input: bool, cx: &mut Context<BlueprintEditorPanel>) -> AnyElement {
+        if pins.is_empty() {
+            return Self::render_no_pins_message(
+                if is_input { "No inputs defined" } else { "No outputs defined" },
+                cx
+            );
+        }
+
+        v_flex()
+            .gap_2()
+            .children(
+                pins.iter().map(|pin| {
+                    Self::render_interface_pin_row(pin, is_input, cx)
+                })
+            )
+            .into_any_element()
+    }
+
+    fn render_interface_pin_row(pin: &Pin, is_input: bool, cx: &mut Context<BlueprintEditorPanel>) -> AnyElement {
+        let type_info = crate::graph::TypeInfo::parse(&format!("{:?}", pin.data_type));
+        let pin_color = type_info.generate_color();
+
+        h_flex()
+            .w_full()
+            .px_3()
+            .py_3()
+            .gap_3()
+            .bg(cx.theme().background)
+            .border_1()
+            .border_color(cx.theme().border.opacity(0.4))
+            .rounded(px(8.0))
+            .child(
+                // Type color indicator
+                div()
+                    .flex_shrink_0()
+                    .w(px(14.))
+                    .h(px(14.))
+                    .rounded_full()
+                    .bg(gpui::Rgba { r: pin_color.r, g: pin_color.g, b: pin_color.b, a: pin_color.a })
+                    .border_2()
+                    .border_color(cx.theme().border)
+                    .shadow_sm()
+            )
+            .child(
+                // Pin details
+                v_flex()
+                    .flex_1()
+                    .gap_1p5()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_semibold()
+                            .text_color(cx.theme().foreground)
+                            .child(pin.name.clone())
+                    )
+                    .child(
+                        div()
+                            .px_2()
+                            .py_1()
+                            .rounded(px(4.0))
+                            .bg(cx.theme().muted.opacity(0.2))
+                            .text_xs()
+                            .font_family("JetBrainsMono-Regular")
+                            .text_color(cx.theme().muted_foreground)
+                            .child(crate::compiler::type_extractor::get_type_display_name(&format!("{:?}", pin.data_type)))
+                    )
+            )
+            .child(
+                // Direction indicator
+                div()
+                    .text_xs()
+                    .text_color(if is_input { cx.theme().success } else { cx.theme().warning })
+                    .child(if is_input { "→" } else { "←" })
+            )
+            .into_any_element()
+    }
+
+    fn render_no_pins_message(message: &str, cx: &mut Context<BlueprintEditorPanel>) -> AnyElement {
+        div()
+            .w_full()
+            .px_3()
+            .py_4()
+            .bg(cx.theme().muted.opacity(0.1))
+            .border_1()
+            .border_color(cx.theme().border.opacity(0.3))
+            .rounded(px(6.0))
+            .text_xs()
+            .text_color(cx.theme().muted_foreground)
+            .child(message.to_string())
+            .into_any_element()
     }
 }

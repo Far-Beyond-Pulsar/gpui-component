@@ -1,10 +1,9 @@
 use gpui::*;
 use gpui_component::{
     button::{Button, ButtonVariants as _},
-    dropdown::{Dropdown, DropdownState, DropdownItem, SearchableVec},
-    input::InputState,
+    dropdown::{Dropdown, DropdownItem},
     h_flex, v_flex,
-    ActiveTheme as _, StyledExt, Icon, IconName, Colorize,
+    ActiveTheme as _, StyledExt, IconName, Colorize,
 };
 
 use super::*;

@@ -33,6 +33,7 @@ pub mod execution_routing;
 pub mod ast_utils;
 pub mod code_generator;
 pub mod type_extractor;
+pub mod subgraph_expander;
 
 // Blueprint validation
 pub mod validate_blueprint;
@@ -66,7 +67,26 @@ fn get_node_metadata() -> &'static HashMap<String, NodeMetadata> {
 
 /// Main compilation entry point for the new macro-based compiler
 pub fn compile_graph(graph: &GraphDescription) -> Result<String, String> {
+    compile_graph_with_library_manager(graph, None)
+}
+
+/// Main compilation entry point with custom library manager
+pub fn compile_graph_with_library_manager(
+    graph: &GraphDescription,
+    library_manager: Option<crate::graph::LibraryManager>,
+) -> Result<String, String> {
     println!("[COMPILER] Starting macro-based compilation");
+
+    // Create a mutable copy for expansion
+    let mut expanded_graph = graph.clone();
+
+    // Phase 0: Expand sub-graphs if library manager is provided
+    if let Some(lib_manager) = library_manager {
+        println!("[COMPILER] Expanding sub-graphs...");
+        let expander = subgraph_expander::SubGraphExpander::new(lib_manager);
+        expander.expand_all(&mut expanded_graph)?;
+        println!("[COMPILER] Sub-graph expansion complete");
+    }
 
     // Phase 1: Get node metadata
     let metadata = get_node_metadata();
@@ -76,16 +96,16 @@ pub fn compile_graph(graph: &GraphDescription) -> Result<String, String> {
 
     // Phase 2: Build data flow resolver (no variables for generic compile)
     let variables = HashMap::new();
-    let data_resolver = data_resolver::DataResolver::build_with_variables(graph, metadata, variables.clone())?;
+    let data_resolver = data_resolver::DataResolver::build_with_variables(&expanded_graph, metadata, variables.clone())?;
     println!("[COMPILER] Built data flow resolver");
 
     // Phase 3: Build execution routing
-    let exec_routing = execution_routing::ExecutionRouting::build_from_graph(graph);
+    let exec_routing = execution_routing::ExecutionRouting::build_from_graph(&expanded_graph);
     println!("[COMPILER] Built execution routing");
 
     // Phase 4: Generate code
     let code = code_generator::generate_program(
-        graph,
+        &expanded_graph,
         metadata,
         &data_resolver,
         &exec_routing,

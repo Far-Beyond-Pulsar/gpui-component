@@ -2,6 +2,7 @@ pub mod toolbar;
 pub mod node_graph;
 pub mod properties;
 pub mod variables;
+pub mod macros;
 pub mod panel;
 pub mod node_creation_menu;
 pub mod hoverable_tooltip;
@@ -273,7 +274,7 @@ impl BlueprintComment {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BlueprintGraph {
     pub nodes: Vec<BlueprintNode>,
     pub connections: Vec<Connection>,
@@ -341,14 +342,83 @@ impl NodeDefinitions {
                     std::collections::HashMap::new()
                 });
 
-            // Convert metadata to UI format
-            Self::from_node_metadata(metadata)
+            // Load sub-graph libraries
+            let mut lib_manager = crate::graph::LibraryManager::default();
+            if let Err(e) = lib_manager.load_all_libraries() {
+                eprintln!("Failed to load sub-graph libraries: {}", e);
+            }
+
+            // Convert metadata to UI format (includes both regular nodes and sub-graphs)
+            Self::from_node_metadata_and_libraries(metadata, lib_manager)
         })
+    }
+
+    fn from_node_metadata_and_libraries(
+        metadata: std::collections::HashMap<String, crate::compiler::NodeMetadata>,
+        lib_manager: crate::graph::LibraryManager
+    ) -> NodeDefinitions {
+        let mut categories_map: std::collections::HashMap<String, Vec<NodeDefinition>> = std::collections::HashMap::new();
+
+        // First, add all sub-graphs from libraries
+        for library in lib_manager.get_libraries().values() {
+            let category_name = format!("Macros/{}", library.name);
+
+            for subgraph in &library.subgraphs {
+                // Convert sub-graph inputs to pin definitions
+                let inputs: Vec<PinDefinition> = subgraph.interface.inputs.iter().map(|pin| {
+                    PinDefinition {
+                        id: pin.id.clone(),
+                        name: pin.name.clone(),
+                        data_type: pin.data_type.clone(),
+                        pin_type: PinType::Input,
+                    }
+                }).collect();
+
+                // Convert sub-graph outputs to pin definitions
+                let outputs: Vec<PinDefinition> = subgraph.interface.outputs.iter().map(|pin| {
+                    PinDefinition {
+                        id: pin.id.clone(),
+                        name: pin.name.clone(),
+                        data_type: pin.data_type.clone(),
+                        pin_type: PinType::Output,
+                    }
+                }).collect();
+
+                let node_def = NodeDefinition {
+                    id: format!("subgraph:{}", subgraph.id),
+                    name: subgraph.name.clone(),
+                    icon: "📦".to_string(), // Macro icon
+                    description: subgraph.description.clone(),
+                    inputs,
+                    outputs,
+                    properties: std::collections::HashMap::new(),
+                    color: Some("#9B59B6".to_string()), // Purple for macros
+                };
+
+                categories_map
+                    .entry(category_name.clone())
+                    .or_insert_with(Vec::new)
+                    .push(node_def);
+            }
+        }
+
+        // Then add regular nodes from metadata
+        Self::populate_categories_from_metadata(metadata, &mut categories_map);
+
+        // Convert to NodeDefinitions
+        Self::categories_to_definitions(categories_map)
     }
 
     fn from_node_metadata(metadata: std::collections::HashMap<String, crate::compiler::NodeMetadata>) -> NodeDefinitions {
         let mut categories_map: std::collections::HashMap<String, Vec<NodeDefinition>> = std::collections::HashMap::new();
+        Self::populate_categories_from_metadata(metadata, &mut categories_map);
+        Self::categories_to_definitions(categories_map)
+    }
 
+    fn populate_categories_from_metadata(
+        metadata: std::collections::HashMap<String, crate::compiler::NodeMetadata>,
+        categories_map: &mut std::collections::HashMap<String, Vec<NodeDefinition>>
+    ) {
         // Add special reroute node to Utility category
         categories_map
             .entry("Utility".to_string())
@@ -428,7 +498,9 @@ impl NodeDefinitions {
                 .or_insert_with(Vec::new)
                 .push(static_def);
         }
+    }
 
+    fn categories_to_definitions(categories_map: std::collections::HashMap<String, Vec<NodeDefinition>>) -> NodeDefinitions {
         // Convert to categories
         let categories = categories_map
             .into_iter()
