@@ -13,35 +13,35 @@ default-members = ["crates/engine"]
 resolver = "2"
 
 [workspace.dependencies]
-gpui = { git = "https://github.com/zed-industries/zed.git" }
-gpui-macros = { git = "https://github.com/zed-industries/zed.git" }
-reqwest_client = { git = "https://github.com/zed-industries/zed.git" }
-zed-sum-tree = { git = "https://github.com/zed-industries/zed.git" }
 gpui-component = { path = "crates/ui" }
-gpui-component-macros = { path = "crates/macros" }
 pulsar_std = { path = "crates/pulsar_std" }
-ropey = { version = "=2.0.0-beta.1", features = ["metric_utf16", "metric_lines_lf"] }
+gpui-component-macros = { path = "crates/macros" }
+gpui = { git = "https://github.com/zed-industries/zed.git" }
 horizon = { git = "https://github.com/Far-Beyond-Dev/horizon" }
+gpui-macros = { git = "https://github.com/zed-industries/zed.git" }
+zed-sum-tree = { git = "https://github.com/zed-industries/zed.git" }
+reqwest_client = { git = "https://github.com/zed-industries/zed.git" }
+ropey = { version = "1.6.1", features = ["metric_utf16", "metric_lines_lf"] }
 
-anyhow = "1"
 log = "0.4"
-serde = { version = "1.0.219", features = ["derive"] }
+smol = "2.0.2"
+notify = "8.2.0"
+anyhow = "1"
+tracing = "0.1.41"
+smallvec = "1"
+schemars = "1"
+lsp-types = "0.97.0"
+rust-i18n = "3"
+itertools = "0.14.0"
 serde_repr = "0.1"
 serde_json = "1"
-schemars = "1"
-smallvec = "1"
-rust-i18n = "3"
+directories = "6.0.0"
 raw-window-handle = "0.6.2"
-smol = "1"
-tracing = "0.1.41"
-notify = "7.0.0"
-lsp-types = "0.97.0"
-directories = "5"
-itertools = "0.13"
+serde = { version = "1.0.219", features = ["derive"] }
 
 [workspace.dependencies.windows]
+version = "0.62.2"
 features = ["Wdk", "Wdk_System", "Wdk_System_SystemServices", "Win32_System_Threading", "Win32_System_SystemInformation"]
-version = "0.58.0"
 
 [workspace.lints.clippy]
 almost_complete_range = "allow"

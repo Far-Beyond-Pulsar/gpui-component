@@ -8,7 +8,7 @@
 
 use syn::{
     visit_mut::{self, VisitMut},
-    Block, Expr, ExprMacro, ItemFn, Stmt, StmtMacro,
+    Block, Expr, ExprMacro, ItemFn, Stmt,
 };
 use std::collections::HashMap;
 
