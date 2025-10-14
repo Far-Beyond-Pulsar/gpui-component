@@ -2306,6 +2306,7 @@ dependencies = [
  "PebbleVault",
  "serde",
  "tempfile",
+ "tokio",
  "uuid",
 ]
 
@@ -6281,6 +6282,7 @@ dependencies = [
  "crossbeam",
  "dashmap",
  "directories",
+ "engine_backend",
  "flume",
  "futures",
  "git2",

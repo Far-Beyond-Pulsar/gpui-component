@@ -23,6 +23,7 @@
 use std::sync::Arc;
 use PebbleVault as pebble;
 use PebbleVault::spacial_store::sqlite_backend::SqliteDatabase;
+use PebbleVault::SpatialObject;
 use super::classes::actor::Actor;
 use uuid::Uuid;
 
@@ -129,9 +130,9 @@ impl World {
     ///
     /// - This method returns a clone of the `SpatialObject`, including the `Arc<T>` custom data.
     /// - The search is performed across all regions, which may be slow for a large number of regions or objects.
-    fn get_actor_private(&self, object_id: Uuid) -> Option<&Actor> {
+    fn get_actor_private(&self, object_id: Uuid) -> Option<Arc<Actor>> {
         match self.vault.get_object(object_id) {
-            Ok(Some(spatial_obj)) => Some(&spatial_obj.data),
+            Ok(Some(spatial_obj)) => Some(spatial_obj.custom_data.clone()),
             Ok(None) => None,
             Err(_) => None,
         }
@@ -147,12 +148,12 @@ impl World {
     ///
     /// * `Result<(), String>` - An empty result if successful, or an error message if not.
     fn remove_actor_private(&mut self, id: Uuid) -> Option<Actor> {
-        let actor = self.get_actor(id).cloned();
-        match self.vault.remove_object(id) {
-            Ok(_) => actor,
-            Err(_) => None,
+            let actor = self.get_actor_private(id).map(|arc| (*arc).clone());
+            match self.vault.remove_object(id) {
+                Ok(_) => actor,
+                Err(_) => None,
+            }
         }
-    }
 
     /// Creates a new region or loads an existing one from the persistent database.
     ///
@@ -182,7 +183,7 @@ impl World {
     ///
     /// - Regions are cubic, defined by a center point and a size (length of each side).
     /// - Overlapping regions are allowed, but may impact performance for objects in the overlapped areas.
-    fn create_or_load_region_private(&mut self, center: [f64; 3], size: f64) -> Result<(), String> {
+    fn create_or_load_region_private(&mut self, center: [f64; 3], size: f64) -> Result<Uuid, String> {
         self.vault.create_or_load_region(center, size)
     }
 
@@ -272,17 +273,8 @@ impl World {
         max_x: f64,
         max_y: f64,
         max_z: f64
-    ) -> Result<Vec<SpatialObject<T>>, String> {
-        match self.vault.query_region(region_id) {
-            Ok(objects) =>
-                Ok(
-                    objects
-                        .iter()
-                        .map(|obj| &obj.data)
-                        .collect()
-                ),
-            Err(e) => Err(e),
-        }
+    ) -> Result<Vec<SpatialObject<Actor>>, String> {
+        self.vault.query_region(region_id, min_x, min_y, min_z, max_x, max_y, max_z)
     }
 
     /// Persists all in-memory databases to disk.

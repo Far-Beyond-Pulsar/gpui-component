@@ -39,6 +39,7 @@ parking_lot = "0.12"
 open = "5"
 lsp-types.workspace = true
 ropey.workspace = true
+engine_backend.workspace = true
 
 # New compiler dependencies
 syn = { version = "2.0", features = ["full", "parsing", "extra-traits", "visit", "visit-mut"] }

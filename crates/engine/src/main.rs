@@ -119,6 +119,16 @@ fn main() {
     let app = Application::new()
         .with_assets(Assets);
 
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(8)
+        .thread_name("PulsarEngineRuntime")
+        .enable_all()
+        .build()
+        .unwrap();
+
+    // Init the Game engine backend (subsystems, etc)
+    rt.block_on(engine_backend::EngineBackend::init());
+
     app.run(move |cx| {
         // Load custom fonts first
         if let Some(font_data) = Assets::get("fonts/JetBrainsMono-Regular.ttf") {
