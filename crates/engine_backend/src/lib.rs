@@ -22,18 +22,23 @@ pub const ENGINE_THREADS: [&str; 8] = [
 ];
 
 
+use tokio::sync::Mutex;
+
 pub struct EngineBackend {
-    physics_engine: Arc<PhysicsEngine>,
+    physics_engine: Arc<Mutex<PhysicsEngine>>,
 }
 
 impl EngineBackend {
     pub async fn init() -> Self {
-        let physics_engine = Arc::new(PhysicsEngine::new());
+        let physics_engine = Arc::new(Mutex::new(PhysicsEngine::new()));
 
         let physics_engine_clone = Arc::clone(&physics_engine);
         tokio::spawn(async move {
-            physics_engine_clone.start().await;
+            let mut engine = physics_engine_clone.lock().await;
+            engine.start().await;
         });
+
+        
 
         EngineBackend { physics_engine }
     }
