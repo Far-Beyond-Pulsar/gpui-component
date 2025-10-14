@@ -58,7 +58,7 @@ impl World {
     /// * `size_x` - The width of the object along the X-axis.
     /// * `size_y` - The height of the object along the Y-axis.
     /// * `size_z` - The depth of the object along the Z-axis.
-    /// 
+    ///
     /// * `custom_data` - The custom data associated with the object, wrapped in an `Arc`.
     ///
     /// # Returns
@@ -186,32 +186,6 @@ impl World {
         self.vault.create_or_load_region(center, size)
     }
 
-    /// Persists all in-memory databases to disk.
-    ///
-    /// This function saves all objects from all regions to the persistent database.
-    /// It's important to call this method periodically to ensure data is not lost in case of unexpected shutdowns.
-    ///
-    /// # Returns
-    ///
-    /// * `Result<(), String>` - An empty result if successful, or an error message if not.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use your_crate::{VaultManager, CustomData};
-    /// # let mut vault_manager: VaultManager<CustomData> = VaultManager::new("path/to/database.db").unwrap();
-    /// vault_manager.persist_to_disk().expect("Failed to persist data to disk");
-    /// ```
-    ///
-    /// # Notes
-    ///
-    /// - This operation can be time-consuming for large datasets. Consider running it in a separate thread.
-    /// - The method provides progress feedback using a progress bar.
-    /// - All existing points in the database are cleared before persisting the current state.
-    pub fn save_world(&self) -> Result<(), String> {
-        self.vault.persist_to_disk()
-    }
-
     /// Transfers a player (object) from one region to another.
     ///
     /// This function moves a player object from its current region to a new region,
@@ -246,7 +220,12 @@ impl World {
     /// - The player’s position is set to the center of the destination region.
     /// - The player's size and custom data are preserved.
     /// - This does **not** persist the change to the database; call `persist_to_disk()` to flush to disk.
-    pub fn transfer_player_private(&self, player_uuid: Uuid, from_region_id: Uuid, to_region_id: Uuid) -> Result<(), String> {
+    fn transfer_player_private(
+        &self,
+        player_uuid: Uuid,
+        from_region_id: Uuid,
+        to_region_id: Uuid
+    ) -> Result<(), String> {
         self.vault.transfer_player(player_uuid, from_region_id, to_region_id)
     }
 
@@ -284,10 +263,51 @@ impl World {
     /// - The query is performed using an R-tree, which provides efficient spatial searching.
     /// - Objects intersecting the cubic bounding box are included in the results.
     /// - The query box does not need to align with region boundaries.
-    pub fn query_region_private(&self, region_id: Uuid, min_x: f64, min_y: f64, min_z: f64, max_x: f64, max_y: f64, max_z: f64) -> Result<Vec<SpatialObject<T>>, String> {
+    fn query_region_private(
+        &self,
+        region_id: Uuid,
+        min_x: f64,
+        min_y: f64,
+        min_z: f64,
+        max_x: f64,
+        max_y: f64,
+        max_z: f64
+    ) -> Result<Vec<SpatialObject<T>>, String> {
         match self.vault.query_region(region_id) {
-            Ok(objects) => Ok(objects.iter().map(|obj| &obj.data).collect()),
+            Ok(objects) =>
+                Ok(
+                    objects
+                        .iter()
+                        .map(|obj| &obj.data)
+                        .collect()
+                ),
             Err(e) => Err(e),
         }
+    }
+
+    /// Persists all in-memory databases to disk.
+    ///
+    /// This function saves all objects from all regions to the persistent database.
+    /// It's important to call this method periodically to ensure data is not lost in case of unexpected shutdowns.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), String>` - An empty result if successful, or an error message if not.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use your_crate::{VaultManager, CustomData};
+    /// # let mut vault_manager: VaultManager<CustomData> = VaultManager::new("path/to/database.db").unwrap();
+    /// vault_manager.persist_to_disk().expect("Failed to persist data to disk");
+    /// ```
+    ///
+    /// # Notes
+    ///
+    /// - This operation can be time-consuming for large datasets. Consider running it in a separate thread.
+    /// - The method provides progress feedback using a progress bar.
+    /// - All existing points in the database are cleared before persisting the current state.
+    pub fn save_world(&self) -> Result<(), String> {
+        self.vault.persist_to_disk()
     }
 }
