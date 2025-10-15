@@ -21,3 +21,18 @@ uuid = { version = "1.4", features = ["v4"] }
 tokio = { version = "1", features = ["full"] }
 rapier3d.workspace = true
 nalgebra = { version = "0.32", features = ["serde-serialize"] }
+
+# Rendering dependencies
+bevy = { version = "0.14", default-features = false, features = [
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "bevy_asset",
+    "bevy_winit",
+    "bevy_scene",
+    "x11",
+    "wayland",
+] }
+wgpu = "0.20"
+image = "0.25"
+bytemuck = { version = "1.14", features = ["derive"] }

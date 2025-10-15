@@ -11,6 +11,7 @@ use gpui_component::viewport_final::{Viewport, DoubleBuffer, RefreshHook, create
 
 use crate::ui::rainbow_engine_final::{RainbowRenderEngine, RainbowPattern};
 use crate::ui::wgpu_3d_renderer::Wgpu3DRenderer;
+use crate::ui::gpu_renderer::GpuRenderer;
 use crate::ui::shared::StatusBar;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -42,9 +43,7 @@ pub struct LevelEditorPanel {
 
     // Viewport and rendering
     viewport: Entity<Viewport>,
-    rainbow_engine: Arc<Mutex<RainbowRenderEngine>>,
-    wgpu_3d_engine: Arc<Mutex<Wgpu3DRenderer>>,
-    use_3d_renderer: Arc<std::sync::atomic::AtomicBool>, // Toggle between rainbow and 3D
+    gpu_engine: Arc<Mutex<GpuRenderer>>, // Full GPU renderer from backend
     buffers: Arc<DoubleBuffer>,
     refresh_hook: RefreshHook,
     current_pattern: RainbowPattern,
@@ -64,28 +63,22 @@ impl LevelEditorPanel {
             cx
         );
 
-        // Create rainbow render engine
-        let rainbow_engine = Arc::new(Mutex::new(RainbowRenderEngine::new()));
-        let wgpu_3d_engine = Arc::new(Mutex::new(Wgpu3DRenderer::new()));
+        // Create GPU render engine
+        let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new(800, 600)));
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
-        let use_3d_renderer = Arc::new(std::sync::atomic::AtomicBool::new(true)); // Start with 3D renderer
 
         // Spawn render thread
-        let rainbow_clone = rainbow_engine.clone();
-        let wgpu_3d_clone = wgpu_3d_engine.clone();
+        let gpu_clone = gpu_engine.clone();
         let buffers_clone = buffers.clone();
         let hook_clone = refresh_hook.clone();
         let enabled_clone = render_enabled.clone();
-        let use_3d_clone = use_3d_renderer.clone();
 
         thread::spawn(move || {
             Self::render_thread_controlled(
-                rainbow_clone,
-                wgpu_3d_clone,
+                gpu_clone,
                 buffers_clone,
                 hook_clone,
                 enabled_clone,
-                use_3d_clone,
             );
         });
 
@@ -102,9 +95,7 @@ impl LevelEditorPanel {
             horizontal_resizable_state,
             vertical_resizable_state,
             viewport,
-            rainbow_engine,
-            wgpu_3d_engine,
-            use_3d_renderer,
+            gpu_engine,
             buffers,
             refresh_hook,
             current_pattern: RainbowPattern::Waves,
@@ -115,12 +106,10 @@ impl LevelEditorPanel {
 
     /// Controlled render thread with proper double buffering and CPU throttling
     fn render_thread_controlled(
-        rainbow_engine: Arc<Mutex<RainbowRenderEngine>>,
-        wgpu_3d_engine: Arc<Mutex<Wgpu3DRenderer>>,
+        gpu_engine: Arc<Mutex<GpuRenderer>>,
         buffers: Arc<DoubleBuffer>,
         refresh_hook: RefreshHook,
         render_enabled: Arc<std::sync::atomic::AtomicBool>,
-        use_3d_renderer: Arc<std::sync::atomic::AtomicBool>,
     ) {
         let base_frame_time = Duration::from_millis(8);
         let mut adaptive_frame_time = base_frame_time;
@@ -131,36 +120,18 @@ impl LevelEditorPanel {
         while render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
             let frame_start = std::time::Instant::now();
 
-            let use_3d = use_3d_renderer.load(std::sync::atomic::Ordering::Relaxed);
-
-            let render_successful = if use_3d {
-                // Use 3D renderer
-                if let Ok(mut engine_guard) = wgpu_3d_engine.try_lock() {
-                    let back_buffer = buffers.get_back_buffer();
-                    let buffer_lock_result = back_buffer.try_lock();
-                    if let Ok(mut buffer_guard) = buffer_lock_result {
-                        engine_guard.render(&mut *buffer_guard);
-                        true
-                    } else {
-                        false
-                    }
+            // Always use GPU renderer
+            let render_successful = if let Ok(mut engine_guard) = gpu_engine.try_lock() {
+                let back_buffer = buffers.get_back_buffer();
+                let buffer_lock_result = back_buffer.try_lock();
+                if let Ok(mut buffer_guard) = buffer_lock_result {
+                    engine_guard.render(&mut *buffer_guard);
+                    true
                 } else {
                     false
                 }
             } else {
-                // Use rainbow renderer
-                if let Ok(mut engine_guard) = rainbow_engine.try_lock() {
-                    let back_buffer = buffers.get_back_buffer();
-                    let buffer_lock_result = back_buffer.try_lock();
-                    if let Ok(mut buffer_guard) = buffer_lock_result {
-                        engine_guard.render_rgba8(&mut *buffer_guard);
-                        true
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
+                false
             };
 
             if render_successful {
@@ -207,9 +178,7 @@ impl LevelEditorPanel {
 
     pub fn set_rainbow_pattern(&mut self, pattern: RainbowPattern) {
         self.current_pattern = pattern;
-        if let Ok(mut engine) = self.rainbow_engine.lock() {
-            engine.set_pattern(pattern);
-        }
+        // GPU renderer doesn't use patterns
     }
 
     fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -336,13 +305,6 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
-    fn on_toggle_3d_renderer(&mut self, _: &Toggle3DRenderer, _: &mut Window, cx: &mut Context<Self>) {
-        let current = self.use_3d_renderer.load(std::sync::atomic::Ordering::Relaxed);
-        self.use_3d_renderer.store(!current, std::sync::atomic::Ordering::Relaxed);
-        println!("[LEVEL-EDITOR] Toggled renderer: {}", if !current { "3D" } else { "Rainbow" });
-        cx.notify();
-    }
-
     fn on_perspective_view(&mut self, _: &PerspectiveView, _: &mut Window, cx: &mut Context<Self>) {
         self.state.set_camera_mode(CameraMode::Perspective);
         cx.notify();
@@ -434,7 +396,6 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_toggle_viewport_controls))
             .on_action(cx.listener(Self::on_toggle_camera_mode_selector))
             .on_action(cx.listener(Self::on_toggle_viewport_options))
-            .on_action(cx.listener(Self::on_toggle_3d_renderer))
             // Camera modes
             .on_action(cx.listener(Self::on_perspective_view))
             .on_action(cx.listener(Self::on_orthographic_view))
@@ -495,9 +456,7 @@ impl Render for LevelEditorPanel {
                                             .child(
                                                 self.viewport_panel.render(
                                                     &self.state,
-                                                    &self.rainbow_engine,
-                                                    &self.wgpu_3d_engine,
-                                                    &self.use_3d_renderer,
+                                                    &self.gpu_engine,
                                                     self.current_pattern,
                                                     cx
                                                 )

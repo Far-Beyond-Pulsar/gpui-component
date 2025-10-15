@@ -29,9 +29,7 @@ impl ViewportPanel {
     pub fn render<V: 'static>(
         &self,
         state: &LevelEditorState,
-        rainbow_engine: &Arc<Mutex<crate::ui::rainbow_engine_final::RainbowRenderEngine>>,
-        wgpu_3d_engine: &Arc<Mutex<crate::ui::wgpu_3d_renderer::Wgpu3DRenderer>>,
-        use_3d_renderer: &Arc<std::sync::atomic::AtomicBool>,
+        gpu_engine: &Arc<Mutex<crate::ui::gpu_renderer::GpuRenderer>>,
         current_pattern: crate::ui::rainbow_engine_final::RainbowPattern,
         cx: &mut Context<V>,
     ) -> impl IntoElement
@@ -98,7 +96,7 @@ impl ViewportPanel {
                     .bottom_4()
                     .right_4()
                     .w(px(280.0)) // Hardcoded width to prevent inheritance issues
-                    .child(self.render_performance_overlay(rainbow_engine, wgpu_3d_engine, use_3d_renderer, current_pattern, cx))
+                    .child(self.render_performance_overlay(gpu_engine, current_pattern, cx))
             );
         }
 
@@ -232,14 +230,6 @@ impl ViewportPanel {
                                 cx.dispatch_action(&TogglePerformanceOverlay);
                             }))
                     )
-                    .child(
-                        Button::new("toggle_3d")
-                            .child("3D")
-                            .xsmall()
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&Toggle3DRenderer);
-                            }))
-                    )
             )
             .child(
                 Button::new("close_viewport_options")
@@ -301,34 +291,19 @@ impl ViewportPanel {
 
     fn render_performance_overlay<V: 'static>(
         &self,
-        rainbow_engine: &Arc<Mutex<crate::ui::rainbow_engine_final::RainbowRenderEngine>>,
-        wgpu_3d_engine: &Arc<Mutex<crate::ui::wgpu_3d_renderer::Wgpu3DRenderer>>,
-        use_3d_renderer: &Arc<std::sync::atomic::AtomicBool>,
+        gpu_engine: &Arc<Mutex<crate::ui::gpu_renderer::GpuRenderer>>,
         current_pattern: crate::ui::rainbow_engine_final::RainbowPattern,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
         V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
     {
-        let use_3d = use_3d_renderer.load(std::sync::atomic::Ordering::Relaxed);
-        
-        let (engine_fps, _frame_count, _pattern_name) = if use_3d {
-            if let Ok(engine) = wgpu_3d_engine.lock() {
-                let fps = engine.get_fps();
-                let frames = engine.get_frame_count();
-                (fps, frames, "3D Scene".to_string())
-            } else {
-                (0.0, 0, "Unknown".to_string())
-            }
+        let (engine_fps, _frame_count, _pattern_name) = if let Ok(engine) = gpu_engine.lock() {
+            let fps = engine.get_fps();
+            let frames = engine.get_frame_count();
+            (fps, frames, "GPU 3D Scene".to_string())
         } else {
-            if let Ok(engine) = rainbow_engine.lock() {
-                let fps = engine.get_fps();
-                let frames = engine.get_frame_count();
-                let pattern = format!("{:?}", current_pattern);
-                (fps, frames, pattern)
-            } else {
-                (0.0, 0, "Unknown".to_string())
-            }
+            (0.0, 0, "Unknown".to_string())
         };
 
         h_flex()
