@@ -74,15 +74,6 @@ impl GpuMemTracker {
             self.total_freed.fetch_add(info.size_bytes as u64, Ordering::Relaxed);
             let current = self.current_allocations.fetch_sub(1, Ordering::Relaxed) - 1;
 
-            println!(
-                "[GPU-MEM] FREE #{}: {}x{} = {} bytes (remaining: {} allocs, leaked: {} MB)",
-                id,
-                info.width,
-                info.height,
-                info.size_bytes,
-                current,
-                (self.total_allocated.load(Ordering::Relaxed) - self.total_freed.load(Ordering::Relaxed)) as f64 / 1_000_000.0
-            );
         } else {
             println!("[GPU-MEM] WARNING: Attempted to free unknown allocation #{}", id);
         }
