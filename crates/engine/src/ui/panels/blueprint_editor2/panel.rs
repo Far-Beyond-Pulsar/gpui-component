@@ -3687,7 +3687,9 @@ impl Render for BlueprintEditorPanel {
                         .absolute()
                         .top_0()
                         .left_0()
-                        .size_full()
+                        .w_full() // Only take full width for positioning context
+                        .h_full() // Only take full height for positioning context
+                        .occlude() // Prevent interaction with background
                         .child(div().absolute().child(menu_entity)),
                 )
             })
@@ -3698,7 +3700,8 @@ impl Render for BlueprintEditorPanel {
                         .absolute()
                         .top_0()
                         .left_0()
-                        .size_full()
+                        .w_full() // Only take full width for positioning context
+                        .h_full() // Only take full height for positioning context
                         .on_mouse_move(cx.listener(|panel, event: &MouseMoveEvent, _window, cx| {
                             // Check if mouse is outside tooltip and hide if so
                             let mouse_pos =
@@ -3716,7 +3719,8 @@ impl Render for BlueprintEditorPanel {
                         .absolute()
                         .top_0()
                         .left_0()
-                        .size_full()
+                        .w_full() // Only take full width for positioning context
+                        .h_full() // Only take full height for positioning context
                         .on_mouse_down(
                             gpui::MouseButton::Left,
                             cx.listener(|panel, _event, _window, cx| {
