@@ -77,7 +77,7 @@ impl GpuRenderer {
 
         if let Some(ref mut renderer) = self.bevy_renderer {
             // Use Bevy renderer - render directly to temp buffer at full viewport size
-            if self.frame_count % 60 == 0 {
+            if self.frame_count == 1 || self.frame_count % 120 == 0 {
                 println!("[GPU-RENDERER] Frame {} - Using Bevy renderer ({}x{})", 
                     self.frame_count, self.render_width, self.render_height);
             }
@@ -91,7 +91,7 @@ impl GpuRenderer {
             framebuffer.mark_dirty_all();
         } else {
             // Fallback: render a test pattern
-            if self.frame_count % 60 == 0 {
+            if self.frame_count == 1 || self.frame_count % 120 == 0 {
                 println!("[GPU-RENDERER] Frame {} - Using fallback renderer", self.frame_count);
             }
             

@@ -88,6 +88,12 @@ impl BevyRenderer {
             let aligned_row_bytes = RenderDevice::align_copy_bytes_per_row(row_bytes);
             let expected_size = aligned_row_bytes * self.height as usize;
             
+            if self.frame_count == 1 || self.frame_count % 120 == 0 {
+                println!("[BevyRenderer] Frame {} - data size: {}, expected: {}, framebuffer: {}x{}, self: {}x{}", 
+                         self.frame_count, frame_data.len(), expected_size, 
+                         framebuffer.width, framebuffer.height, self.width, self.height);
+            }
+            
             if frame_data.len() == expected_size {
                 // Handle row alignment - copy row by row, stripping padding
                 for y in 0..self.height as usize {
@@ -102,23 +108,22 @@ impl BevyRenderer {
                     }
                 }
                 
-                if self.frame_count % 60 == 0 {
-                    println!("[BevyRenderer] Frame {} - copied with alignment ({}x{} → {}x{})", 
-                             self.frame_count, self.width, self.height, framebuffer.width, framebuffer.height);
+                if self.frame_count == 1 || self.frame_count % 120 == 0 {
+                    println!("[BevyRenderer] Frame {} - ✅ Successfully copied with alignment!", self.frame_count);
                 }
             } else {
-                if self.frame_count % 60 == 0 {
+                if self.frame_count == 1 || self.frame_count % 120 == 0 {
                     println!("[BevyRenderer] Frame {} - size mismatch: {} vs {} expected", 
                              self.frame_count, frame_data.len(), expected_size);
                 }
             }
         } else {
-            if self.frame_count % 60 == 0 {
+            if self.frame_count == 1 || self.frame_count % 120 == 0 {
                 println!("[BevyRenderer] Frame {} - no frame data yet", self.frame_count);
             }
         }
         
-        if got_frame && self.frame_count % 60 == 0 {
+        if got_frame && (self.frame_count == 1 || self.frame_count % 120 == 0) {
             println!("[BevyRenderer] Received new frame from Bevy!");
         }
     }
@@ -256,7 +261,7 @@ struct ImageCopier {
 
 impl ImageCopier {
     fn new(src_image: Handle<Image>, size: Extent3d, render_device: &RenderDevice) -> Self {
-        let padded_bytes_per_row = RenderDevice::align_copy_bytes_per_row(size.width as usize) * 4;
+        let padded_bytes_per_row = RenderDevice::align_copy_bytes_per_row(size.width as usize * 4);
         
         let cpu_buffer = render_device.create_buffer(&BufferDescriptor {
             label: Some("frame_copy_buffer"),
