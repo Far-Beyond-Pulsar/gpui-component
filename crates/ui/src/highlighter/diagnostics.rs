@@ -6,7 +6,7 @@ use std::{
 
 use gpui::{px, App, HighlightStyle, Hsla, SharedString, UnderlineStyle};
 use ropey::Rope;
-use zed_sum_tree::{Bias, SeekTarget, SumTree};
+use sum_tree::{Bias, SeekTarget, SumTree};
 
 use crate::{
     input::{Position, RopeExt as _},
@@ -199,7 +199,7 @@ pub struct DiagnosticSummary {
     end: usize,
 }
 
-impl zed_sum_tree::Item for DiagnosticEntry {
+impl sum_tree::Item for DiagnosticEntry {
     type Summary = DiagnosticSummary;
     fn summary(&self, _cx: &()) -> Self::Summary {
         DiagnosticSummary {
@@ -210,9 +210,9 @@ impl zed_sum_tree::Item for DiagnosticEntry {
     }
 }
 
-impl zed_sum_tree::Summary for DiagnosticSummary {
-    type Context<'a> = &'a ();
-    fn zero(_: Self::Context<'_>) -> Self {
+impl sum_tree::Summary for DiagnosticSummary {
+    type Context = ();
+    fn zero(_: &Self::Context) -> Self {
         DiagnosticSummary {
             count: 0,
             start: usize::MIN,
@@ -220,7 +220,7 @@ impl zed_sum_tree::Summary for DiagnosticSummary {
         }
     }
 
-    fn add_summary(&mut self, other: &Self, _: Self::Context<'_>) {
+    fn add_summary(&mut self, other: &Self, _: &Self::Context) {
         self.start = other.start;
         self.end = other.end;
         self.count += other.count;
@@ -297,11 +297,11 @@ impl DiagnosticSet {
 
     pub(crate) fn range(&self, range: Range<usize>) -> impl Iterator<Item = &DiagnosticEntry> {
         let mut cursor = self.diagnostics.cursor::<DiagnosticSummary>(&());
-        cursor.seek(&range.start, Bias::Left);
+        cursor.seek(&range.start, Bias::Left, &());
         std::iter::from_fn(move || {
             if let Some(entry) = cursor.item() {
                 if entry.range.start < range.end {
-                    cursor.next();
+                    cursor.next(&());
                     return Some(entry);
                 }
             }

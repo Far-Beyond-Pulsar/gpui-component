@@ -573,8 +573,8 @@ impl TextEditor {
                 // Get content from input state
                 let content = open_file.input_state.read(cx).value();
 
-                // Write to file
-                if let Ok(_) = fs::write(&open_file.path, content.as_str()) {
+                // Write to file - convert SharedString to bytes
+                if let Ok(_) = fs::write(&open_file.path, content.as_ref().as_bytes()) {
                     open_file.is_modified = false;
                     println!("💾 File saved: {:?}", open_file.path);
                     

@@ -77,7 +77,7 @@ impl ColorPickerState {
             |this, state, ev: &InputEvent, window, cx| match ev {
                 InputEvent::Change => {
                     let value = state.read(cx).value();
-                    if let Ok(color) = Hsla::parse_hex(value.as_str()) {
+                    if let Ok(color) = Hsla::parse_hex(&value) {
                         this.value = Some(color);
                         this.hovered_color = Some(color);
                     }
@@ -379,7 +379,7 @@ impl RenderOnce for ColorPicker {
         .into();
 
         let is_focused = state.focus_handle.is_focused(window);
-        let focus_handle = state.focus_handle.clone().tab_stop(true);
+        let focus_handle = state.focus_handle.clone();
 
         div()
             .id(self.id.clone())

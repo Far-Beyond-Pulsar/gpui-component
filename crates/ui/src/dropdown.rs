@@ -869,7 +869,7 @@ where
             .id(self.id.clone())
             .key_context(CONTEXT)
             .when(!self.disabled, |this| {
-                this.track_focus(&self.focus_handle(cx).tab_stop(true))
+                this.track_focus(&self.focus_handle(cx))
             })
             .on_action(window.listener_for(&self.state, DropdownState::up))
             .on_action(window.listener_for(&self.state, DropdownState::down))

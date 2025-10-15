@@ -371,7 +371,9 @@ impl RenderOnce for Modal {
             paddings.bottom = pb.to_pixels(base_size, rem_size);
         }
 
-        let animation = Animation::new(Duration::from_secs_f64(0.25))
+        let animation1 = Animation::new(Duration::from_secs_f64(0.25))
+            .with_easing(cubic_bezier(0.32, 0.72, 0., 1.));
+        let animation2 = Animation::new(Duration::from_secs_f64(0.25))
             .with_easing(cubic_bezier(0.32, 0.72, 0., 1.));
 
         anchored()
@@ -416,7 +418,7 @@ impl RenderOnce for Modal {
                             .px_0()
                             .key_context(CONTEXT)
                             .track_focus(&self.focus_handle)
-                            .tab_group()
+                            
                             .when(self.keyboard, |this| {
                                 this.on_action({
                                     let on_cancel = on_cancel.clone();
@@ -503,7 +505,7 @@ impl RenderOnce for Modal {
                                         .children(footer(render_ok, render_cancel, window, cx)),
                                 )
                             })
-                            .with_animation("slide-down", animation.clone(), move |this, delta| {
+                            .with_animation("slide-down", animation1, move |this, delta| {
                                 let y_offset = px(0.) + delta * px(30.);
                                 // This is equivalent to `shadow_xl` with an extra opacity.
                                 let shadow = vec![
@@ -523,7 +525,7 @@ impl RenderOnce for Modal {
                                 this.top(y + y_offset).shadow(shadow)
                             }),
                     )
-                    .with_animation("fade-in", animation, move |this, delta| this.opacity(delta)),
+                    .with_animation("fade-in", animation2, move |this, delta| this.opacity(delta)),
             )
     }
 }

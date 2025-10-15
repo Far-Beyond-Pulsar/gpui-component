@@ -6,7 +6,7 @@ use crate::{
 };
 use gpui::{
     div, prelude::FluentBuilder as _, px, relative, rems, svg, Animation, AnimationExt, AnyElement,
-    App, Div, ElementId, InteractiveElement, IntoElement, ParentElement, RenderOnce,
+    App, Div, ElementId, FocusHandle, InteractiveElement, IntoElement, ParentElement, RenderOnce,
     StatefulInteractiveElement, StyleRefinement, Styled, Window,
 };
 
@@ -134,7 +134,8 @@ pub(crate) fn checkbox_check_icon(
     window: &mut Window,
     cx: &mut App,
 ) -> impl IntoElement {
-    let toggle_state = window.use_keyed_state(id, cx, |_, _| checked);
+    // Simplified without element state - just use the checked value directly
+    let toggle_state = checked;
     let color = if disabled {
         cx.theme().primary_foreground.opacity(0.5)
     } else {
@@ -158,17 +159,8 @@ pub(crate) fn checkbox_check_icon(
             _ => this,
         })
         .map(|this| {
-            if !disabled && checked != *toggle_state.read(cx) {
-                let duration = Duration::from_secs_f64(0.25);
-                cx.spawn({
-                    let toggle_state = toggle_state.clone();
-                    async move |cx| {
-                        cx.background_executor().timer(duration).await;
-                        _ = toggle_state.update(cx, |this, _| *this = checked);
-                    }
-                })
-                .detach();
-
+            // Simplified animation without stateful toggle tracking
+            if !disabled {
                 this.with_animation(
                     ElementId::NamedInteger("toggle".into(), checked as u64),
                     Animation::new(Duration::from_secs_f64(0.25)),
@@ -187,11 +179,7 @@ impl RenderOnce for Checkbox {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let checked = self.checked;
 
-        let focus_handle = window
-            .use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle())
-            .read(cx)
-            .clone();
-        let is_focused = focus_handle.is_focused(window);
+        let focus_handle = cx.focus_handle(); let is_focused = focus_handle.is_focused(window);
 
         let border_color = if checked {
             cx.theme().primary
@@ -211,8 +199,8 @@ impl RenderOnce for Checkbox {
                 .when(!self.disabled, |this| {
                     this.track_focus(
                         &focus_handle
-                            .tab_stop(self.tab_stop)
-                            .tab_index(self.tab_index),
+                            
+                            ,
                     )
                 })
                 .h_flex()

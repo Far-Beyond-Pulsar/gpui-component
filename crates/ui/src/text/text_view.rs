@@ -377,10 +377,8 @@ impl TextView {
         let id: ElementId = id.into();
         let markdown = markdown.into();
         let highlight_theme = cx.theme().highlight_theme.clone();
-        let state =
-            window.use_keyed_state(SharedString::from(format!("{}/state", id)), cx, |_, cx| {
-                TextViewState::new(cx)
-            });
+        // Create state entity
+        let state = cx.new(|cx| TextViewState::new(cx));
         let init_state = Self::create_init_state(
             TextViewType::Markdown,
             &markdown,
@@ -409,10 +407,8 @@ impl TextView {
         let id: ElementId = id.into();
         let html = html.into();
         let highlight_theme = cx.theme().highlight_theme.clone();
-        let state =
-            window.use_keyed_state(SharedString::from(format!("{}/state", id)), cx, |_, cx| {
-                TextViewState::new(cx)
-            });
+        // Create state entity
+        let state = cx.new(|cx| TextViewState::new(cx));
         let init_state =
             Self::create_init_state(TextViewType::Html, &html, &highlight_theme, &state, cx);
         if let Some(tx) = &state.read(cx).tx {

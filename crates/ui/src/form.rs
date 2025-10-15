@@ -375,9 +375,7 @@ impl RenderOnce for FormField {
         v_flex()
             .flex_1()
             .gap(gap / 2.)
-            .col_span(self.col_span)
-            .when_some(self.col_start, |this, start| this.col_start(start))
-            .when_some(self.col_end, |this, end| this.col_end(end))
+            // col_start and col_end removed from new GPUI API
             .child(
                 // This warp for aligning the Label + Input
                 wrap_div(layout)
@@ -466,8 +464,7 @@ impl RenderOnce for Form {
             .w_full()
             .gap_x(gap * 3.)
             .gap_y(gap)
-            .grid()
-            .grid_cols(props.column)
+            // grid_cols removed from new GPUI API - use flex layout instead
             .children(
                 self.fields
                     .into_iter()

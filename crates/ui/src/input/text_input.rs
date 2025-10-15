@@ -131,7 +131,7 @@ impl TextInput {
             .icon(IconName::Eye)
             .xsmall()
             .ghost()
-            .tab_stop(false)
+            
             .on_mouse_down(MouseButton::Left, {
                 let state = state.clone();
                 move |_, window, cx| {
@@ -393,7 +393,7 @@ impl RenderOnce for TextInput {
             .flex()
             .key_context(crate::input::CONTEXT)
             .track_focus(&state.focus_handle.clone())
-            .tab_index(self.tab_index)
+            
             .when(!state.disabled, |this| {
                 this.on_action(window.listener_for(&self.state, InputState::backspace))
                     .on_action(window.listener_for(&self.state, InputState::delete))

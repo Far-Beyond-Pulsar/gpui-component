@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use ropey::{LineType, Rope, RopeSlice};
-use zed_sum_tree::Bias;
+use sum_tree::Bias;
 use tree_sitter::Point;
 
 use crate::input::Position;
@@ -393,7 +393,7 @@ impl RopeExt for Rope {
 #[cfg(test)]
 mod tests {
     use ropey::Rope;
-    use zed_sum_tree::Bias;
+    use sum_tree::Bias;
     use tree_sitter::Point;
 
     use crate::input::{Position, RopeExt};

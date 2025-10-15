@@ -1,7 +1,7 @@
 [
   {
     "name": "dsfasdf",
-    "var_type": "(f32, f32, f32)",
+    "var_type": "String",
     "default_value": null
   }
 ]

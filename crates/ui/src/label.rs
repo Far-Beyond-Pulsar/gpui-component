@@ -18,8 +18,8 @@ pub enum HighlightsMatch {
 impl HighlightsMatch {
     pub fn as_str(&self) -> &str {
         match self {
-            Self::Prefix(s) => s.as_str(),
-            Self::Full(s) => s.as_str(),
+            Self::Prefix(s) => s,
+            Self::Full(s) => s,
         }
     }
 

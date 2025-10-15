@@ -326,7 +326,7 @@ impl CodeBlock {
         let mut styles = vec![];
         if let Some(lang) = &lang {
             let mut highlighter = SyntaxHighlighter::new(&lang);
-            highlighter.update(None, &Rope::from_str(code.as_str()));
+            highlighter.update(None, &Rope::from_str(&code));
             styles = highlighter.styles(&(0..code.len()), highlight_theme);
         };
 

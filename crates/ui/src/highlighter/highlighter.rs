@@ -10,7 +10,7 @@ use std::{
     ops::Range,
     usize,
 };
-use zed_sum_tree::Bias;
+use sum_tree::Bias;
 use tree_sitter::{
     InputEdit, Node, Parser, Point, Query, QueryCursor, QueryMatch, StreamingIterator, Tree,
 };
@@ -102,7 +102,7 @@ impl HighlightItem {
     }
 }
 
-impl zed_sum_tree::Item for HighlightItem {
+impl sum_tree::Item for HighlightItem {
     type Summary = HighlightSummary;
     fn summary(&self, _cx: &()) -> Self::Summary {
         HighlightSummary {
@@ -115,9 +115,9 @@ impl zed_sum_tree::Item for HighlightItem {
     }
 }
 
-impl zed_sum_tree::Summary for HighlightSummary {
-    type Context<'a> = &'a ();
-    fn zero(_: Self::Context<'_>) -> Self {
+impl sum_tree::Summary for HighlightSummary {
+    type Context = ();
+    fn zero(_: &Self::Context) -> Self {
         HighlightSummary {
             count: 0,
             start: usize::MIN,
@@ -127,7 +127,7 @@ impl zed_sum_tree::Summary for HighlightSummary {
         }
     }
 
-    fn add_summary(&mut self, other: &Self, _: Self::Context<'_>) {
+    fn add_summary(&mut self, other: &Self, _: &Self::Context) {
         self.min_start = self.min_start.min(other.min_start);
         self.max_end = self.max_end.max(other.max_end);
         self.start = other.start;
@@ -136,7 +136,7 @@ impl zed_sum_tree::Summary for HighlightSummary {
     }
 }
 
-impl<'a> zed_sum_tree::Dimension<'a, HighlightSummary> for usize {
+impl<'a> sum_tree::Dimension<'a, HighlightSummary> for usize {
     fn zero(_: &()) -> Self {
         0
     }
@@ -144,7 +144,7 @@ impl<'a> zed_sum_tree::Dimension<'a, HighlightSummary> for usize {
     fn add_summary(&mut self, _: &'a HighlightSummary, _: &()) {}
 }
 
-impl<'a> zed_sum_tree::Dimension<'a, HighlightSummary> for Range<usize> {
+impl<'a> sum_tree::Dimension<'a, HighlightSummary> for Range<usize> {
     fn zero(_: &()) -> Self {
         Default::default()
     }

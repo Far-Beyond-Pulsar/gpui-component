@@ -6,7 +6,7 @@ use crate::{
 };
 use gpui::{
     div, prelude::FluentBuilder, px, relative, rems, AnyElement, App, Axis, Div, ElementId,
-    InteractiveElement, IntoElement, ParentElement, RenderOnce, SharedString,
+    FocusHandle, InteractiveElement, IntoElement, ParentElement, RenderOnce, SharedString,
     StatefulInteractiveElement, StyleRefinement, Styled, Window,
 };
 
@@ -118,11 +118,7 @@ impl ParentElement for Radio {
 impl RenderOnce for Radio {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let checked = self.checked;
-        let focus_handle = window
-            .use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle())
-            .read(cx)
-            .clone();
-        let is_focused = focus_handle.is_focused(window);
+        let focus_handle = cx.focus_handle(); let is_focused = focus_handle.is_focused(window);
         let disabled = self.disabled;
 
         let (border_color, bg) = if checked {
@@ -143,8 +139,8 @@ impl RenderOnce for Radio {
                 .when(!self.disabled, |this| {
                     this.track_focus(
                         &focus_handle
-                            .tab_stop(self.tab_stop)
-                            .tab_index(self.tab_index),
+                            
+                            ,
                     )
                 })
                 .h_flex()
