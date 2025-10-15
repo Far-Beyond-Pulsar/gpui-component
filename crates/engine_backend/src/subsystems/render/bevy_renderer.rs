@@ -170,27 +170,33 @@ fn run_bevy_render_thread(
                     ..default()
                 })
                 .disable::<WinitPlugin>(),
-        )
-        .add_plugins(ImageCopyPlugin { sender: frame_sender })
-        .add_plugins(ScheduleRunnerPlugin::run_loop(
-            Duration::from_secs_f64(1.0 / RENDER_FPS),
-        ));
+        );
 
-    // Setup scene with studio-quality settings
+    // Add the image copy plugin BEFORE ScheduleRunnerPlugin (important for RenderApp to exist)
+    app.add_plugins(ImageCopyPlugin { sender: frame_sender });
+    
+    // Add ScheduleRunnerPlugin AFTER setting up render systems
+    app.add_plugins(ScheduleRunnerPlugin::run_loop(
+        Duration::from_secs_f64(1.0 / RENDER_FPS),
+    ));
+
+    // Setup scene with studio-quality settings - using Startup system
     app.add_systems(Startup, move |mut commands: Commands,
                                     mut meshes: ResMut<Assets<Mesh>>,
                                     mut materials: ResMut<Assets<StandardMaterial>>,
                                     mut images: ResMut<Assets<Image>>,
                                     render_device: Res<RenderDevice>| {
+        println!("[BEVY-THREAD] Setting up render target and scene...");
         setup_render_target(&mut commands, &mut images, &render_device, width, height);
         setup_scene_studio_quality(&mut commands, &mut meshes, &mut materials);
+        println!("[BEVY-THREAD] Scene setup complete!");
     });
     
     app.add_systems(Update, (rotate_cube, animate_lights));
 
     println!("[BEVY-THREAD] Entering high-performance render loop @ {} FPS...", RENDER_FPS);
 
-    // Main render loop
+    // Main render loop with error handling
     while running.load(Ordering::Relaxed) {
         app.update();
     }
@@ -338,8 +344,9 @@ fn animate_lights(time: Res<Time>, mut query: Query<&mut Transform, With<MainLig
     }
 }
 
-/// Plugin for Render world part of work
-pub struct ImageCopyPlugin {
+/// Image copy plugin for extracting rendered frames
+/// Based on official Bevy headless_renderer example
+struct ImageCopyPlugin {
     sender: Sender<Vec<u8>>,
 }
 
@@ -347,18 +354,24 @@ impl Plugin for ImageCopyPlugin {
     fn build(&self, app: &mut App) {
         let (s, r) = crossbeam_channel::unbounded();
         
+        // Insert receiver in main world
         let render_app = app
             .insert_resource(MainWorldReceiver(r))
             .sub_app_mut(RenderApp);
         
+        // Setup render graph in render world
         let mut graph = render_app.world_mut().resource_mut::<RenderGraph>();
         graph.add_node(ImageCopy, ImageCopyDriver);
         graph.add_node_edge(bevy::render::graph::CameraDriverLabel, ImageCopy);
         
+        // Add render world systems
         render_app
             .insert_resource(RenderWorldSender(self.sender.clone()))
             .add_systems(ExtractSchedule, image_copy_extract)
-            .add_systems(Render, receive_image_from_buffer.after(RenderSystems::Render));
+            .add_systems(
+                Render,
+                receive_image_from_buffer.after(RenderSystems::Render),
+            );
     }
 }
 
@@ -413,6 +426,7 @@ struct ImageCopy;
 #[derive(Default)]
 struct ImageCopyDriver;
 
+// Copies image content from render target to buffer
 impl render_graph::Node for ImageCopyDriver {
     fn run(
         &self,
@@ -437,6 +451,11 @@ impl render_graph::Node for ImageCopyDriver {
             
             let block_dimensions = src_image.texture_format.block_dimensions();
             let block_size = src_image.texture_format.block_copy_size(None).unwrap();
+            
+            // Calculating correct size of image row because
+            // copy_texture_to_buffer can copy image only by rows aligned wgpu::COPY_BYTES_PER_ROW_ALIGNMENT
+            // That's why image in buffer can be little bit wider
+            // This should be taken into account at copy from buffer stage
             let padded_bytes_per_row = RenderDevice::align_copy_bytes_per_row(
                 (src_image.size.width as usize / block_dimensions.0 as usize) * block_size as usize,
             );
@@ -466,30 +485,73 @@ impl render_graph::Node for ImageCopyDriver {
     }
 }
 
+/// runs in render world after Render stage to send image from buffer via channel (receiver is in main world)
 fn receive_image_from_buffer(
     image_copiers: Res<ImageCopiers>,
     render_device: Res<RenderDevice>,
     sender: Res<RenderWorldSender>,
 ) {
-    for image_copier in image_copiers.iter() {
+    for image_copier in image_copiers.0.iter() {
         if !image_copier.enabled() {
             continue;
         }
         
+        // Finally time to get our data back from the gpu.
+        // First we get a buffer slice which represents a chunk of the buffer (which we
+        // can't access yet).
+        // We want the whole thing so use unbounded range.
         let buffer_slice = image_copier.buffer.slice(..);
-        let (tx, rx) = crossbeam_channel::bounded(1);
         
-        buffer_slice.map_async(MapMode::Read, move |result| match result {
-            Ok(_) => tx.send(()).expect("Failed to send map update"),
+        // Now things get complicated. WebGPU, for safety reasons, only allows either the GPU
+        // or CPU to access a buffer's contents at a time. We need to "map" the buffer which means
+        // flipping ownership of the buffer over to the CPU and making access legal. We do this
+        // with `BufferSlice::map_async`.
+        //
+        // The problem is that map_async is not an async function so we can't await it. What
+        // we need to do instead is pass in a closure that will be executed when the slice is
+        // either mapped or the mapping has failed.
+        //
+        // The problem with this is that we don't have a reliable way to wait in the main
+        // code for the buffer to be mapped and even worse, calling get_mapped_range or
+        // get_mapped_range_mut prematurely will cause a panic, not return an error.
+        //
+        // Using channels solves this as awaiting the receiving of a message from
+        // the passed closure will force the outside code to wait. It also doesn't hurt
+        // if the closure finishes before the outside code catches up as the message is
+        // buffered and receiving will just pick that up.
+        //
+        // It may also be worth noting that although on native, the usage of asynchronous
+        // channels is wholly unnecessary, for the sake of portability to Wasm
+        // we'll use async channels that work on both native and Wasm.
+        
+        let (s, r) = crossbeam_channel::bounded(1);
+        
+        // Maps the buffer so it can be read on the cpu
+        buffer_slice.map_async(MapMode::Read, move |r| match r {
+            // This will execute once the gpu is ready, so after the call to poll()
+            Ok(r) => s.send(r).expect("Failed to send map update"),
             Err(err) => panic!("Failed to map buffer {err}"),
         });
         
+        // In order for the mapping to be completed, one of three things must happen.
+        // One of those can be calling `Device::poll`. This isn't necessary on the web as devices
+        // are polled automatically but natively, we need to make sure this happens manually.
+        // `Maintain::Wait` will cause the thread to wait on native but not on WebGpu.
+        
+        // This blocks until the gpu is done executing everything
         render_device
             .poll(PollType::Wait)
-            .expect("Failed to poll device");
+            .expect("Failed to poll device for map async");
         
-        rx.recv().expect("Failed to receive the map_async message");
+        // This blocks until the buffer is mapped
+        r.recv().expect("Failed to receive the map_async message");
+        
+        // This could fail on app exit, if Main world clears resources (including receiver) while Render world still renders
         let _ = sender.send(buffer_slice.get_mapped_range().to_vec());
+        
+        // We need to make sure all `BufferView`'s are dropped before we do what we're about
+        // to do.
+        // Unmap so that we can copy to the staging buffer in the next iteration.
         image_copier.buffer.unmap();
     }
 }
