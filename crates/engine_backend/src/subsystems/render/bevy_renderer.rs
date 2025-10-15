@@ -4,9 +4,8 @@
 use bevy::{
     app::ScheduleRunnerPlugin,
     camera::RenderTarget,
-    core_pipeline::tonemapping::Tonemapping,
-    image::TextureFormatPixelInfo,
     prelude::*,
+    pbr::StandardMaterial,
     render::{
         render_asset::RenderAssets,
         render_graph::{self, NodeRunError, RenderGraph, RenderGraphContext, RenderLabel},
@@ -22,7 +21,6 @@ use bevy::{
 };
 use crossbeam_channel::{Receiver, Sender};
 use std::{
-    ops::Deref,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -146,7 +144,7 @@ impl Drop for BevyRenderer {
 }
 
 // This follows the EXACT structure of the official Bevy headless_renderer example
-fn run_bevy_app(width: u32, height: u32, frame_sender: Sender<Vec<u8>>, running: Arc<AtomicBool>) {
+fn run_bevy_app(width: u32, height: u32, frame_sender: Sender<Vec<u8>>, _running: Arc<AtomicBool>) {
     println!("[BevyApp] Starting Bevy app");
     
     let mut app = App::new();
@@ -188,6 +186,8 @@ fn setup(
     mut images: ResMut<Assets<Image>>,
     config: Res<FrameConfig>,
     render_device: Res<RenderDevice>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     println!("[BevyApp] Setup called");
     
@@ -210,16 +210,80 @@ fn setup(
         &render_device,
     ));
     
-    // Create camera
+    // Create 3D camera
     commands.spawn((
-        Camera2d,
+        Camera3d::default(),
         Camera {
             target: RenderTarget::Image(render_target_handle.into()),
             ..default()
         },
+        Transform::from_xyz(0.0, 2.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
     
-    println!("[BevyApp] Setup complete");
+    // Add a directional light for illumination
+    commands.spawn((
+        DirectionalLight {
+            color: Color::WHITE,
+            illuminance: 10000.0,
+            ..default()
+        },
+        Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.5, -0.5, 0.0)),
+    ));
+    
+    // Add some 3D objects to the scene
+    // Center cube (red)
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(1.0, 0.3, 0.3),
+            ..default()
+        })),
+        Transform::from_xyz(0.0, 0.5, 0.0),
+    ));
+    
+    // Left sphere (blue)
+        Mesh3d(meshes.add(Sphere::new(0.5))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.3, 0.3, 1.0),
+            metallic: 0.8,
+            perceptual_roughness: 0.2,
+            ..default()
+        })),
+        Transform::from_xyz(-2.0, 0.5, 0.0),
+    ));
+    
+    // Right torus (green)
+    commands.spawn((
+        Mesh3d(meshes.add(Torus::new(0.3, 0.6))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.3, 1.0, 0.3),
+            ..default()
+        })),
+        Transform::from_xyz(2.0, 0.5, 0.0),
+    ));
+    
+    // Back cylinder (yellow)
+    commands.spawn((
+        Mesh3d(meshes.add(Cylinder::new(0.5, 1.5))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(1.0, 1.0, 0.3),
+            ..default()
+        })),
+        Transform::from_xyz(0.0, 0.75, -2.0),
+    ));
+    
+    // Ground plane (gray)
+    commands.spawn((
+        Mesh3d(meshes.add(Plane3d::new(Vec3::Y, Vec2::new(10.0, 10.0)))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.3, 0.3, 0.3),
+            perceptual_roughness: 0.9,
+            ..default()
+        })),
+        Transform::from_xyz(0.0, 0.0, 0.0),
+    ));
+    
+    println!("[BevyApp] Setup complete with 3D objects");
 }
 
 // Image copy plugin - extracts frames from render world
@@ -229,7 +293,7 @@ struct ImageCopyPlugin {
 
 impl Plugin for ImageCopyPlugin {
     fn build(&self, app: &mut App) {
-        let (s, r) = crossbeam_channel::unbounded();
+        let (_s, r) = crossbeam_channel::unbounded();
         
         let render_app = app
             .insert_resource(MainWorldReceiver(r))
