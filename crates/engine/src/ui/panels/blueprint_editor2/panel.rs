@@ -3642,7 +3642,12 @@ impl Render for BlueprintEditorPanel {
             .child(ToolbarRenderer::render(self, cx))
             .child(self.render_tab_bar(cx))
             .child(
-                div().flex_1().child(
+                div()
+                    .flex_1() // Grow to fill remaining space
+                    .flex() // Enable flexbox
+                    .flex_row() // Row direction for resizable panels
+                    .min_h_0() // Allow shrinking below content size
+                    .child(
                     h_resizable("blueprint-editor-panels", self.resizable_state.clone())
                         .child(
                             // Left sidebar with vertical split: macros (top) and variables (bottom)

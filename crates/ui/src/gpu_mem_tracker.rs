@@ -132,6 +132,13 @@ impl GpuMemTracker {
     pub fn get_leaked_bytes(&self) -> u64 {
         self.total_allocated.load(Ordering::Relaxed) - self.total_freed.load(Ordering::Relaxed)
     }
+    
+    /// Get current memory stats (leaked_bytes, current_allocations)
+    pub fn get_stats(&self) -> (u64, usize) {
+        let leaked = self.get_leaked_bytes();
+        let current = self.current_allocations.load(Ordering::Relaxed);
+        (leaked, current)
+    }
 }
 
 // Global tracker instance

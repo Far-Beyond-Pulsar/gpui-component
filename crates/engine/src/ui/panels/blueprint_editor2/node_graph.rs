@@ -29,6 +29,8 @@ impl NodeGraphRenderer {
 
         div()
             .size_full()
+            .flex() // Enable flexbox
+            .flex_col() // Column direction
             .relative()
             .bg(cx.theme().muted.opacity(0.1))
             .border_1()

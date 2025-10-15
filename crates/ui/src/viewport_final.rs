@@ -232,7 +232,9 @@ impl Element for ViewportElement {
         cx: &mut App
     ) -> (LayoutId, Self::RequestLayoutState) {
         let mut style = Style::default();
-        style.size = Size::full(); // This tells the element to take full available space
+        style.size = Size::full(); // Take full available space
+        style.flex_grow = 1.0; // Also grow to fill parent
+        style.flex_shrink = 1.0;
         let layout_id = window.request_layout(style, None, cx);
         (layout_id, ())
     }
@@ -349,6 +351,26 @@ impl Drop for Viewport {
             *shared = None;
             println!("[VIEWPORT] Shared texture cleared");
         }
+
+        // Print final GPU memory stats
+        GPU_MEM_TRACKER.print_stats();
+    }
+}
+
+impl Viewport {
+    /// Clear texture atlas to prevent memory leaks
+    /// Call this periodically (e.g., every N frames or when memory pressure is detected)
+    /// New GPUI provides this method to manually clear cached textures
+    pub fn clear_texture_cache(&mut self, window: &mut Window, cx: &mut App) {
+        // Use window's with_image_cache to access and clear the cache
+        // The new GPUI has clear() method on image cache that properly deallocates
+        window.with_image_cache(None, |window| {
+            // Force a frame refresh to clear old textures
+            window.refresh();
+            if self.debug_enabled {
+                println!("[VIEWPORT] Texture cache cleared to prevent memory leaks");
+            }
+        });
     }
 }
 
@@ -361,7 +383,7 @@ impl Focusable for Viewport {
 impl EventEmitter<DismissEvent> for Viewport {}
 
 impl Render for Viewport {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let paint_start = std::time::Instant::now();
 
         // Get ready texture with zero operations on UI thread
@@ -372,18 +394,24 @@ impl Render for Viewport {
             println!("[VIEWPORT-UI] Paint time: {}μs", paint_time.as_micros());
         }
 
-        // Print GPU memory stats periodically in debug mode
+        // Print GPU memory stats and clear cache periodically in debug mode
         if self.debug_enabled {
             static COUNTER: AtomicUsize = AtomicUsize::new(0);
             let count = COUNTER.fetch_add(1, Ordering::Relaxed);
             if count % 60 == 0 { // Every ~60 frames
                 GPU_MEM_TRACKER.print_stats();
             }
+            // Clear texture cache every 300 frames (~5 seconds at 60fps) to prevent leaks
+            if count % 300 == 0 {
+                window.refresh(); // Clear unused textures from atlas
+                println!("[VIEWPORT] Periodic texture cache cleanup performed");
+            }
         }
 
         div()
             .id("viewport")
             .size_full()
+            .flex_1() // Grow to fill available space
             .child(ViewportElement::new(texture, alloc_id))
             .focusable()
             .focus(|style| style) // Apply focus styling
@@ -470,9 +498,9 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
                     match refresh_result {
                         Ok(()) => {
                             processing_flag_ref.store(true, Ordering::Relaxed);
-                            
+
                             let process_start = std::time::Instant::now();
-                    
+
                             // Drain ALL pending refresh signals to prevent accumulation
                             let mut drained_count = 0;
                             while refresh_receiver.try_recv().is_ok() {

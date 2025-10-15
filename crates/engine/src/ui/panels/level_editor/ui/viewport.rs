@@ -37,15 +37,18 @@ impl ViewportPanel {
     {
         let mut viewport_div = div()
             .size_full()
+            .flex() // Enable flexbox
+            .flex_col() // Column direction
             .relative()
             .bg(cx.theme().muted.opacity(0.2))
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
             .child(
-                // Main viewport
+                // Main viewport - should grow to fill space
                 div()
                     .size_full()
+                    .flex_1() // Grow to fill available space
                     .child(self.viewport.clone())
             )
             .child(
