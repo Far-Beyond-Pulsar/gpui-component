@@ -88,10 +88,11 @@ jobs:
             bin_path: target/i686-pc-windows-msvc/release
             asset_name: -windows-i686.exe
             extension: .exe
-          - os: windows-latest
+          - os: macos-latest
             target: aarch64-pc-windows-msvc
             bin_path: target/aarch64-pc-windows-msvc/release
             asset_name: -windows-arm64.exe
+          - os: windows-latest
             extension: .exe
           - os: macos-latest
             target: aarch64-apple-darwin
