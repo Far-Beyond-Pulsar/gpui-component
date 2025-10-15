@@ -20,6 +20,9 @@ pub struct LevelEditorState {
     pub show_lighting: bool,
     pub show_grid: bool,
     pub show_performance_overlay: bool,
+    pub show_viewport_controls: bool,
+    pub show_camera_mode_selector: bool,
+    pub show_viewport_options: bool,
     /// Scene objects (simplified for now)
     pub scene_objects: Vec<SceneObject>,
     /// Expanded state for hierarchy items
@@ -80,6 +83,9 @@ impl Default for LevelEditorState {
             show_lighting: true,
             show_grid: true,
             show_performance_overlay: true,
+            show_viewport_controls: true,
+            show_camera_mode_selector: true,
+            show_viewport_options: true,
             scene_objects: Self::create_default_scene(),
             expanded_objects: HashSet::new(),
         }
@@ -268,6 +274,18 @@ impl LevelEditorState {
 
     pub fn toggle_performance_overlay(&mut self) {
         self.show_performance_overlay = !self.show_performance_overlay;
+    }
+
+    pub fn toggle_viewport_controls(&mut self) {
+        self.show_viewport_controls = !self.show_viewport_controls;
+    }
+
+    pub fn toggle_camera_mode_selector(&mut self) {
+        self.show_camera_mode_selector = !self.show_camera_mode_selector;
+    }
+
+    pub fn toggle_viewport_options(&mut self) {
+        self.show_viewport_options = !self.show_viewport_options;
     }
 }
 

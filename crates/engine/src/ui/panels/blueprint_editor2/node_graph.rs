@@ -2,7 +2,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui::prelude::*;
 use gpui_component::{Colorize, PixelsExt};
-use gpui_component::{button::Button, h_flex, v_flex, ActiveTheme as _, IconName, StyledExt, tooltip::Tooltip};
+use gpui_component::{button::{Button, ButtonVariants}, h_flex, v_flex, ActiveTheme as _, IconName, Sizable, StyledExt, tooltip::Tooltip};
 
 use super::panel::BlueprintEditorPanel;
 use super::{BlueprintNode, BlueprintGraph, Pin, PinType, NodeType, Connection, VirtualizationStats};
@@ -85,9 +85,15 @@ impl NodeGraphRenderer {
             .child(Self::render_connections(panel, cx))
             .child(Self::render_selection_box(panel, cx))
             .child(Self::render_viewport_bounds_debug(panel, cx))
-            .child(Self::render_debug_overlay(panel, cx))
-            .child(Self::render_graph_controls(panel, cx))
-            .child(super::minimap::MinimapRenderer::render(panel, cx))
+            .when(panel.show_debug_overlay, |this| {
+                this.child(Self::render_debug_overlay(panel, cx))
+            })
+            .when(panel.show_graph_controls, |this| {
+                this.child(Self::render_graph_controls(panel, cx))
+            })
+            .when(panel.show_minimap, |this| {
+                this.child(super::minimap::MinimapRenderer::render(panel, cx))
+            })
             .on_mouse_down(
                 gpui::MouseButton::Right,
                 cx.listener(|panel, event: &MouseDownEvent, _window, cx| {
@@ -1605,8 +1611,10 @@ impl NodeGraphRenderer {
             .absolute()
             .top_4()
             .left_4()
+            .w(px(280.0)) // Hardcoded width to prevent inheritance issues
             .child(
                 div()
+                    .w(px(280.0)) // Fixed width for compactness
                     .p_3()
                     .bg(cx.theme().background.opacity(0.95))
                     .rounded(cx.theme().radius)
@@ -1617,11 +1625,27 @@ impl NodeGraphRenderer {
                         v_flex()
                             .gap_1()
                             .child(
-                                div()
-                                    .text_sm()
-                                    .font_bold()
-                                    .text_color(cx.theme().accent)
-                                    .child("Blueprint Viewport Debug"),
+                                h_flex()
+                                    .w_full()
+                                    .justify_between()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .font_bold()
+                                            .text_color(cx.theme().accent)
+                                            .child("Blueprint Viewport Debug"),
+                                    )
+                                    .child(
+                                        Button::new("close_debug_overlay")
+                                            .icon(IconName::X)
+                                            .ghost()
+                                            .xsmall()
+                                            .on_click(cx.listener(|panel, _, _, cx| {
+                                                panel.show_debug_overlay = false;
+                                                cx.notify();
+                                            }))
+                                    )
                             )
                             .child(div().h(px(1.0)).bg(cx.theme().border).my_1())
                             .child(div().text_xs().text_color(cx.theme().info).child(format!(
@@ -1725,38 +1749,61 @@ impl NodeGraphRenderer {
         panel: &BlueprintEditorPanel,
         cx: &mut Context<BlueprintEditorPanel>,
     ) -> impl IntoElement {
-        div().absolute().bottom_4().right_4().child(
-            v_flex()
-                .gap_2()
-                .items_end()
-                // Simplified controls since we have comprehensive debug overlay in top-left
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .p_2()
-                        .bg(cx.theme().background.opacity(0.9))
-                        .rounded(cx.theme().radius)
-                        .border_1()
-                        .border_color(cx.theme().border)
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(format!("Zoom: {:.0}%", panel.graph.zoom_level * 100.0)),
-                        )
-                        .child(
-                            Button::new("zoom_fit")
-                                .icon(IconName::BadgeCheck)
-                                .tooltip("Fit to View")
-                                .on_click(cx.listener(|panel, _, _window, cx| {
-                                    let graph = panel.get_graph_mut();
-                                    graph.zoom_level = 1.0;
-                                    graph.pan_offset = Point::new(0.0, 0.0);
-                                    cx.notify();
-                                })),
-                        ),
-                ),
-        )
+        div()
+            .absolute()
+            .bottom_4()
+            .right_4()
+            .w(px(280.0)) // Hardcoded width to prevent inheritance issues
+            .child(
+                v_flex()
+                    .gap_2()
+                    .items_end()
+                    .w(px(280.0)) // Hardcoded width
+                    // Simplified controls since we have comprehensive debug overlay in top-left
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .p_2()
+                            .w_full()
+                            .bg(cx.theme().background.opacity(0.9))
+                            .rounded(cx.theme().radius)
+                            .border_1()
+                            .border_color(cx.theme().border)
+                            .justify_between()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!("Zoom: {:.0}%", panel.graph.zoom_level * 100.0)),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .child(
+                                        Button::new("zoom_fit")
+                                            .icon(IconName::BadgeCheck)
+                                            .tooltip("Fit to View")
+                                            .on_click(cx.listener(|panel, _, _window, cx| {
+                                                let graph = panel.get_graph_mut();
+                                                graph.zoom_level = 1.0;
+                                                graph.pan_offset = Point::new(0.0, 0.0);
+                                                cx.notify();
+                                            }))
+                                    )
+                                    .child(
+                                        Button::new("close_graph_controls")
+                                            .icon(IconName::X)
+                                            .ghost()
+                                            .xsmall()
+                                            .on_click(cx.listener(|panel, _, _, cx| {
+                                                panel.show_graph_controls = false;
+                                                cx.notify();
+                                            }))
+                                    )
+                            )
+                    )
+            )
     }
 
     // Virtualization helper functions using viewport-aware culling

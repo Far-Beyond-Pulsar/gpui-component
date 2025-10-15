@@ -1,4 +1,5 @@
 use gpui::*;
+use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::{Button, ButtonVariants as _}, h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
 };
@@ -53,30 +54,39 @@ impl ViewportPanel {
                     .size_full() // Take full size
                     .child(self.viewport.clone())
             )
-            .child(
-                // Viewport controls overlay (top-right)
-                div()
-                    .absolute()
-                    .top_4()
-                    .right_4()
-                    .child(self.viewport_controls.render(cx))
-            )
-            .child(
-                // Camera mode selector (bottom-left)
-                div()
-                    .absolute()
-                    .bottom_4()
-                    .left_4()
-                    .child(Self::render_camera_mode_selector(state.camera_mode, cx))
-            )
-            .child(
-                // Grid and rendering options (top-left)
-                div()
-                    .absolute()
-                    .top_4()
-                    .left_4()
-                    .child(Self::render_viewport_options(state, cx))
-            );
+            .when(state.show_viewport_controls, |viewport_div| {
+                viewport_div.child(
+                    // Viewport controls overlay (top-right)
+                    div()
+                        .absolute()
+                        .top_4()
+                        .right_4()
+                        .w(px(200.0)) // Hardcoded width to prevent inheritance issues
+                        .child(Self::render_viewport_controls_overlay(cx))
+                )
+            })
+            .when(state.show_camera_mode_selector, |viewport_div| {
+                viewport_div.child(
+                    // Camera mode selector (bottom-left)
+                    div()
+                        .absolute()
+                        .bottom_4()
+                        .left_4()
+                        .w(px(320.0)) // Hardcoded width to prevent inheritance issues
+                        .child(Self::render_camera_mode_selector(state.camera_mode, cx))
+                )
+            })
+            .when(state.show_viewport_options, |viewport_div| {
+                viewport_div.child(
+                    // Grid and rendering options (top-left)
+                    div()
+                        .absolute()
+                        .top_4()
+                        .left_4()
+                        .w(px(400.0)) // Hardcoded width to prevent inheritance issues
+                        .child(Self::render_viewport_options(state, cx))
+                )
+            });
 
         if state.show_performance_overlay {
             viewport_div = viewport_div.child(
@@ -85,6 +95,7 @@ impl ViewportPanel {
                     .absolute()
                     .bottom_4()
                     .right_4()
+                    .w(px(280.0)) // Hardcoded width to prevent inheritance issues
                     .child(self.render_performance_overlay(render_engine, current_pattern, cx))
             );
         }
@@ -99,53 +110,69 @@ impl ViewportPanel {
         h_flex()
             .gap_1()
             .p_1()
+            .w_full()
             .bg(cx.theme().background.opacity(0.9))
             .rounded(cx.theme().radius)
             .border_1()
             .border_color(cx.theme().border)
+            .justify_between()
+            .items_center()
             .child(
-                Button::new("camera_perspective")
-                    .child("Persp")
-                    .xsmall()
-                    .selected(matches!(camera_mode, CameraMode::Perspective))
-                    .on_click(cx.listener(|_, _, _, cx| {
-                        cx.dispatch_action(&PerspectiveView);
-                    }))
+                h_flex()
+                    .gap_1()
+                    .child(
+                        Button::new("camera_perspective")
+                            .child("Persp")
+                            .xsmall()
+                            .selected(matches!(camera_mode, CameraMode::Perspective))
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.dispatch_action(&PerspectiveView);
+                            }))
+                    )
+                    .child(
+                        Button::new("camera_orthographic")
+                            .child("Ortho")
+                            .xsmall()
+                            .selected(matches!(camera_mode, CameraMode::Orthographic))
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.dispatch_action(&OrthographicView);
+                            }))
+                    )
+                    .child(
+                        Button::new("camera_top")
+                            .child("Top")
+                            .xsmall()
+                            .selected(matches!(camera_mode, CameraMode::Top))
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.dispatch_action(&TopView);
+                            }))
+                    )
+                    .child(
+                        Button::new("camera_front")
+                            .child("Front")
+                            .xsmall()
+                            .selected(matches!(camera_mode, CameraMode::Front))
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.dispatch_action(&FrontView);
+                            }))
+                    )
+                    .child(
+                        Button::new("camera_side")
+                            .child("Side")
+                            .xsmall()
+                            .selected(matches!(camera_mode, CameraMode::Side))
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.dispatch_action(&SideView);
+                            }))
+                    )
             )
             .child(
-                Button::new("camera_orthographic")
-                    .child("Ortho")
+                Button::new("close_camera_mode")
+                    .icon(IconName::X)
+                    .ghost()
                     .xsmall()
-                    .selected(matches!(camera_mode, CameraMode::Orthographic))
                     .on_click(cx.listener(|_, _, _, cx| {
-                        cx.dispatch_action(&OrthographicView);
-                    }))
-            )
-            .child(
-                Button::new("camera_top")
-                    .child("Top")
-                    .xsmall()
-                    .selected(matches!(camera_mode, CameraMode::Top))
-                    .on_click(cx.listener(|_, _, _, cx| {
-                        cx.dispatch_action(&TopView);
-                    }))
-            )
-            .child(
-                Button::new("camera_front")
-                    .child("Front")
-                    .xsmall()
-                    .selected(matches!(camera_mode, CameraMode::Front))
-                    .on_click(cx.listener(|_, _, _, cx| {
-                        cx.dispatch_action(&FrontView);
-                    }))
-            )
-            .child(
-                Button::new("camera_side")
-                    .child("Side")
-                    .xsmall()
-                    .selected(matches!(camera_mode, CameraMode::Side))
-                    .on_click(cx.listener(|_, _, _, cx| {
-                        cx.dispatch_action(&SideView);
+                        cx.dispatch_action(&ToggleCameraModeSelector);
                     }))
             )
     }
@@ -157,44 +184,107 @@ impl ViewportPanel {
         h_flex()
             .gap_1()
             .p_1()
+            .w_full()
             .bg(cx.theme().background.opacity(0.9))
             .rounded(cx.theme().radius)
             .border_1()
             .border_color(cx.theme().border)
+            .justify_between()
+            .items_center()
             .child(
-                Button::new("toggle_grid")
-                    .child("Grid")
-                    .xsmall()
-                    .selected(state.show_grid)
-                    .on_click(cx.listener(|_, _, _, cx| {
-                        cx.dispatch_action(&ToggleGrid);
-                    }))
+                h_flex()
+                    .gap_1()
+                    .child(
+                        Button::new("toggle_grid")
+                            .child("Grid")
+                            .xsmall()
+                            .selected(state.show_grid)
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.dispatch_action(&ToggleGrid);
+                            }))
+                    )
+                    .child(
+                        Button::new("toggle_wireframe")
+                            .child("Wireframe")
+                            .xsmall()
+                            .selected(state.show_wireframe)
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.dispatch_action(&ToggleWireframe);
+                            }))
+                    )
+                    .child(
+                        Button::new("toggle_lighting")
+                            .child("Lighting")
+                            .xsmall()
+                            .selected(state.show_lighting)
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.dispatch_action(&ToggleLighting);
+                            }))
+                    )
+                    .child(
+                        Button::new("toggle_performance")
+                            .child("Stats")
+                            .xsmall()
+                            .selected(state.show_performance_overlay)
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.dispatch_action(&TogglePerformanceOverlay);
+                            }))
+                    )
             )
             .child(
-                Button::new("toggle_wireframe")
-                    .child("Wireframe")
+                Button::new("close_viewport_options")
+                    .icon(IconName::X)
+                    .ghost()
                     .xsmall()
-                    .selected(state.show_wireframe)
                     .on_click(cx.listener(|_, _, _, cx| {
-                        cx.dispatch_action(&ToggleWireframe);
+                        cx.dispatch_action(&ToggleViewportOptions);
                     }))
             )
+    }
+
+    fn render_viewport_controls_overlay<V: 'static>(cx: &mut Context<V>) -> impl IntoElement
+    where
+        V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
+    {
+        h_flex()
+            .gap_2()
+            .p_2()
+            .w_full()
+            .bg(cx.theme().background.opacity(0.9))
+            .rounded(cx.theme().radius)
+            .border_1()
+            .border_color(cx.theme().border)
+            .justify_between()
+            .items_center()
             .child(
-                Button::new("toggle_lighting")
-                    .child("Lighting")
-                    .xsmall()
-                    .selected(state.show_lighting)
-                    .on_click(cx.listener(|_, _, _, cx| {
-                        cx.dispatch_action(&ToggleLighting);
-                    }))
+                h_flex()
+                    .gap_2()
+                    .child(
+                        Button::new("grid")
+                            .icon(IconName::LayoutDashboard)
+                            .tooltip("Toggle Grid")
+                            .xsmall()
+                    )
+                    .child(
+                        Button::new("axes")
+                            .icon(IconName::Axes)
+                            .tooltip("Toggle Axes")
+                            .xsmall()
+                    )
+                    .child(
+                        Button::new("perspective")
+                            .icon(IconName::Cube)
+                            .tooltip("Toggle Perspective")
+                            .xsmall()
+                    )
             )
             .child(
-                Button::new("toggle_performance")
-                    .child("Stats")
+                Button::new("close_viewport_controls")
+                    .icon(IconName::X)
+                    .ghost()
                     .xsmall()
-                    .selected(state.show_performance_overlay)
                     .on_click(cx.listener(|_, _, _, cx| {
-                        cx.dispatch_action(&TogglePerformanceOverlay);
+                        cx.dispatch_action(&ToggleViewportControls);
                     }))
             )
     }
@@ -220,37 +310,53 @@ impl ViewportPanel {
         h_flex()
             .gap_2()
             .p_1()
+            .w_full()
             .items_center()
+            .justify_between()
             .bg(cx.theme().background.opacity(0.9))
             .rounded(cx.theme().radius)
             .border_1()
             .border_color(cx.theme().border)
             .child(
-                div()
-                    .text_xs()
-                    .font_semibold()
-                    .text_color(if engine_fps > 200.0 {
-                        cx.theme().success
-                    } else if engine_fps > 120.0 {
-                        cx.theme().warning
-                    } else {
-                        cx.theme().muted_foreground
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_semibold()
+                            .text_color(if engine_fps > 200.0 {
+                                cx.theme().success
+                            } else if engine_fps > 120.0 {
+                                cx.theme().warning
+                            } else {
+                                cx.theme().muted_foreground
+                            })
+                            .child(format!("{:.0} FPS", engine_fps))
+                    )
+                    .child({
+                        let enabled = self.render_enabled.clone();
+                        Button::new("toggle_render")
+                            .child(if self.render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
+                                "⏸"
+                            } else {
+                                "▶"
+                            })
+                            .xsmall()
+                            .on_click(move |_event, _window, _cx| {
+                                let current = enabled.load(std::sync::atomic::Ordering::Relaxed);
+                                enabled.store(!current, std::sync::atomic::Ordering::Relaxed);
+                            })
                     })
-                    .child(format!("{:.0} FPS", engine_fps))
             )
-            .child({
-                let enabled = self.render_enabled.clone();
-                Button::new("toggle_render")
-                    .child(if self.render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
-                        "⏸"
-                    } else {
-                        "▶"
-                    })
+            .child(
+                Button::new("close_performance")
+                    .icon(IconName::X)
+                    .ghost()
                     .xsmall()
-                    .on_click(move |_event, _window, _cx| {
-                        let current = enabled.load(std::sync::atomic::Ordering::Relaxed);
-                        enabled.store(!current, std::sync::atomic::Ordering::Relaxed);
-                    })
-            })
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        cx.dispatch_action(&TogglePerformanceOverlay);
+                    }))
+            )
     }
 }

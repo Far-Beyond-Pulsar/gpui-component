@@ -183,27 +183,34 @@ impl ViewportControls {
         h_flex()
             .gap_2()
             .p_2()
+            .w(px(200.0)) // Hardcoded width to prevent inheritance issues
             .bg(cx.theme().background.opacity(0.9))
             .rounded(cx.theme().radius)
             .border_1()
             .border_color(cx.theme().border)
+            .justify_between()
+            .items_center()
             .child(
-                Button::new("grid")
-                    .icon(IconName::LayoutDashboard)
-                    .tooltip("Toggle Grid")
-                    .selected(self.show_grid)
-            )
-            .child(
-                Button::new("axes")
-                    .icon(IconName::Axes)
-                    .tooltip("Toggle Axes")
-                    .selected(self.show_axes)
-            )
-            .child(
-                Button::new("perspective")
-                    .icon(IconName::Cube)
-                    .tooltip("Toggle Perspective")
-                    .selected(self.perspective_mode)
+                h_flex()
+                    .gap_2()
+                    .child(
+                        Button::new("grid")
+                            .icon(IconName::LayoutDashboard)
+                            .tooltip("Toggle Grid")
+                            .selected(self.show_grid)
+                    )
+                    .child(
+                        Button::new("axes")
+                            .icon(IconName::Axes)
+                            .tooltip("Toggle Axes")
+                            .selected(self.show_axes)
+                    )
+                    .child(
+                        Button::new("perspective")
+                            .icon(IconName::Cube)
+                            .tooltip("Toggle Perspective")
+                            .selected(self.perspective_mode)
+                    )
             )
     }
 }

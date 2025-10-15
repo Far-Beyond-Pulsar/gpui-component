@@ -33,6 +33,9 @@ actions!(
         ToggleWireframe,
         ToggleLighting,
         TogglePerformanceOverlay,
+        ToggleViewportControls,
+        ToggleCameraModeSelector,
+        ToggleViewportOptions,
 
         // Camera modes
         PerspectiveView,

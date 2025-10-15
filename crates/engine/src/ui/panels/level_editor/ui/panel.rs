@@ -284,6 +284,21 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
+    fn on_toggle_viewport_controls(&mut self, _: &ToggleViewportControls, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_viewport_controls();
+        cx.notify();
+    }
+
+    fn on_toggle_camera_mode_selector(&mut self, _: &ToggleCameraModeSelector, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_camera_mode_selector();
+        cx.notify();
+    }
+
+    fn on_toggle_viewport_options(&mut self, _: &ToggleViewportOptions, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_viewport_options();
+        cx.notify();
+    }
+
     fn on_perspective_view(&mut self, _: &PerspectiveView, _: &mut Window, cx: &mut Context<Self>) {
         self.state.set_camera_mode(CameraMode::Perspective);
         cx.notify();
@@ -372,6 +387,9 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_toggle_wireframe))
             .on_action(cx.listener(Self::on_toggle_lighting))
             .on_action(cx.listener(Self::on_toggle_performance_overlay))
+            .on_action(cx.listener(Self::on_toggle_viewport_controls))
+            .on_action(cx.listener(Self::on_toggle_camera_mode_selector))
+            .on_action(cx.listener(Self::on_toggle_viewport_options))
             // Camera modes
             .on_action(cx.listener(Self::on_perspective_view))
             .on_action(cx.listener(Self::on_orthographic_view))

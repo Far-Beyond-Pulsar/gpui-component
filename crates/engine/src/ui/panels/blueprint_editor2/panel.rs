@@ -108,6 +108,10 @@ pub struct BlueprintEditorPanel {
     // Tab system - flat navigation like Unreal
     pub open_tabs: Vec<GraphTab>,
     pub active_tab_index: usize,
+    // Overlay visibility toggles
+    pub show_debug_overlay: bool,
+    pub show_minimap: bool,
+    pub show_graph_controls: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -503,6 +507,9 @@ impl BlueprintEditorPanel {
                 library_id: None,
             }],
             active_tab_index: 0,
+            show_debug_overlay: true,
+            show_minimap: true,
+            show_graph_controls: true,
         };
 
         result
