@@ -26,10 +26,8 @@ nalgebra = { version = "0.32", features = ["serde-serialize"] }
 bevy = { version = "0.17.2", default-features = false, features = [
     "bevy_render",
     "bevy_core_pipeline",
-    "bevy_pbr",
     "bevy_asset",
     "bevy_winit",
-    "bevy_scene",
     "x11",
     "wayland",
 ] }

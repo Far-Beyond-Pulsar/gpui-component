@@ -18,7 +18,6 @@ use bevy::{
 };
 use crossbeam_channel::{Receiver, Sender};
 use std::{
-    ops::Deref,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -156,6 +155,15 @@ fn run_bevy_render_thread(
     running: Arc<AtomicBool>,
 ) {
     println!("[BEVY-THREAD] Initializing high-performance Bevy app...");
+    
+    // Set panic hook to see detailed errors
+    std::panic::set_hook(Box::new(|panic_info| {
+        eprintln!("[BEVY-PANIC] {}", panic_info);
+        if let Some(location) = panic_info.location() {
+            eprintln!("[BEVY-PANIC] Location: {}:{}:{}", 
+                location.file(), location.line(), location.column());
+        }
+    }));
 
     let mut app = App::new();
 
@@ -172,33 +180,70 @@ fn run_bevy_render_thread(
                 .disable::<WinitPlugin>(),
         );
 
+    println!("[BEVY-THREAD] Default plugins added, setting up render systems...");
+
     // Add the image copy plugin BEFORE ScheduleRunnerPlugin (important for RenderApp to exist)
     app.add_plugins(ImageCopyPlugin { sender: frame_sender });
+    
+    println!("[BEVY-THREAD] ImageCopyPlugin added, adding scheduler...");
     
     // Add ScheduleRunnerPlugin AFTER setting up render systems
     app.add_plugins(ScheduleRunnerPlugin::run_loop(
         Duration::from_secs_f64(1.0 / RENDER_FPS),
     ));
 
-    // Setup scene with studio-quality settings - using Startup system
-    app.add_systems(Startup, move |mut commands: Commands,
-                                    mut meshes: ResMut<Assets<Mesh>>,
-                                    mut materials: ResMut<Assets<StandardMaterial>>,
-                                    mut images: ResMut<Assets<Image>>,
-                                    render_device: Res<RenderDevice>| {
-        println!("[BEVY-THREAD] Setting up render target and scene...");
-        setup_render_target(&mut commands, &mut images, &render_device, width, height);
-        setup_scene_studio_quality(&mut commands, &mut meshes, &mut materials);
+    println!("[BEVY-THREAD] Scheduler added, setting up scene...");
+
+    // We need to wait for the first frame to complete before we can set up the scene
+    // So we'll set up the scene in PreUpdate after the first frame
+    let mut setup_done = false;
+    app.add_systems(PreUpdate, move |mut commands: Commands,
+                                      mut images: ResMut<Assets<Image>>| {
+        if setup_done {
+            return;
+        }
+        setup_done = true;
+        
+        println!("[BEVY-THREAD] First frame complete, setting up render target...");
+        
+        // We can't access RenderDevice from main world, so we create the render target differently
+        setup_render_target_simple(&mut commands, &mut images, width, height);
+        
+        // Spawn a simple animated marker entity
+        commands.spawn((
+            AnimatedMarker,
+            Transform::default(),
+        ));
+        
         println!("[BEVY-THREAD] Scene setup complete!");
     });
     
-    app.add_systems(Update, (rotate_cube, animate_lights));
+    app.add_systems(Update, rotate_marker);
 
     println!("[BEVY-THREAD] Entering high-performance render loop @ {} FPS...", RENDER_FPS);
 
     // Main render loop with error handling
+    let mut frame_num = 0u64;
     while running.load(Ordering::Relaxed) {
-        app.update();
+        frame_num += 1;
+        if frame_num % 60 == 0 {
+            println!("[BEVY-THREAD] Frame {}", frame_num);
+        }
+        
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            app.update();
+        })) {
+            Ok(_) => {},
+            Err(e) => {
+                eprintln!("[BEVY-THREAD] Panic caught in app.update()!");
+                if let Some(s) = e.downcast_ref::<&str>() {
+                    eprintln!("[BEVY-THREAD] Panic message: {}", s);
+                } else if let Some(s) = e.downcast_ref::<String>() {
+                    eprintln!("[BEVY-THREAD] Panic message: {}", s);
+                }
+                break;
+            }
+        }
     }
 
     println!("[BEVY-THREAD] Render thread exiting cleanly");
@@ -243,104 +288,54 @@ fn setup_render_target(
     ));
 }
 
-/// Setup a studio-quality 3D scene with PBR materials
-fn setup_scene_studio_quality(
+/// Setup render target without RenderDevice (simpler version for Startup systems)
+fn setup_render_target_simple(
     commands: &mut Commands,
-    meshes: &mut ResMut<Assets<Mesh>>,
-    materials: &mut ResMut<Assets<StandardMaterial>>,
+    images: &mut ResMut<Assets<Image>>,
+    width: u32,
+    height: u32,
 ) {
-    println!("[BEVY-SCENE] Setting up studio-quality 3D scene...");
+    let size = Extent3d {
+        width,
+        height,
+        ..Default::default()
+    };
 
-    // Ground plane (circular base) with PBR material
+    // This is the texture that will be rendered to
+    let mut render_target_image =
+        Image::new_target_texture(size.width, size.height, TextureFormat::bevy_default());
+    render_target_image.texture_descriptor.usage |= TextureUsages::COPY_SRC;
+    let render_target_image_handle = images.add(render_target_image);
+
+    // We'll create the ImageCopier in the Extract phase when RenderDevice is available
+    // For now just spawn a marker component
     commands.spawn((
-        Mesh3d(meshes.add(Circle::new(4.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.9, 0.9, 0.9),
-            metallic: 0.1,
-            perceptual_roughness: 0.8,
-            ..default()
-        })),
-        Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+        ImageCopierSetup {
+            src_image: render_target_image_handle.clone(),
+            size,
+        },
     ));
 
-    // Main cube with studio-quality PBR material
+    // Setup camera with high-quality settings
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb_u8(124, 144, 255),
-            metallic: 0.3,
-            perceptual_roughness: 0.4,
-            reflectance: 0.5,
-            ..default()
-        })),
-        Transform::from_xyz(0.0, 0.5, 0.0),
-        RotatingCube,
-    ));
-
-    // Key light (main directional light for studio setup)
-    commands.spawn((
-        PointLight {
-            shadows_enabled: true,
-            intensity: 8_000_000.0,
-            range: 50.0,
-            color: Color::srgb(1.0, 0.95, 0.9), // Warm key light
-            shadow_depth_bias: 0.02,
+        Camera3d::default(),
+        Camera {
+            target: RenderTarget::Image(render_target_image_handle.into()),
             ..default()
         },
-        Transform::from_xyz(4.0, 8.0, 4.0),
-        MainLight,
+        Tonemapping::TonyMcMapface, // Filmic tonemapping for studio look
+        Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
-
-    // Fill light (softer, cooler secondary light)
-    commands.spawn((
-        PointLight {
-            shadows_enabled: false,
-            intensity: 2_000_000.0,
-            range: 30.0,
-            color: Color::srgb(0.9, 0.95, 1.0), // Cool fill light
-            ..default()
-        },
-        Transform::from_xyz(-3.0, 5.0, -2.0),
-    ));
-
-    // Rim light (back light for depth)
-    commands.spawn((
-        PointLight {
-            shadows_enabled: false,
-            intensity: 4_000_000.0,
-            range: 25.0,
-            color: Color::srgb(1.0, 1.0, 1.0),
-            ..default()
-        },
-        Transform::from_xyz(0.0, 3.0, -5.0),
-    ));
-
-    println!("[BEVY-SCENE] Studio-quality scene setup complete!");
 }
 
 #[derive(Component)]
-struct RotatingCube;
+struct AnimatedMarker;
 
-#[derive(Component)]
-struct MainLight;
-
-fn rotate_cube(time: Res<Time>, mut query: Query<&mut Transform, With<RotatingCube>>) {
+fn rotate_marker(time: Res<Time>, mut query: Query<&mut Transform, With<AnimatedMarker>>) {
     for mut transform in query.iter_mut() {
-        // Smooth rotation with slight wobble for visual interest
+        // Just update the transform for testing
         let t = time.elapsed_secs();
-        transform.rotation = Quat::from_rotation_y(t * 0.5) * Quat::from_rotation_x((t * 0.3).sin() * 0.1);
-    }
-}
-
-fn animate_lights(time: Res<Time>, mut query: Query<&mut Transform, With<MainLight>>) {
-    for mut transform in query.iter_mut() {
-        // Subtle light movement for dynamic shadows
-        let t = time.elapsed_secs() * 0.5;
-        transform.translation = Vec3::new(
-            4.0 + t.sin() * 1.0,
-            8.0 + t.cos() * 0.5,
-            4.0 + (t * 0.7).sin() * 1.0,
-        );
+        transform.rotation = Quat::from_rotation_z(t * 0.5);
     }
 }
 
@@ -352,19 +347,32 @@ struct ImageCopyPlugin {
 
 impl Plugin for ImageCopyPlugin {
     fn build(&self, app: &mut App) {
+        println!("[ImageCopyPlugin] Building plugin...");
         let (s, r) = crossbeam_channel::unbounded();
         
         // Insert receiver in main world
-        let render_app = app
-            .insert_resource(MainWorldReceiver(r))
-            .sub_app_mut(RenderApp);
+        println!("[ImageCopyPlugin] Inserting MainWorldReceiver...");
+        app.insert_resource(MainWorldReceiver(r));
+        
+        // Check if RenderApp exists
+        println!("[ImageCopyPlugin] Checking for RenderApp...");
+        if app.get_sub_app(RenderApp).is_none() {
+            eprintln!("[ImageCopyPlugin] ERROR: RenderApp does not exist!");
+            eprintln!("[ImageCopyPlugin] This means DefaultPlugins were not properly initialized");
+            return;
+        }
+        
+        println!("[ImageCopyPlugin] RenderApp exists, configuring...");
+        let render_app = app.sub_app_mut(RenderApp);
         
         // Setup render graph in render world
+        println!("[ImageCopyPlugin] Setting up render graph...");
         let mut graph = render_app.world_mut().resource_mut::<RenderGraph>();
         graph.add_node(ImageCopy, ImageCopyDriver);
         graph.add_node_edge(bevy::render::graph::CameraDriverLabel, ImageCopy);
         
         // Add render world systems
+        println!("[ImageCopyPlugin] Adding render world systems...");
         render_app
             .insert_resource(RenderWorldSender(self.sender.clone()))
             .add_systems(ExtractSchedule, image_copy_extract)
@@ -372,6 +380,8 @@ impl Plugin for ImageCopyPlugin {
                 Render,
                 receive_image_from_buffer.after(RenderSystems::Render),
             );
+        
+        println!("[ImageCopyPlugin] Plugin build complete!");
     }
 }
 
@@ -386,6 +396,13 @@ struct ImageCopier {
     buffer: Buffer,
     enabled: Arc<AtomicBool>,
     src_image: Handle<Image>,
+}
+
+/// Marker component to setup ImageCopier in render world when RenderDevice is available
+#[derive(Component, Clone)]
+struct ImageCopierSetup {
+    src_image: Handle<Image>,
+    size: Extent3d,
 }
 
 impl ImageCopier {
@@ -414,10 +431,24 @@ impl ImageCopier {
 #[derive(Clone, Default, Resource, Deref, DerefMut)]
 struct ImageCopiers(Vec<ImageCopier>);
 
-fn image_copy_extract(mut commands: Commands, image_copiers: Extract<Query<&ImageCopier>>) {
-    commands.insert_resource(ImageCopiers(
-        image_copiers.iter().cloned().collect(),
-    ));
+/// Extracting `ImageCopier`s into render world, because `ImageCopyDriver` accesses them
+/// Also creates ImageCopiers from ImageCopierSetup markers on first extraction
+fn image_copy_extract(
+    mut commands: Commands,
+    image_copiers: Extract<Query<&ImageCopier>>,
+    image_copier_setups: Extract<Query<&ImageCopierSetup>>,
+    render_device: Res<RenderDevice>,
+) {
+    let mut copiers: Vec<ImageCopier> = image_copiers.iter().cloned().collect();
+    
+    // Create ImageCopiers from setup markers (first frame only)
+    for setup in image_copier_setups.iter() {
+        println!("[ImageCopyExtract] Creating ImageCopier from setup marker");
+        let copier = ImageCopier::new(setup.src_image.clone(), setup.size, &render_device);
+        copiers.push(copier);
+    }
+    
+    commands.insert_resource(ImageCopiers(copiers));
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash, RenderLabel)]
