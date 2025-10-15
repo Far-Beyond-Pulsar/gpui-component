@@ -279,8 +279,7 @@ impl WgpuRenderer {
     }
 
     pub fn render(&mut self, framebuffer: &mut Framebuffer) {
-        println!("[WGPU-RENDERER] Starting render frame {}", self.frame_count);
-        
+\        
         self.frame_count += 1;
         self.time += 0.016; // ~60 FPS time step
 
@@ -299,8 +298,7 @@ impl WgpuRenderer {
         self.queue
             .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
 
-        println!("[WGPU-RENDERER] Uniforms updated");
-
+\
         // Create command encoder
         let mut encoder = self
             .device
@@ -356,29 +354,19 @@ impl WgpuRenderer {
             render_pass.draw_indexed(0..self.cube_num_indices, 0, 0..1);
         }
 
-        println!("[WGPU-RENDERER] Render pass complete");
-
         // Submit commands
         self.queue.submit(std::iter::once(encoder.finish()));
 
-        println!("[WGPU-RENDERER] Commands submitted");
-
         // Copy texture to framebuffer
         self.copy_texture_to_framebuffer(framebuffer);
-
-        println!("[WGPU-RENDERER] Frame complete");
     }
 
-    fn copy_texture_to_framebuffer(&self, framebuffer: &mut Framebuffer) {
-        println!("[WGPU-RENDERER] Copying texture to framebuffer...");
-        
+    fn copy_texture_to_framebuffer(&self, framebuffer: &mut Framebuffer) {        
         // WGPU requires bytes_per_row to be aligned to COPY_BYTES_PER_ROW_ALIGNMENT (256)
         let unpadded_bytes_per_row = 4 * self.width;
         let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
         let padded_bytes_per_row = ((unpadded_bytes_per_row + align - 1) / align) * align;
-        
-        println!("[WGPU-RENDERER] Unpadded bytes per row: {}, Padded: {}", unpadded_bytes_per_row, padded_bytes_per_row);
-        
+                
         // Create a buffer to copy the texture data to
         let buffer_size = (padded_bytes_per_row * self.height) as wgpu::BufferAddress;
         let output_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -418,25 +406,21 @@ impl WgpuRenderer {
 
         self.queue.submit(std::iter::once(encoder.finish()));
 
-        println!("[WGPU-RENDERER] Copy commands submitted, mapping buffer...");
-
+\
         // Map the buffer and copy to framebuffer
         let buffer_slice = output_buffer.slice(..);
         let (tx, rx) = std::sync::mpsc::channel();
         buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-            println!("[WGPU-RENDERER] Buffer map result: {:?}", result);
-            tx.send(result).unwrap();
+\            tx.send(result).unwrap();
         });
 
         self.device.poll(wgpu::Maintain::Wait);
         
         match rx.recv() {
             Ok(Ok(())) => {
-                println!("[WGPU-RENDERER] Buffer mapped successfully");
-                {
+\                {
                     let data = buffer_slice.get_mapped_range();
-                    println!("[WGPU-RENDERER] Got {} bytes from GPU", data.len());
-                    
+\                    
                     // Copy row by row, skipping padding
                     for y in 0..self.height as usize {
                         let src_offset = y * padded_bytes_per_row as usize;
@@ -447,16 +431,12 @@ impl WgpuRenderer {
                             .copy_from_slice(&data[src_offset..src_offset + row_bytes]);
                     }
                     
-                    println!("[WGPU-RENDERER] Copied {} rows to framebuffer", self.height);
                 }
                 output_buffer.unmap();
-                println!("[WGPU-RENDERER] Texture copy complete");
             }
             Ok(Err(e)) => {
-                println!("[WGPU-RENDERER] ERROR: Failed to map buffer: {:?}", e);
             }
             Err(e) => {
-                println!("[WGPU-RENDERER] ERROR: Failed to receive map result: {:?}", e);
             }
         }
     }
