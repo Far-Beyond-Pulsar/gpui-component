@@ -36,6 +36,7 @@ actions!(
         ToggleViewportControls,
         ToggleCameraModeSelector,
         ToggleViewportOptions,
+        Toggle3DRenderer,
 
         // Camera modes
         PerspectiveView,
