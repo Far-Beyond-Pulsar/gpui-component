@@ -23,9 +23,10 @@ pub struct BevyRenderer {
     frame_count: u64,
 }
 
-/// Update the Bevy app and render a frame
 impl BevyRenderer {
-    pub fn new(width: u32, height: u32) -> Self {
+    pub async fn new(width: u32, height: u32) -> Self {
+        println!("[BEVY-RENDERER] Initializing Bevy app {}x{}", width, height);
+        
         let mut app = App::new();
 
         // Add minimal Bevy plugins for headless rendering
@@ -41,6 +42,8 @@ impl BevyRenderer {
             ..default()
         }));
 
+        println!("[BEVY-RENDERER] Setting up 3D scene...");
+        
         // Setup the 3D scene
         app.add_systems(Startup, setup_scene);
         app.add_systems(Update, rotate_cube);
@@ -74,6 +77,8 @@ impl BevyRenderer {
         render_texture.resize(size);
         let render_texture_handle = images.add(render_texture);
 
+        println!("[BEVY-RENDERER] Bevy renderer initialized!");
+
         Self {
             app,
             render_texture_handle,
@@ -85,33 +90,35 @@ impl BevyRenderer {
 
     /// Update the Bevy app and render a frame
     pub fn render(&mut self, framebuffer: &mut Framebuffer) {
+        self.frame_count += 1;
+        
+        if self.frame_count % 60 == 0 {
+            println!("[BEVY-RENDERER] Frame {} - Updating Bevy app", self.frame_count);
+        }
+        
         // Update Bevy
         self.app.update();
-        self.frame_count += 1;
 
-        // TODO: Copy render texture to framebuffer
-        // For now, we'll need to extract the texture data from the GPU
-        // This requires accessing the render world and reading back the texture
-        
-        // Placeholder: Draw a simple pattern to show it's working
+        // TODO: Extract texture data from render world
+        // For now, render a placeholder showing Bevy is working
         self.render_placeholder(framebuffer);
     }
 
     fn render_placeholder(&self, framebuffer: &mut Framebuffer) {
-        // Temporary: render a pattern showing Bevy is integrated
+        // Render a distinct pattern showing this is Bevy
         let time = (self.frame_count as f32) * 0.016;
         
         for y in 0..framebuffer.height {
             for x in 0..framebuffer.width {
                 let idx = ((y * framebuffer.width + x) * 4) as usize;
                 
-                // Render a pattern that shows this is the Bevy renderer
                 let u = x as f32 / framebuffer.width as f32;
                 let v = y as f32 / framebuffer.height as f32;
                 
-                let r = ((u * 2.0 + time.sin()).sin() * 128.0 + 127.0) as u8;
-                let g = ((v * 2.0 + time.cos()).cos() * 128.0 + 127.0) as u8;
-                let b = (((u + v) + time * 0.5).sin() * 128.0 + 127.0) as u8;
+                // Bevy bird colors! (distinctive pattern)
+                let r = ((u * 3.0 + time).sin() * 100.0 + 155.0) as u8;
+                let g = ((v * 3.0 + time * 1.5).cos() * 100.0 + 155.0) as u8;
+                let b = (((u + v) * 3.0 + time * 0.8).sin() * 100.0 + 155.0) as u8;
                 
                 framebuffer.buffer[idx] = r;
                 framebuffer.buffer[idx + 1] = g;

@@ -279,7 +279,6 @@ impl WgpuRenderer {
     }
 
     pub fn render(&mut self, framebuffer: &mut Framebuffer) {
-\        
         self.frame_count += 1;
         self.time += 0.016; // ~60 FPS time step
 
@@ -298,7 +297,6 @@ impl WgpuRenderer {
         self.queue
             .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
 
-\
         // Create command encoder
         let mut encoder = self
             .device
@@ -406,21 +404,19 @@ impl WgpuRenderer {
 
         self.queue.submit(std::iter::once(encoder.finish()));
 
-\
         // Map the buffer and copy to framebuffer
         let buffer_slice = output_buffer.slice(..);
         let (tx, rx) = std::sync::mpsc::channel();
         buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-\            tx.send(result).unwrap();
+            tx.send(result).unwrap();
         });
 
         self.device.poll(wgpu::Maintain::Wait);
         
         match rx.recv() {
             Ok(Ok(())) => {
-\                {
+                {
                     let data = buffer_slice.get_mapped_range();
-\                    
                     // Copy row by row, skipping padding
                     for y in 0..self.height as usize {
                         let src_offset = y * padded_bytes_per_row as usize;
@@ -614,3 +610,4 @@ impl WgpuRenderer {
         }
     }
 }
+
