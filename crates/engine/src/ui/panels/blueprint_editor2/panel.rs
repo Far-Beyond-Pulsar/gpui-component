@@ -3673,8 +3673,8 @@ impl Render for BlueprintEditorPanel {
                         )
                         .child(
                             resizable_panel()
-                                .size(px(320.))
-                                .size_range(px(250.)..px(500.))
+                                .size(px(250.))  // Reduced from 320 to fit content better
+                                .size_range(px(200.)..px(400.))
                                 .child(super::properties::PropertiesRenderer::render(self, cx))
                         ),
                 ),

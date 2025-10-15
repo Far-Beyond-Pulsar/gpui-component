@@ -206,9 +206,9 @@ impl ViewportElement {
 
 impl Drop for ViewportElement {
     fn drop(&mut self) {
-        if let Some(id) = self.alloc_id {
-            GPU_MEM_TRACKER.track_deallocation(id);
-        }
+        // Don't track deallocation here - it's handled in update_texture_if_needed
+        // This Drop only runs when the element is destroyed, which happens after
+        // the texture has already been properly freed via cx.drop_image()
     }
 }
 
@@ -288,12 +288,28 @@ pub struct Viewport {
     shutdown_sender: Option<smol::channel::Sender<()>>,
     // Task handle for proper cleanup
     task_handle: Option<Task<()>>,
+    // Store previous texture to properly drop it
+    previous_texture: Option<(Arc<RenderImage>, usize)>,
 }
 
 impl Viewport {
     /// Updates GPU texture ONLY if needed - zero memory operations on UI thread
-    fn update_texture_if_needed(&mut self) -> (Option<Arc<RenderImage>>, Option<usize>) {
+    fn update_texture_if_needed(&mut self, window: &mut Window, cx: &mut Context<Self>) -> (Option<Arc<RenderImage>>, Option<usize>) {
         let ui_start = std::time::Instant::now();
+
+        // Drop previous texture if we have one - THIS IS CRITICAL FOR VRAM CLEANUP
+        if let Some((old_texture, old_alloc_id)) = self.previous_texture.take() {
+            if self.debug_enabled {
+                println!("[VIEWPORT-UI] Dropping previous texture #{} (ID:{}), freeing alloc #{}", 
+                    old_alloc_id, old_texture.id.0, old_alloc_id);
+            }
+            GPU_MEM_TRACKER.track_deallocation(old_alloc_id);
+            // Properly drop through GPUI to free VRAM - MUST pass window!
+            cx.drop_image(old_texture.clone(), Some(window));
+            if self.debug_enabled {
+                println!("[VIEWPORT-UI] cx.drop_image() called with window");
+            }
+        }
 
         // Try to get pre-made texture (zero-copy)
         let result = {
@@ -320,6 +336,11 @@ impl Viewport {
         let total_ui_time = ui_start.elapsed();
         if self.debug_enabled && total_ui_time.as_micros() > 100 {
             println!("[VIEWPORT-UI] Total UI time: {}μs", total_ui_time.as_micros());
+        }
+
+        // Store current texture as previous for next frame cleanup
+        if let Some(ref texture_pair) = result {
+            self.previous_texture = Some(texture_pair.clone());
         }
 
         match result {
@@ -383,11 +404,12 @@ impl Focusable for Viewport {
 impl EventEmitter<DismissEvent> for Viewport {}
 
 impl Render for Viewport {
-    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let paint_start = std::time::Instant::now();
 
         // Get ready texture with zero operations on UI thread
-        let (texture, alloc_id) = self.update_texture_if_needed();
+        // IMPORTANT: This now properly drops old textures via cx.drop_image()
+        let (texture, alloc_id) = self.update_texture_if_needed(window, cx);
 
         let paint_time = paint_start.elapsed();
         if self.debug_enabled && paint_time.as_micros() > 200 {
@@ -444,6 +466,7 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
         debug_enabled: cfg!(debug_assertions),
         shutdown_sender: Some(shutdown_sender),
         task_handle: None, // Will be set after spawning the task
+        previous_texture: None, // Initialize to None
     });
 
     let processing_flag = Arc::new(AtomicBool::new(false));
@@ -564,21 +587,17 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
                                 (texture, alloc_id)
                             };
 
-                            // Update the viewport entity and store texture + trigger re-render (like GPML canvas)
+                            // Update the viewport entity and store texture + trigger re-render
                             let update_result = viewport_entity.update(cx, |viewport, cx| {
                                 // Store completed texture in the viewport's shared_texture
-                                // Clear old texture before storing new one to prevent accumulation
+                                // DON'T drop old texture here - let UI thread handle it to avoid double-free
                                 {
                                     let mut shared = viewport.shared_texture.lock().unwrap();
-                                    if let Some((old_texture, old_alloc_id)) = shared.take() {
-                                        if debug_enabled {
-                                            println!("[VIEWPORT-BG] Replacing existing texture, freeing old alloc #{}", old_alloc_id);
-                                        }
-                                        // Old texture will be dropped here, triggering deallocation tracking
-                                        GPU_MEM_TRACKER.track_deallocation(old_alloc_id);
-                                        drop(old_texture);
-                                    }
+                                    // Just replace - UI thread will drop the old one on next frame
                                     *shared = Some(texture_result);
+                                    if debug_enabled && shared.is_some() {
+                                        println!("[VIEWPORT-BG] Stored new texture in shared, UI thread will handle cleanup");
+                                    }
                                 }
 
                                 // Viewport has new texture available, trigger re-render
