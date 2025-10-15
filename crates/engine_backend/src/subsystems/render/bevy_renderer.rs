@@ -22,6 +22,7 @@ use bevy::{
 };
 use crossbeam_channel::{Receiver, Sender};
 use std::{
+    ops::Deref,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -80,18 +81,35 @@ impl BevyRenderer {
             self.last_frame = Some(frame);
         }
         
-        // Copy latest frame to framebuffer
+        // Copy latest frame to framebuffer with alignment handling
         if let Some(ref frame_data) = self.last_frame {
-            if frame_data.len() == framebuffer.buffer.len() {
-                framebuffer.buffer.copy_from_slice(frame_data);
+            // Calculate expected sizes
+            let row_bytes = self.width as usize * 4;
+            let aligned_row_bytes = RenderDevice::align_copy_bytes_per_row(row_bytes);
+            let expected_size = aligned_row_bytes * self.height as usize;
+            
+            if frame_data.len() == expected_size {
+                // Handle row alignment - copy row by row, stripping padding
+                for y in 0..self.height as usize {
+                    let src_offset = y * aligned_row_bytes;
+                    let dst_offset = y * framebuffer.width as usize * 4;
+                    let copy_len = (self.width as usize * 4).min(framebuffer.width as usize * 4);
+                    
+                    if src_offset + row_bytes <= frame_data.len() 
+                        && dst_offset + copy_len <= framebuffer.buffer.len() {
+                        framebuffer.buffer[dst_offset..dst_offset + copy_len]
+                            .copy_from_slice(&frame_data[src_offset..src_offset + copy_len]);
+                    }
+                }
+                
                 if self.frame_count % 60 == 0 {
-                    println!("[BevyRenderer] Frame {} - copied {} bytes to framebuffer", 
-                             self.frame_count, frame_data.len());
+                    println!("[BevyRenderer] Frame {} - copied with alignment ({}x{} → {}x{})", 
+                             self.frame_count, self.width, self.height, framebuffer.width, framebuffer.height);
                 }
             } else {
                 if self.frame_count % 60 == 0 {
-                    println!("[BevyRenderer] Frame {} - size mismatch: {} vs {}", 
-                             self.frame_count, frame_data.len(), framebuffer.buffer.len());
+                    println!("[BevyRenderer] Frame {} - size mismatch: {} vs {} expected", 
+                             self.frame_count, frame_data.len(), expected_size);
                 }
             }
         } else {
