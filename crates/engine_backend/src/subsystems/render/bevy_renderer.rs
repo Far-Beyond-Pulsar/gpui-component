@@ -242,6 +242,7 @@ fn setup(
     ));
     
     // Left sphere (blue)
+    commands.spawn((
         Mesh3d(meshes.add(Sphere::new(0.5))),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: Color::srgb(0.3, 0.3, 1.0),
