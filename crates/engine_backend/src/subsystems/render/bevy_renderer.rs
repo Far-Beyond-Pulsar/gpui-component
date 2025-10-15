@@ -1,12 +1,7 @@
 use bevy::{
     app::ScheduleRunnerPlugin,
     camera::RenderTarget,
-    core_pipeline::{
-        tonemapping::Tonemapping,
-        bloom::Bloom,
-        fxaa::Fxaa,
-    },
-    pbr::{ScreenSpaceAmbientOcclusion, ScreenSpaceAmbientOcclusionQualityLevel},
+    core_pipeline::tonemapping::Tonemapping,
     prelude::*,
     render::{
         render_asset::RenderAssets,
@@ -230,7 +225,7 @@ fn setup_render_target(
         render_device,
     ));
 
-    // Setup camera with studio-quality post-processing
+    // Setup camera with high-quality settings
     commands.spawn((
         Camera3d::default(),
         Camera {
@@ -239,11 +234,6 @@ fn setup_render_target(
         },
         Tonemapping::TonyMcMapface, // Filmic tonemapping for studio look
         Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
-        Bloom {
-            intensity: 0.3,
-            ..default()
-        },
-        Fxaa::default(), // Anti-aliasing for smooth edges
     ));
 }
 
