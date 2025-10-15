@@ -31,12 +31,11 @@ pub struct GpuRenderer {
 
 impl GpuRenderer {
     pub fn new(display_width: u32, display_height: u32) -> Self {
-        // Render at 65% resolution for performance
-        let render_width = ((display_width as f32 * 0.65) as u32 / 2) * 2; // Round to nearest even
-        let render_height = ((display_height as f32 * 0.65) as u32 / 2) * 2;
+        // Render directly at viewport size - no downscaling
+        let width = display_width;
+        let height = display_height;
         
-        println!("[GPU-RENDERER] Initializing Bevy renderer at {}x{} (65% of {}x{})", 
-            render_width, render_height, display_width, display_height);
+        println!("[GPU-RENDERER] Initializing Bevy renderer at {}x{}", width, height);
         
         // Create renderer asynchronously with timeout
         let runtime = get_runtime();
@@ -44,7 +43,7 @@ impl GpuRenderer {
             println!("[GPU-RENDERER] Creating Bevy renderer asynchronously...");
             match tokio::time::timeout(
                 tokio::time::Duration::from_secs(10),
-                BevyRenderer::new(render_width, render_height)
+                BevyRenderer::new(width, height)
             ).await {
                 Ok(renderer) => {
                     println!("[GPU-RENDERER] Bevy renderer created successfully!");
@@ -63,9 +62,9 @@ impl GpuRenderer {
 
         Self {
             bevy_renderer,
-            temp_framebuffer: RenderFramebuffer::new(render_width, render_height),
-            render_width,
-            render_height,
+            temp_framebuffer: RenderFramebuffer::new(width, height),
+            render_width: width,
+            render_height: height,
             display_width,
             display_height,
             frame_count: 0,
@@ -77,18 +76,17 @@ impl GpuRenderer {
         self.frame_count += 1;
 
         if let Some(ref mut renderer) = self.bevy_renderer {
-            // Use Bevy renderer
+            // Use Bevy renderer - render directly to temp buffer at full viewport size
             if self.frame_count % 60 == 0 {
-                println!("[GPU-RENDERER] Frame {} - Using Bevy renderer ({}x{} → {}x{})", 
-                    self.frame_count, self.render_width, self.render_height,
-                    self.display_width, self.display_height);
+                println!("[GPU-RENDERER] Frame {} - Using Bevy renderer ({}x{})", 
+                    self.frame_count, self.render_width, self.render_height);
             }
 
-            // Render to our temp framebuffer at lower resolution
+            // Render directly at viewport resolution
             renderer.render(&mut self.temp_framebuffer);
 
-            // Scale up to display resolution
-            self.scale_to_framebuffer(framebuffer);
+            // Copy directly to framebuffer (no scaling needed)
+            self.copy_to_framebuffer(framebuffer);
             
             framebuffer.mark_dirty_all();
         } else {
@@ -101,25 +99,10 @@ impl GpuRenderer {
         }
     }
 
-    fn scale_to_framebuffer(&self, framebuffer: &mut ViewportFramebuffer) {
-        // Simple nearest-neighbor upscaling
-        let x_scale = self.display_width as f32 / self.render_width as f32;
-        let y_scale = self.display_height as f32 / self.render_height as f32;
-
-        for dy in 0..self.display_height {
-            for dx in 0..self.display_width {
-                let sx = (dx as f32 / x_scale) as u32;
-                let sy = (dy as f32 / y_scale) as u32;
-
-                let src_idx = ((sy * self.render_width + sx) * 4) as usize;
-                let dst_idx = ((dy * self.display_width + dx) * 4) as usize;
-
-                if src_idx + 3 < self.temp_framebuffer.buffer.len() && dst_idx + 3 < framebuffer.buffer.len() {
-                    framebuffer.buffer[dst_idx..dst_idx + 4]
-                        .copy_from_slice(&self.temp_framebuffer.buffer[src_idx..src_idx + 4]);
-                }
-            }
-        }
+    fn copy_to_framebuffer(&self, framebuffer: &mut ViewportFramebuffer) {
+        // Direct copy - both buffers should be the same size now
+        let copy_len = self.temp_framebuffer.buffer.len().min(framebuffer.buffer.len());
+        framebuffer.buffer[..copy_len].copy_from_slice(&self.temp_framebuffer.buffer[..copy_len]);
     }
 
     fn render_fallback(&self, framebuffer: &mut ViewportFramebuffer) {
@@ -162,23 +145,19 @@ impl GpuRenderer {
     }
 
     pub fn resize(&mut self, display_width: u32, display_height: u32) {
-        let render_width = ((display_width as f32 * 0.65) as u32 / 2) * 2;
-        let render_height = ((display_height as f32 * 0.65) as u32 / 2) * 2;
-        
-        if self.render_width != render_width || self.render_height != render_height {
-            self.render_width = render_width;
-            self.render_height = render_height;
+        if self.display_width != display_width || self.display_height != display_height {
+            self.render_width = display_width;
+            self.render_height = display_height;
             self.display_width = display_width;
             self.display_height = display_height;
-            self.temp_framebuffer.resize(render_width, render_height);
+            self.temp_framebuffer.resize(display_width, display_height);
             
-            println!("[GPU-RENDERER] Resizing to {}x{} (render) → {}x{} (display)", 
-                render_width, render_height, display_width, display_height);
+            println!("[GPU-RENDERER] Resizing to {}x{}", display_width, display_height);
             
             // Recreate Bevy renderer at new resolution
             let runtime = get_runtime();
             self.bevy_renderer = Some(runtime.block_on(async {
-                BevyRenderer::new(render_width, render_height).await
+                BevyRenderer::new(display_width, display_height).await
             }));
         }
     }
