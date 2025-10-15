@@ -39,7 +39,8 @@
       "Bash(timeout 60 cargo check)",
       "Bash(timeout 90 cargo check)",
       "Bash(timeout 120 cargo check)",
-      "Bash(cargo clean:*)"
+      "Bash(cargo clean:*)",
+      "Bash(timeout 90 cargo check -p gpui-component)"
     ],
     "deny": [],
     "ask": []

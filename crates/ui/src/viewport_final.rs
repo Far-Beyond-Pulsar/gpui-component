@@ -33,6 +33,7 @@ use gpui::{
 use std::sync::{ Arc, Mutex, atomic::{ AtomicBool, AtomicUsize, Ordering } };
 use image::ImageBuffer;
 use futures::FutureExt;
+use crate::gpu_mem_tracker::GPU_MEM_TRACKER;
 
 /// Performance metrics for the viewport
 #[derive(Debug, Clone, Default)]
@@ -194,11 +195,20 @@ pub type RefreshHook = Arc<dyn Fn() + Send + Sync>;
 /// Custom element for viewport rendering
 pub struct ViewportElement {
     texture: Option<Arc<RenderImage>>,
+    alloc_id: Option<usize>, // Track allocation ID for debugging
 }
 
 impl ViewportElement {
-    pub fn new(texture: Option<Arc<RenderImage>>) -> Self {
-        Self { texture }
+    pub fn new(texture: Option<Arc<RenderImage>>, alloc_id: Option<usize>) -> Self {
+        Self { texture, alloc_id }
+    }
+}
+
+impl Drop for ViewportElement {
+    fn drop(&mut self) {
+        if let Some(id) = self.alloc_id {
+            GPU_MEM_TRACKER.track_deallocation(id);
+        }
     }
 }
 
@@ -266,7 +276,7 @@ impl IntoElement for ViewportElement {
 /// Zero-copy viewport with atomic buffer swapping
 pub struct Viewport {
     double_buffer: Arc<DoubleBuffer>,
-    shared_texture: Arc<Mutex<Option<Arc<RenderImage>>>>, // Pre-made texture ready to swap
+    shared_texture: Arc<Mutex<Option<(Arc<RenderImage>, usize)>>>, // Pre-made texture with alloc_id
     metrics: ViewportMetrics,
     focus_handle: FocusHandle,
     last_width: u32,
@@ -280,14 +290,14 @@ pub struct Viewport {
 
 impl Viewport {
     /// Updates GPU texture ONLY if needed - zero memory operations on UI thread
-    fn update_texture_if_needed(&mut self) -> Option<Arc<RenderImage>> {
+    fn update_texture_if_needed(&mut self) -> (Option<Arc<RenderImage>>, Option<usize>) {
         let ui_start = std::time::Instant::now();
 
         // Try to get pre-made texture (zero-copy)
-        let texture = {
+        let result = {
             let grab_start = std::time::Instant::now();
             let mut shared = self.shared_texture.lock().unwrap();
-            let texture = shared.take(); // Zero-copy take
+            let result = shared.take(); // Zero-copy take
             let grab_time = grab_start.elapsed();
 
             if self.debug_enabled && grab_time.as_micros() > 50 {
@@ -295,14 +305,14 @@ impl Viewport {
             }
 
             if self.debug_enabled {
-                if texture.is_some() {
+                if result.is_some() {
                     println!("[VIEWPORT-UI] Got texture from background task");
                 } else {
                     println!("[VIEWPORT-UI] No texture available from background task");
                 }
             }
 
-            texture
+            result
         };
 
         let total_ui_time = ui_start.elapsed();
@@ -310,7 +320,10 @@ impl Viewport {
             println!("[VIEWPORT-UI] Total UI time: {}μs", total_ui_time.as_micros());
         }
 
-        texture
+        match result {
+            Some((texture, alloc_id)) => (Some(texture), Some(alloc_id)),
+            None => (None, None),
+        }
     }
 }
 
@@ -352,17 +365,26 @@ impl Render for Viewport {
         let paint_start = std::time::Instant::now();
 
         // Get ready texture with zero operations on UI thread
-        let texture = self.update_texture_if_needed();
+        let (texture, alloc_id) = self.update_texture_if_needed();
 
         let paint_time = paint_start.elapsed();
         if self.debug_enabled && paint_time.as_micros() > 200 {
             println!("[VIEWPORT-UI] Paint time: {}μs", paint_time.as_micros());
         }
 
+        // Print GPU memory stats periodically in debug mode
+        if self.debug_enabled {
+            static COUNTER: AtomicUsize = AtomicUsize::new(0);
+            let count = COUNTER.fetch_add(1, Ordering::Relaxed);
+            if count % 60 == 0 { // Every ~60 frames
+                GPU_MEM_TRACKER.print_stats();
+            }
+        }
+
         div()
             .id("viewport")
             .size_full()
-            .child(ViewportElement::new(texture))
+            .child(ViewportElement::new(texture, alloc_id))
             .focusable()
             .focus(|style| style) // Apply focus styling
     }
@@ -496,6 +518,9 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
                                 let frame = image::Frame::new(rgba_image);
                                 let texture = Arc::new(RenderImage::new(vec![frame]));
 
+                                // Track GPU allocation
+                                let alloc_id = GPU_MEM_TRACKER.track_allocation(buffer_guard.width, buffer_guard.height);
+
                                 let texture_create_time = texture_create_start.elapsed();
                                 let dimensions = (buffer_guard.width, buffer_guard.height);
 
@@ -508,7 +533,7 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
                                         dimensions.1);
                                 }
 
-                                texture
+                                (texture, alloc_id)
                             };
 
                             // Update the viewport entity and store texture + trigger re-render (like GPML canvas)
@@ -517,8 +542,13 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
                                 // Clear old texture before storing new one to prevent accumulation
                                 {
                                     let mut shared = viewport.shared_texture.lock().unwrap();
-                                    if shared.is_some() && debug_enabled {
-                                        println!("[VIEWPORT-BG] Replacing existing texture");
+                                    if let Some((old_texture, old_alloc_id)) = shared.take() {
+                                        if debug_enabled {
+                                            println!("[VIEWPORT-BG] Replacing existing texture, freeing old alloc #{}", old_alloc_id);
+                                        }
+                                        // Old texture will be dropped here, triggering deallocation tracking
+                                        GPU_MEM_TRACKER.track_deallocation(old_alloc_id);
+                                        drop(old_texture);
                                     }
                                     *shared = Some(texture_result);
                                 }
