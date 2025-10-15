@@ -1,5 +1,4 @@
 use wgpu::util::DeviceExt;
-use std::sync::Arc;
 use super::Framebuffer;
 
 /// High-performance WGPU-based 3D renderer
@@ -103,6 +102,7 @@ impl WgpuRenderer {
                     label: Some("Pulsar 3D Renderer"),
                     required_features: wgpu::Features::empty(),
                     required_limits: wgpu::Limits::default(),
+                    memory_hints: wgpu::MemoryHints::default(),
                 },
                 None,
             )
@@ -430,23 +430,25 @@ impl WgpuRenderer {
                 }
                 output_buffer.unmap();
             }
-            Ok(Err(e)) => {
+            Ok(Err(_e)) => {
+                eprintln!("[WGPU-RENDERER] Buffer mapping failed");
             }
-            Err(e) => {
+            Err(_e) => {
+                eprintln!("[WGPU-RENDERER] Failed to receive map_async message");
             }
         }
     }
 
-    fn create_view_projection_matrix(&self, aspect: f32) -> [[f32; 4]; 4] {
+    fn create_view_projection_matrix(&self, _aspect: f32) -> [[f32; 4]; 4] {
         // Simple perspective projection
-        let fov = 60.0_f32.to_radians();
-        let near = 0.1;
-        let far = 100.0;
+        let _fov = 60.0_f32.to_radians();
+        let _near = 0.1;
+        let _far = 100.0;
 
         // View matrix (camera at (0, 2, 5) looking at origin)
-        let eye = [0.0, 2.0, 5.0];
-        let target = [0.0, 0.0, 0.0];
-        let up = [0.0, 1.0, 0.0];
+        let _eye = [0.0, 2.0, 5.0];
+        let _target = [0.0, 0.0, 0.0];
+        let _up = [0.0, 1.0, 0.0];
 
         // For now, return identity - we'll implement proper matrix math
         [

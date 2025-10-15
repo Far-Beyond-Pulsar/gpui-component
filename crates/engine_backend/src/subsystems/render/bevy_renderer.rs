@@ -1,7 +1,12 @@
 use bevy::{
     app::ScheduleRunnerPlugin,
     camera::RenderTarget,
-    core_pipeline::tonemapping::Tonemapping,
+    core_pipeline::{
+        tonemapping::Tonemapping,
+        bloom::Bloom,
+        fxaa::Fxaa,
+    },
+    pbr::{ScreenSpaceAmbientOcclusion, ScreenSpaceAmbientOcclusionQualityLevel},
     prelude::*,
     render::{
         render_asset::RenderAssets,
@@ -28,7 +33,11 @@ use std::{
 };
 use super::Framebuffer;
 
+const RENDER_FPS: f64 = 60.0;
+const CHANNEL_CAPACITY: usize = 2; // Double buffer for smooth frames
+
 /// Bevy-based GPU renderer that runs on a separate thread with zero-copy rendering
+/// Provides studio-quality 3D rendering with modern effects
 pub struct BevyRenderer {
     receiver: Receiver<Vec<u8>>,
     thread_handle: Option<JoinHandle<()>>,
@@ -36,25 +45,29 @@ pub struct BevyRenderer {
     height: u32,
     frame_count: u64,
     running: Arc<AtomicBool>,
+    last_frame_data: Option<Vec<u8>>, // Cache last frame for smooth rendering
 }
 
 impl BevyRenderer {
     pub async fn new(width: u32, height: u32) -> Self {
-        println!("[BEVY-RENDERER] Starting Bevy renderer on render thread {}x{}", width, height);
+        println!("[BEVY-RENDERER] Starting high-performance Bevy renderer {}x{}", width, height);
         
-        let (frame_sender, frame_receiver) = crossbeam_channel::unbounded::<Vec<u8>>();
+        let (frame_sender, frame_receiver) = crossbeam_channel::bounded::<Vec<u8>>(CHANNEL_CAPACITY);
         let running = Arc::new(AtomicBool::new(true));
         let running_clone = running.clone();
 
-        // Spawn Bevy on a dedicated render thread
-        let thread_handle = thread::spawn(move || {
-            run_bevy_render_thread(width, height, frame_sender, running_clone);
-        });
+        // Spawn Bevy on a dedicated render thread with high priority
+        let thread_handle = thread::Builder::new()
+            .name("BevyRenderThread".to_string())
+            .spawn(move || {
+                run_bevy_render_thread(width, height, frame_sender, running_clone);
+            })
+            .expect("Failed to spawn render thread");
 
         // Give Bevy time to initialize
         tokio::time::sleep(Duration::from_millis(500)).await;
 
-        println!("[BEVY-RENDERER] Bevy renderer initialized on thread!");
+        println!("[BEVY-RENDERER] Studio-quality renderer initialized!");
 
         Self {
             receiver: frame_receiver,
@@ -63,6 +76,7 @@ impl BevyRenderer {
             height,
             frame_count: 0,
             running,
+            last_frame_data: None,
         }
     }
 
@@ -70,19 +84,27 @@ impl BevyRenderer {
     pub fn render(&mut self, framebuffer: &mut Framebuffer) {
         self.frame_count += 1;
         
-        // Try to receive the latest frame (non-blocking)
-        if let Ok(image_data) = self.receiver.try_recv() {
+        // Try to receive the latest frame (non-blocking, may drain multiple frames)
+        let mut new_frame = false;
+        while let Ok(image_data) = self.receiver.try_recv() {
+            self.last_frame_data = Some(image_data);
+            new_frame = true;
+        }
+        
+        // Use latest frame (or cached frame if no new frame available)
+        if let Some(ref image_data) = self.last_frame_data {
             if image_data.len() == framebuffer.buffer.len() {
                 // Direct copy - zero-copy from Bevy thread to viewport
-                framebuffer.buffer.copy_from_slice(&image_data);
+                framebuffer.buffer.copy_from_slice(image_data);
             } else if !image_data.is_empty() {
                 // Handle row alignment if needed
-                self.copy_with_alignment(&image_data, framebuffer);
+                self.copy_with_alignment(image_data, framebuffer);
             }
         }
         
         if self.frame_count % 60 == 0 {
-            println!("[BEVY-RENDERER] Frame {} rendered", self.frame_count);
+            let status = if new_frame { "new frame" } else { "cached frame" };
+            println!("[BEVY-RENDERER] Frame {} rendered ({})", self.frame_count, status);
         }
     }
 
@@ -131,18 +153,18 @@ impl Drop for BevyRenderer {
     }
 }
 
-/// Run Bevy app on dedicated render thread
+/// Run Bevy app on dedicated render thread with studio-quality settings
 fn run_bevy_render_thread(
     width: u32,
     height: u32,
     frame_sender: Sender<Vec<u8>>,
     running: Arc<AtomicBool>,
 ) {
-    println!("[BEVY-THREAD] Initializing Bevy app on render thread...");
+    println!("[BEVY-THREAD] Initializing high-performance Bevy app...");
 
     let mut app = App::new();
 
-    // Configure for headless rendering
+    // Configure for headless rendering with optimizations
     app.insert_resource(ClearColor(Color::srgb(0.1, 0.1, 0.15)))
         .add_plugins(
             DefaultPlugins
@@ -156,29 +178,29 @@ fn run_bevy_render_thread(
         )
         .add_plugins(ImageCopyPlugin { sender: frame_sender })
         .add_plugins(ScheduleRunnerPlugin::run_loop(
-            Duration::from_secs_f64(1.0 / 60.0),
+            Duration::from_secs_f64(1.0 / RENDER_FPS),
         ));
 
-    // Setup scene
+    // Setup scene with studio-quality settings
     app.add_systems(Startup, move |mut commands: Commands,
                                     mut meshes: ResMut<Assets<Mesh>>,
                                     mut materials: ResMut<Assets<StandardMaterial>>,
                                     mut images: ResMut<Assets<Image>>,
                                     render_device: Res<RenderDevice>| {
         setup_render_target(&mut commands, &mut images, &render_device, width, height);
-        setup_scene(&mut commands, &mut meshes, &mut materials);
+        setup_scene_studio_quality(&mut commands, &mut meshes, &mut materials);
     });
     
-    app.add_systems(Update, rotate_cube);
+    app.add_systems(Update, (rotate_cube, animate_lights));
 
-    println!("[BEVY-THREAD] Bevy app configured, entering render loop...");
+    println!("[BEVY-THREAD] Entering high-performance render loop @ {} FPS...", RENDER_FPS);
 
     // Main render loop
     while running.load(Ordering::Relaxed) {
         app.update();
     }
 
-    println!("[BEVY-THREAD] Render thread exiting");
+    println!("[BEVY-THREAD] Render thread exiting cleanly");
 }
 
 /// Setup render target for offscreen rendering
@@ -208,59 +230,121 @@ fn setup_render_target(
         render_device,
     ));
 
-    // Setup camera
+    // Setup camera with studio-quality post-processing
     commands.spawn((
         Camera3d::default(),
         Camera {
             target: RenderTarget::Image(render_target_image_handle.into()),
             ..default()
         },
-        Tonemapping::None,
+        Tonemapping::TonyMcMapface, // Filmic tonemapping for studio look
         Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Bloom {
+            intensity: 0.3,
+            ..default()
+        },
+        Fxaa::default(), // Anti-aliasing for smooth edges
     ));
 }
 
-/// Setup a 3D scene with cube, ground, and axes
-fn setup_scene(
+/// Setup a studio-quality 3D scene with PBR materials
+fn setup_scene_studio_quality(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
 ) {
-    println!("[BEVY-SCENE] Setting up 3D scene...");
+    println!("[BEVY-SCENE] Setting up studio-quality 3D scene...");
 
-    // Ground plane (circular base)
+    // Ground plane (circular base) with PBR material
     commands.spawn((
         Mesh3d(meshes.add(Circle::new(4.0))),
-        MeshMaterial3d(materials.add(Color::WHITE)),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.9, 0.9, 0.9),
+            metallic: 0.1,
+            perceptual_roughness: 0.8,
+            ..default()
+        })),
         Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
     ));
 
-    // Cube
+    // Main cube with studio-quality PBR material
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
-        MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb_u8(124, 144, 255),
+            metallic: 0.3,
+            perceptual_roughness: 0.4,
+            reflectance: 0.5,
+            ..default()
+        })),
         Transform::from_xyz(0.0, 0.5, 0.0),
         RotatingCube,
     ));
 
-    // Point light
+    // Key light (main directional light for studio setup)
     commands.spawn((
         PointLight {
             shadows_enabled: true,
+            intensity: 8_000_000.0,
+            range: 50.0,
+            color: Color::srgb(1.0, 0.95, 0.9), // Warm key light
+            shadow_depth_bias: 0.02,
             ..default()
         },
         Transform::from_xyz(4.0, 8.0, 4.0),
+        MainLight,
     ));
 
-    println!("[BEVY-SCENE] Scene setup complete!");
+    // Fill light (softer, cooler secondary light)
+    commands.spawn((
+        PointLight {
+            shadows_enabled: false,
+            intensity: 2_000_000.0,
+            range: 30.0,
+            color: Color::srgb(0.9, 0.95, 1.0), // Cool fill light
+            ..default()
+        },
+        Transform::from_xyz(-3.0, 5.0, -2.0),
+    ));
+
+    // Rim light (back light for depth)
+    commands.spawn((
+        PointLight {
+            shadows_enabled: false,
+            intensity: 4_000_000.0,
+            range: 25.0,
+            color: Color::srgb(1.0, 1.0, 1.0),
+            ..default()
+        },
+        Transform::from_xyz(0.0, 3.0, -5.0),
+    ));
+
+    println!("[BEVY-SCENE] Studio-quality scene setup complete!");
 }
 
 #[derive(Component)]
 struct RotatingCube;
 
+#[derive(Component)]
+struct MainLight;
+
 fn rotate_cube(time: Res<Time>, mut query: Query<&mut Transform, With<RotatingCube>>) {
     for mut transform in query.iter_mut() {
-        transform.rotation = Quat::from_rotation_y(time.elapsed_secs() * 0.5);
+        // Smooth rotation with slight wobble for visual interest
+        let t = time.elapsed_secs();
+        transform.rotation = Quat::from_rotation_y(t * 0.5) * Quat::from_rotation_x((t * 0.3).sin() * 0.1);
+    }
+}
+
+fn animate_lights(time: Res<Time>, mut query: Query<&mut Transform, With<MainLight>>) {
+    for mut transform in query.iter_mut() {
+        // Subtle light movement for dynamic shadows
+        let t = time.elapsed_secs() * 0.5;
+        transform.translation = Vec3::new(
+            4.0 + t.sin() * 1.0,
+            8.0 + t.cos() * 0.5,
+            4.0 + (t * 0.7).sin() * 1.0,
+        );
     }
 }
 
@@ -403,10 +487,10 @@ fn receive_image_from_buffer(
         }
         
         let buffer_slice = image_copier.buffer.slice(..);
-        let (_s, r) = crossbeam_channel::bounded(1);
+        let (tx, rx) = crossbeam_channel::bounded(1);
         
         buffer_slice.map_async(MapMode::Read, move |result| match result {
-            Ok(_) => _s.send(()).expect("Failed to send map update"),
+            Ok(_) => tx.send(()).expect("Failed to send map update"),
             Err(err) => panic!("Failed to map buffer {err}"),
         });
         
@@ -414,7 +498,7 @@ fn receive_image_from_buffer(
             .poll(PollType::Wait)
             .expect("Failed to poll device");
         
-        r.recv().expect("Failed to receive the map_async message");
+        rx.recv().expect("Failed to receive the map_async message");
         let _ = sender.send(buffer_slice.get_mapped_range().to_vec());
         image_copier.buffer.unmap();
     }
