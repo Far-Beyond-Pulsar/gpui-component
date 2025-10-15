@@ -354,6 +354,15 @@ impl Drop for Viewport {
     fn drop(&mut self) {
         println!("[VIEWPORT] Dropping viewport, cleaning up resources...");
 
+        // Clean up previous_texture if we have one
+        if let Some((old_texture, old_alloc_id)) = self.previous_texture.take() {
+            println!("[VIEWPORT] Freeing final previous_texture alloc #{}", old_alloc_id);
+            GPU_MEM_TRACKER.track_deallocation(old_alloc_id);
+            // Note: Can't call cx.drop_image() here as we don't have Context
+            // The RenderImage will be dropped, removing its Arc reference
+            drop(old_texture);
+        }
+
         // Signal shutdown to background task
         if let Some(sender) = self.shutdown_sender.take() {
             let _ = sender.try_send(());
@@ -433,6 +442,7 @@ impl Render for Viewport {
         div()
             .id("viewport")
             .size_full()
+            .flex() // Enable flex layout
             .flex_1() // Grow to fill available space
             .child(ViewportElement::new(texture, alloc_id))
             .focusable()

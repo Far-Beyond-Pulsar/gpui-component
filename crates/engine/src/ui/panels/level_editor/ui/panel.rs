@@ -385,7 +385,10 @@ impl Render for LevelEditorPanel {
             .child(
                 // Main content area with resizable panels
                 div()
-                    .flex_1()
+                    .flex_1() // Grow to fill remaining space
+                    .flex() // Enable flexbox
+                    .flex_row() // Row direction for resizable panels
+                    .min_h_0() // Allow shrinking below content size
                     .child(
                         h_resizable("level-editor-main", self.horizontal_resizable_state.clone())
                             .child(

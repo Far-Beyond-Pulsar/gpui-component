@@ -36,9 +36,10 @@ impl ViewportPanel {
         V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
     {
         let mut viewport_div = div()
-            .size_full()
             .flex() // Enable flexbox
             .flex_col() // Column direction
+            .flex_1() // Allow growing to fill parent
+            .size_full() // Take full size
             .relative()
             .bg(cx.theme().muted.opacity(0.2))
             .border_1()
@@ -47,8 +48,9 @@ impl ViewportPanel {
             .child(
                 // Main viewport - should grow to fill space
                 div()
-                    .size_full()
+                    .flex() // Enable flex
                     .flex_1() // Grow to fill available space
+                    .size_full() // Take full size
                     .child(self.viewport.clone())
             )
             .child(

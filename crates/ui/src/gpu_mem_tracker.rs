@@ -66,16 +66,6 @@ impl GpuMemTracker {
 
         self.allocations.lock().insert(id, info);
 
-        println!(
-            "[GPU-MEM] ALLOC #{}: {}x{} = {} bytes (total: {} allocs, {} MB)",
-            id,
-            width,
-            height,
-            size_bytes,
-            current,
-            self.total_allocated.load(Ordering::Relaxed) as f64 / 1_000_000.0
-        );
-
         id
     }
 
