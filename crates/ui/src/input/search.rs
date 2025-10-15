@@ -275,7 +275,7 @@ impl SearchPanel {
             .map(|l| l.visible_range_offset.clone());
 
         self.matcher
-            .update_query(&query, self.case_insensitive);
+            .update_query(query.as_str(), self.case_insensitive);
 
         if let Some(visible_range_offset) = visible_range_offset {
             self.matcher
@@ -349,7 +349,7 @@ impl SearchPanel {
                         state.scroll_to(next_range.end, cx);
                         state.replace_text_in_range_silent(
                             Some(range_utf16),
-                            &new_text,
+                            new_text.as_str(),
                             window,
                             cx,
                         );
@@ -375,7 +375,7 @@ impl SearchPanel {
                     // Replace from the end to avoid messing up the ranges.
                     let mut rope = state.text.clone();
                     for range in ranges.iter().rev() {
-                        rope.replace(range.clone(), &new_text);
+                        rope.replace(range.clone(), new_text.as_str());
                     }
                     state.replace_text_in_range_silent(
                         Some(0..state.text.len()),

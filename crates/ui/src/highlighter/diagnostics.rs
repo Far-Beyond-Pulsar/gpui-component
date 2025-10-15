@@ -211,8 +211,8 @@ impl sum_tree::Item for DiagnosticEntry {
 }
 
 impl sum_tree::Summary for DiagnosticSummary {
-    type Context = ();
-    fn zero(_: &Self::Context) -> Self {
+    type Context<'a> = &'a ();
+    fn zero(_: Self::Context<'_>) -> Self {
         DiagnosticSummary {
             count: 0,
             start: usize::MIN,
@@ -220,7 +220,7 @@ impl sum_tree::Summary for DiagnosticSummary {
         }
     }
 
-    fn add_summary(&mut self, other: &Self, _: &Self::Context) {
+    fn add_summary(&mut self, other: &Self, _: Self::Context<'_>) {
         self.start = other.start;
         self.end = other.end;
         self.count += other.count;
@@ -297,11 +297,11 @@ impl DiagnosticSet {
 
     pub(crate) fn range(&self, range: Range<usize>) -> impl Iterator<Item = &DiagnosticEntry> {
         let mut cursor = self.diagnostics.cursor::<DiagnosticSummary>(&());
-        cursor.seek(&range.start, Bias::Left, &());
+        cursor.seek(&range.start, Bias::Left);
         std::iter::from_fn(move || {
             if let Some(entry) = cursor.item() {
                 if entry.range.start < range.end {
-                    cursor.next(&());
+                    cursor.next();
                     return Some(entry);
                 }
             }

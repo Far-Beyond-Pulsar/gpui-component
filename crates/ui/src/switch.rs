@@ -91,8 +91,7 @@ impl RenderOnce for Switch {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let checked = self.checked;
         let on_click = self.on_click.clone();
-        // Simplified without element state - just use the checked value directly
-        let toggle_state = checked;
+        let toggle_state = window.use_keyed_state(self.id.clone(), cx, |_, _| checked);
 
         let (bg, toggle_bg) = match checked {
             true => (cx.theme().primary, cx.theme().background),
@@ -154,13 +153,24 @@ impl RenderOnce for Switch {
                                 .shadow_md()
                                 .size(bar_width)
                                 .map(|this| {
-                                    // Simplified animation without stateful toggle tracking
-                                    if !self.disabled {
-                                        let max_x = bg_width - bar_width - inset * 2;
+                                    let prev_checked = toggle_state.read(cx);
+                                    if !self.disabled && *prev_checked != checked {
+                                        let duration = Duration::from_secs_f64(0.15);
+                                        cx.spawn({
+                                            let toggle_state = toggle_state.clone();
+                                            async move |cx| {
+                                                cx.background_executor().timer(duration).await;
+                                                _ = toggle_state
+                                                    .update(cx, |this, _| *this = checked);
+                                            }
+                                        })
+                                        .detach();
+
                                         this.with_animation(
-                                            ElementId::NamedInteger("switch-toggle".into(), checked as u64),
-                                            Animation::new(Duration::from_secs_f64(0.15)),
+                                            ElementId::NamedInteger("move".into(), checked as u64),
+                                            Animation::new(duration),
                                             move |this, delta| {
+                                                let max_x = bg_width - bar_width - inset * 2;
                                                 let x = if checked {
                                                     max_x * delta
                                                 } else {
@@ -192,9 +202,10 @@ impl RenderOnce for Switch {
                         .map(|c| c.clone())
                         .filter(|_| !self.disabled),
                     |this, on_click| {
-                        // Simplified without toggle_state entity
+                        let toggle_state = toggle_state.clone();
                         this.on_mouse_down(gpui::MouseButton::Left, move |_, window, cx| {
                             cx.stop_propagation();
+                            _ = toggle_state.update(cx, |this, _| *this = checked);
                             on_click(&!checked, window, cx);
                         })
                     },

@@ -1,5 +1,5 @@
 use gpui::{
-    div, relative, Action, IntoElement, KeyContext, Keystroke, ParentElement as _,
+    div, relative, Action, AsKeystroke, IntoElement, KeyContext, Keystroke, ParentElement as _,
     RenderOnce, StyleRefinement, Styled, Window,
 };
 
@@ -53,7 +53,7 @@ impl Kbd {
         }?;
 
         if let Some(key) = binding.keystrokes().first() {
-            Some(Self::new(key.clone()))
+            Some(Self::new(key.as_keystroke().clone()))
         } else {
             None
         }

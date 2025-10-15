@@ -365,7 +365,7 @@ impl RenderOnce for DatePicker {
         div()
             .id(self.id.clone())
             .key_context("DatePicker")
-            .track_focus(&self.focus_handle(cx))
+            .track_focus(&self.focus_handle(cx).tab_stop(true))
             .on_action(window.listener_for(&self.state, DatePickerState::on_enter))
             .on_action(window.listener_for(&self.state, DatePickerState::on_delete))
             .when(state.open, |this| {
@@ -458,7 +458,7 @@ impl RenderOnce for DatePicker {
                                                             Button::new(("preset", i))
                                                                 .small()
                                                                 .ghost()
-                                                                
+                                                                .tab_stop(false)
                                                                 .label(preset.label.clone())
                                                                 .on_click(window.listener_for(
                                                                     &self.state,

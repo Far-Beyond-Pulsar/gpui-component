@@ -9,11 +9,10 @@ pub trait InteractiveElementExt: InteractiveElement {
     where
         Self: Sized,
     {
-        // Note: click_count is no longer available in new GPUI
-        // Double-click detection would need to be implemented manually with timing
-        // For now, we'll just use the single click handler
         self.interactivity().on_click(move |event, window, cx| {
-            listener(event, window, cx);
+            if event.click_count() == 2 {
+                listener(event, window, cx);
+            }
         });
         self
     }

@@ -195,9 +195,8 @@ impl AssetBrowser {
     fn render_grid_view(&self, cx: &App) -> impl IntoElement {
         div()
             .w_full()
-            // .grid() and .grid_cols() removed from new GPUI - using flex layout instead
-            .flex()
-            .flex_wrap()
+            .grid()
+            .grid_cols(4)
             .gap_2()
             .children(
                 self.available_assets.iter().map(|asset| {

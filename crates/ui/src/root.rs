@@ -378,13 +378,11 @@ impl Root {
     }
 
     fn on_action_tab(&mut self, _: &Tab, window: &mut Window, _: &mut Context<Self>) {
-        // focus_next() removed from new GPUI - would need alternative implementation
-        // For now, this is a no-op
+        window.focus_next();
     }
 
     fn on_action_tab_prev(&mut self, _: &TabPrev, window: &mut Window, _: &mut Context<Self>) {
-        // focus_prev() removed from new GPUI - would need alternative implementation
-        // For now, this is a no-op
+        window.focus_prev();
     }
 }
 

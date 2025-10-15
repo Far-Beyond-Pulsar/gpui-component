@@ -160,7 +160,7 @@ impl RenderOnce for NumberInput {
                     .with_size(self.size.smaller())
                     .icon(IconName::Minus)
                     .compact()
-                    
+                    .tab_stop(false)
                     .disabled(self.disabled)
                     .on_click({
                         let state = self.state.clone();
@@ -184,7 +184,7 @@ impl RenderOnce for NumberInput {
                     .with_size(self.size.smaller())
                     .icon(IconName::Plus)
                     .compact()
-                    
+                    .tab_stop(false)
                     .disabled(self.disabled)
                     .on_click({
                         let state = self.state.clone();

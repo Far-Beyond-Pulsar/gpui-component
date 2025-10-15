@@ -156,7 +156,7 @@ impl RenderOnce for Drawer {
                     .child(
                         v_flex()
                             .id("drawer")
-                            
+                            .tab_group()
                             .key_context(CONTEXT)
                             .track_focus(&self.focus_handle)
                             .on_action({

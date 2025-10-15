@@ -4,7 +4,7 @@ use crate::{
 };
 use gpui::{
     div, prelude::FluentBuilder as _, px, relative, Action, AnyElement, App, ClickEvent, Corners,
-    Div, Edges, ElementId, FocusHandle, Hsla, InteractiveElement, Interactivity, IntoElement, ParentElement,
+    Div, Edges, ElementId, Hsla, InteractiveElement, Interactivity, IntoElement, ParentElement,
     Pixels, RenderOnce, SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement,
     Styled, Window,
 };
@@ -411,15 +411,18 @@ impl RenderOnce for Button {
             _ => self.size,
         };
 
-        let focus_handle = cx.focus_handle(); 
+        let focus_handle = window
+            .use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle())
+            .read(cx)
+            .clone();
         let is_focused = focus_handle.is_focused(window);
 
         self.base
             .when(!self.disabled, |this| {
                 this.track_focus(
                     &focus_handle
-                        
-                        ,
+                        .tab_index(self.tab_index)
+                        .tab_stop(self.tab_stop),
                 )
             })
             .cursor_default()

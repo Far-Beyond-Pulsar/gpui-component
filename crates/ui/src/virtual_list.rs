@@ -19,7 +19,7 @@ use std::{
 
 use gpui::{
     div, point, px, size, Along, AnyElement, App, AvailableSpace, Axis, Bounds, ContentMask,
-    Context, Div, Element, ElementId, Entity, GlobalElementId, Half, Hitbox,
+    Context, DeferredScrollToItem, Div, Element, ElementId, Entity, GlobalElementId, Half, Hitbox,
     InteractiveElement, IntoElement, IsZero as _, ListSizingBehavior, Pixels, Point, Render,
     ScrollHandle, ScrollStrategy, Size, Stateful, StatefulInteractiveElement, StyleRefinement,
     Styled, Window,
@@ -31,7 +31,7 @@ use crate::{scroll::ScrollHandleOffsetable, AxisExt, PixelsExt};
 struct VirtualListScrollHandleState {
     axis: Axis,
     items_count: usize,
-    pub deferred_scroll_to_item: Option<()>,
+    pub deferred_scroll_to_item: Option<DeferredScrollToItem>,
 }
 
 #[derive(Clone)]
@@ -99,15 +99,13 @@ impl VirtualListScrollHandle {
 
     /// Scroll to the item at the given index, with an additional offset items.
     fn scroll_to_item_with_offset(&self, ix: usize, strategy: ScrollStrategy, offset: usize) {
-        // DeferredScrollToItem functionality removed in new GPUI - this is now a no-op
-        // Original code:
-        // let mut state = self.state.borrow_mut();
-        // state.deferred_scroll_to_item = Some(DeferredScrollToItem {
-        //     item_index: ix,
-        //     strategy,
-        //     offset,
-        //     scroll_strict: false,
-        // });
+        let mut state = self.state.borrow_mut();
+        state.deferred_scroll_to_item = Some(DeferredScrollToItem {
+            item_index: ix,
+            strategy,
+            offset,
+            scroll_strict: false,
+        });
     }
 
     /// Scrolls to the bottom of the list.
@@ -240,10 +238,46 @@ impl VirtualList {
         scroll_offset: Point<Pixels>,
         items_bounds: &[Bounds<Pixels>],
         content_bounds: &Bounds<Pixels>,
-        scroll_to_item: (),
+        scroll_to_item: DeferredScrollToItem,
     ) -> Point<Pixels> {
-        // DeferredScrollToItem functionality removed in new GPUI
-        // Return current scroll offset unchanged
+        let Some(bounds) = items_bounds
+            .get(scroll_to_item.item_index + scroll_to_item.offset)
+            .cloned()
+        else {
+            return scroll_offset;
+        };
+
+        let mut scroll_offset = scroll_offset;
+        match scroll_to_item.strategy {
+            ScrollStrategy::Center => {
+                if self.axis.is_vertical() {
+                    scroll_offset.y = content_bounds.top() + content_bounds.size.height.half()
+                        - bounds.top()
+                        - bounds.size.height.half()
+                } else {
+                    scroll_offset.x = content_bounds.left() + content_bounds.size.width.half()
+                        - bounds.left()
+                        - bounds.size.width.half()
+                }
+            }
+            _ => {
+                // Ref: https://github.com/zed-industries/zed/blob/0d145289e0867a8d5d63e5e1397a5ca69c9d49c3/crates/gpui/src/elements/div.rs#L3026
+                if self.axis.is_vertical() {
+                    if bounds.top() + scroll_offset.y < content_bounds.top() {
+                        scroll_offset.y = content_bounds.top() - bounds.top()
+                    } else if bounds.bottom() + scroll_offset.y > content_bounds.bottom() {
+                        scroll_offset.y = content_bounds.bottom() - bounds.bottom();
+                    }
+                } else {
+                    if bounds.left() + scroll_offset.x < content_bounds.left() {
+                        scroll_offset.x = content_bounds.left() - bounds.left();
+                    } else if bounds.right() + scroll_offset.x > content_bounds.right() {
+                        scroll_offset.x = content_bounds.right() - bounds.right();
+                    }
+                }
+            }
+        }
+        self.scroll_handle.set_offset(scroll_offset);
         scroll_offset
     }
 }
