@@ -48,7 +48,8 @@ prettyplease = "0.2"
 pulsar_std = { path = "../pulsar_std" }
 
 # DAW audio dependencies
-cpal = "0.15"      # Audio I/O library
+cpal = { version = "0.15", default-features = false }
+
 hound = "3.5"
 lewton = "0.10"
 claxon = "0.4"
