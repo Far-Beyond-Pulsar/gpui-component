@@ -10,6 +10,7 @@ use gpui_component::viewport_optimized::OptimizedViewport;
 use super::state::{CameraMode, LevelEditorState};
 use super::actions::*;
 use crate::ui::shared::ViewportControls;
+use engine_backend::GameThread;
 use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
 use std::cell::RefCell;
@@ -19,6 +20,12 @@ use std::rc::Rc;
 struct FpsDataPoint {
     index: usize,
     fps: f64,
+}
+
+#[derive(Clone)]
+struct TpsDataPoint {
+    index: usize,
+    tps: f64,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -36,6 +43,9 @@ pub struct ViewportPanel {
     // FPS tracking for rolling graph - using RefCell for interior mutability
     fps_history: RefCell<VecDeque<FpsDataPoint>>,
     fps_sample_counter: RefCell<usize>,
+    // TPS tracking for rolling graph
+    tps_history: RefCell<VecDeque<TpsDataPoint>>,
+    tps_sample_counter: RefCell<usize>,
 }
 
 impl ViewportPanel {
@@ -46,6 +56,8 @@ impl ViewportPanel {
             render_enabled,
             fps_history: RefCell::new(VecDeque::with_capacity(60)),
             fps_sample_counter: RefCell::new(0),
+            tps_history: RefCell::new(VecDeque::with_capacity(60)),
+            tps_sample_counter: RefCell::new(0),
         }
     }
 
@@ -54,6 +66,7 @@ impl ViewportPanel {
         state: &mut LevelEditorState,
         fps_graph_state: Rc<RefCell<bool>>,  // Shared state for the Switch
         gpu_engine: &Arc<Mutex<crate::ui::gpu_renderer::GpuRenderer>>,
+        game_thread: &Arc<GameThread>,
         current_pattern: crate::ui::rainbow_engine_final::RainbowPattern,
         cx: &mut Context<V>,
     ) -> impl IntoElement
@@ -120,7 +133,7 @@ impl ViewportPanel {
                     .bottom_4()
                     .right_4()
                     .w(px(360.0)) // Expanded width for graph
-                    .child(self.render_performance_overlay(state, fps_graph_state, gpu_engine, current_pattern, cx))
+                    .child(self.render_performance_overlay(state, fps_graph_state, gpu_engine, game_thread, current_pattern, cx))
             );
         }
 
@@ -318,6 +331,7 @@ impl ViewportPanel {
         state: &mut LevelEditorState,
         fps_graph_state: Rc<RefCell<bool>>,
         gpu_engine: &Arc<Mutex<crate::ui::gpu_renderer::GpuRenderer>>,
+        game_thread: &Arc<GameThread>,
         current_pattern: crate::ui::rainbow_engine_final::RainbowPattern,
         cx: &mut Context<V>,
     ) -> impl IntoElement
@@ -331,6 +345,11 @@ impl ViewportPanel {
         } else {
             (0.0, 0, "Unknown".to_string())
         };
+
+        // Get game thread metrics
+        let game_tps = game_thread.get_tps();
+        let game_tick_count = game_thread.get_tick_count();
+        let game_enabled = game_thread.is_enabled();
 
         // Update FPS history for rolling graph using interior mutability
         let mut fps_history = self.fps_history.borrow_mut();
@@ -347,10 +366,30 @@ impl ViewportPanel {
             fps_history.pop_front();
         }
 
-        // Prepare data for the chart
+        // Prepare data for the FPS chart
         let fps_data: Vec<FpsDataPoint> = fps_history.iter().cloned().collect();
         drop(fps_history);
         drop(fps_sample_counter);
+
+        // Update TPS history for rolling graph
+        let mut tps_history = self.tps_history.borrow_mut();
+        let mut tps_sample_counter = self.tps_sample_counter.borrow_mut();
+        
+        tps_history.push_back(TpsDataPoint {
+            index: *tps_sample_counter,
+            tps: game_tps as f64,
+        });
+        *tps_sample_counter += 1;
+        
+        // Keep only last 60 samples
+        if tps_history.len() > 60 {
+            tps_history.pop_front();
+        }
+
+        // Prepare data for the TPS chart
+        let tps_data: Vec<TpsDataPoint> = tps_history.iter().cloned().collect();
+        drop(tps_history);
+        drop(tps_sample_counter);
 
         v_flex()
             .gap_2()
@@ -481,6 +520,74 @@ impl ViewportPanel {
                                                 danger_color
                                             }
                                         })
+                                        .tick_margin(10)
+                                        .into_any_element()
+                                })
+                        )
+                )
+            })
+            .child(
+                // TPS Row - Add game thread monitoring
+                h_flex()
+                    .gap_2()
+                    .w_full()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_semibold()
+                            .text_color(if game_tps > 55.0 {
+                                cx.theme().success
+                            } else if game_tps > 30.0 {
+                                cx.theme().warning
+                            } else {
+                                cx.theme().danger
+                            })
+                            .child(format!("🎮 {:.0} TPS", game_tps))
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("Target: 60 | Ticks: {}", game_tick_count))
+                    )
+            )
+            .when(!tps_data.is_empty(), |this| {
+                this.child(
+                    v_flex()
+                        .w_full()
+                        .mt_2()
+                        .child(
+                            h_flex()
+                                .w_full()
+                                .items_center()
+                                .justify_between()
+                                .mb_1()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .font_semibold()
+                                        .text_color(cx.theme().foreground)
+                                        .child("TPS Graph (Game Thread)")
+                                )
+                        )
+                        .child(
+                            div()
+                                .h(px(80.))
+                                .w_full()
+                                .child({
+                                    // TPS Line Chart
+                                    let theme = cx.theme();
+                                    let stroke_color = theme.chart_2;
+                                    let fill_color = stroke_color.opacity(0.2);
+                                    
+                                    AreaChart::new(tps_data.clone())
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.tps)
+                                        .stroke(stroke_color)
+                                        .fill(fill_color)
+                                        .linear()
                                         .tick_margin(10)
                                         .into_any_element()
                                 })

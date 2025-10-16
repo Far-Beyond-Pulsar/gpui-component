@@ -7,6 +7,7 @@ pub mod classes;
 pub mod world;
 pub mod render;
 pub mod physics;
+pub mod game;
 pub mod input;
 pub mod ui;
 pub mod scripting;

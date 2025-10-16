@@ -14,6 +14,7 @@ use crate::ui::rainbow_engine_final::{RainbowRenderEngine, RainbowPattern};
 use crate::ui::wgpu_3d_renderer::Wgpu3DRenderer;
 use crate::ui::gpu_renderer::GpuRenderer;
 use crate::ui::shared::StatusBar;
+use engine_backend::{GameThread, GameState};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -55,6 +56,9 @@ pub struct LevelEditorPanel {
     current_pattern: RainbowPattern,
     render_speed: f32,
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
+    
+    // Game thread for object movement and game logic
+    game_thread: Arc<GameThread>,
 }
 
 impl LevelEditorPanel {
@@ -79,6 +83,12 @@ impl LevelEditorPanel {
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
         
         println!("[LEVEL-EDITOR] ✅ GPU renderer initialized");
+
+        // Create and start game thread for object movement
+        println!("[LEVEL-EDITOR] 🎮 Creating game thread with target 60 TPS...");
+        let game_thread = Arc::new(GameThread::new(60.0));
+        game_thread.start();
+        println!("[LEVEL-EDITOR] ✅ Game thread started successfully!");
 
         // Spawn render thread
         let gpu_clone = gpu_engine.clone();
@@ -115,6 +125,7 @@ impl LevelEditorPanel {
             current_pattern: RainbowPattern::Waves,
             render_speed: 2.0,
             render_enabled,
+            game_thread,
         }
     }
 
@@ -478,6 +489,7 @@ impl Render for LevelEditorPanel {
                                                     &mut self.state,
                                                     self.fps_graph_is_line.clone(),
                                                     &self.gpu_engine,
+                                                    &self.game_thread,
                                                     self.current_pattern,
                                                     cx
                                                 )
