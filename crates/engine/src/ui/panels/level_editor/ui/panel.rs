@@ -85,8 +85,8 @@ impl LevelEditorPanel {
         println!("[LEVEL-EDITOR] ✅ GPU renderer initialized");
 
         // Create and start game thread for object movement
-        println!("[LEVEL-EDITOR] 🎮 Creating game thread with target 60 TPS...");
-        let game_thread = Arc::new(GameThread::new(60.0));
+        println!("[LEVEL-EDITOR] 🎮 Creating game thread with target 240 TPS...");
+        let game_thread = Arc::new(GameThread::new(240.0));
         game_thread.start();
         println!("[LEVEL-EDITOR] ✅ Game thread started successfully!");
 

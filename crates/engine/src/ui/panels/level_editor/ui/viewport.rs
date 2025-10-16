@@ -537,9 +537,9 @@ impl ViewportPanel {
                         div()
                             .text_xs()
                             .font_semibold()
-                            .text_color(if game_tps > 55.0 {
+                            .text_color(if game_tps > 220.0 {
                                 cx.theme().success
-                            } else if game_tps > 30.0 {
+                            } else if game_tps > 120.0 {
                                 cx.theme().warning
                             } else {
                                 cx.theme().danger
@@ -550,7 +550,7 @@ impl ViewportPanel {
                         div()
                             .text_xs()
                             .text_color(cx.theme().muted_foreground)
-                            .child(format!("Target: 60 | Ticks: {}", game_tick_count))
+                            .child(format!("Target: 240 | Ticks: {}", game_tick_count))
                     )
             )
             .when(!tps_data.is_empty(), |this| {
