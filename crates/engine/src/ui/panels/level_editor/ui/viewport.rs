@@ -426,7 +426,8 @@ impl ViewportPanel {
                                         .child("FPS Graph")
                                 )
                                 .child({
-                                    let graph_type = self.graph_type.clone();
+                                    let graph_type_bar = self.graph_type.clone();
+                                    let graph_type_line = self.graph_type.clone();
                                     h_flex()
                                         .gap_1()
                                         .items_center()
@@ -437,7 +438,7 @@ impl ViewportPanel {
                                                 .checked(current_graph_type == GraphType::Bar)
                                                 .on_change(cx.listener(move |_view, checked, _window, cx| {
                                                     if *checked {
-                                                        let mut gt = graph_type.borrow_mut();
+                                                        let mut gt = graph_type_bar.borrow_mut();
                                                         *gt = GraphType::Bar;
                                                     }
                                                     cx.notify();
@@ -450,7 +451,7 @@ impl ViewportPanel {
                                                 .checked(current_graph_type == GraphType::Line)
                                                 .on_change(cx.listener(move |_view, checked, _window, cx| {
                                                     if *checked {
-                                                        let mut gt = graph_type.borrow_mut();
+                                                        let mut gt = graph_type_line.borrow_mut();
                                                         *gt = GraphType::Line;
                                                     }
                                                     cx.notify();
