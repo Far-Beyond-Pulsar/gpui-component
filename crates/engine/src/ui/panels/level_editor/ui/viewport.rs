@@ -1,9 +1,8 @@
 use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
-    button::{Button, ButtonVariants as _}, h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
+    button::{Button, ButtonVariants as _, Toggle}, h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
     chart::{LineChart, BarChart},
-    switch::Switch,
 };
 use gpui_component::viewport_final::Viewport;
 
@@ -429,29 +428,33 @@ impl ViewportPanel {
                                 .child({
                                     let graph_type = self.graph_type.clone();
                                     h_flex()
-                                        .gap_2()
+                                        .gap_1()
                                         .items_center()
                                         .child(
-                                            div()
-                                                .text_xs()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child("Bar")
-                                        )
-                                        .child(
-                                            Switch::new("graph_type_switch")
-                                                .checked(current_graph_type == GraphType::Line)
+                                            Toggle::label("Bar")
+                                                .id("graph_bar")
                                                 .xsmall()
-                                                .on_click(cx.listener(move |_view, checked, _window, cx| {
-                                                    let mut gt = graph_type.borrow_mut();
-                                                    *gt = if *checked { GraphType::Line } else { GraphType::Bar };
+                                                .checked(current_graph_type == GraphType::Bar)
+                                                .on_change(cx.listener(move |_view, checked, _window, cx| {
+                                                    if *checked {
+                                                        let mut gt = graph_type.borrow_mut();
+                                                        *gt = GraphType::Bar;
+                                                    }
                                                     cx.notify();
                                                 }))
                                         )
                                         .child(
-                                            div()
-                                                .text_xs()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child("Line")
+                                            Toggle::label("Line")
+                                                .id("graph_line")
+                                                .xsmall()
+                                                .checked(current_graph_type == GraphType::Line)
+                                                .on_change(cx.listener(move |_view, checked, _window, cx| {
+                                                    if *checked {
+                                                        let mut gt = graph_type.borrow_mut();
+                                                        *gt = GraphType::Line;
+                                                    }
+                                                    cx.notify();
+                                                }))
                                         )
                                 })
                         )
