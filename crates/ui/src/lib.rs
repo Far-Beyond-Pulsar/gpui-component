@@ -11,6 +11,7 @@ mod styled;
 mod time;
 mod title_bar;
 pub mod viewport_final; // Final working zero-copy viewport
+pub mod viewport_optimized; // Production-ready optimized viewport
 pub mod gpu_mem_tracker; // GPU memory allocation tracker for debugging VRAM leaks
 mod virtual_list;
 mod window_border;
