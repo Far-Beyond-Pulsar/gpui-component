@@ -14,6 +14,7 @@ use crate::ui::rainbow_engine_final::{RainbowRenderEngine, RainbowPattern};
 use crate::ui::wgpu_3d_renderer::Wgpu3DRenderer;
 use crate::ui::gpu_renderer::GpuRenderer;
 use crate::ui::shared::StatusBar;
+use engine_backend::{GameThread, GameState};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -55,6 +56,9 @@ pub struct LevelEditorPanel {
     current_pattern: RainbowPattern,
     render_speed: f32,
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
+    
+    // Game thread for object movement and game logic
+    game_thread: Arc<GameThread>,
 }
 
 impl LevelEditorPanel {
@@ -80,11 +84,18 @@ impl LevelEditorPanel {
         
         println!("[LEVEL-EDITOR] ✅ GPU renderer initialized");
 
+        // Create and start game thread for object movement
+        println!("[LEVEL-EDITOR] 🎮 Creating game thread with target 240 TPS...");
+        let game_thread = Arc::new(GameThread::new(240.0));
+        game_thread.start();
+        println!("[LEVEL-EDITOR] ✅ Game thread started successfully!");
+
         // Spawn render thread
         let gpu_clone = gpu_engine.clone();
         let buffers_clone = buffers.clone();
         let hook_clone = refresh_hook.clone();
         let enabled_clone = render_enabled.clone();
+        let game_thread_clone = game_thread.clone();
 
         thread::spawn(move || {
             Self::render_thread_controlled(
@@ -92,6 +103,7 @@ impl LevelEditorPanel {
                 buffers_clone,
                 hook_clone,
                 enabled_clone,
+                game_thread_clone,
             );
         });
 
@@ -115,6 +127,7 @@ impl LevelEditorPanel {
             current_pattern: RainbowPattern::Waves,
             render_speed: 2.0,
             render_enabled,
+            game_thread,
         }
     }
 
@@ -124,6 +137,7 @@ impl LevelEditorPanel {
         buffers: Arc<DoubleBuffer>,
         refresh_hook: RefreshHook,
         render_enabled: Arc<std::sync::atomic::AtomicBool>,
+        game_thread: Arc<GameThread>,
     ) {
         let base_frame_time = Duration::from_millis(8);
         let mut adaptive_frame_time = base_frame_time;
@@ -133,6 +147,16 @@ impl LevelEditorPanel {
 
         while render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
             let frame_start = std::time::Instant::now();
+
+            // Sync game objects to renderer before rendering
+            if let Ok(game_state) = game_thread.get_state().lock() {
+                let objects = game_state.objects.clone();
+                if let Ok(mut engine) = gpu_engine.try_lock() {
+                    if let Some(ref mut bevy_renderer) = engine.bevy_renderer {
+                        bevy_renderer.update_game_objects(objects);
+                    }
+                }
+            }
 
             // Always use GPU renderer
             let render_successful = if let Ok(mut engine_guard) = gpu_engine.try_lock() {
@@ -478,6 +502,7 @@ impl Render for LevelEditorPanel {
                                                     &mut self.state,
                                                     self.fps_graph_is_line.clone(),
                                                     &self.gpu_engine,
+                                                    &self.game_thread,
                                                     self.current_pattern,
                                                     cx
                                                 )

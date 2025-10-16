@@ -8,6 +8,7 @@
 pub mod subsystems;
 pub use tokio;
 pub use subsystems::physics::PhysicsEngine;
+pub use subsystems::game::{GameThread, GameState, GameObject};
 pub use subsystems::render::{WgpuRenderer, BevyRenderer, Framebuffer as RenderFramebuffer};
 pub use std::sync::Arc;
 

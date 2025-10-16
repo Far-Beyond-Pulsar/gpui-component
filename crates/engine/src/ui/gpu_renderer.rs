@@ -28,7 +28,7 @@ fn get_runtime() -> &'static tokio::runtime::Runtime {
 /// - Optimized memory copy with unsafe ptr ops
 /// - Performance metrics tracking
 pub struct GpuRenderer {
-    bevy_renderer: Option<BevyRenderer>,
+    pub bevy_renderer: Option<BevyRenderer>,
     temp_framebuffer: BackendFramebuffer,
     render_width: u32,
     render_height: u32,
