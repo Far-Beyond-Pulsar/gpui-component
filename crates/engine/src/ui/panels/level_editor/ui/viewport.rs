@@ -2,7 +2,7 @@ use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::{Button, ButtonVariants as _, Toggle}, h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
-    chart::{LineChart, BarChart},
+    chart::{LineChart, BarChart, AreaChart},
 };
 use gpui_component::viewport_final::Viewport;
 
@@ -443,9 +443,16 @@ impl ViewportPanel {
                                 .h(px(100.))
                                 .w_full()
                                 .child(if *fps_graph_state.borrow() {
-                                    LineChart::new(fps_data.clone())
+                                    // Area chart with semi-transparent fill (line mode)
+                                    let theme = cx.theme();
+                                    let stroke_color = theme.chart_1;
+                                    let fill_color = stroke_color.opacity(0.2);
+                                    
+                                    AreaChart::new(fps_data.clone())
                                         .x(|d| SharedString::from(format!("{}", d.index)))
                                         .y(|d| d.fps)
+                                        .stroke(stroke_color)
+                                        .fill(fill_color)
                                         .linear()
                                         .tick_margin(10)
                                         .into_any_element()
