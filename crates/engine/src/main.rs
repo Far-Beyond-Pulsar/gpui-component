@@ -1,15 +1,27 @@
 use crate::settings::EngineSettings;
 use gpui::*;
 use gpui_component::Root;
+use directories::ProjectDirs;
+use std::path::PathBuf;
+use ui::app::PulsarApp;
+use ui::project_selector::ProjectSelected;
+use ui::entry_window::EntryWindow;
+use ui::settings_window::SettingsWindow;
+use gpui::Action;
+use gpui::SharedString;
+use gpui_component::scroll::ScrollbarShow;
+use serde::Deserialize;
+use std::fs;
+use std::path::Path;
 
 mod assets;
 mod compiler;
 mod graph;
 mod ui;
 mod recent_projects;
-
+pub mod settings;
+pub mod themes;
 pub use assets::Assets;
-use serde::Deserialize;
 
 // +--------------------------------------------+
 // |  Compile-time engine info from Cargo.toml  |
@@ -23,14 +35,6 @@ pub const ENGINE_HOMEPAGE:     &str = env!("CARGO_PKG_HOMEPAGE");
 pub const ENGINE_REPOSITORY:   &str = env!("CARGO_PKG_REPOSITORY");
 pub const ENGINE_DESCRIPTION:  &str = env!("CARGO_PKG_DESCRIPTION");
 pub const ENGINE_LICENSE_FILE: &str = env!("CARGO_PKG_LICENSE_FILE");
-
-// pub mod renderer;
-pub mod settings;
-pub mod themes;
-
-use gpui::Action;
-use gpui::SharedString;
-use gpui_component::scroll::ScrollbarShow;
 
 // +----------------------------------+
 // |   Actions for settings changes   |
@@ -56,23 +60,11 @@ pub struct SelectRadius(usize);
 #[action(namespace = pulsar)]
 pub struct OpenSettings;
 
-use directories::ProjectDirs;
-use std::path::PathBuf;
-use ui::app::PulsarApp;
-use ui::project_selector::ProjectSelected;
-use ui::entry_window::EntryWindow;
-use ui::settings_window::SettingsWindow;
-
 fn main() {
     println!("{}", ENGINE_NAME);
     println!("Version: {}", ENGINE_VERSION);
     println!("Authors: {}", ENGINE_AUTHORS);
     println!("Description: {}", ENGINE_DESCRIPTION);
-
-    // --- THEME EXTRACTION & SETTINGS INIT ---
-    use directories::ProjectDirs;
-    use std::fs;
-    use std::path::Path;
 
     // Determine app data directory
     let proj_dirs = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
@@ -126,6 +118,16 @@ fn main() {
 
     let app = Application::new()
         .with_assets(Assets);
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(8)
+        .thread_name("PulsarEngineRuntime")
+        .enable_all()
+        .build()
+        .unwrap();
+
+    // Init the Game engine backend (subsystems, etc)
+    rt.block_on(engine_backend::EngineBackend::init());
 
     app.run(move |cx| {
         // Load custom fonts first

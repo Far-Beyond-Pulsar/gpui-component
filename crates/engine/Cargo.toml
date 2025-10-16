@@ -3,7 +3,7 @@ edition = "2021"
 name = "pulsar_engine"
 description = "A modern high-performance game engine written in Rust"
 publish = false
-version = "0.1.33"
+version = "0.1.40"
 
 [profile.dev.package."*"]
 opt-level = 3
@@ -39,6 +39,7 @@ parking_lot = "0.12"
 open = "5"
 lsp-types.workspace = true
 ropey.workspace = true
+engine_backend.workspace = true
 
 # New compiler dependencies
 syn = { version = "2.0", features = ["full", "parsing", "extra-traits", "visit", "visit-mut"] }
@@ -47,11 +48,12 @@ prettyplease = "0.2"
 pulsar_std = { path = "../pulsar_std" }
 
 # DAW audio dependencies
-cpal = "0.15"      # Audio I/O library
+cpal = { version = "0.15", default-features = false }
+
 hound = "3.5"
 lewton = "0.10"
 claxon = "0.4"
-minimp3 = "0.5"    # MP3 decoder
+symphonia = { version = "0.5", features = ["mp3", "wav", "flac", "vorbis"] }  # Modern audio decoder
 crossbeam = "0.8.4"  # Concurrency utilities
 wgpu = "0.20"      # GPU compute and rendering
 bytemuck = { version = "1.14", features = ["derive"] }

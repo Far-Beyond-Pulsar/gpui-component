@@ -10,10 +10,14 @@ use gpui_component::{
 use gpui_component::viewport_final::{Viewport, DoubleBuffer, RefreshHook, create_viewport_with_background_rendering};
 
 use crate::ui::rainbow_engine_final::{RainbowRenderEngine, RainbowPattern};
+use crate::ui::wgpu_3d_renderer::Wgpu3DRenderer;
+use crate::ui::gpu_renderer::GpuRenderer;
 use crate::ui::shared::StatusBar;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 use super::{
     LevelEditorState, SceneBrowser, HierarchyPanel, PropertiesPanel,
@@ -27,6 +31,9 @@ pub struct LevelEditorPanel {
 
     // Shared state
     state: LevelEditorState,
+    
+    // FPS graph type state (shared with viewport for Switch)
+    fps_graph_is_line: Rc<RefCell<bool>>,
 
     // UI Components
     scene_browser: SceneBrowser,
@@ -41,7 +48,7 @@ pub struct LevelEditorPanel {
 
     // Viewport and rendering
     viewport: Entity<Viewport>,
-    render_engine: Arc<Mutex<RainbowRenderEngine>>,
+    gpu_engine: Arc<Mutex<GpuRenderer>>, // Full GPU renderer from backend
     buffers: Arc<DoubleBuffer>,
     refresh_hook: RefreshHook,
     current_pattern: RainbowPattern,
@@ -55,24 +62,30 @@ impl LevelEditorPanel {
         let vertical_resizable_state = ResizableState::new(cx);
 
         // Create viewport with zero-copy background rendering
+        // Use a higher resolution for better quality (will scale down if needed)
         let (viewport, buffers, refresh_hook) = create_viewport_with_background_rendering(
-            800,
-            600,
+            1600,
+            900,
             cx
         );
 
-        // Create rainbow render engine
-        let render_engine = Arc::new(Mutex::new(RainbowRenderEngine::new()));
+        // Create GPU render engine with matching resolution
+        let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new(1600, 900)));
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
 
         // Spawn render thread
-        let engine_clone = render_engine.clone();
+        let gpu_clone = gpu_engine.clone();
         let buffers_clone = buffers.clone();
         let hook_clone = refresh_hook.clone();
         let enabled_clone = render_enabled.clone();
 
         thread::spawn(move || {
-            Self::render_thread_controlled(engine_clone, buffers_clone, hook_clone, enabled_clone);
+            Self::render_thread_controlled(
+                gpu_clone,
+                buffers_clone,
+                hook_clone,
+                enabled_clone,
+            );
         });
 
         println!("[LEVEL-EDITOR] Modular level editor initialized");
@@ -80,6 +93,7 @@ impl LevelEditorPanel {
         Self {
             focus_handle: cx.focus_handle(),
             state: LevelEditorState::new(),
+            fps_graph_is_line: Rc::new(RefCell::new(true)),  // Default to line graph
             scene_browser: SceneBrowser::new(),
             hierarchy: HierarchyPanel::new(),
             properties: PropertiesPanel::new(),
@@ -88,7 +102,7 @@ impl LevelEditorPanel {
             horizontal_resizable_state,
             vertical_resizable_state,
             viewport,
-            render_engine,
+            gpu_engine,
             buffers,
             refresh_hook,
             current_pattern: RainbowPattern::Waves,
@@ -99,7 +113,7 @@ impl LevelEditorPanel {
 
     /// Controlled render thread with proper double buffering and CPU throttling
     fn render_thread_controlled(
-        engine: Arc<Mutex<RainbowRenderEngine>>,
+        gpu_engine: Arc<Mutex<GpuRenderer>>,
         buffers: Arc<DoubleBuffer>,
         refresh_hook: RefreshHook,
         render_enabled: Arc<std::sync::atomic::AtomicBool>,
@@ -113,11 +127,12 @@ impl LevelEditorPanel {
         while render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
             let frame_start = std::time::Instant::now();
 
-            let render_successful = if let Ok(mut engine_guard) = engine.try_lock() {
+            // Always use GPU renderer
+            let render_successful = if let Ok(mut engine_guard) = gpu_engine.try_lock() {
                 let back_buffer = buffers.get_back_buffer();
                 let buffer_lock_result = back_buffer.try_lock();
                 if let Ok(mut buffer_guard) = buffer_lock_result {
-                    engine_guard.render_rgba8(&mut *buffer_guard);
+                    engine_guard.render(&mut *buffer_guard);
                     true
                 } else {
                     false
@@ -170,9 +185,7 @@ impl LevelEditorPanel {
 
     pub fn set_rainbow_pattern(&mut self, pattern: RainbowPattern) {
         self.current_pattern = pattern;
-        if let Ok(mut engine) = self.render_engine.lock() {
-            engine.set_pattern(pattern);
-        }
+        // GPU renderer doesn't use patterns
     }
 
     fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -284,6 +297,26 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
+    fn on_toggle_viewport_controls(&mut self, _: &ToggleViewportControls, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_viewport_controls();
+        cx.notify();
+    }
+
+    fn on_toggle_camera_mode_selector(&mut self, _: &ToggleCameraModeSelector, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_camera_mode_selector();
+        cx.notify();
+    }
+
+    fn on_toggle_viewport_options(&mut self, _: &ToggleViewportOptions, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_viewport_options();
+        cx.notify();
+    }
+
+    fn on_toggle_fps_graph_type(&mut self, _: &ToggleFpsGraphType, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_fps_graph_type();
+        cx.notify();
+    }
+
     fn on_perspective_view(&mut self, _: &PerspectiveView, _: &mut Window, cx: &mut Context<Self>) {
         self.state.set_camera_mode(CameraMode::Perspective);
         cx.notify();
@@ -372,6 +405,10 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_toggle_wireframe))
             .on_action(cx.listener(Self::on_toggle_lighting))
             .on_action(cx.listener(Self::on_toggle_performance_overlay))
+            .on_action(cx.listener(Self::on_toggle_viewport_controls))
+            .on_action(cx.listener(Self::on_toggle_camera_mode_selector))
+            .on_action(cx.listener(Self::on_toggle_viewport_options))
+            .on_action(cx.listener(Self::on_toggle_fps_graph_type))
             // Camera modes
             .on_action(cx.listener(Self::on_perspective_view))
             .on_action(cx.listener(Self::on_orthographic_view))
@@ -385,7 +422,10 @@ impl Render for LevelEditorPanel {
             .child(
                 // Main content area with resizable panels
                 div()
-                    .flex_1()
+                    .flex_1() // Grow to fill remaining space
+                    .flex() // Enable flexbox
+                    .flex_row() // Row direction for resizable panels
+                    .min_h_0() // Allow shrinking below content size
                     .child(
                         h_resizable("level-editor-main", self.horizontal_resizable_state.clone())
                             .child(
@@ -428,8 +468,9 @@ impl Render for LevelEditorPanel {
                                             .p_1()
                                             .child(
                                                 self.viewport_panel.render(
-                                                    &self.state,
-                                                    &self.render_engine,
+                                                    &mut self.state,
+                                                    self.fps_graph_is_line.clone(),
+                                                    &self.gpu_engine,
                                                     self.current_pattern,
                                                     cx
                                                 )

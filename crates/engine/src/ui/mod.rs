@@ -14,6 +14,8 @@ pub mod terminal; // New professional terminal module
 pub mod terminal_drawer;
 pub mod terminal_window;
 pub mod rainbow_engine_final;
+pub mod wgpu_3d_renderer;
+pub mod gpu_renderer;
 pub mod rust_analyzer_manager;
 pub mod settings_screen;
 pub mod settings_window;

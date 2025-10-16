@@ -2,6 +2,7 @@
 members = [
     "crates/macros",
     "crates/engine",
+    "crates/engine_backend",
     "crates/ui",
     "crates/pulsar_macros",
     "crates/pulsar_std",
@@ -12,15 +13,16 @@ default-members = ["crates/engine"]
 resolver = "2"
 
 [workspace.dependencies]
-gpui = { git = "https://github.com/zed-industries/zed.git" }
-gpui-macros = { git = "https://github.com/zed-industries/zed.git" }
-reqwest_client = { git = "https://github.com/zed-industries/zed.git" }
-zed-sum-tree = { git = "https://github.com/zed-industries/zed.git" }
+gpui = { git = "https://github.com/tristanpoland/zed", features = ["runtime_shaders", "macos-blade"] }
+gpui_macros = { git = "https://github.com/tristanpoland/zed" }
+reqwest_client = { git = "https://github.com/tristanpoland/zed" }
+sum_tree = { git = "https://github.com/tristanpoland/zed" }
 gpui-component = { path = "crates/ui" }
 gpui-component-macros = { path = "crates/macros" }
 pulsar_std = { path = "crates/pulsar_std" }
 ropey = { version = "=2.0.0-beta.1", features = ["metric_utf16", "metric_lines_lf"] }
 horizon = { git = "https://github.com/Far-Beyond-Dev/horizon" }
+engine_backend = { path = "crates/engine_backend" }
 
 anyhow = "1"
 log = "0.4"
@@ -37,6 +39,7 @@ notify = "7.0.0"
 lsp-types = "0.97.0"
 directories = "5"
 itertools = "0.13"
+rapier3d = { version = "*", features = [ "simd-stable" ] }
 
 [workspace.dependencies.windows]
 features = ["Wdk", "Wdk_System", "Wdk_System_SystemServices", "Win32_System_Threading", "Win32_System_SystemInformation"]

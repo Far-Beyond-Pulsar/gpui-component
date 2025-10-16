@@ -1,6 +1,7 @@
 use gpui::*;
 use gpui_component::{
-    button::Button, dock::{Panel, PanelEvent}, h_flex, resizable::{h_resizable, resizable_panel, ResizableState}, v_flex, ActiveTheme as _, IconName, Selectable, StyledExt
+    button::Button, dock::{Panel, PanelEvent}, h_flex, resizable::{h_resizable, resizable_panel, ResizableState}, v_flex, ActiveTheme as _, IconName, Selectable, StyledExt,
+    chart::LineChart,
 };
 use gpui_component::viewport_final::{Viewport, DoubleBuffer, RefreshHook, create_viewport_with_background_rendering};
 
@@ -9,6 +10,14 @@ use crate::ui::rainbow_engine_final::{RainbowRenderEngine, RainbowPattern};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+use std::collections::VecDeque;
+use std::cell::RefCell;
+
+#[derive(Clone)]
+struct FpsDataPoint {
+    index: usize,
+    fps: f64,
+}
 
 pub struct LevelEditorPanel {
     focus_handle: FocusHandle,
@@ -27,6 +36,10 @@ pub struct LevelEditorPanel {
     current_pattern: RainbowPattern,
     render_speed: f32,
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
+    
+    // FPS tracking for rolling graph - using RefCell for interior mutability
+    fps_history: RefCell<VecDeque<FpsDataPoint>>,
+    fps_sample_counter: RefCell<usize>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -111,6 +124,8 @@ impl LevelEditorPanel {
             current_pattern: RainbowPattern::Waves,
             render_speed: 2.0,
             render_enabled,
+            fps_history: RefCell::new(VecDeque::with_capacity(60)),
+            fps_sample_counter: RefCell::new(0),
         }
     }
 
@@ -470,8 +485,6 @@ impl LevelEditorPanel {
     }
 
     fn render_performance_overlay(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        // Since the new viewport doesn't expose metrics directly, we'll use our own metrics from the engine
-        
         // Get rainbow engine metrics
         let (engine_fps, frame_count, pattern_name) = if let Ok(engine) = self.render_engine.lock() {
             let fps = engine.get_fps();
@@ -482,16 +495,38 @@ impl LevelEditorPanel {
             (0.0, 0, "Unknown".to_string())
         };
 
+        // Update FPS history for rolling graph using interior mutability
+        let mut fps_history = self.fps_history.borrow_mut();
+        let mut fps_sample_counter = self.fps_sample_counter.borrow_mut();
+        
+        fps_history.push_back(FpsDataPoint {
+            index: *fps_sample_counter,
+            fps: engine_fps as f64,
+        });
+        *fps_sample_counter += 1;
+        
+        // Keep only last 60 samples
+        if fps_history.len() > 60 {
+            fps_history.pop_front();
+        }
+
+        // Prepare data for the chart
+        let fps_data: Vec<FpsDataPoint> = fps_history.iter().cloned().collect();
+        drop(fps_history); // Release the borrow
+        drop(fps_sample_counter);
+
         v_flex()
-            .gap_1()
-            .p_2()
-            .bg(cx.theme().background.opacity(0.9))
+            .gap_2()
+            .p_3()
+            .w(px(340.))
+            .bg(cx.theme().background.opacity(0.95))
             .rounded(cx.theme().radius)
             .border_1()
             .border_color(cx.theme().border)
             .child(
                 h_flex()
                     .gap_2()
+                    .items_center()
                     .child(
                         div()
                             .text_xs()
@@ -504,7 +539,6 @@ impl LevelEditorPanel {
                                 cx.theme().accent 
                             })
                             .child(format!("🌈 {:.1} FPS", engine_fps))
-                            .text_color(cx.theme().foreground)
                     )
                     .child(
                         div()
@@ -552,8 +586,38 @@ impl LevelEditorPanel {
                             .child(format!("Mode: Final"))
                     )
             )
+            .when(!fps_data.is_empty(), |this| {
+                this.child(
+                    v_flex()
+                        .w_full()
+                        .mt_2()
+                        .border_t_1()
+                        .border_color(cx.theme().border)
+                        .pt_2()
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_semibold()
+                                .text_color(cx.theme().foreground)
+                                .mb_1()
+                                .child("FPS Graph")
+                        )
+                        .child(
+                            div()
+                                .h(px(100.))
+                                .w_full()
+                                .child(
+                                    LineChart::new(fps_data)
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.fps)
+                                        .linear()
+                                        .tick_margin(10)
+                                )
+                        )
+                )
+            })
     }
-
+    
     fn render_properties(&self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .size_full()

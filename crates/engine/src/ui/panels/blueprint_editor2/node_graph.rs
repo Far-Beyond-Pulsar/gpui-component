@@ -2,7 +2,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui::prelude::*;
 use gpui_component::{Colorize, PixelsExt};
-use gpui_component::{button::Button, h_flex, v_flex, ActiveTheme as _, IconName, StyledExt, tooltip::Tooltip};
+use gpui_component::{button::{Button, ButtonVariants}, h_flex, v_flex, ActiveTheme as _, IconName, Sizable, StyledExt, tooltip::Tooltip};
 
 use super::panel::BlueprintEditorPanel;
 use super::{BlueprintNode, BlueprintGraph, Pin, PinType, NodeType, Connection, VirtualizationStats};
@@ -29,6 +29,8 @@ impl NodeGraphRenderer {
 
         div()
             .size_full()
+            .flex() // Enable flexbox
+            .flex_col() // Column direction
             .relative()
             .bg(cx.theme().muted.opacity(0.1))
             .border_1()
@@ -83,9 +85,15 @@ impl NodeGraphRenderer {
             .child(Self::render_connections(panel, cx))
             .child(Self::render_selection_box(panel, cx))
             .child(Self::render_viewport_bounds_debug(panel, cx))
-            .child(Self::render_debug_overlay(panel, cx))
-            .child(Self::render_graph_controls(panel, cx))
-            .child(super::minimap::MinimapRenderer::render(panel, cx))
+            .when(panel.show_debug_overlay, |this| {
+                this.child(Self::render_debug_overlay(panel, cx))
+            })
+            .when(panel.show_graph_controls, |this| {
+                this.child(Self::render_graph_controls(panel, cx))
+            })
+            .when(panel.show_minimap, |this| {
+                this.child(super::minimap::MinimapRenderer::render(panel, cx))
+            })
             .on_mouse_down(
                 gpui::MouseButton::Right,
                 cx.listener(|panel, event: &MouseDownEvent, _window, cx| {
@@ -682,6 +690,9 @@ impl NodeGraphRenderer {
                 NodeType::Math => cx.theme().success,
                 NodeType::Object => cx.theme().warning,
                 NodeType::Reroute => cx.theme().accent,
+                NodeType::MacroEntry => gpui::Hsla { h: 0.75, s: 0.7, l: 0.6, a: 1.0 }, // Purple for macro entry
+                NodeType::MacroExit => gpui::Hsla { h: 0.75, s: 0.7, l: 0.6, a: 1.0 }, // Purple for macro exit
+                NodeType::MacroInstance => gpui::Hsla { h: 0.75, s: 0.5, l: 0.5, a: 1.0 }, // Darker purple for instances
             })
         } else {
             match node.node_type {
@@ -690,6 +701,9 @@ impl NodeGraphRenderer {
                 NodeType::Math => cx.theme().success,
                 NodeType::Object => cx.theme().warning,
                 NodeType::Reroute => cx.theme().accent,
+                NodeType::MacroEntry => gpui::Hsla { h: 0.75, s: 0.7, l: 0.6, a: 1.0 }, // Purple for macro entry
+                NodeType::MacroExit => gpui::Hsla { h: 0.75, s: 0.7, l: 0.6, a: 1.0 }, // Purple for macro exit
+                NodeType::MacroInstance => gpui::Hsla { h: 0.75, s: 0.5, l: 0.5, a: 1.0 }, // Darker purple for instances
             }
         };
 
@@ -777,6 +791,21 @@ impl NodeGraphRenderer {
                                     .text_color(cx.theme().foreground)
                                     .child(node.title.clone()),
                             )
+                            // Macro indicator badge
+                            .when(node.definition_id.starts_with("subgraph:"), |style| {
+                                style.child(
+                                    div()
+                                        .px(px(6.0 * panel.graph.zoom_level))
+                                        .py(px(2.0 * panel.graph.zoom_level))
+                                        .rounded(px(4.0 * panel.graph.zoom_level))
+                                        .bg(gpui::Rgba { r: 0.61, g: 0.35, b: 0.71, a: 0.3 })
+                                        .border_1()
+                                        .border_color(gpui::Rgba { r: 0.61, g: 0.35, b: 0.71, a: 1.0 })
+                                        .text_xs()
+                                        .text_color(gpui::Rgba { r: 0.61, g: 0.35, b: 0.71, a: 1.0 })
+                                        .child("MACRO")
+                                )
+                            })
                             .on_mouse_move(cx.listener({
                                 let tooltip_content = tooltip_content.clone();
                                 move |panel, event: &MouseMoveEvent, window, cx| {
@@ -792,6 +821,8 @@ impl NodeGraphRenderer {
                             }))
                             .on_mouse_down(gpui::MouseButton::Left, {
                                 let node_id = node_id.clone();
+                                let node_definition_id = node.definition_id.clone();
+                                let node_title = node.title.clone();
                                 cx.listener(move |panel, event: &MouseDownEvent, window, cx| {
                                     // Stop event propagation to prevent main graph handler from firing
                                     cx.stop_propagation();
@@ -802,17 +833,79 @@ impl NodeGraphRenderer {
                                     // Hide tooltip when interacting
                                     panel.hide_hoverable_tooltip(cx);
 
-                                    // Only change selection if this node is not already selected
-                                    // This allows dragging multiple selected nodes
-                                    if !panel.graph.selected_nodes.contains(&node_id) {
-                                        panel.select_node(Some(node_id.clone()), cx);
-                                    }
+                                    // Check for double-click on sub-graph nodes
+                                    let now = std::time::Instant::now();
+                                    let is_subgraph_node = node_definition_id.starts_with("subgraph:");
+                                    let should_open_subgraph = if is_subgraph_node {
+                                        if let Some(last_click) = panel.last_click_time {
+                                            if now.duration_since(last_click).as_millis() < 500 {
+                                                if let Some(last_pos) = panel.last_click_pos {
+                                                    let element_pos = Self::window_to_graph_element_pos(event.position, panel);
+                                                    let current_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
+                                                    let distance = ((current_pos.x - last_pos.x).powi(2) + (current_pos.y - last_pos.y).powi(2)).sqrt();
+                                                    distance < 10.0 && panel.last_click_time.is_some()
+                                                } else {
+                                                    false
+                                                }
+                                            } else {
+                                                false
+                                            }
+                                        } else {
+                                            false
+                                        }
+                                    } else {
+                                        false
+                                    };
 
-                                    // Start dragging
-                                    // Convert to element coordinates first
-                                    let element_pos = Self::window_to_graph_element_pos(event.position, panel);
-                                    let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
-                                    panel.start_drag(node_id.clone(), graph_pos, cx);
+                                    if should_open_subgraph {
+                                        // Extract sub-graph ID from definition_id (format: "subgraph:library_id.subgraph_id")
+                                        let subgraph_id = node_definition_id.strip_prefix("subgraph:").unwrap_or(&node_definition_id).to_string();
+
+                                        // Smart navigation: check if it's an engine macro or local
+                                        if let Some(library_id) = panel.get_macro_library_id(&subgraph_id) {
+                                            // It's an engine macro - request to open in library context
+                                            let library_name = panel.library_manager.get_libraries()
+                                                .get(&library_id)
+                                                .map(|lib| lib.name.clone())
+                                                .unwrap_or_else(|| library_id.clone());
+                                            
+                                            panel.request_open_engine_library(
+                                                library_id,
+                                                library_name,
+                                                Some(subgraph_id.clone()),
+                                                Some(node_title.clone()),
+                                                cx
+                                            );
+                                        } else {
+                                            // Local macro - open in current blueprint
+                                            if let Some(local_macro) = panel.local_macros.iter().find(|m| m.id == subgraph_id) {
+                                                panel.open_local_macro(subgraph_id.clone(), local_macro.name.clone(), cx);
+                                            } else {
+                                                println!("⚠️ Macro '{}' not found", node_title);
+                                            }
+                                        }
+                                        
+                                        // Clear click tracking
+                                        panel.last_click_time = None;
+                                        panel.last_click_pos = None;
+                                    } else {
+                                        // Only change selection if this node is not already selected
+                                        // This allows dragging multiple selected nodes
+                                        if !panel.graph.selected_nodes.contains(&node_id) {
+                                            panel.select_node(Some(node_id.clone()), cx);
+                                        }
+
+                                        // Start dragging
+                                        // Convert to element coordinates first
+                                        let element_pos = Self::window_to_graph_element_pos(event.position, panel);
+                                        let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
+                                        panel.start_drag(node_id.clone(), graph_pos, cx);
+
+                                        // Update click tracking for next potential double-click
+                                        let current_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
+                                        panel.last_click_time = Some(now);
+                                        panel.last_click_pos = Some(current_pos);
+                                    }
                                 })
                             }),
                     )
@@ -1518,8 +1611,10 @@ impl NodeGraphRenderer {
             .absolute()
             .top_4()
             .left_4()
+            .w(px(280.0)) // Hardcoded width to prevent inheritance issues
             .child(
                 div()
+                    .w(px(280.0)) // Fixed width for compactness
                     .p_3()
                     .bg(cx.theme().background.opacity(0.95))
                     .rounded(cx.theme().radius)
@@ -1530,11 +1625,27 @@ impl NodeGraphRenderer {
                         v_flex()
                             .gap_1()
                             .child(
-                                div()
-                                    .text_sm()
-                                    .font_bold()
-                                    .text_color(cx.theme().accent)
-                                    .child("Blueprint Viewport Debug"),
+                                h_flex()
+                                    .w_full()
+                                    .justify_between()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .font_bold()
+                                            .text_color(cx.theme().accent)
+                                            .child("Blueprint Viewport Debug"),
+                                    )
+                                    .child(
+                                        Button::new("close_debug_overlay")
+                                            .icon(IconName::X)
+                                            .ghost()
+                                            .xsmall()
+                                            .on_click(cx.listener(|panel, _, _, cx| {
+                                                panel.show_debug_overlay = false;
+                                                cx.notify();
+                                            }))
+                                    )
                             )
                             .child(div().h(px(1.0)).bg(cx.theme().border).my_1())
                             .child(div().text_xs().text_color(cx.theme().info).child(format!(
@@ -1638,38 +1749,61 @@ impl NodeGraphRenderer {
         panel: &BlueprintEditorPanel,
         cx: &mut Context<BlueprintEditorPanel>,
     ) -> impl IntoElement {
-        div().absolute().bottom_4().right_4().child(
-            v_flex()
-                .gap_2()
-                .items_end()
-                // Simplified controls since we have comprehensive debug overlay in top-left
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .p_2()
-                        .bg(cx.theme().background.opacity(0.9))
-                        .rounded(cx.theme().radius)
-                        .border_1()
-                        .border_color(cx.theme().border)
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(format!("Zoom: {:.0}%", panel.graph.zoom_level * 100.0)),
-                        )
-                        .child(
-                            Button::new("zoom_fit")
-                                .icon(IconName::BadgeCheck)
-                                .tooltip("Fit to View")
-                                .on_click(cx.listener(|panel, _, _window, cx| {
-                                    let graph = panel.get_graph_mut();
-                                    graph.zoom_level = 1.0;
-                                    graph.pan_offset = Point::new(0.0, 0.0);
-                                    cx.notify();
-                                })),
-                        ),
-                ),
-        )
+        div()
+            .absolute()
+            .bottom_4()
+            .right_4()
+            .w(px(280.0)) // Hardcoded width to prevent inheritance issues
+            .child(
+                v_flex()
+                    .gap_2()
+                    .items_end()
+                    .w(px(280.0)) // Hardcoded width
+                    // Simplified controls since we have comprehensive debug overlay in top-left
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .p_2()
+                            .w_full()
+                            .bg(cx.theme().background.opacity(0.9))
+                            .rounded(cx.theme().radius)
+                            .border_1()
+                            .border_color(cx.theme().border)
+                            .justify_between()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!("Zoom: {:.0}%", panel.graph.zoom_level * 100.0)),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .child(
+                                        Button::new("zoom_fit")
+                                            .icon(IconName::BadgeCheck)
+                                            .tooltip("Fit to View")
+                                            .on_click(cx.listener(|panel, _, _window, cx| {
+                                                let graph = panel.get_graph_mut();
+                                                graph.zoom_level = 1.0;
+                                                graph.pan_offset = Point::new(0.0, 0.0);
+                                                cx.notify();
+                                            }))
+                                    )
+                                    .child(
+                                        Button::new("close_graph_controls")
+                                            .icon(IconName::X)
+                                            .ghost()
+                                            .xsmall()
+                                            .on_click(cx.listener(|panel, _, _, cx| {
+                                                panel.show_graph_controls = false;
+                                                cx.notify();
+                                            }))
+                                    )
+                            )
+                    )
+            )
     }
 
     // Virtualization helper functions using viewport-aware culling

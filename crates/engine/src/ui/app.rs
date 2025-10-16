@@ -656,6 +656,10 @@ impl PulsarApp {
             panel
         });
 
+        // Subscribe to blueprint editor events (OpenEngineLibraryRequest)
+        cx.subscribe_in(&blueprint_editor, window, Self::on_blueprint_editor_event)
+            .detach();
+
         // Load the blueprint from the class path
         let graph_save_path = class_path.join("graph_save.json");
         if graph_save_path.exists() {
@@ -674,6 +678,95 @@ impl PulsarApp {
 
         // Store the blueprint editor reference
         self.blueprint_editors.push(blueprint_editor);
+    }
+
+    /// Handle events from blueprint editor panels
+    fn on_blueprint_editor_event(
+        &mut self,
+        _editor: &Entity<BlueprintEditorPanel>,
+        event: &crate::ui::panels::blueprint_editor2::OpenEngineLibraryRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Blueprint editor is requesting to open an engine library
+        self.open_engine_library_tab(
+            event.library_id.clone(),
+            event.library_name.clone(),
+            window,
+            cx,
+        );
+
+        // If a specific macro was requested, open it in the library tab
+        if let (Some(macro_id), Some(macro_name)) = (&event.macro_id, &event.macro_name) {
+            // Find the blueprint editor we just opened/focused for this library
+            let library_tab_title = format!("📚 {} Library", event.library_name);
+            if let Some(editor) = self.blueprint_editors.iter().find(|e| {
+                e.read(cx).tab_title.as_ref().map(|t| t == &library_tab_title).unwrap_or(false)
+            }) {
+                // Open the macro in that editor
+                editor.update(cx, |ed, cx| {
+                    ed.open_global_macro(macro_id.clone(), macro_name.clone(), cx);
+                });
+            }
+        }
+    }
+
+    /// Open a blueprint editor tab for an engine library (virtual blueprint class)
+    /// This opens the library as if it were a blueprint, allowing users to browse and edit its macros
+    pub fn open_engine_library_tab(
+        &mut self,
+        library_id: String,
+        library_name: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Check if a blueprint editor for this library is already open
+        // We use tab_title to identify library tabs since they don't have a class_path
+        let already_open = self
+            .blueprint_editors
+            .iter()
+            .enumerate()
+            .find_map(|(ix, editor)| {
+                let title = editor.read(cx).tab_title.clone();
+                title
+                    .map(|t| t == format!("📚 {} Library", library_name))
+                    .unwrap_or(false)
+                    .then_some(ix)
+            });
+
+        if let Some(ix) = already_open {
+            // Focus the correct tab
+            if let Some(editor_entity) = self.blueprint_editors.get(ix) {
+                let target_id = editor_entity.entity_id();
+                self.center_tabs.update(cx, |tabs, cx| {
+                    if let Some(tab_ix) = tabs.index_of_panel_by_entity_id(target_id) {
+                        tabs.set_active_tab(tab_ix, window, cx);
+                    }
+                });
+            }
+            return;
+        }
+
+        self.next_tab_id += 1;
+
+        // Create a new blueprint editor for the library
+        let blueprint_editor = cx.new(|cx| {
+            BlueprintEditorPanel::new_for_library(library_id.clone(), library_name.clone(), window, cx)
+        });
+
+        // Subscribe to blueprint editor events
+        cx.subscribe_in(&blueprint_editor, window, Self::on_blueprint_editor_event)
+            .detach();
+
+        // Add the tab
+        self.center_tabs.update(cx, |tabs, cx| {
+            tabs.add_panel(Arc::new(blueprint_editor.clone()), window, cx);
+        });
+
+        // Store the blueprint editor reference
+        self.blueprint_editors.push(blueprint_editor);
+
+        println!("📚 Opened engine library '{}' in main tab", library_name);
     }
 
     /// Open or focus the script editor tab

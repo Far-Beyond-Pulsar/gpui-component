@@ -1,5 +1,5 @@
 use gpui::*;
-use gpui_component::{ActiveTheme as _, Colorize, StyledExt};
+use gpui_component::{button::{Button, ButtonVariants}, h_flex, ActiveTheme as _, Colorize, Sizable, StyledExt, IconName};
 
 use super::panel::BlueprintEditorPanel;
 use super::{BlueprintGraph, BlueprintNode, NodeType};
@@ -40,8 +40,8 @@ impl MinimapRenderer {
             .absolute()
             .bottom(px(Self::MINIMAP_PADDING))
             .left(px(Self::MINIMAP_PADDING))
-            .w(px(Self::MINIMAP_WIDTH))
-            .h(px(Self::MINIMAP_HEIGHT))
+            .w(px(Self::MINIMAP_WIDTH)) // Hardcoded width to prevent inheritance issues
+            .h(px(Self::MINIMAP_HEIGHT)) // Hardcoded height
             .bg(cx.theme().background.opacity(0.95))
             .border_2()
             .border_color(cx.theme().border)
@@ -66,20 +66,36 @@ impl MinimapRenderer {
                         scale,
                         cx,
                     ))
-                    // Title overlay
+                    // Title overlay with close button
                     .child(
-                        div()
+                        h_flex()
                             .absolute()
                             .top_2()
                             .left_2()
+                            .right_2()
                             .px_2()
                             .py_1()
                             .rounded(px(4.0))
                             .bg(cx.theme().secondary.opacity(0.8))
-                            .text_xs()
-                            .font_semibold()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("Minimap")
+                            .justify_between()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_semibold()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Minimap")
+                            )
+                            .child(
+                                Button::new("close_minimap")
+                                    .icon(IconName::X)
+                                    .ghost()
+                                    .xsmall()
+                                    .on_click(cx.listener(|panel, _, _, cx| {
+                                        panel.show_minimap = false;
+                                        cx.notify();
+                                    }))
+                            )
                     )
             )
     }
@@ -134,6 +150,9 @@ impl MinimapRenderer {
             NodeType::Math => cx.theme().success,
             NodeType::Object => cx.theme().warning,
             NodeType::Reroute => cx.theme().accent,
+            NodeType::MacroEntry => gpui::Hsla { h: 0.75, s: 0.7, l: 0.6, a: 1.0 },
+            NodeType::MacroExit => gpui::Hsla { h: 0.75, s: 0.7, l: 0.6, a: 1.0 },
+            NodeType::MacroInstance => gpui::Hsla { h: 0.75, s: 0.5, l: 0.5, a: 1.0 },
         };
 
         let is_selected = graph.selected_nodes.contains(&node.id);

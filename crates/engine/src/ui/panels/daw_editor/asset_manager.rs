@@ -199,28 +199,97 @@ impl AssetManager {
         let path = path.to_owned();
 
         smol::unblock(move || {
-            let data = std::fs::read(&path)?;
-            let mut decoder = minimp3::Decoder::new(std::io::Cursor::new(data));
+            use symphonia::core::audio::{AudioBufferRef, Signal};
+            use symphonia::core::codecs::DecoderOptions;
+            use symphonia::core::errors::Error as SymphoniaError;
+            use symphonia::core::formats::FormatOptions;
+            use symphonia::core::io::MediaSourceStream;
+            use symphonia::core::meta::MetadataOptions;
+            use symphonia::core::probe::Hint;
 
+            let file = std::fs::File::open(&path)?;
+            let mss = MediaSourceStream::new(Box::new(file), Default::default());
+
+            let mut hint = Hint::new();
+            hint.with_extension("mp3");
+
+            let mut format = symphonia::default::get_probe()
+                .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
+                .context("Failed to probe audio format")?
+                .format;
+
+            let track = format
+                .tracks()
+                .iter()
+                .find(|t| t.codec_params.codec != symphonia::core::codecs::CODEC_TYPE_NULL)
+                .context("No valid audio track found")?;
+
+            let mut decoder = symphonia::default::get_codecs()
+                .make(&track.codec_params, &DecoderOptions::default())
+                .context("Failed to create decoder")?;
+
+            let track_id = track.id;
             let mut samples = Vec::new();
             let mut sample_rate = 0;
             let mut channels = 0;
 
             loop {
-                match decoder.next_frame() {
-                    Ok(frame) => {
+                let packet = match format.next_packet() {
+                    Ok(packet) => packet,
+                    Err(SymphoniaError::ResetRequired) => {
+                        decoder.reset();
+                        continue;
+                    }
+                    Err(SymphoniaError::IoError(ref err)) 
+                        if err.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                    Err(err) => return Err(anyhow::anyhow!("Format error: {}", err)),
+                };
+
+                if packet.track_id() != track_id {
+                    continue;
+                }
+
+                match decoder.decode(&packet) {
+                    Ok(decoded) => {
                         if sample_rate == 0 {
-                            sample_rate = frame.sample_rate;
-                            channels = frame.channels;
+                            let spec = decoded.spec();
+                            sample_rate = spec.rate;
+                            channels = spec.channels.count();
                         }
 
-                        // Convert i16 samples to f32
-                        for sample in frame.data {
-                            samples.push(sample as f32 / i16::MAX as f32);
+                        // Convert samples to f32
+                        match decoded {
+                            AudioBufferRef::F32(buf) => {
+                                for ch in 0..buf.spec().channels.count() {
+                                    let channel_samples = buf.chan(ch);
+                                    samples.extend_from_slice(channel_samples);
+                                }
+                            }
+                            AudioBufferRef::S16(buf) => {
+                                for ch in 0..buf.spec().channels.count() {
+                                    let channel_samples = buf.chan(ch);
+                                    for &sample in channel_samples {
+                                        samples.push(sample as f32 / i16::MAX as f32);
+                                    }
+                                }
+                            }
+                            AudioBufferRef::S32(buf) => {
+                                for ch in 0..buf.spec().channels.count() {
+                                    let channel_samples = buf.chan(ch);
+                                    for &sample in channel_samples {
+                                        samples.push(sample as f32 / i32::MAX as f32);
+                                    }
+                                }
+                            }
+                            _ => {
+                                return Err(anyhow::anyhow!("Unsupported audio format"));
+                            }
                         }
                     }
-                    Err(minimp3::Error::Eof) => break,
-                    Err(e) => return Err(anyhow::anyhow!("MP3 decode error: {}", e)),
+                    Err(SymphoniaError::IoError(ref err)) 
+                        if err.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                    Err(SymphoniaError::DecodeError(_)) => continue,
+                    Err(err) => return Err(anyhow::anyhow!("Decode error: {}", err)),
                 }
             }
 
