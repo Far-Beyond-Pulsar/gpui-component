@@ -46,6 +46,11 @@ pub struct ViewportPanel {
     // TPS tracking for rolling graph
     tps_history: RefCell<VecDeque<TpsDataPoint>>,
     tps_sample_counter: RefCell<usize>,
+    // Mouse tracking for camera control
+    last_mouse_pos: RefCell<Option<Point<Pixels>>>,
+    mouse_captured: RefCell<bool>,
+    // Keyboard state for WASD
+    keys_pressed: RefCell<std::collections::HashSet<String>>,
 }
 
 impl ViewportPanel {
@@ -58,6 +63,56 @@ impl ViewportPanel {
             fps_sample_counter: RefCell::new(0),
             tps_history: RefCell::new(VecDeque::with_capacity(60)),
             tps_sample_counter: RefCell::new(0),
+            last_mouse_pos: RefCell::new(None),
+            mouse_captured: RefCell::new(false),
+            keys_pressed: RefCell::new(std::collections::HashSet::new()),
+        }
+    }
+
+    /// Update camera input based on current keyboard/mouse state
+    fn update_camera_input(&self, gpu_engine: &Arc<Mutex<crate::ui::gpu_renderer::GpuRenderer>>, mouse_delta: (f32, f32)) {
+        if let Ok(engine) = gpu_engine.lock() {
+            if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                if let Ok(mut input) = bevy_renderer.camera_input.lock() {
+                    let keys = self.keys_pressed.borrow();
+                    
+                    // WASD movement
+                    input.forward = 0.0;
+                    input.right = 0.0;
+                    input.up = 0.0;
+                    
+                    if keys.contains("w") {
+                        input.forward += 1.0;
+                    }
+                    if keys.contains("s") {
+                        input.forward -= 1.0;
+                    }
+                    if keys.contains("d") {
+                        input.right += 1.0;
+                    }
+                    if keys.contains("a") {
+                        input.right -= 1.0;
+                    }
+                    if keys.contains("space") {
+                        input.up += 1.0;
+                    }
+                    if keys.contains("shift") {
+                        input.up -= 1.0;
+                        input.boost = true;
+                    } else {
+                        input.boost = false;
+                    }
+                    
+                    // Mouse look (only when captured)
+                    if *self.mouse_captured.borrow() {
+                        input.mouse_delta_x = mouse_delta.0;
+                        input.mouse_delta_y = mouse_delta.1;
+                    } else {
+                        input.mouse_delta_x = 0.0;
+                        input.mouse_delta_y = 0.0;
+                    }
+                }
+            }
         }
     }
 
@@ -73,6 +128,21 @@ impl ViewportPanel {
     where
         V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
     {
+        // Clone for closures
+        let gpu_clone_key_down = gpu_engine.clone();
+        let gpu_clone_key_up = gpu_engine.clone();
+        let gpu_clone_mouse = gpu_engine.clone();
+        let gpu_clone_click_down = gpu_engine.clone();
+        let gpu_clone_click_up = gpu_engine.clone();
+        
+        // Clone RefCells for closures
+        let keys_pressed = self.keys_pressed.clone();
+        let keys_pressed_up = self.keys_pressed.clone();
+        let last_mouse_pos = self.last_mouse_pos.clone();
+        let mouse_captured = self.mouse_captured.clone();
+        let mouse_captured_down = self.mouse_captured.clone();
+        let mouse_captured_up = self.mouse_captured.clone();
+        
         let mut viewport_div = div()
             .flex() // Enable flexbox
             .flex_col() // Column direction
@@ -83,6 +153,111 @@ impl ViewportPanel {
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
+            .on_key_down(cx.listener(move |_this, event: &gpui::KeyDownEvent, _window, _cx| {
+                let key = event.keystroke.key.to_lowercase();
+                keys_pressed.borrow_mut().insert(key.clone());
+                
+                // Update camera input
+                if let Ok(engine) = gpu_clone_key_down.lock() {
+                    if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                        if let Ok(mut input) = bevy_renderer.camera_input.lock() {
+                            let keys = keys_pressed.borrow();
+                            input.forward = 0.0;
+                            input.right = 0.0;
+                            input.up = 0.0;
+                            
+                            if keys.contains("w") { input.forward += 1.0; }
+                            if keys.contains("s") { input.forward -= 1.0; }
+                            if keys.contains("d") { input.right += 1.0; }
+                            if keys.contains("a") { input.right -= 1.0; }
+                            if keys.contains("space") { input.up += 1.0; }
+                            if keys.contains("shift") {
+                                input.up -= 1.0;
+                                input.boost = true;
+                            } else {
+                                input.boost = false;
+                            }
+                        }
+                    }
+                }
+            }))
+            .on_key_up(cx.listener(move |_this, event: &gpui::KeyUpEvent, _window, _cx| {
+                let key = event.keystroke.key.to_lowercase();
+                keys_pressed_up.borrow_mut().remove(&key);
+                
+                // Update camera input
+                if let Ok(engine) = gpu_clone_key_up.lock() {
+                    if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                        if let Ok(mut input) = bevy_renderer.camera_input.lock() {
+                            let keys = keys_pressed_up.borrow();
+                            input.forward = 0.0;
+                            input.right = 0.0;
+                            input.up = 0.0;
+                            
+                            if keys.contains("w") { input.forward += 1.0; }
+                            if keys.contains("s") { input.forward -= 1.0; }
+                            if keys.contains("d") { input.right += 1.0; }
+                            if keys.contains("a") { input.right -= 1.0; }
+                            if keys.contains("space") { input.up += 1.0; }
+                            if keys.contains("shift") {
+                                input.up -= 1.0;
+                                input.boost = true;
+                            } else {
+                                input.boost = false;
+                            }
+                        }
+                    }
+                }
+            }))
+            .on_mouse_move(cx.listener(move |_this, event: &gpui::MouseMoveEvent, _window, _cx| {
+                let current_pos = event.position;
+                let mut mouse_delta = (0.0, 0.0);
+                
+                if let Some(last_pos) = *last_mouse_pos.borrow() {
+                    if *mouse_captured.borrow() {
+                        let dx: f32 = (current_pos.x - last_pos.x).into();
+                        let dy: f32 = (current_pos.y - last_pos.y).into();
+                        mouse_delta = (dx, dy);
+                    }
+                }
+                
+                *last_mouse_pos.borrow_mut() = Some(current_pos);
+                
+                // Update camera input
+                if let Ok(engine) = gpu_clone_mouse.lock() {
+                    if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                        if let Ok(mut input) = bevy_renderer.camera_input.lock() {
+                            if *mouse_captured.borrow() {
+                                input.mouse_delta_x = mouse_delta.0;
+                                input.mouse_delta_y = mouse_delta.1;
+                            } else {
+                                input.mouse_delta_x = 0.0;
+                                input.mouse_delta_y = 0.0;
+                            }
+                        }
+                    }
+                }
+            }))
+            .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |_this, _event: &gpui::MouseDownEvent, _window, cx| {
+                // Right-click to capture mouse for camera control
+                *mouse_captured_down.borrow_mut() = true;
+                cx.stop_propagation();
+            }))
+            .on_mouse_up(gpui::MouseButton::Right, cx.listener(move |_this, _event: &gpui::MouseUpEvent, _window, cx| {
+                // Release mouse capture
+                *mouse_captured_up.borrow_mut() = false;
+                
+                // Clear mouse delta
+                if let Ok(engine) = gpu_clone_click_up.lock() {
+                    if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                        if let Ok(mut input) = bevy_renderer.camera_input.lock() {
+                            input.mouse_delta_x = 0.0;
+                            input.mouse_delta_y = 0.0;
+                        }
+                    }
+                }
+                cx.stop_propagation();
+            }))
             .child(
                 // Main viewport - should grow to fill space
                 div()
