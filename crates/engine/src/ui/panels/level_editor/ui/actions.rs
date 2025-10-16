@@ -38,6 +38,7 @@ actions!(
         ToggleViewportOptions,
         Toggle3DRenderer,
         ToggleGpuRenderer,
+        ToggleFpsGraphType,
 
         // Camera modes
         PerspectiveView,

@@ -12,6 +12,7 @@ use crate::ui::shared::ViewportControls;
 use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 #[derive(Clone)]
 struct FpsDataPoint {
@@ -33,7 +34,6 @@ pub struct ViewportPanel {
     // FPS tracking for rolling graph - using RefCell for interior mutability
     fps_history: RefCell<VecDeque<FpsDataPoint>>,
     fps_sample_counter: RefCell<usize>,
-    graph_type: RefCell<GraphType>,
 }
 
 impl ViewportPanel {
@@ -44,13 +44,13 @@ impl ViewportPanel {
             render_enabled,
             fps_history: RefCell::new(VecDeque::with_capacity(60)),
             fps_sample_counter: RefCell::new(0),
-            graph_type: RefCell::new(GraphType::Line),
         }
     }
 
     pub fn render<V: 'static>(
-        &self,
-        state: &LevelEditorState,
+        &mut self,
+        state: &mut LevelEditorState,
+        fps_graph_state: Rc<RefCell<bool>>,  // Shared state for the Switch
         gpu_engine: &Arc<Mutex<crate::ui::gpu_renderer::GpuRenderer>>,
         current_pattern: crate::ui::rainbow_engine_final::RainbowPattern,
         cx: &mut Context<V>,
@@ -118,7 +118,7 @@ impl ViewportPanel {
                     .bottom_4()
                     .right_4()
                     .w(px(360.0)) // Expanded width for graph
-                    .child(self.render_performance_overlay(gpu_engine, current_pattern, cx))
+                    .child(self.render_performance_overlay(state, fps_graph_state, gpu_engine, current_pattern, cx))
             );
         }
 
@@ -312,7 +312,9 @@ impl ViewportPanel {
     }
 
     fn render_performance_overlay<V: 'static>(
-        &self,
+        &mut self,
+        state: &mut LevelEditorState,
+        fps_graph_state: Rc<RefCell<bool>>,
         gpu_engine: &Arc<Mutex<crate::ui::gpu_renderer::GpuRenderer>>,
         current_pattern: crate::ui::rainbow_engine_final::RainbowPattern,
         cx: &mut Context<V>,
@@ -345,7 +347,6 @@ impl ViewportPanel {
 
         // Prepare data for the chart
         let fps_data: Vec<FpsDataPoint> = fps_history.iter().cloned().collect();
-        let current_graph_type = *self.graph_type.borrow();
         drop(fps_history);
         drop(fps_sample_counter);
 
@@ -426,59 +427,53 @@ impl ViewportPanel {
                                         .child("FPS Graph")
                                 )
                                 .child({
-                                    let graph_type_bar = self.graph_type.clone();
-                                    let graph_type_line = self.graph_type.clone();
-                                    h_flex()
-                                        .gap_1()
-                                        .items_center()
-                                        .child(
-                                            Toggle::label("Bar")
-                                                .id("graph_bar")
-                                                .xsmall()
-                                                .checked(current_graph_type == GraphType::Bar)
-                                                .on_change(cx.listener(move |_view, checked, _window, cx| {
-                                                    if *checked {
-                                                        let mut gt = graph_type_bar.borrow_mut();
-                                                        *gt = GraphType::Bar;
-                                                    }
-                                                    cx.notify();
-                                                }))
-                                        )
-                                        .child(
-                                            Toggle::label("Line")
-                                                .id("graph_line")
-                                                .xsmall()
-                                                .checked(current_graph_type == GraphType::Line)
-                                                .on_change(cx.listener(move |_view, checked, _window, cx| {
-                                                    if *checked {
-                                                        let mut gt = graph_type_line.borrow_mut();
-                                                        *gt = GraphType::Line;
-                                                    }
-                                                    cx.notify();
-                                                }))
-                                        )
+                                    let fps_graph_clone = fps_graph_state.clone();
+                                    
+                                    gpui_component::switch::Switch::new("fps_graph_type")
+                                        .checked(*fps_graph_state.borrow())
+                                        .label("Line")
+                                        .xsmall()
+                                        .on_click(move |checked, _, _| {
+                                            *fps_graph_clone.borrow_mut() = *checked;
+                                        })
                                 })
                         )
                         .child(
                             div()
                                 .h(px(100.))
                                 .w_full()
-                                .child(match current_graph_type {
-                                    GraphType::Line => {
-                                        LineChart::new(fps_data.clone())
-                                            .x(|d| SharedString::from(format!("{}", d.index)))
-                                            .y(|d| d.fps)
-                                            .linear()
-                                            .tick_margin(10)
-                                            .into_any_element()
-                                    }
-                                    GraphType::Bar => {
-                                        BarChart::new(fps_data.clone())
-                                            .x(|d| SharedString::from(format!("{}", d.index)))
-                                            .y(|d| d.fps)
-                                            .tick_margin(10)
-                                            .into_any_element()
-                                    }
+                                .child(if *fps_graph_state.borrow() {
+                                    LineChart::new(fps_data.clone())
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.fps)
+                                        .linear()
+                                        .tick_margin(10)
+                                        .into_any_element()
+                                } else {
+                                    // Bar chart with color coding: Green (high), Yellow (mid), Red (low)
+                                    let theme = cx.theme();
+                                    let success_color = theme.success;
+                                    let warning_color = theme.warning;
+                                    let danger_color = theme.danger;
+                                    
+                                    BarChart::new(fps_data.clone())
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.fps)
+                                        .fill(move |d| {
+                                            // Color code based on FPS:
+                                            // Green: > 120 FPS (high)
+                                            // Yellow: 60-120 FPS (mid)
+                                            // Red: < 60 FPS (low)
+                                            if d.fps >= 120.0 {
+                                                success_color
+                                            } else if d.fps >= 60.0 {
+                                                warning_color
+                                            } else {
+                                                danger_color
+                                            }
+                                        })
+                                        .tick_margin(10)
+                                        .into_any_element()
                                 })
                         )
                 )

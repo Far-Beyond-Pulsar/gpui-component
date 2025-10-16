@@ -23,6 +23,8 @@ pub struct LevelEditorState {
     pub show_viewport_controls: bool,
     pub show_camera_mode_selector: bool,
     pub show_viewport_options: bool,
+    /// FPS graph type (true = line, false = bar)
+    pub fps_graph_is_line: bool,
     /// Scene objects (simplified for now)
     pub scene_objects: Vec<SceneObject>,
     /// Expanded state for hierarchy items
@@ -86,6 +88,7 @@ impl Default for LevelEditorState {
             show_viewport_controls: true,
             show_camera_mode_selector: true,
             show_viewport_options: true,
+            fps_graph_is_line: true,  // Default to line graph
             scene_objects: Self::create_default_scene(),
             expanded_objects: HashSet::new(),
         }
@@ -286,6 +289,10 @@ impl LevelEditorState {
 
     pub fn toggle_viewport_options(&mut self) {
         self.show_viewport_options = !self.show_viewport_options;
+    }
+
+    pub fn toggle_fps_graph_type(&mut self) {
+        self.fps_graph_is_line = !self.fps_graph_is_line;
     }
 }
 

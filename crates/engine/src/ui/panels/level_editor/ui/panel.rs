@@ -16,6 +16,8 @@ use crate::ui::shared::StatusBar;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 use super::{
     LevelEditorState, SceneBrowser, HierarchyPanel, PropertiesPanel,
@@ -29,6 +31,9 @@ pub struct LevelEditorPanel {
 
     // Shared state
     state: LevelEditorState,
+    
+    // FPS graph type state (shared with viewport for Switch)
+    fps_graph_is_line: Rc<RefCell<bool>>,
 
     // UI Components
     scene_browser: SceneBrowser,
@@ -87,6 +92,7 @@ impl LevelEditorPanel {
         Self {
             focus_handle: cx.focus_handle(),
             state: LevelEditorState::new(),
+            fps_graph_is_line: Rc::new(RefCell::new(true)),  // Default to line graph
             scene_browser: SceneBrowser::new(),
             hierarchy: HierarchyPanel::new(),
             properties: PropertiesPanel::new(),
@@ -305,6 +311,11 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
+    fn on_toggle_fps_graph_type(&mut self, _: &ToggleFpsGraphType, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_fps_graph_type();
+        cx.notify();
+    }
+
     fn on_perspective_view(&mut self, _: &PerspectiveView, _: &mut Window, cx: &mut Context<Self>) {
         self.state.set_camera_mode(CameraMode::Perspective);
         cx.notify();
@@ -396,6 +407,7 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_toggle_viewport_controls))
             .on_action(cx.listener(Self::on_toggle_camera_mode_selector))
             .on_action(cx.listener(Self::on_toggle_viewport_options))
+            .on_action(cx.listener(Self::on_toggle_fps_graph_type))
             // Camera modes
             .on_action(cx.listener(Self::on_perspective_view))
             .on_action(cx.listener(Self::on_orthographic_view))
@@ -455,7 +467,8 @@ impl Render for LevelEditorPanel {
                                             .p_1()
                                             .child(
                                                 self.viewport_panel.render(
-                                                    &self.state,
+                                                    &mut self.state,
+                                                    self.fps_graph_is_line.clone(),
                                                     &self.gpu_engine,
                                                     self.current_pattern,
                                                     cx
