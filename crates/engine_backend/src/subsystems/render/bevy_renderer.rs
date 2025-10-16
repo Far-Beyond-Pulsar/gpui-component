@@ -315,14 +315,27 @@ fn setup(
         Transform::from_xyz(0.0, 2.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
     
-    // Add lighting
+    // Add lighting - CRITICAL: Need strong lighting for PBR to work
+    // Primary directional light (sun)
     commands.spawn((
         DirectionalLight {
             color: Color::WHITE,
-            illuminance: 10000.0,
+            illuminance: 20000.0, // Very bright for good visibility
+            shadows_enabled: false, // Disable shadows in headless mode
             ..default()
         },
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.5, -0.5, 0.0)),
+    ));
+    
+    // Fill light from opposite direction
+    commands.spawn((
+        DirectionalLight {
+            color: Color::srgb(0.8, 0.9, 1.0),
+            illuminance: 5000.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, 0.5, 2.0, 0.0)),
     ));
     
     // Create demo scene
@@ -337,11 +350,12 @@ fn create_demo_scene(
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
 ) {
-    // Center cube (red metallic)
+    // Center cube (red metallic) - with emissive to ensure visibility
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(1.0, 0.3, 0.3),
+            base_color: Color::srgb(0.8, 0.2, 0.2),
+            emissive: Color::srgb(0.2, 0.05, 0.05).into(),
             metallic: 0.8,
             perceptual_roughness: 0.2,
             ..default()
@@ -353,7 +367,8 @@ fn create_demo_scene(
     commands.spawn((
         Mesh3d(meshes.add(Sphere::new(0.5))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.3, 0.5, 1.0),
+            base_color: Color::srgb(0.2, 0.4, 0.9),
+            emissive: Color::srgb(0.05, 0.1, 0.2).into(),
             metallic: 0.9,
             perceptual_roughness: 0.1,
             ..default()
@@ -365,7 +380,8 @@ fn create_demo_scene(
     commands.spawn((
         Mesh3d(meshes.add(Torus::new(0.3, 0.6))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.3, 1.0, 0.3),
+            base_color: Color::srgb(0.2, 0.8, 0.2),
+            emissive: Color::srgb(0.05, 0.2, 0.05).into(),
             metallic: 0.5,
             perceptual_roughness: 0.5,
             ..default()
@@ -378,6 +394,7 @@ fn create_demo_scene(
         Mesh3d(meshes.add(Cylinder::new(0.5, 1.5))),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: Color::srgb(1.0, 0.843, 0.0),
+            emissive: Color::srgb(0.2, 0.17, 0.0).into(),
             metallic: 0.9,
             perceptual_roughness: 0.3,
             ..default()
@@ -389,7 +406,7 @@ fn create_demo_scene(
     commands.spawn((
         Mesh3d(meshes.add(Plane3d::new(Vec3::Y, Vec2::new(10.0, 10.0)))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.2, 0.2, 0.2),
+            base_color: Color::srgb(0.3, 0.3, 0.3),
             metallic: 0.1,
             perceptual_roughness: 0.9,
             ..default()
