@@ -71,16 +71,6 @@ impl LevelEditorPanel {
 
         // Create GPU render engine with matching resolution
         let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new(1600, 900)));
-        
-        // Set up resize callback to update GPU renderer when viewport resizes
-        let gpu_clone_for_resize = gpu_engine.clone();
-        viewport.update(cx, |vp, _cx| {
-            vp.set_resize_callback(move |width, height| {
-                if let Ok(mut renderer) = gpu_clone_for_resize.lock() {
-                    renderer.resize(width, height);
-                }
-            });
-        });
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
 
         // Spawn render thread

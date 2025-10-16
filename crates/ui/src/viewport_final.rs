@@ -33,7 +33,7 @@ use gpui::{
 use std::sync::{ Arc, Mutex, atomic::{ AtomicBool, AtomicUsize, Ordering } };
 use image::ImageBuffer;
 use futures::FutureExt;
-use crate::{gpu_mem_tracker::GPU_MEM_TRACKER, PixelsExt};
+use crate::gpu_mem_tracker::GPU_MEM_TRACKER;
 
 /// Performance metrics for the viewport
 #[derive(Debug, Clone, Default)]
@@ -161,14 +161,6 @@ impl DoubleBuffer {
         }
     }
 
-    /// Resize both buffers
-    pub fn resize(&self, width: u32, height: u32) {
-        let mut buf0 = self.buffer_0.lock().unwrap();
-        let mut buf1 = self.buffer_1.lock().unwrap();
-        buf0.resize(width, height);
-        buf1.resize(width, height);
-    }
-
     /// Get the back buffer for rendering (thread-safe)
     pub fn get_back_buffer(&self) -> Arc<Mutex<Framebuffer>> {
         let front_idx = self.current_front.load(Ordering::Acquire);
@@ -200,26 +192,15 @@ impl DoubleBuffer {
 /// Hook for refresh notifications - called when rendering is complete
 pub type RefreshHook = Arc<dyn Fn() + Send + Sync>;
 
-/// Custom element for viewport rendering with resize detection
+/// Custom element for viewport rendering
 pub struct ViewportElement {
     texture: Option<Arc<RenderImage>>,
     alloc_id: Option<usize>, // Track allocation ID for debugging
-    double_buffer: Arc<DoubleBuffer>,
-    last_width: Arc<AtomicU32>,
-    last_height: Arc<AtomicU32>,
-    on_resize: Option<Arc<dyn Fn(u32, u32) + Send + Sync>>,
 }
 
 impl ViewportElement {
-    pub fn new(
-        texture: Option<Arc<RenderImage>>, 
-        alloc_id: Option<usize>, 
-        double_buffer: Arc<DoubleBuffer>,
-        last_width: Arc<AtomicU32>,
-        last_height: Arc<AtomicU32>,
-        on_resize: Option<Arc<dyn Fn(u32, u32) + Send + Sync>>,
-    ) -> Self {
-        Self { texture, alloc_id, double_buffer, last_width, last_height, on_resize }
+    pub fn new(texture: Option<Arc<RenderImage>>, alloc_id: Option<usize>) -> Self {
+        Self { texture, alloc_id }
     }
 }
 
@@ -233,7 +214,7 @@ impl Drop for ViewportElement {
 
 impl Element for ViewportElement {
     type RequestLayoutState = ();
-    type PrepaintState = Bounds<Pixels>;
+    type PrepaintState = ();
 
     fn id(&self) -> Option<ElementId> {
         Some(ElementId::Name("viewport-element".into()))
@@ -262,13 +243,12 @@ impl Element for ViewportElement {
         &mut self,
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
+        _bounds: Bounds<Pixels>,
         _request_layout: &mut Self::RequestLayoutState,
         _window: &mut Window,
         _cx: &mut App
     ) -> Self::PrepaintState {
-        // Store bounds for paint
-        bounds
+        // Nothing to do
     }
 
     fn paint(
@@ -279,23 +259,8 @@ impl Element for ViewportElement {
         _request_layout: &mut Self::RequestLayoutState,
         _prepaint: &mut Self::PrepaintState,
         window: &mut Window,
-        cx: &mut App
+        _cx: &mut App
     ) {
-        // Check if size changed and notify viewport
-        let width = bounds.size.width.as_f32() as u32;
-        let height = bounds.size.height.as_f32() as u32;
-        
-        if width > 0 && height > 0 {
-            // Update viewport size if changed
-            self.viewport.update(cx, |viewport, _cx| {
-                if viewport.last_width != width || viewport.last_height != height {
-                    println!("[VIEWPORT] Size changed from {}x{} to {}x{}", 
-                        viewport.last_width, viewport.last_height, width, height);
-                    viewport.resize(width, height);
-                }
-            });
-        }
-        
         if let Some(ref texture) = self.texture {
             let _ = window.paint_image(bounds, Corners::all(px(0.0)), texture.clone(), 0, false);
         }
@@ -325,8 +290,6 @@ pub struct Viewport {
     task_handle: Option<Task<()>>,
     // Store previous texture to properly drop it
     previous_texture: Option<(Arc<RenderImage>, usize)>,
-    // Resize callback to notify external renderer
-    on_resize: Option<Arc<dyn Fn(u32, u32) + Send + Sync>>,
 }
 
 impl Viewport {
@@ -425,35 +388,6 @@ impl Drop for Viewport {
 }
 
 impl Viewport {
-    /// Set resize callback
-    pub fn set_resize_callback(&mut self, callback: impl Fn(u32, u32) + Send + Sync + 'static) {
-        self.on_resize = Some(Arc::new(callback));
-    }
-    
-    /// Resize the viewport and its buffers
-    pub fn resize(&mut self, width: u32, height: u32) {
-        self.last_width = width;
-        self.last_height = height;
-        
-        // Resize the double buffer
-        self.double_buffer.resize(width, height);
-        
-        // Clear any cached textures since they're now the wrong size
-        let mut shared = self.shared_texture.lock().unwrap();
-        if let Some((old_texture, old_alloc_id)) = shared.take() {
-            if self.debug_enabled {
-                println!("[VIEWPORT] Clearing old texture due to resize: alloc #{}", old_alloc_id);
-            }
-            GPU_MEM_TRACKER.track_deallocation(old_alloc_id);
-            drop(old_texture);
-        }
-        
-        // Notify external renderer
-        if let Some(ref callback) = self.on_resize {
-            callback(width, height);
-        }
-    }
-    
     /// Clear texture atlas to prevent memory leaks
     /// Call this periodically (e.g., every N frames or when memory pressure is detected)
     /// New GPUI provides this method to manually clear cached textures
@@ -505,14 +439,12 @@ impl Render for Viewport {
             }
         }
 
-        let viewport_handle = cx.handle();
-
         div()
             .id("viewport")
             .size_full()
             .flex() // Enable flex layout
             .flex_1() // Grow to fill available space
-            .child(ViewportElement::new(texture, alloc_id, viewport_handle))
+            .child(ViewportElement::new(texture, alloc_id))
             .focusable()
             .focus(|style| style) // Apply focus styling
     }
@@ -545,7 +477,6 @@ pub fn create_viewport_with_background_rendering<V: 'static>(
         shutdown_sender: Some(shutdown_sender),
         task_handle: None, // Will be set after spawning the task
         previous_texture: None, // Initialize to None
-        on_resize: None, // Will be set by caller if needed
     });
 
     let processing_flag = Arc::new(AtomicBool::new(false));
