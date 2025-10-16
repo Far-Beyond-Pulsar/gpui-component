@@ -42,9 +42,7 @@ pub struct BevyRenderer {
 }
 
 impl BevyRenderer {
-    pub async fn new(width: u32, height: u32) -> Self {
-        println!("[BevyRenderer] Creating renderer {}x{}", width, height);
-        
+    pub async fn new(width: u32, height: u32) -> Self {        
         let (frame_sender, frame_receiver) = crossbeam_channel::unbounded();
         let running = Arc::new(AtomicBool::new(true));
         let running_clone = running.clone();
@@ -56,9 +54,7 @@ impl BevyRenderer {
         
         // Wait a bit for initialization
         tokio::time::sleep(Duration::from_millis(500)).await;
-        
-        println!("[BevyRenderer] Renderer initialized");
-        
+                
         Self {
             frame_receiver,
             running,
@@ -86,12 +82,6 @@ impl BevyRenderer {
             let aligned_row_bytes = RenderDevice::align_copy_bytes_per_row(row_bytes);
             let expected_size = aligned_row_bytes * self.height as usize;
             
-            if self.frame_count == 1 || self.frame_count % 120 == 0 {
-                println!("[BevyRenderer] Frame {} - data size: {}, expected: {}, framebuffer: {}x{}, self: {}x{}", 
-                         self.frame_count, frame_data.len(), expected_size, 
-                         framebuffer.width, framebuffer.height, self.width, self.height);
-            }
-            
             if frame_data.len() == expected_size {
                 // Handle row alignment - copy row by row, stripping padding
                 for y in 0..self.height as usize {
@@ -106,23 +96,13 @@ impl BevyRenderer {
                     }
                 }
                 
-                if self.frame_count == 1 || self.frame_count % 120 == 0 {
-                    println!("[BevyRenderer] Frame {} - ✅ Successfully copied with alignment!", self.frame_count);
-                }
             } else {
-                if self.frame_count == 1 || self.frame_count % 120 == 0 {
-                    println!("[BevyRenderer] Frame {} - size mismatch: {} vs {} expected", 
-                             self.frame_count, frame_data.len(), expected_size);
-                }
+                eprintln!("[BevyRenderer] Frame data size mismatch: got {}, expected {}", frame_data.len(), expected_size);
             }
         } else {
             if self.frame_count == 1 || self.frame_count % 120 == 0 {
                 println!("[BevyRenderer] Frame {} - no frame data yet", self.frame_count);
             }
-        }
-        
-        if got_frame && (self.frame_count == 1 || self.frame_count % 120 == 0) {
-            println!("[BevyRenderer] Received new frame from Bevy!");
         }
     }
     
@@ -374,21 +354,15 @@ impl render_graph::Node for ImageCopyDriver {
             .get_resource::<RenderAssets<bevy::render::texture::GpuImage>>()
             .unwrap();
         
-        println!("[ImageCopyDriver] Running - {} copiers", image_copiers.len());
         
         for image_copier in image_copiers.iter() {
             if !image_copier.enabled() {
-                println!("[ImageCopyDriver] Copier disabled, skipping");
                 continue;
             }
             
             let Some(src_image) = gpu_images.get(&image_copier.src_image) else {
-                println!("[ImageCopyDriver] Source image not found in GPU");
                 continue;
             };
-            
-            println!("[ImageCopyDriver] Copying {}x{} texture", 
-                     src_image.size.width, src_image.size.height);
             
             let mut encoder = render_context
                 .render_device()
@@ -419,8 +393,6 @@ impl render_graph::Node for ImageCopyDriver {
             
             let render_queue = world.get_resource::<RenderQueue>().unwrap();
             render_queue.submit(std::iter::once(encoder.finish()));
-            
-            println!("[ImageCopyDriver] Copy command submitted");
         }
         
         Ok(())
