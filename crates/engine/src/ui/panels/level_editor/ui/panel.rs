@@ -95,6 +95,7 @@ impl LevelEditorPanel {
         let buffers_clone = buffers.clone();
         let hook_clone = refresh_hook.clone();
         let enabled_clone = render_enabled.clone();
+        let game_thread_clone = game_thread.clone();
 
         thread::spawn(move || {
             Self::render_thread_controlled(
@@ -102,6 +103,7 @@ impl LevelEditorPanel {
                 buffers_clone,
                 hook_clone,
                 enabled_clone,
+                game_thread_clone,
             );
         });
 
@@ -135,6 +137,7 @@ impl LevelEditorPanel {
         buffers: Arc<DoubleBuffer>,
         refresh_hook: RefreshHook,
         render_enabled: Arc<std::sync::atomic::AtomicBool>,
+        game_thread: Arc<GameThread>,
     ) {
         let base_frame_time = Duration::from_millis(8);
         let mut adaptive_frame_time = base_frame_time;
@@ -144,6 +147,16 @@ impl LevelEditorPanel {
 
         while render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
             let frame_start = std::time::Instant::now();
+
+            // Sync game objects to renderer before rendering
+            if let Ok(game_state) = game_thread.get_state().lock() {
+                let objects = game_state.objects.clone();
+                if let Ok(mut engine) = gpu_engine.try_lock() {
+                    if let Some(ref mut bevy_renderer) = engine.bevy_renderer {
+                        bevy_renderer.update_game_objects(objects);
+                    }
+                }
+            }
 
             // Always use GPU renderer
             let render_successful = if let Ok(mut engine_guard) = gpu_engine.try_lock() {

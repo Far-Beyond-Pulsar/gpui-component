@@ -37,6 +37,26 @@ use std::{
 };
 use super::Framebuffer;
 
+/// Marker component for game objects that should be updated from game thread
+#[derive(Component)]
+struct GameObjectMarker {
+    id: u64,
+}
+
+/// Shared game state resource - thread-safe access to game objects
+#[derive(Resource, Clone)]
+struct SharedGameState {
+    objects: Arc<Mutex<Vec<crate::subsystems::game::GameObject>>>,
+}
+
+impl Default for SharedGameState {
+    fn default() -> Self {
+        Self {
+            objects: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+}
+
 /// Performance metrics for monitoring
 #[derive(Debug, Clone, Default)]
 pub struct RenderMetrics {
@@ -62,6 +82,8 @@ pub struct BevyRenderer {
     metrics: Arc<Mutex<RenderMetrics>>,
     // Cached aligned row size for fast access
     aligned_row_bytes: usize,
+    // Shared game state for updating scene objects
+    game_state: Arc<Mutex<Vec<crate::subsystems::game::GameObject>>>,
 }
 
 impl BevyRenderer {
@@ -71,13 +93,15 @@ impl BevyRenderer {
         let running_clone = running.clone();
         let frame_count = Arc::new(AtomicU64::new(0));
         let metrics = Arc::new(Mutex::new(RenderMetrics::default()));
+        let game_state = Arc::new(Mutex::new(Vec::new()));
         
         // Calculate aligned row size once
         let aligned_row_bytes = RenderDevice::align_copy_bytes_per_row(width as usize * 4);
         
-        // Spawn Bevy app on dedicated thread
+        // Spawn Bevy app on dedicated thread with shared game state
+        let game_state_clone = game_state.clone();
         thread::spawn(move || {
-            run_bevy_app(width, height, frame_sender, running_clone);
+            run_bevy_app(width, height, frame_sender, running_clone, game_state_clone);
         });
         
         // Wait for initialization with timeout
@@ -94,6 +118,7 @@ impl BevyRenderer {
             last_frame: None,
             metrics,
             aligned_row_bytes,
+            game_state,
         }
     }
     
@@ -206,6 +231,13 @@ impl BevyRenderer {
             println!("[BevyRenderer] Resized to {}x{}", width, height);
         }
     }
+    
+    /// Update game objects for rendering
+    pub fn update_game_objects(&mut self, objects: Vec<crate::subsystems::game::GameObject>) {
+        if let Ok(mut state) = self.game_state.lock() {
+            *state = objects;
+        }
+    }
 }
 
 impl Drop for BevyRenderer {
@@ -228,7 +260,8 @@ fn run_bevy_app(
     width: u32, 
     height: u32, 
     frame_sender: Sender<Arc<Vec<u8>>>, 
-    _running: Arc<AtomicBool>
+    _running: Arc<AtomicBool>,
+    game_state: Arc<Mutex<Vec<crate::subsystems::game::GameObject>>>,
 ) {
     println!("[BevyApp] Starting optimized renderer (BGRA8UnormSrgb format)");
     
@@ -236,6 +269,7 @@ fn run_bevy_app(
     
     app.insert_resource(FrameConfig { width, height })
         .insert_resource(ClearColor(Color::srgb(0.1, 0.1, 0.15)))
+        .insert_resource(SharedGameState { objects: game_state })
         .add_plugins(
             DefaultPlugins
                 .set(ImagePlugin::default_nearest())
@@ -248,7 +282,8 @@ fn run_bevy_app(
         )
         .add_plugins(ImageCopyPlugin { sender: frame_sender })
         .add_plugins(ScheduleRunnerPlugin::run_loop(Duration::from_secs_f64(1.0 / 60.0)))
-        .add_systems(Startup, setup);
+        .add_systems(Startup, setup)
+        .add_systems(Update, update_game_objects_system);
     
     println!("[BevyApp] Running render loop");
     app.run();
@@ -353,7 +388,7 @@ fn create_demo_scene(
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
 ) {
-    // Center cube (red metallic)
+    // Center cube (red metallic) - Object ID 1
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
@@ -364,9 +399,10 @@ fn create_demo_scene(
             ..default()
         })),
         Transform::from_xyz(0.0, 0.5, 0.0),
+        GameObjectMarker { id: 1 },
     ));
     
-    // Left sphere (blue metallic)
+    // Left sphere (blue metallic) - Object ID 2
     commands.spawn((
         Mesh3d(meshes.add(Sphere::new(0.5))),
         MeshMaterial3d(materials.add(StandardMaterial {
@@ -377,9 +413,10 @@ fn create_demo_scene(
             ..default()
         })),
         Transform::from_xyz(-2.0, 0.5, 0.0),
+        GameObjectMarker { id: 2 },
     ));
     
-    // Right torus (green)
+    // Right torus (green) - Object ID 3
     commands.spawn((
         Mesh3d(meshes.add(Torus::new(0.3, 0.6))),
         MeshMaterial3d(materials.add(StandardMaterial {
@@ -390,9 +427,10 @@ fn create_demo_scene(
             ..default()
         })),
         Transform::from_xyz(2.0, 0.5, 0.0),
+        GameObjectMarker { id: 3 },
     ));
     
-    // Back cylinder (gold)
+    // Back cylinder (gold) - Object ID 4
     commands.spawn((
         Mesh3d(meshes.add(Cylinder::new(0.5, 1.5))),
         MeshMaterial3d(materials.add(StandardMaterial {
@@ -403,9 +441,10 @@ fn create_demo_scene(
             ..default()
         })),
         Transform::from_xyz(0.0, 0.75, -2.0),
+        GameObjectMarker { id: 4 },
     ));
     
-    // Ground plane (light concrete)
+    // Ground plane (light concrete) - No marker, stays static
     commands.spawn((
         Mesh3d(meshes.add(Plane3d::new(Vec3::Y, Vec2::new(10.0, 10.0)))),
         MeshMaterial3d(materials.add(StandardMaterial {
@@ -418,7 +457,34 @@ fn create_demo_scene(
         Transform::from_xyz(0.0, 0.0, 0.0),
     ));
     
-    println!("[BevyApp] Created 5 objects with PBR materials");
+    println!("[BevyApp] Created 4 game objects with markers + ground plane");
+}
+
+/// System to update game objects from game thread
+fn update_game_objects_system(
+    game_state: Res<SharedGameState>,
+    mut query: Query<(&GameObjectMarker, &mut Transform)>,
+) {
+    if let Ok(objects) = game_state.objects.lock() {
+        for (marker, mut transform) in query.iter_mut() {
+            if let Some(obj) = objects.iter().find(|o| o.id == marker.id) {
+                // Update position
+                transform.translation = Vec3::new(
+                    obj.position[0],
+                    obj.position[1] + 0.5, // Offset for visual appeal
+                    obj.position[2],
+                );
+                
+                // Update rotation (convert degrees to radians)
+                transform.rotation = Quat::from_euler(
+                    EulerRot::XYZ,
+                    obj.rotation[0].to_radians(),
+                    obj.rotation[1].to_radians(),
+                    obj.rotation[2].to_radians(),
+                );
+            }
+        }
+    }
 }
 
 // Zero-copy image extraction plugin
