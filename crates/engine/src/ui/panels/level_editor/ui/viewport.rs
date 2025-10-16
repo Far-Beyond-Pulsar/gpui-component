@@ -2,6 +2,7 @@ use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::{Button, ButtonVariants as _}, h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
+    chart::LineChart,
 };
 use gpui_component::viewport_final::Viewport;
 
@@ -9,12 +10,23 @@ use super::state::{CameraMode, LevelEditorState};
 use super::actions::*;
 use crate::ui::shared::ViewportControls;
 use std::sync::{Arc, Mutex};
+use std::collections::VecDeque;
+use std::cell::RefCell;
+
+#[derive(Clone)]
+struct FpsDataPoint {
+    index: usize,
+    fps: f64,
+}
 
 /// Viewport Panel - 3D rendering viewport with camera controls
 pub struct ViewportPanel {
     viewport: Entity<Viewport>,
     viewport_controls: ViewportControls,
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
+    // FPS tracking for rolling graph - using RefCell for interior mutability
+    fps_history: RefCell<VecDeque<FpsDataPoint>>,
+    fps_sample_counter: RefCell<usize>,
 }
 
 impl ViewportPanel {
@@ -23,6 +35,8 @@ impl ViewportPanel {
             viewport,
             viewport_controls: ViewportControls::new(),
             render_enabled,
+            fps_history: RefCell::new(VecDeque::with_capacity(60)),
+            fps_sample_counter: RefCell::new(0),
         }
     }
 
@@ -95,7 +109,7 @@ impl ViewportPanel {
                     .absolute()
                     .bottom_4()
                     .right_4()
-                    .w(px(280.0)) // Hardcoded width to prevent inheritance issues
+                    .w(px(360.0)) // Expanded width for graph
                     .child(self.render_performance_overlay(gpu_engine, current_pattern, cx))
             );
         }
@@ -306,56 +320,110 @@ impl ViewportPanel {
             (0.0, 0, "Unknown".to_string())
         };
 
-        h_flex()
+        // Update FPS history for rolling graph using interior mutability
+        let mut fps_history = self.fps_history.borrow_mut();
+        let mut fps_sample_counter = self.fps_sample_counter.borrow_mut();
+        
+        fps_history.push_back(FpsDataPoint {
+            index: *fps_sample_counter,
+            fps: engine_fps as f64,
+        });
+        *fps_sample_counter += 1;
+        
+        // Keep only last 60 samples
+        if fps_history.len() > 60 {
+            fps_history.pop_front();
+        }
+
+        // Prepare data for the chart
+        let fps_data: Vec<FpsDataPoint> = fps_history.iter().cloned().collect();
+        drop(fps_history);
+        drop(fps_sample_counter);
+
+        v_flex()
             .gap_2()
-            .p_1()
+            .p_2()
             .w_full()
-            .items_center()
-            .justify_between()
-            .bg(cx.theme().background.opacity(0.9))
+            .bg(cx.theme().background.opacity(0.95))
             .rounded(cx.theme().radius)
             .border_1()
             .border_color(cx.theme().border)
             .child(
                 h_flex()
                     .gap_2()
+                    .w_full()
                     .items_center()
+                    .justify_between()
                     .child(
-                        div()
-                            .text_xs()
-                            .font_semibold()
-                            .text_color(if engine_fps > 200.0 {
-                                cx.theme().success
-                            } else if engine_fps > 120.0 {
-                                cx.theme().warning
-                            } else {
-                                cx.theme().muted_foreground
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_semibold()
+                                    .text_color(if engine_fps > 200.0 {
+                                        cx.theme().success
+                                    } else if engine_fps > 120.0 {
+                                        cx.theme().warning
+                                    } else {
+                                        cx.theme().muted_foreground
+                                    })
+                                    .child(format!("{:.0} FPS", engine_fps))
+                            )
+                            .child({
+                                let enabled = self.render_enabled.clone();
+                                Button::new("toggle_render")
+                                    .child(if self.render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
+                                        "⏸"
+                                    } else {
+                                        "▶"
+                                    })
+                                    .xsmall()
+                                    .on_click(move |_event, _window, _cx| {
+                                        let current = enabled.load(std::sync::atomic::Ordering::Relaxed);
+                                        enabled.store(!current, std::sync::atomic::Ordering::Relaxed);
+                                    })
                             })
-                            .child(format!("{:.0} FPS", engine_fps))
                     )
-                    .child({
-                        let enabled = self.render_enabled.clone();
-                        Button::new("toggle_render")
-                            .child(if self.render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
-                                "⏸"
-                            } else {
-                                "▶"
-                            })
+                    .child(
+                        Button::new("close_performance")
+                            .icon(IconName::X)
+                            .ghost()
                             .xsmall()
-                            .on_click(move |_event, _window, _cx| {
-                                let current = enabled.load(std::sync::atomic::Ordering::Relaxed);
-                                enabled.store(!current, std::sync::atomic::Ordering::Relaxed);
-                            })
-                    })
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.dispatch_action(&TogglePerformanceOverlay);
+                            }))
+                    )
             )
-            .child(
-                Button::new("close_performance")
-                    .icon(IconName::X)
-                    .ghost()
-                    .xsmall()
-                    .on_click(cx.listener(|_, _, _, cx| {
-                        cx.dispatch_action(&TogglePerformanceOverlay);
-                    }))
-            )
+            .when(!fps_data.is_empty(), |this| {
+                this.child(
+                    v_flex()
+                        .w_full()
+                        .border_t_1()
+                        .border_color(cx.theme().border)
+                        .pt_2()
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_semibold()
+                                .text_color(cx.theme().foreground)
+                                .mb_1()
+                                .child("FPS Graph")
+                        )
+                        .child(
+                            div()
+                                .h(px(100.))
+                                .w_full()
+                                .child(
+                                    LineChart::new(fps_data)
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.fps)
+                                        .linear()
+                                        .tick_margin(10)
+                                )
+                        )
+                )
+            })
     }
 }
