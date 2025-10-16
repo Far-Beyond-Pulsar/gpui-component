@@ -62,14 +62,15 @@ impl LevelEditorPanel {
         let vertical_resizable_state = ResizableState::new(cx);
 
         // Create viewport with zero-copy background rendering
+        // Use a higher resolution for better quality (will scale down if needed)
         let (viewport, buffers, refresh_hook) = create_viewport_with_background_rendering(
-            800,
-            600,
+            1600,
+            900,
             cx
         );
 
-        // Create GPU render engine
-        let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new(800, 600)));
+        // Create GPU render engine with matching resolution
+        let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new(1600, 900)));
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
 
         // Spawn render thread
