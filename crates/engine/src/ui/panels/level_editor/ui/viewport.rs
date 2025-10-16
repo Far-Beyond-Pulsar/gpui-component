@@ -3,6 +3,7 @@ use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::{Button, ButtonVariants as _, Toggle}, h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
     chart::{LineChart, BarChart, AreaChart},
+    PixelsExt,
 };
 // OPTIMIZED: Using new zero-copy viewport
 use gpui_component::viewport_optimized::OptimizedViewport;
@@ -46,15 +47,20 @@ pub struct ViewportPanel {
     // TPS tracking for rolling graph
     tps_history: RefCell<VecDeque<TpsDataPoint>>,
     tps_sample_counter: RefCell<usize>,
-    // Mouse tracking for camera control
-    last_mouse_pos: RefCell<Option<Point<Pixels>>>,
-    mouse_captured: RefCell<bool>,
+    // Mouse tracking for camera control - Rc<RefCell<>> for shared mutable state across closures!
+    last_mouse_pos: Rc<RefCell<Option<Point<Pixels>>>>,
+    mouse_captured: Rc<RefCell<bool>>,
     // Keyboard state for WASD
-    keys_pressed: RefCell<std::collections::HashSet<String>>,
+    keys_pressed: Rc<RefCell<std::collections::HashSet<String>>>,
+    // Focus handle for input
+    focus_handle: FocusHandle,
 }
 
 impl ViewportPanel {
-    pub fn new(viewport: Entity<OptimizedViewport>, render_enabled: Arc<std::sync::atomic::AtomicBool>) -> Self {
+    pub fn new<V>(viewport: Entity<OptimizedViewport>, render_enabled: Arc<std::sync::atomic::AtomicBool>, cx: &mut Context<V>) -> Self 
+    where
+        V: 'static,
+    {
         Self {
             viewport,
             viewport_controls: ViewportControls::new(),
@@ -63,9 +69,10 @@ impl ViewportPanel {
             fps_sample_counter: RefCell::new(0),
             tps_history: RefCell::new(VecDeque::with_capacity(60)),
             tps_sample_counter: RefCell::new(0),
-            last_mouse_pos: RefCell::new(None),
-            mouse_captured: RefCell::new(false),
-            keys_pressed: RefCell::new(std::collections::HashSet::new()),
+            last_mouse_pos: Rc::new(RefCell::new(None)),
+            mouse_captured: Rc::new(RefCell::new(false)),
+            keys_pressed: Rc::new(RefCell::new(std::collections::HashSet::new())),
+            focus_handle: cx.focus_handle(),
         }
     }
 
@@ -128,20 +135,24 @@ impl ViewportPanel {
     where
         V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
     {
-        // Clone for closures
+        // Clone Arc/Rc for closures
         let gpu_clone_key_down = gpu_engine.clone();
         let gpu_clone_key_up = gpu_engine.clone();
         let gpu_clone_mouse = gpu_engine.clone();
-        let gpu_clone_click_down = gpu_engine.clone();
-        let gpu_clone_click_up = gpu_engine.clone();
+        let gpu_clone_scroll = gpu_engine.clone();
+        let gpu_clone_mouse_up = gpu_engine.clone();
         
-        // Clone RefCells for closures
+        // Clone Rc<RefCell<>> - now these WILL be shared!
         let keys_pressed = self.keys_pressed.clone();
         let keys_pressed_up = self.keys_pressed.clone();
-        let last_mouse_pos = self.last_mouse_pos.clone();
-        let mouse_captured = self.mouse_captured.clone();
+        
+        let last_mouse_pos_down = self.last_mouse_pos.clone();
+        let last_mouse_pos_move = self.last_mouse_pos.clone();
+        
         let mouse_captured_down = self.mouse_captured.clone();
+        let mouse_captured_move = self.mouse_captured.clone();
         let mouse_captured_up = self.mouse_captured.clone();
+        let mouse_captured_scroll = self.mouse_captured.clone();
         
         let mut viewport_div = div()
             .flex() // Enable flexbox
@@ -153,6 +164,7 @@ impl ViewportPanel {
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
+            .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(move |_this, event: &gpui::KeyDownEvent, _window, _cx| {
                 let key = event.keystroke.key.to_lowercase();
                 keys_pressed.borrow_mut().insert(key.clone());
@@ -209,61 +221,112 @@ impl ViewportPanel {
                     }
                 }
             }))
-            .on_mouse_move(cx.listener(move |_this, event: &gpui::MouseMoveEvent, _window, _cx| {
-                let current_pos = event.position;
-                let mut mouse_delta = (0.0, 0.0);
-                
-                if let Some(last_pos) = *last_mouse_pos.borrow() {
-                    if *mouse_captured.borrow() {
-                        let dx: f32 = (current_pos.x - last_pos.x).into();
-                        let dy: f32 = (current_pos.y - last_pos.y).into();
-                        mouse_delta = (dx, dy);
-                    }
-                }
-                
-                *last_mouse_pos.borrow_mut() = Some(current_pos);
-                
-                // Update camera input
-                if let Ok(engine) = gpu_clone_mouse.lock() {
-                    if let Some(ref bevy_renderer) = engine.bevy_renderer {
-                        if let Ok(mut input) = bevy_renderer.camera_input.lock() {
-                            if *mouse_captured.borrow() {
-                                input.mouse_delta_x = mouse_delta.0;
-                                input.mouse_delta_y = mouse_delta.1;
-                            } else {
-                                input.mouse_delta_x = 0.0;
-                                input.mouse_delta_y = 0.0;
-                            }
-                        }
-                    }
-                }
-            }))
-            .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |_this, _event: &gpui::MouseDownEvent, _window, cx| {
-                // Right-click to capture mouse for camera control
-                *mouse_captured_down.borrow_mut() = true;
-                cx.stop_propagation();
-            }))
-            .on_mouse_up(gpui::MouseButton::Right, cx.listener(move |_this, _event: &gpui::MouseUpEvent, _window, cx| {
-                // Release mouse capture
-                *mouse_captured_up.borrow_mut() = false;
-                
-                // Clear mouse delta
-                if let Ok(engine) = gpu_clone_click_up.lock() {
-                    if let Some(ref bevy_renderer) = engine.bevy_renderer {
-                        if let Ok(mut input) = bevy_renderer.camera_input.lock() {
-                            input.mouse_delta_x = 0.0;
-                            input.mouse_delta_y = 0.0;
-                        }
-                    }
-                }
-                cx.stop_propagation();
-            }))
             .child(
-                // Main viewport - should grow to fill space
+                // Main viewport - should grow to fill space and handle mouse events
                 div()
                     .flex() // Enable flex
                     .flex_1() // Grow to fill available space
                     .size_full() // Take full size
+                    .on_mouse_down(
+                        gpui::MouseButton::Left,
+                        cx.listener(move |_this, event: &MouseDownEvent, _window, _cx| {
+                            println!("[VIEWPORT-INNER] ⬅️ LEFT CLICK at position: x={:.2}, y={:.2}", 
+                                event.position.x.as_f32(), event.position.y.as_f32());
+                        }),
+                    )
+                    .on_mouse_down(
+                        gpui::MouseButton::Right,
+                        cx.listener(move |_this, event: &MouseDownEvent, _window, cx| {
+                            println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                            println!("[VIEWPORT-INNER] ➡️ RIGHT CLICK DETECTED!!!");
+                            println!("Position: x={:.2}, y={:.2}", event.position.x.as_f32(), event.position.y.as_f32());
+                            
+                            // Right-click to capture mouse for camera control
+                            println!("Setting mouse_captured_down to true...");
+                            *mouse_captured_down.borrow_mut() = true;
+                            
+                            *last_mouse_pos_down.borrow_mut() = Some(event.position);
+                            
+                            println!("Mouse captured state after set: {}", *mouse_captured_down.borrow());
+                            println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                            
+                            cx.stop_propagation();
+                        }),
+                    )
+                    .on_mouse_up(
+                        gpui::MouseButton::Right,
+                        cx.listener(move |_this, event: &MouseUpEvent, _window, cx| {
+                            // Release mouse capture
+                            println!("[VIEWPORT-INNER] ✅ RIGHT RELEASE at position: x={:.2}, y={:.2}", 
+                                event.position.x.as_f32(), event.position.y.as_f32());
+                            *mouse_captured_up.borrow_mut() = false;
+                            println!("[VIEWPORT-INNER] Mouse captured state now: {}", *mouse_captured_up.borrow());
+                            
+                            // Clear mouse delta
+                            if let Ok(engine) = gpu_clone_mouse_up.lock() {
+                                if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                                    if let Ok(mut input) = bevy_renderer.camera_input.lock() {
+                                        input.mouse_delta_x = 0.0;
+                                        input.mouse_delta_y = 0.0;
+                                    }
+                                }
+                            }
+                            cx.stop_propagation();
+                        }),
+                    )
+                    .on_mouse_move(cx.listener(move |_this, event: &MouseMoveEvent, _window, _cx| {
+                        let current_pos = event.position;
+                        
+                        // Always print mouse move to see if it's firing
+                        let is_captured = *mouse_captured_move.borrow();
+                        println!("[VIEWPORT-INNER] 🖱️ MOUSE MOVE at x={:.2}, y={:.2}, captured={}", 
+                            current_pos.x.as_f32(), current_pos.y.as_f32(), is_captured);
+                        
+                        let mut mouse_delta = (0.0f32, 0.0f32);
+                        
+                        if let Some(last_pos) = *last_mouse_pos_move.borrow() {
+                            if is_captured {
+                                let dx: f32 = (current_pos.x - last_pos.x).into();
+                                let dy: f32 = (current_pos.y - last_pos.y).into();
+                                mouse_delta = (dx, dy);
+                                
+                                println!("[VIEWPORT-INNER] ✅ CAPTURED MOVE - delta: ({:.2}, {:.2})", mouse_delta.0, mouse_delta.1);
+                            }
+                        }
+                        
+                        *last_mouse_pos_move.borrow_mut() = Some(current_pos);
+                        
+                        // Update camera input with mouse delta
+                        if let Ok(engine) = gpu_clone_mouse.lock() {
+                            if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                                if let Ok(mut input) = bevy_renderer.camera_input.lock() {
+                                    if is_captured {
+                                        input.mouse_delta_x = mouse_delta.0;
+                                        input.mouse_delta_y = mouse_delta.1;
+                                    } else {
+                                        input.mouse_delta_x = 0.0;
+                                        input.mouse_delta_y = 0.0;
+                                    }
+                                }
+                            }
+                        }
+                    }))
+                    .on_scroll_wheel(cx.listener(move |_this, event: &gpui::ScrollWheelEvent, _window, _cx| {
+                        // Only adjust speed when right mouse button is held
+                        if *mouse_captured_scroll.borrow() {
+                            if let Ok(engine) = gpu_clone_scroll.lock() {
+                                if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                                    if let Ok(mut input) = bevy_renderer.camera_input.lock() {
+                                        // Adjust move speed based on scroll
+                                        let scroll_delta: f32 = event.delta.pixel_delta(px(1.0)).y.into();
+                                        let speed_change = scroll_delta * 0.1; // 0.1 units per scroll tick
+                                        input.move_speed = (input.move_speed + speed_change).clamp(0.5, 50.0);
+                                        println!("[VIEWPORT-INNER] SCROLL - Speed adjusted to: {:.1}", input.move_speed);
+                                    }
+                                }
+                            }
+                        }
+                    }))
                     .child(self.viewport.clone())
             )
             .when(state.show_viewport_controls, |viewport_div| {
