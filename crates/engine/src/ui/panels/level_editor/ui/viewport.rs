@@ -2,7 +2,8 @@ use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::{Button, ButtonVariants as _}, h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
-    chart::LineChart,
+    chart::{LineChart, BarChart},
+    switch::Switch,
 };
 use gpui_component::viewport_final::Viewport;
 
@@ -19,6 +20,12 @@ struct FpsDataPoint {
     fps: f64,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum GraphType {
+    Line,
+    Bar,
+}
+
 /// Viewport Panel - 3D rendering viewport with camera controls
 pub struct ViewportPanel {
     viewport: Entity<Viewport>,
@@ -27,6 +34,7 @@ pub struct ViewportPanel {
     // FPS tracking for rolling graph - using RefCell for interior mutability
     fps_history: RefCell<VecDeque<FpsDataPoint>>,
     fps_sample_counter: RefCell<usize>,
+    graph_type: RefCell<GraphType>,
 }
 
 impl ViewportPanel {
@@ -37,6 +45,7 @@ impl ViewportPanel {
             render_enabled,
             fps_history: RefCell::new(VecDeque::with_capacity(60)),
             fps_sample_counter: RefCell::new(0),
+            graph_type: RefCell::new(GraphType::Line),
         }
     }
 
@@ -337,6 +346,7 @@ impl ViewportPanel {
 
         // Prepare data for the chart
         let fps_data: Vec<FpsDataPoint> = fps_history.iter().cloned().collect();
+        let current_graph_type = *self.graph_type.borrow();
         drop(fps_history);
         drop(fps_sample_counter);
 
@@ -404,24 +414,68 @@ impl ViewportPanel {
                         .border_color(cx.theme().border)
                         .pt_2()
                         .child(
-                            div()
-                                .text_xs()
-                                .font_semibold()
-                                .text_color(cx.theme().foreground)
+                            h_flex()
+                                .w_full()
+                                .items_center()
+                                .justify_between()
                                 .mb_1()
-                                .child("FPS Graph")
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .font_semibold()
+                                        .text_color(cx.theme().foreground)
+                                        .child("FPS Graph")
+                                )
+                                .child({
+                                    let graph_type = self.graph_type.clone();
+                                    h_flex()
+                                        .gap_2()
+                                        .items_center()
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child("Bar")
+                                        )
+                                        .child(
+                                            Switch::new("graph_type_switch")
+                                                .checked(current_graph_type == GraphType::Line)
+                                                .xsmall()
+                                                .on_click(cx.listener(move |_view, checked, _window, cx| {
+                                                    let mut gt = graph_type.borrow_mut();
+                                                    *gt = if *checked { GraphType::Line } else { GraphType::Bar };
+                                                    cx.notify();
+                                                }))
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child("Line")
+                                        )
+                                })
                         )
                         .child(
                             div()
                                 .h(px(100.))
                                 .w_full()
-                                .child(
-                                    LineChart::new(fps_data)
-                                        .x(|d| SharedString::from(format!("{}", d.index)))
-                                        .y(|d| d.fps)
-                                        .linear()
-                                        .tick_margin(10)
-                                )
+                                .child(match current_graph_type {
+                                    GraphType::Line => {
+                                        LineChart::new(fps_data.clone())
+                                            .x(|d| SharedString::from(format!("{}", d.index)))
+                                            .y(|d| d.fps)
+                                            .linear()
+                                            .tick_margin(10)
+                                            .into_any_element()
+                                    }
+                                    GraphType::Bar => {
+                                        BarChart::new(fps_data.clone())
+                                            .x(|d| SharedString::from(format!("{}", d.index)))
+                                            .y(|d| d.fps)
+                                            .tick_margin(10)
+                                            .into_any_element()
+                                    }
+                                })
                         )
                 )
             })
