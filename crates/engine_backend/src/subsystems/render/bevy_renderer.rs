@@ -12,6 +12,7 @@ use bevy::{
     camera::RenderTarget,
     prelude::*,
     pbr::StandardMaterial,
+    core_pipeline::tonemapping::Tonemapping,
     render::{
         render_asset::RenderAssets,
         render_graph::{self, NodeRunError, RenderGraph, RenderGraphContext, RenderLabel},
@@ -305,18 +306,19 @@ fn setup(
         &render_device,
     ));
     
-    // Create 3D camera
+    // Create 3D camera with TONEMAPPING DISABLED (critical for headless)
     commands.spawn((
         Camera3d::default(),
         Camera {
             target: RenderTarget::Image(render_target_handle.into()),
+            clear_color: ClearColorConfig::Custom(Color::srgb(0.2, 0.2, 0.3)),
             ..default()
         },
-        Transform::from_xyz(0.0, 2.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(0.0, 2.5, 6.0).looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y),
+        Tonemapping::None, // CRITICAL: Disable tonemapping for headless rendering
     ));
     
-    // Add lighting - CRITICAL: Need strong lighting for PBR to work
-    // Primary directional light (sun)
+    println!("[BevyApp] ========== Camera spawned with tonemapping disabled ==========");
     commands.spawn((
         DirectionalLight {
             color: Color::WHITE,
@@ -344,33 +346,34 @@ fn setup(
     println!("[BevyApp] Setup complete - rendering with BGRA8UnormSrgb");
 }
 
-/// Create an interesting 3D scene for demonstration
+/// Create an interesting 3D scene for demonstration  
+/// Back to proper PBR materials with good lighting
 fn create_demo_scene(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
 ) {
-    // Center cube (red metallic) - with emissive to ensure visibility
+    // Center cube (red metallic)
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.8, 0.2, 0.2),
-            emissive: Color::srgb(0.2, 0.05, 0.05).into(),
+            base_color: Color::srgb(0.9, 0.2, 0.2),
             metallic: 0.8,
-            perceptual_roughness: 0.2,
+            perceptual_roughness: 0.3,
+            reflectance: 0.5,
             ..default()
         })),
         Transform::from_xyz(0.0, 0.5, 0.0),
     ));
     
-    // Left sphere (blue glass-like)
+    // Left sphere (blue metallic)
     commands.spawn((
         Mesh3d(meshes.add(Sphere::new(0.5))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.2, 0.4, 0.9),
-            emissive: Color::srgb(0.05, 0.1, 0.2).into(),
+            base_color: Color::srgb(0.2, 0.5, 0.9),
             metallic: 0.9,
             perceptual_roughness: 0.1,
+            reflectance: 0.9,
             ..default()
         })),
         Transform::from_xyz(-2.0, 0.5, 0.0),
@@ -380,10 +383,10 @@ fn create_demo_scene(
     commands.spawn((
         Mesh3d(meshes.add(Torus::new(0.3, 0.6))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.2, 0.8, 0.2),
-            emissive: Color::srgb(0.05, 0.2, 0.05).into(),
-            metallic: 0.5,
-            perceptual_roughness: 0.5,
+            base_color: Color::srgb(0.2, 0.9, 0.3),
+            metallic: 0.6,
+            perceptual_roughness: 0.4,
+            reflectance: 0.5,
             ..default()
         })),
         Transform::from_xyz(2.0, 0.5, 0.0),
@@ -394,25 +397,28 @@ fn create_demo_scene(
         Mesh3d(meshes.add(Cylinder::new(0.5, 1.5))),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: Color::srgb(1.0, 0.843, 0.0),
-            emissive: Color::srgb(0.2, 0.17, 0.0).into(),
-            metallic: 0.9,
-            perceptual_roughness: 0.3,
+            metallic: 0.95,
+            perceptual_roughness: 0.2,
+            reflectance: 0.8,
             ..default()
         })),
         Transform::from_xyz(0.0, 0.75, -2.0),
     ));
     
-    // Ground plane (dark gray, rough)
+    // Ground plane (light concrete)
     commands.spawn((
         Mesh3d(meshes.add(Plane3d::new(Vec3::Y, Vec2::new(10.0, 10.0)))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.3, 0.3, 0.3),
-            metallic: 0.1,
-            perceptual_roughness: 0.9,
+            base_color: Color::srgb(0.7, 0.7, 0.7),
+            metallic: 0.0,
+            perceptual_roughness: 0.8,
+            reflectance: 0.1,
             ..default()
         })),
         Transform::from_xyz(0.0, 0.0, 0.0),
     ));
+    
+    println!("[BevyApp] Created 5 objects with PBR materials");
 }
 
 // Zero-copy image extraction plugin
