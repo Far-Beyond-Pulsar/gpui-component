@@ -442,7 +442,6 @@ fn receive_image_from_buffer(
         
         buffer_slice.map_async(MapMode::Read, move |result| match result {
             Ok(_) => { 
-                println!("[BevyRender] Buffer mapped successfully");
                 let _ = s.send(()); 
             },
             Err(err) => eprintln!("[BevyRenderer] Buffer map failed: {}", err),
@@ -458,7 +457,6 @@ fn receive_image_from_buffer(
         
         if r.recv().is_ok() {
             let data = buffer_slice.get_mapped_range().to_vec();
-            println!("[BevyRender] Sending {} bytes to main thread", data.len());
             let _ = sender.send(data);
             image_copier.buffer.unmap();
         } else {
