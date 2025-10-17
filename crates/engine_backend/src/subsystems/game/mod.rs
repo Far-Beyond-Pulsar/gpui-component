@@ -207,7 +207,11 @@ impl GameThread {
         let tps = self.tps.clone();
         let frame_count = self.frame_count.clone();
 
+        println!("[GAME-THREAD] ⚡ start() method called - about to spawn thread...");
+        
         thread::spawn(move || {
+            println!("[GAME-THREAD] 🚀 Thread spawned successfully!");
+            
             // Set thread priority for game logic
             #[cfg(target_os = "windows")]
             {
@@ -215,7 +219,7 @@ impl GameThread {
                     let handle = GetCurrentThread();
                     let _ = SetThreadPriority(handle, THREAD_PRIORITY_ABOVE_NORMAL);
                 }
-                println!("[GAME-THREAD] Started with high priority");
+                println!("[GAME-THREAD] Started with high priority on Windows");
             }
 
             #[cfg(not(target_os = "windows"))]
@@ -230,6 +234,7 @@ impl GameThread {
             let mut accumulated_time = Duration::ZERO;
 
             println!("[GAME-THREAD] Starting game loop at target {} TPS", target_tps);
+            println!("[GAME-THREAD] Target frame time: {:?}", target_frame_time);
 
             while enabled.load(Ordering::Relaxed) {
                 let frame_start = Instant::now();
@@ -246,6 +251,12 @@ impl GameThread {
                     // Update game state
                     if let Ok(mut game_state) = state.try_lock() {
                         game_state.update(fixed_dt);
+                        
+                        // Print occasionally to verify it's running
+                        if tick_count % 240 == 0 {
+                            println!("[GAME-THREAD] ✅ Tick {} - {} objects active", 
+                                tick_count, game_state.objects.len());
+                        }
                     }
 
                     accumulated_time -= target_frame_time;
@@ -260,6 +271,10 @@ impl GameThread {
                     if let Ok(mut tps_lock) = tps.lock() {
                         *tps_lock = measured_tps;
                     }
+                    
+                    // Print TPS every second for debugging
+                    println!("[GAME-THREAD] 📊 Current TPS: {:.1}", measured_tps);
+                    
                     tick_count = 0;
                     tps_timer = Instant::now();
                 }
@@ -279,6 +294,8 @@ impl GameThread {
 
             println!("[GAME-THREAD] Stopped");
         });
+        
+        println!("[GAME-THREAD] ✅ Thread spawn completed, returning from start()");
     }
 }
 

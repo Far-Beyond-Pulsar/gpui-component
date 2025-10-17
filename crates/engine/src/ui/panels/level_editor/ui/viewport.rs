@@ -29,6 +29,36 @@ struct TpsDataPoint {
     tps: f64,
 }
 
+#[derive(Clone)]
+struct FrameTimeDataPoint {
+    index: usize,
+    frame_time_ms: f64,
+}
+
+#[derive(Clone)]
+struct MemoryDataPoint {
+    index: usize,
+    memory_mb: f64,
+}
+
+#[derive(Clone)]
+struct DrawCallsDataPoint {
+    index: usize,
+    draw_calls: f64,
+}
+
+#[derive(Clone)]
+struct VerticesDataPoint {
+    index: usize,
+    vertices: f64,
+}
+
+#[derive(Clone)]
+struct InputLatencyDataPoint {
+    index: usize,
+    latency_ms: f64,
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum GraphType {
     Line,
@@ -47,6 +77,22 @@ pub struct ViewportPanel {
     // TPS tracking for rolling graph
     tps_history: RefCell<VecDeque<TpsDataPoint>>,
     tps_sample_counter: RefCell<usize>,
+    // Frame time tracking for jitter analysis
+    frame_time_history: RefCell<VecDeque<FrameTimeDataPoint>>,
+    frame_time_counter: RefCell<usize>,
+    // Memory usage tracking
+    memory_history: RefCell<VecDeque<MemoryDataPoint>>,
+    memory_counter: RefCell<usize>,
+    // Draw calls tracking
+    draw_calls_history: RefCell<VecDeque<DrawCallsDataPoint>>,
+    draw_calls_counter: RefCell<usize>,
+    // Vertices tracking
+    vertices_history: RefCell<VecDeque<VerticesDataPoint>>,
+    vertices_counter: RefCell<usize>,
+    // Input latency tracking
+    input_latency_history: RefCell<VecDeque<InputLatencyDataPoint>>,
+    input_latency_counter: RefCell<usize>,
+    last_input_time: RefCell<Option<std::time::Instant>>,
     // Mouse tracking for camera control - Rc<RefCell<>> for shared mutable state across closures!
     last_mouse_pos: Rc<RefCell<Option<Point<Pixels>>>>,
     mouse_right_captured: Rc<RefCell<bool>>,  // Right-click for look
@@ -67,10 +113,21 @@ impl ViewportPanel {
             viewport,
             viewport_controls: ViewportControls::new(),
             render_enabled,
-            fps_history: RefCell::new(VecDeque::with_capacity(60)),
+            fps_history: RefCell::new(VecDeque::with_capacity(120)),
             fps_sample_counter: RefCell::new(0),
-            tps_history: RefCell::new(VecDeque::with_capacity(60)),
+            tps_history: RefCell::new(VecDeque::with_capacity(120)),
             tps_sample_counter: RefCell::new(0),
+            frame_time_history: RefCell::new(VecDeque::with_capacity(120)),
+            frame_time_counter: RefCell::new(0),
+            memory_history: RefCell::new(VecDeque::with_capacity(120)),
+            memory_counter: RefCell::new(0),
+            draw_calls_history: RefCell::new(VecDeque::with_capacity(120)),
+            draw_calls_counter: RefCell::new(0),
+            vertices_history: RefCell::new(VecDeque::with_capacity(120)),
+            vertices_counter: RefCell::new(0),
+            input_latency_history: RefCell::new(VecDeque::with_capacity(120)),
+            input_latency_counter: RefCell::new(0),
+            last_input_time: RefCell::new(None),
             last_mouse_pos: Rc::new(RefCell::new(None)),
             mouse_right_captured: Rc::new(RefCell::new(false)),
             mouse_middle_captured: Rc::new(RefCell::new(false)),
@@ -115,6 +172,8 @@ impl ViewportPanel {
         let mouse_middle_up = self.mouse_middle_captured.clone();
         
         let alt_key = self.alt_pressed.clone();
+        let input_time_key = self.last_input_time.clone();
+        let input_time_mouse = self.last_input_time.clone();
         
         let mut viewport_div = div()
             .flex() // Enable flexbox
@@ -128,6 +187,9 @@ impl ViewportPanel {
             .rounded(cx.theme().radius)
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(move |_this, event: &gpui::KeyDownEvent, _window, _cx| {
+                // Track input time for latency measurement
+                *input_time_key.borrow_mut() = Some(std::time::Instant::now());
+                
                 let key = event.keystroke.key.to_lowercase();
                 keys_pressed.borrow_mut().insert(key.clone());
                 
@@ -225,6 +287,9 @@ impl ViewportPanel {
                         }),
                     )
                     .on_mouse_move(cx.listener(move |_this, event: &MouseMoveEvent, _window, _cx| {
+                        // Track input time for latency measurement
+                        *input_time_mouse.borrow_mut() = Some(std::time::Instant::now());
+                        
                         let current_pos = event.position;
                         
                         // Check if mouse is captured for look or pan
@@ -247,20 +312,21 @@ impl ViewportPanel {
                             *last_mouse_pos_move.borrow_mut() = Some(current_pos);
                         }
                         
-                        // Update camera input with mouse delta - ACCUMULATE, don't replace!
+                        // Update camera input with mouse delta - SET deltas directly (Bevy will clear them)
                         if let Ok(engine) = gpu_clone_mouse.lock() {
                             if let Some(ref bevy_renderer) = engine.bevy_renderer {
                                 if let Ok(mut input) = bevy_renderer.camera_input.lock() {
-                                    // Look mode (right-click) - ACCUMULATE deltas for smoother input
+                                    // Look mode (right-click) - SET deltas directly, Bevy will clear them
                                     if is_right_captured && (mouse_delta.0.abs() > 0.01 || mouse_delta.1.abs() > 0.01) {
-                                        input.mouse_delta_x += mouse_delta.0;
-                                        input.mouse_delta_y += mouse_delta.1;
+                                        // Direct assignment - no accumulation needed, Bevy reads and clears each frame
+                                        input.mouse_delta_x = mouse_delta.0;
+                                        input.mouse_delta_y = mouse_delta.1;
                                     }
                                     
-                                    // Pan mode (middle-click) - ACCUMULATE deltas
+                                    // Pan mode (middle-click) - SET deltas directly
                                     if is_middle_captured && (mouse_delta.0.abs() > 0.01 || mouse_delta.1.abs() > 0.01) {
-                                        input.pan_delta_x += mouse_delta.0;
-                                        input.pan_delta_y += mouse_delta.1;
+                                        input.pan_delta_x = mouse_delta.0;
+                                        input.pan_delta_y = mouse_delta.1;
                                     }
                                 }
                             }
@@ -275,13 +341,13 @@ impl ViewportPanel {
                                     // If right-click held: adjust movement speed
                                     if *mouse_right_scroll.borrow() {
                                         let speed_change = scroll_delta * 0.1;
-                                        input.move_speed = (input.move_speed + speed_change).clamp(0.5, 50.0);
+                                        input.move_speed = (input.move_speed + speed_change).clamp(0.5, 100.0);
                                         println!("[VIEWPORT] 🎚️ Move Speed: {:.1} units/sec", input.move_speed);
                                     } 
-                                    // Otherwise: zoom (dolly)
+                                    // Otherwise: zoom (dolly) - SET directly (Bevy clears it)
                                     else {
-                                        input.zoom_delta = scroll_delta;
-                                        println!("[VIEWPORT] 🔍 Zoom: {:.2}", scroll_delta);
+                                        input.zoom_delta = scroll_delta * 0.5; // Scale down for smoother zoom
+                                        println!("[VIEWPORT] 🔍 Zoom delta: {:.2}", input.zoom_delta);
                                     }
                                 }
                             }
@@ -565,6 +631,13 @@ impl ViewportPanel {
             (0.0, 0.0, 0, 0, 0, None)
         };
 
+        // Extract additional metrics
+        let (memory_mb, draw_calls, vertices_drawn) = if let Some(ref metrics) = render_metrics {
+            (metrics.memory_usage_mb, metrics.draw_calls, metrics.vertices_drawn)
+        } else {
+            (0.0, 0, 0)
+        };
+
         // Get game thread metrics
         let game_tps = game_thread.get_tps();
         let game_tick_count = game_thread.get_tick_count();
@@ -609,6 +682,114 @@ impl ViewportPanel {
         let tps_data: Vec<TpsDataPoint> = tps_history.iter().cloned().collect();
         drop(tps_history);
         drop(tps_sample_counter);
+
+        // Update Frame Time history for jitter analysis
+        let mut frame_time_history = self.frame_time_history.borrow_mut();
+        let mut frame_time_counter = self.frame_time_counter.borrow_mut();
+        
+        let frame_time_ms = pipeline_us as f64 / 1000.0;
+        frame_time_history.push_back(FrameTimeDataPoint {
+            index: *frame_time_counter,
+            frame_time_ms,
+        });
+        *frame_time_counter += 1;
+        
+        if frame_time_history.len() > 120 {
+            frame_time_history.pop_front();
+        }
+        
+        let frame_time_data: Vec<FrameTimeDataPoint> = frame_time_history.iter().cloned().collect();
+        drop(frame_time_history);
+        drop(frame_time_counter);
+
+        // Update Memory history
+        let mut memory_history = self.memory_history.borrow_mut();
+        let mut memory_counter = self.memory_counter.borrow_mut();
+        
+        memory_history.push_back(MemoryDataPoint {
+            index: *memory_counter,
+            memory_mb,
+        });
+        *memory_counter += 1;
+        
+        if memory_history.len() > 120 {
+            memory_history.pop_front();
+        }
+        
+        let memory_data: Vec<MemoryDataPoint> = memory_history.iter().cloned().collect();
+        drop(memory_history);
+        drop(memory_counter);
+
+        // Update Draw Calls history
+        let mut draw_calls_history = self.draw_calls_history.borrow_mut();
+        let mut draw_calls_counter = self.draw_calls_counter.borrow_mut();
+        
+        draw_calls_history.push_back(DrawCallsDataPoint {
+            index: *draw_calls_counter,
+            draw_calls: draw_calls as f64,
+        });
+        *draw_calls_counter += 1;
+        
+        if draw_calls_history.len() > 120 {
+            draw_calls_history.pop_front();
+        }
+        
+        let draw_calls_data: Vec<DrawCallsDataPoint> = draw_calls_history.iter().cloned().collect();
+        drop(draw_calls_history);
+        drop(draw_calls_counter);
+
+        // Update Vertices history
+        let mut vertices_history = self.vertices_history.borrow_mut();
+        let mut vertices_counter = self.vertices_counter.borrow_mut();
+        
+        vertices_history.push_back(VerticesDataPoint {
+            index: *vertices_counter,
+            vertices: vertices_drawn as f64,
+        });
+        *vertices_counter += 1;
+        
+        if vertices_history.len() > 120 {
+            vertices_history.pop_front();
+        }
+        
+        let vertices_data: Vec<VerticesDataPoint> = vertices_history.iter().cloned().collect();
+        drop(vertices_history);
+        drop(vertices_counter);
+
+        // Track input latency (time between input and frame render)
+        let input_latency_ms = if let Some(last_input) = *self.last_input_time.borrow() {
+            last_input.elapsed().as_micros() as f64 / 1000.0
+        } else {
+            0.0
+        };
+
+        let mut input_latency_history = self.input_latency_history.borrow_mut();
+        let mut input_latency_counter = self.input_latency_counter.borrow_mut();
+        
+        input_latency_history.push_back(InputLatencyDataPoint {
+            index: *input_latency_counter,
+            latency_ms: input_latency_ms,
+        });
+        *input_latency_counter += 1;
+        
+        if input_latency_history.len() > 120 {
+            input_latency_history.pop_front();
+        }
+        
+        let input_latency_data: Vec<InputLatencyDataPoint> = input_latency_history.iter().cloned().collect();
+        drop(input_latency_history);
+        drop(input_latency_counter);
+
+        // Calculate frame time variance for jitter detection
+        let frame_time_variance = if !frame_time_data.is_empty() {
+            let mean = frame_time_data.iter().map(|d| d.frame_time_ms).sum::<f64>() / frame_time_data.len() as f64;
+            let variance = frame_time_data.iter()
+                .map(|d| (d.frame_time_ms - mean).powi(2))
+                .sum::<f64>() / frame_time_data.len() as f64;
+            variance.sqrt() // Standard deviation
+        } else {
+            0.0
+        };
 
         v_flex()
             .gap_2()
@@ -818,8 +999,8 @@ impl ViewportPanel {
                             div()
                                 .h(px(80.))
                                 .w_full()
-                                .child({
-                                    // TPS Line Chart
+                                .child(if *fps_graph_state.borrow() {
+                                    // Line mode - Area chart
                                     let theme = cx.theme();
                                     let stroke_color = theme.chart_2;
                                     let fill_color = stroke_color.opacity(0.2);
@@ -830,6 +1011,31 @@ impl ViewportPanel {
                                         .stroke(stroke_color)
                                         .fill(fill_color)
                                         .linear()
+                                        .tick_margin(10)
+                                        .into_any_element()
+                                } else {
+                                    // Bar mode
+                                    let theme = cx.theme();
+                                    let success_color = theme.success;
+                                    let warning_color = theme.warning;
+                                    let danger_color = theme.danger;
+                                    
+                                    BarChart::new(tps_data.clone())
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.tps)
+                                        .fill(move |d| {
+                                            // Color code based on TPS:
+                                            // Green: > 220 TPS (high)
+                                            // Yellow: 120-220 TPS (mid)
+                                            // Red: < 120 TPS (low)
+                                            if d.tps >= 220.0 {
+                                                success_color
+                                            } else if d.tps >= 120.0 {
+                                                warning_color
+                                            } else {
+                                                danger_color
+                                            }
+                                        })
                                         .tick_margin(10)
                                         .into_any_element()
                                 })
@@ -872,8 +1078,13 @@ impl ViewportPanel {
                                             .child(
                                                 div()
                                                     .text_xs()
-                                                    
-                                                    .text_color(cx.theme().foreground)
+                                                    .text_color(if gpu_us < 8000 {
+                                                        cx.theme().success
+                                                    } else if gpu_us < 16000 {
+                                                        cx.theme().warning
+                                                    } else {
+                                                        cx.theme().danger
+                                                    })
                                                     .child(format!("{:.2}ms", gpu_us as f64 / 1000.0))
                                             )
                                     )
@@ -889,9 +1100,58 @@ impl ViewportPanel {
                                             .child(
                                                 div()
                                                     .text_xs()
-                                                    
-                                                    .text_color(cx.theme().foreground)
+                                                    .text_color(if cpu_us < 2000 {
+                                                        cx.theme().success
+                                                    } else if cpu_us < 5000 {
+                                                        cx.theme().warning
+                                                    } else {
+                                                        cx.theme().danger
+                                                    })
                                                     .child(format!("{:.2}ms", cpu_us as f64 / 1000.0))
+                                            )
+                                    )
+                                    .child(
+                                        h_flex()
+                                            .justify_between()
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(cx.theme().muted_foreground)
+                                                    .child("Frame Jitter:")
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(if frame_time_variance < 1.0 {
+                                                        cx.theme().success
+                                                    } else if frame_time_variance < 3.0 {
+                                                        cx.theme().warning
+                                                    } else {
+                                                        cx.theme().danger
+                                                    })
+                                                    .child(format!("±{:.2}ms", frame_time_variance))
+                                            )
+                                    )
+                                    .child(
+                                        h_flex()
+                                            .justify_between()
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(cx.theme().muted_foreground)
+                                                    .child("Input Lag:")
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(if input_latency_ms < 5.0 {
+                                                        cx.theme().success
+                                                    } else if input_latency_ms < 15.0 {
+                                                        cx.theme().warning
+                                                    } else {
+                                                        cx.theme().danger
+                                                    })
+                                                    .child(format!("{:.1}ms", input_latency_ms))
                                             )
                                     )
                             )
@@ -906,37 +1166,282 @@ impl ViewportPanel {
                                                 div()
                                                     .text_xs()
                                                     .text_color(cx.theme().muted_foreground)
-                                                    .child("Frame Time:")
+                                                    .child("GPU Memory:")
                                             )
                                             .child(
                                                 div()
                                                     .text_xs()
-                                                    
                                                     .text_color(cx.theme().foreground)
-                                                    .child(format!("{:.2}ms", if bevy_fps > 0.0 { 1000.0 / bevy_fps } else { 0.0 }))
+                                                    .child(format!("{:.1}MB", memory_mb))
                                             )
                                     )
-                                    .when_some(render_metrics, |this, metrics| {
-                                        this.child(
-                                            h_flex()
-                                                .justify_between()
-                                                .child(
-                                                    div()
-                                                        .text_xs()
-                                                        .text_color(cx.theme().muted_foreground)
-                                                        .child("Data Xfer:")
-                                                )
-                                                .child(
-                                                    div()
-                                                        .text_xs()
-                                                        
-                                                        .text_color(cx.theme().foreground)
-                                                        .child(format!("{:.1}MB", metrics.total_bytes_transferred as f64 / 1_048_576.0))
-                                                )
-                                        )
-                                    })
+                                    .child(
+                                        h_flex()
+                                            .justify_between()
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(cx.theme().muted_foreground)
+                                                    .child("Draw Calls:")
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(cx.theme().foreground)
+                                                    .child(format!("{}", draw_calls))
+                                            )
+                                    )
+                                    .child(
+                                        h_flex()
+                                            .justify_between()
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(cx.theme().muted_foreground)
+                                                    .child("Vertices:")
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(cx.theme().foreground)
+                                                    .child(format!("{}", vertices_drawn))
+                                            )
+                                    )
                             )
                     )
             )
+            // FRAME TIME JITTER GRAPH - Critical for finding stutters!
+            .when(!frame_time_data.is_empty(), |this| {
+                this.child(
+                    v_flex()
+                        .w_full()
+                        .mt_2()
+                        .pt_2()
+                        .border_t_1()
+                        .border_color(cx.theme().border)
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_semibold()
+                                .text_color(cx.theme().foreground)
+                                .child("📊 Frame Time (ms) - Spikes indicate stutters")
+                        )
+                        .child(
+                            div()
+                                .h(px(80.))
+                                .w_full()
+                                .child(if *fps_graph_state.borrow() {
+                                    // Line mode - Area chart
+                                    let theme = cx.theme();
+                                    let stroke_color = theme.chart_3;
+                                    let fill_color = stroke_color.opacity(0.2);
+                                    
+                                    AreaChart::new(frame_time_data.clone())
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.frame_time_ms)
+                                        .stroke(stroke_color)
+                                        .fill(fill_color)
+                                        .linear()
+                                        .tick_margin(10)
+                                        .into_any_element()
+                                } else {
+                                    // Bar mode
+                                    let theme = cx.theme();
+                                    let chart_color = theme.chart_3;
+                                    
+                                    BarChart::new(frame_time_data.clone())
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.frame_time_ms)
+                                        .fill(move |_d| chart_color)
+                                        .tick_margin(10)
+                                        .into_any_element()
+                                })
+                        )
+                )
+            })
+            // GPU MEMORY USAGE GRAPH
+            .when(!memory_data.is_empty(), |this| {
+                this.child(
+                    v_flex()
+                        .w_full()
+                        .mt_2()
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_semibold()
+                                .text_color(cx.theme().foreground)
+                                .child("💾 GPU Memory Usage (MB)")
+                        )
+                        .child(
+                            div()
+                                .h(px(60.))
+                                .w_full()
+                                .child(if *fps_graph_state.borrow() {
+                                    // Line mode - Area chart
+                                    let theme = cx.theme();
+                                    let stroke_color = theme.chart_4;
+                                    let fill_color = stroke_color.opacity(0.2);
+                                    
+                                    AreaChart::new(memory_data.clone())
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.memory_mb)
+                                        .stroke(stroke_color)
+                                        .fill(fill_color)
+                                        .linear()
+                                        .tick_margin(10)
+                                        .into_any_element()
+                                } else {
+                                    // Bar mode
+                                    let theme = cx.theme();
+                                    let chart_color = theme.chart_4;
+                                    
+                                    BarChart::new(memory_data.clone())
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.memory_mb)
+                                        .fill(move |_d| chart_color)
+                                        .tick_margin(10)
+                                        .into_any_element()
+                                })
+                        )
+                )
+            })
+            // DRAW CALLS GRAPH
+            .when(!draw_calls_data.is_empty(), |this| {
+                this.child(
+                    v_flex()
+                        .w_full()
+                        .mt_2()
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_semibold()
+                                .text_color(cx.theme().foreground)
+                                .child("🎨 Draw Calls per Frame")
+                        )
+                        .child(
+                            div()
+                                .h(px(60.))
+                                .w_full()
+                                .child(if *fps_graph_state.borrow() {
+                                    // Line mode - Area chart
+                                    let theme = cx.theme();
+                                    let stroke_color = theme.chart_5;
+                                    let fill_color = stroke_color.opacity(0.2);
+                                    
+                                    AreaChart::new(draw_calls_data.clone())
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.draw_calls)
+                                        .stroke(stroke_color)
+                                        .fill(fill_color)
+                                        .linear()
+                                        .tick_margin(10)
+                                        .into_any_element()
+                                } else {
+                                    // Bar mode
+                                    let theme = cx.theme();
+                                    let chart_color = theme.chart_5;
+                                    
+                                    BarChart::new(draw_calls_data.clone())
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.draw_calls)
+                                        .fill(move |_d| chart_color)
+                                        .tick_margin(10)
+                                        .into_any_element()
+                                })
+                        )
+                )
+            })
+            // VERTICES GRAPH
+            .when(!vertices_data.is_empty(), |this| {
+                this.child(
+                    v_flex()
+                        .w_full()
+                        .mt_2()
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_semibold()
+                                .text_color(cx.theme().foreground)
+                                .child("🔺 Vertices Rendered")
+                        )
+                        .child(
+                            div()
+                                .h(px(60.))
+                                .w_full()
+                                .child(if *fps_graph_state.borrow() {
+                                    // Line mode - Area chart
+                                    let theme = cx.theme();
+                                    let stroke_color = theme.chart_1;
+                                    let fill_color = stroke_color.opacity(0.2);
+                                    
+                                    AreaChart::new(vertices_data.clone())
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.vertices)
+                                        .stroke(stroke_color)
+                                        .fill(fill_color)
+                                        .linear()
+                                        .tick_margin(10)
+                                        .into_any_element()
+                                } else {
+                                    // Bar mode
+                                    let theme = cx.theme();
+                                    let chart_color = theme.chart_1;
+                                    
+                                    BarChart::new(vertices_data.clone())
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.vertices)
+                                        .fill(move |_d| chart_color)
+                                        .tick_margin(10)
+                                        .into_any_element()
+                                })
+                        )
+                )
+            })
+            // INPUT LATENCY GRAPH - Critical for responsive controls!
+            .when(!input_latency_data.is_empty(), |this| {
+                this.child(
+                    v_flex()
+                        .w_full()
+                        .mt_2()
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_semibold()
+                                .text_color(cx.theme().foreground)
+                                .child("⚡ Input Latency (ms) - Lower is better")
+                        )
+                        .child(
+                            div()
+                                .h(px(60.))
+                                .w_full()
+                                .child(if *fps_graph_state.borrow() {
+                                    // Line mode - Area chart
+                                    let theme = cx.theme();
+                                    let stroke_color = theme.warning;
+                                    let fill_color = stroke_color.opacity(0.2);
+                                    
+                                    AreaChart::new(input_latency_data.clone())
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.latency_ms)
+                                        .stroke(stroke_color)
+                                        .fill(fill_color)
+                                        .linear()
+                                        .tick_margin(10)
+                                        .into_any_element()
+                                } else {
+                                    // Bar mode
+                                    let theme = cx.theme();
+                                    let chart_color = theme.warning;
+                                    
+                                    BarChart::new(input_latency_data.clone())
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.latency_ms)
+                                        .fill(move |_d| chart_color)
+                                        .tick_margin(10)
+                                        .into_any_element()
+                                })
+                        )
+                )
+            })
     }
 }
