@@ -35,8 +35,8 @@ enum GraphType {
     Bar,
 }
 
-/// Viewport Panel - OPTIMIZED 3D rendering viewport with camera controls
-/// Now uses zero-copy pipeline for 3x faster performance
+/// Viewport Panel - OPTIMIZED 3D rendering viewport with PRO camera controls
+/// Studio-quality navigation: FPS mode, Pan, Orbit, Zoom
 pub struct ViewportPanel {
     viewport: Entity<OptimizedViewport>,
     viewport_controls: ViewportControls,
@@ -49,9 +49,11 @@ pub struct ViewportPanel {
     tps_sample_counter: RefCell<usize>,
     // Mouse tracking for camera control - Rc<RefCell<>> for shared mutable state across closures!
     last_mouse_pos: Rc<RefCell<Option<Point<Pixels>>>>,
-    mouse_captured: Rc<RefCell<bool>>,
-    // Keyboard state for WASD
+    mouse_right_captured: Rc<RefCell<bool>>,  // Right-click for look
+    mouse_middle_captured: Rc<RefCell<bool>>, // Middle-click for pan
+    // Keyboard state for WASD + modifiers
     keys_pressed: Rc<RefCell<std::collections::HashSet<String>>>,
+    alt_pressed: Rc<RefCell<bool>>,  // Alt for orbit mode
     // Focus handle for input
     focus_handle: FocusHandle,
 }
@@ -70,8 +72,10 @@ impl ViewportPanel {
             tps_history: RefCell::new(VecDeque::with_capacity(60)),
             tps_sample_counter: RefCell::new(0),
             last_mouse_pos: Rc::new(RefCell::new(None)),
-            mouse_captured: Rc::new(RefCell::new(false)),
+            mouse_right_captured: Rc::new(RefCell::new(false)),
+            mouse_middle_captured: Rc::new(RefCell::new(false)),
             keys_pressed: Rc::new(RefCell::new(std::collections::HashSet::new())),
+            alt_pressed: Rc::new(RefCell::new(false)),
             focus_handle: cx.focus_handle(),
         }
     }
@@ -110,14 +114,26 @@ impl ViewportPanel {
                         input.boost = false;
                     }
                     
-                    // Mouse look (only when captured)
-                    if *self.mouse_captured.borrow() {
+                    // Mouse look (only when right-click captured)
+                    if *self.mouse_right_captured.borrow() {
                         input.mouse_delta_x = mouse_delta.0;
                         input.mouse_delta_y = mouse_delta.1;
                     } else {
                         input.mouse_delta_x = 0.0;
                         input.mouse_delta_y = 0.0;
                     }
+                    
+                    // Pan (only when middle-click captured)
+                    if *self.mouse_middle_captured.borrow() {
+                        input.pan_delta_x = mouse_delta.0;
+                        input.pan_delta_y = mouse_delta.1;
+                    } else {
+                        input.pan_delta_x = 0.0;
+                        input.pan_delta_y = 0.0;
+                    }
+                    
+                    // Orbit mode when Alt is pressed
+                    input.orbit_mode = *self.alt_pressed.borrow();
                 }
             }
         }
@@ -135,6 +151,10 @@ impl ViewportPanel {
     where
         V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
     {
+        // === UPDATE CAMERA INPUT EVERY FRAME ===
+        // This ensures responsive, continuous camera updates (60+ FPS)
+        self.update_camera_input(gpu_engine, (0.0, 0.0));
+        
         // Clone Arc/Rc for closures
         let gpu_clone_key_down = gpu_engine.clone();
         let gpu_clone_key_up = gpu_engine.clone();
@@ -149,10 +169,16 @@ impl ViewportPanel {
         let last_mouse_pos_down = self.last_mouse_pos.clone();
         let last_mouse_pos_move = self.last_mouse_pos.clone();
         
-        let mouse_captured_down = self.mouse_captured.clone();
-        let mouse_captured_move = self.mouse_captured.clone();
-        let mouse_captured_up = self.mouse_captured.clone();
-        let mouse_captured_scroll = self.mouse_captured.clone();
+        let mouse_right_down = self.mouse_right_captured.clone();
+        let mouse_right_move = self.mouse_right_captured.clone();
+        let mouse_right_up = self.mouse_right_captured.clone();
+        let mouse_right_scroll = self.mouse_right_captured.clone();
+        
+        let mouse_middle_down = self.mouse_middle_captured.clone();
+        let mouse_middle_move = self.mouse_middle_captured.clone();
+        let mouse_middle_up = self.mouse_middle_captured.clone();
+        
+        let alt_key = self.alt_pressed.clone();
         
         let mut viewport_div = div()
             .flex() // Enable flexbox
@@ -238,16 +264,14 @@ impl ViewportPanel {
                         gpui::MouseButton::Right,
                         cx.listener(move |_this, event: &MouseDownEvent, _window, cx| {
                             println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                            println!("[VIEWPORT-INNER] ➡️ RIGHT CLICK DETECTED!!!");
+                            println!("[VIEWPORT] ➡️ RIGHT CLICK - Look Mode");
                             println!("Position: x={:.2}, y={:.2}", event.position.x.as_f32(), event.position.y.as_f32());
                             
-                            // Right-click to capture mouse for camera control
-                            println!("Setting mouse_captured_down to true...");
-                            *mouse_captured_down.borrow_mut() = true;
-                            
+                            // Right-click to capture mouse for camera look
+                            *mouse_right_down.borrow_mut() = true;
                             *last_mouse_pos_down.borrow_mut() = Some(event.position);
                             
-                            println!("Mouse captured state after set: {}", *mouse_captured_down.borrow());
+                            println!("Mouse look enabled: {}", *mouse_right_down.borrow());
                             println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                             
                             cx.stop_propagation();
@@ -257,10 +281,9 @@ impl ViewportPanel {
                         gpui::MouseButton::Right,
                         cx.listener(move |_this, event: &MouseUpEvent, _window, cx| {
                             // Release mouse capture
-                            println!("[VIEWPORT-INNER] ✅ RIGHT RELEASE at position: x={:.2}, y={:.2}", 
+                            println!("[VIEWPORT] ✅ RIGHT RELEASE - Look Mode Off at x={:.2}, y={:.2}", 
                                 event.position.x.as_f32(), event.position.y.as_f32());
-                            *mouse_captured_up.borrow_mut() = false;
-                            println!("[VIEWPORT-INNER] Mouse captured state now: {}", *mouse_captured_up.borrow());
+                            *mouse_right_up.borrow_mut() = false;
                             
                             // Clear mouse delta
                             if let Ok(engine) = gpu_clone_mouse_up.lock() {
@@ -277,20 +300,17 @@ impl ViewportPanel {
                     .on_mouse_move(cx.listener(move |_this, event: &MouseMoveEvent, _window, _cx| {
                         let current_pos = event.position;
                         
-                        // Always print mouse move to see if it's firing
-                        let is_captured = *mouse_captured_move.borrow();
-                        println!("[VIEWPORT-INNER] 🖱️ MOUSE MOVE at x={:.2}, y={:.2}, captured={}", 
-                            current_pos.x.as_f32(), current_pos.y.as_f32(), is_captured);
+                        // Check if mouse is captured for look or pan
+                        let is_right_captured = *mouse_right_move.borrow();
+                        let is_middle_captured = *mouse_middle_move.borrow();
                         
                         let mut mouse_delta = (0.0f32, 0.0f32);
                         
                         if let Some(last_pos) = *last_mouse_pos_move.borrow() {
-                            if is_captured {
+                            if is_right_captured || is_middle_captured {
                                 let dx: f32 = (current_pos.x - last_pos.x).into();
                                 let dy: f32 = (current_pos.y - last_pos.y).into();
                                 mouse_delta = (dx, dy);
-                                
-                                println!("[VIEWPORT-INNER] ✅ CAPTURED MOVE - delta: ({:.2}, {:.2})", mouse_delta.0, mouse_delta.1);
                             }
                         }
                         
@@ -300,33 +320,64 @@ impl ViewportPanel {
                         if let Ok(engine) = gpu_clone_mouse.lock() {
                             if let Some(ref bevy_renderer) = engine.bevy_renderer {
                                 if let Ok(mut input) = bevy_renderer.camera_input.lock() {
-                                    if is_captured {
+                                    // Look mode (right-click)
+                                    if is_right_captured {
                                         input.mouse_delta_x = mouse_delta.0;
                                         input.mouse_delta_y = mouse_delta.1;
                                     } else {
                                         input.mouse_delta_x = 0.0;
                                         input.mouse_delta_y = 0.0;
                                     }
-                                }
-                            }
-                        }
-                    }))
-                    .on_scroll_wheel(cx.listener(move |_this, event: &gpui::ScrollWheelEvent, _window, _cx| {
-                        // Only adjust speed when right mouse button is held
-                        if *mouse_captured_scroll.borrow() {
-                            if let Ok(engine) = gpu_clone_scroll.lock() {
-                                if let Some(ref bevy_renderer) = engine.bevy_renderer {
-                                    if let Ok(mut input) = bevy_renderer.camera_input.lock() {
-                                        // Adjust move speed based on scroll
-                                        let scroll_delta: f32 = event.delta.pixel_delta(px(1.0)).y.into();
-                                        let speed_change = scroll_delta * 0.1; // 0.1 units per scroll tick
-                                        input.move_speed = (input.move_speed + speed_change).clamp(0.5, 50.0);
-                                        println!("[VIEWPORT-INNER] SCROLL - Speed adjusted to: {:.1}", input.move_speed);
+                                    
+                                    // Pan mode (middle-click)
+                                    if is_middle_captured {
+                                        input.pan_delta_x = mouse_delta.0;
+                                        input.pan_delta_y = mouse_delta.1;
+                                    } else {
+                                        input.pan_delta_x = 0.0;
+                                        input.pan_delta_y = 0.0;
                                     }
                                 }
                             }
                         }
                     }))
+                    .on_scroll_wheel(cx.listener(move |_this, event: &gpui::ScrollWheelEvent, _window, _cx| {
+                        let scroll_delta: f32 = event.delta.pixel_delta(px(1.0)).y.into();
+                        
+                        if let Ok(engine) = gpu_clone_scroll.lock() {
+                            if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                                if let Ok(mut input) = bevy_renderer.camera_input.lock() {
+                                    // If right-click held: adjust movement speed
+                                    if *mouse_right_scroll.borrow() {
+                                        let speed_change = scroll_delta * 0.1;
+                                        input.move_speed = (input.move_speed + speed_change).clamp(0.5, 50.0);
+                                        println!("[VIEWPORT] 🎚️ Move Speed: {:.1} units/sec", input.move_speed);
+                                    } 
+                                    // Otherwise: zoom (dolly)
+                                    else {
+                                        input.zoom_delta = scroll_delta;
+                                        println!("[VIEWPORT] 🔍 Zoom: {:.2}", scroll_delta);
+                                    }
+                                }
+                            }
+                        }
+                    }))
+                    .on_mouse_down(
+                        gpui::MouseButton::Middle,
+                        cx.listener(move |_this, event: &MouseDownEvent, _window, cx| {
+                            println!("[VIEWPORT] 🖱️ MIDDLE CLICK - Pan Mode");
+                            *mouse_middle_down.borrow_mut() = true;
+                            cx.stop_propagation();
+                        }),
+                    )
+                    .on_mouse_up(
+                        gpui::MouseButton::Middle,
+                        cx.listener(move |_this, _event: &MouseUpEvent, _window, cx| {
+                            println!("[VIEWPORT] 🖱️ MIDDLE RELEASE - Pan Mode Off");
+                            *mouse_middle_up.borrow_mut() = false;
+                            cx.stop_propagation();
+                        }),
+                    )
                     .child(self.viewport.clone())
             )
             .when(state.show_viewport_controls, |viewport_div| {

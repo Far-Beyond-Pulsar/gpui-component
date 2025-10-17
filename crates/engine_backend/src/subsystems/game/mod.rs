@@ -63,10 +63,10 @@ impl GameObject {
         self.position[1] += self.velocity[1] * delta_time;
         self.position[2] += self.velocity[2] * delta_time;
 
-        // Update rotation - rotate on all axes for visual interest
-        self.rotation[0] += 90.0 * delta_time; // X-axis rotation (90 degrees/sec)
-        self.rotation[1] += 60.0 * delta_time; // Y-axis rotation (60 degrees/sec)
-        self.rotation[2] += 45.0 * delta_time; // Z-axis rotation (45 degrees/sec)
+        // Update rotation - FAST and OBVIOUS rotation for great visual feedback
+        self.rotation[0] += 120.0 * delta_time; // X-axis rotation (120 degrees/sec)
+        self.rotation[1] += 80.0 * delta_time;  // Y-axis rotation (80 degrees/sec)
+        self.rotation[2] += 60.0 * delta_time;  // Z-axis rotation (60 degrees/sec)
 
         // Keep rotation values in 0-360 range
         for i in 0..3 {
@@ -140,23 +140,24 @@ impl GameThread {
         let mut initial_state = GameState::new();
         
         // Add some demo objects with different velocities and starting rotations
+        // FAST, OBVIOUS MOVEMENT for easy visibility
         initial_state.add_object({
-            let mut obj = GameObject::new(1, 0.0, 0.0, 0.0).with_velocity(3.0, 2.0, 0.0);
+            let mut obj = GameObject::new(1, 0.0, 0.0, 0.0).with_velocity(2.0, 0.0, 1.5);
             obj.rotation = [0.0, 0.0, 0.0];
             obj
         });
         initial_state.add_object({
-            let mut obj = GameObject::new(2, 5.0, 5.0, 0.0).with_velocity(-2.5, -3.0, 0.0);
+            let mut obj = GameObject::new(2, -2.0, 0.0, 0.0).with_velocity(1.5, 0.0, -1.0);
             obj.rotation = [45.0, 90.0, 0.0];
             obj
         });
         initial_state.add_object({
-            let mut obj = GameObject::new(3, -5.0, 5.0, 0.0).with_velocity(2.0, -2.0, 0.0);
+            let mut obj = GameObject::new(3, 2.0, 0.0, 0.0).with_velocity(-1.0, 0.0, 1.5);
             obj.rotation = [90.0, 0.0, 45.0];
             obj
         });
         initial_state.add_object({
-            let mut obj = GameObject::new(4, -3.0, -3.0, 0.0).with_velocity(1.5, 2.5, 0.0);
+            let mut obj = GameObject::new(4, 0.0, 0.0, -2.0).with_velocity(-1.5, 0.0, 2.0);
             obj.rotation = [180.0, 45.0, 90.0];
             obj
         });

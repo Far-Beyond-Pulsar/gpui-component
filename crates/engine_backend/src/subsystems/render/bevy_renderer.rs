@@ -48,6 +48,7 @@ struct GameObjectMarker {
 struct MainCamera;
 
 /// Camera controller input state - updated from GPUI
+/// Studio-quality viewport navigation
 #[derive(Resource, Default, Clone)]
 pub struct CameraInput {
     // Movement (WASD)
@@ -55,14 +56,28 @@ pub struct CameraInput {
     pub right: f32,      // A/D
     pub up: f32,         // Space/Shift
     
-    // Mouse look
+    // Mouse look (right-click + drag)
     pub mouse_delta_x: f32,
     pub mouse_delta_y: f32,
     
+    // Pan (middle-click + drag)
+    pub pan_delta_x: f32,
+    pub pan_delta_y: f32,
+    
+    // Zoom (scroll wheel)
+    pub zoom_delta: f32,
+    
     // Speed modifiers
     pub move_speed: f32,
+    pub pan_speed: f32,
+    pub zoom_speed: f32,
     pub look_sensitivity: f32,
     pub boost: bool,     // Shift for faster movement
+    
+    // Orbit mode (Alt + mouse)
+    pub orbit_mode: bool,
+    pub orbit_distance: f32,
+    pub focus_point: Vec3,
 }
 
 impl CameraInput {
@@ -73,9 +88,18 @@ impl CameraInput {
             up: 0.0,
             mouse_delta_x: 0.0,
             mouse_delta_y: 0.0,
-            move_speed: 5.0,
-            look_sensitivity: 0.003,
+            pan_delta_x: 0.0,
+            pan_delta_y: 0.0,
+            zoom_delta: 0.0,
+            // PROFESSIONAL SETTINGS - like Blender/Unity/Unreal
+            move_speed: 10.0,        // Units per second (adjusted by boost)
+            pan_speed: 0.01,         // Screen pixels to world units
+            zoom_speed: 0.5,         // Scroll to movement multiplier (reduced for control)
+            look_sensitivity: 0.25,  // Degrees per pixel (responsive and precise)
             boost: false,
+            orbit_mode: false,
+            orbit_distance: 10.0,
+            focus_point: Vec3::ZERO,
         }
     }
 }
@@ -534,6 +558,8 @@ fn update_game_objects_system(
 }
 
 /// Camera controller system - WASD movement relative to camera angle, mouse look
+/// Professional studio-quality camera controller with immediate response
+/// Supports: FPS mode, Pan, Orbit, Zoom - like Blender/Unity/Unreal
 fn camera_controller_system(
     game_state: Res<SharedGameState>,
     time: Res<Time>,
@@ -545,54 +571,115 @@ fn camera_controller_system(
             
             // Calculate movement speed with boost
             let speed = if input.boost {
-                input.move_speed * 3.0
+                input.move_speed * 3.0  // 3x boost with Shift
             } else {
                 input.move_speed
             };
             
-            // Get camera forward and right vectors (relative to camera orientation)
-            let forward = transform.forward();
-            let right = transform.right();
-            let up = Vec3::Y; // World up for vertical movement
-            
-            // Calculate movement relative to camera orientation
-            let mut velocity = Vec3::ZERO;
-            
-            // Forward/backward (W/S) - relative to camera's forward direction
-            velocity += forward.as_vec3() * input.forward * speed * dt;
-            
-            // Strafe left/right (A/D) - relative to camera's right direction
-            velocity += right.as_vec3() * input.right * speed * dt;
-            
-            // Up/down (Space/Shift) - always world Y axis
-            velocity += up * input.up * speed * dt;
-            
-            // Apply movement
-            transform.translation += velocity;
-            
-            // Mouse look - rotate camera based on mouse delta
-            if input.mouse_delta_x != 0.0 || input.mouse_delta_y != 0.0 {
-                // Yaw (horizontal rotation around Y axis)
-                let yaw = -input.mouse_delta_x * input.look_sensitivity;
+            // ========== ORBIT MODE (Alt + Mouse) ==========
+            if input.orbit_mode {
+                // Orbit around focus point
+                if input.mouse_delta_x.abs() > 0.01 || input.mouse_delta_y.abs() > 0.01 {
+                    // Convert pixels to radians (sensitivity already tuned)
+                    let yaw = input.mouse_delta_x * input.look_sensitivity.to_radians();
+                    let pitch = input.mouse_delta_y * input.look_sensitivity.to_radians();
+                    
+                    // Current direction from focus point to camera
+                    let offset = transform.translation - input.focus_point;
+                    let distance = offset.length();
+                    
+                    // Rotate around focus point
+                    let yaw_rotation = Quat::from_rotation_y(-yaw);
+                    let right = transform.right();
+                    let pitch_rotation = Quat::from_axis_angle(*right, -pitch);
+                    
+                    let rotation = yaw_rotation * pitch_rotation;
+                    let new_offset = rotation * offset;
+                    
+                    transform.translation = input.focus_point + new_offset.normalize() * distance;
+                    transform.look_at(input.focus_point, Vec3::Y);
+                }
                 
-                // Pitch (vertical rotation around local X axis)
-                let pitch = -input.mouse_delta_y * input.look_sensitivity;
+                // Zoom in orbit mode (adjust distance)
+                if input.zoom_delta.abs() > 0.01 {
+                    let offset = transform.translation - input.focus_point;
+                    let distance_change = input.zoom_delta * input.zoom_speed * 0.5; // Scale it nicely
+                    let new_distance = (offset.length() - distance_change).max(1.0);
+                    transform.translation = input.focus_point + offset.normalize() * new_distance;
+                }
+            } 
+            // ========== FREE CAMERA MODE (FPS-like) ==========
+            else {
+                // Get camera basis vectors (relative to camera orientation)
+                let forward = transform.forward();
+                let right = transform.right();
+                let up = Vec3::Y; // World up for vertical movement
                 
-                // Get current rotation as Euler angles
-                let (mut pitch_current, yaw_current, _roll) = transform.rotation.to_euler(EulerRot::YXZ);
+                // Calculate movement velocity (frame-rate independent)
+                let mut velocity = Vec3::ZERO;
                 
-                // Update yaw (rotate around world Y)
-                let yaw_rotation = Quat::from_rotation_y(yaw);
+                // Forward/backward (W/S) - relative to camera's forward direction
+                if input.forward.abs() > 0.01 {
+                    velocity += forward.as_vec3() * input.forward * speed * dt;
+                }
                 
-                // Update pitch (clamped to prevent gimbal lock)
-                pitch_current = (pitch_current + pitch).clamp(-1.5, 1.5);
+                // Strafe left/right (A/D) - relative to camera's right direction  
+                if input.right.abs() > 0.01 {
+                    velocity += right.as_vec3() * input.right * speed * dt;
+                }
                 
-                // Apply rotations: yaw first, then pitch
-                transform.rotation = yaw_rotation * transform.rotation;
+                // Up/down (Space/Shift) - always world Y axis
+                if input.up.abs() > 0.01 {
+                    velocity += up * input.up * speed * dt;
+                }
                 
-                // Set pitch relative to current yaw
-                let (_, yaw_final, _) = transform.rotation.to_euler(EulerRot::YXZ);
-                transform.rotation = Quat::from_euler(EulerRot::YXZ, pitch_current, yaw_final, 0.0);
+                // Apply movement
+                transform.translation += velocity;
+                
+                // ========== MOUSE LOOK (Right-click + drag) ==========
+                if input.mouse_delta_x.abs() > 0.01 || input.mouse_delta_y.abs() > 0.01 {
+                    // Convert pixels to radians with tuned sensitivity
+                    // Mouse X (left/right) = Yaw (rotate around Y axis)
+                    // Mouse Y (up/down) = Pitch (rotate around X axis)
+                    let yaw_delta = -input.mouse_delta_x * input.look_sensitivity.to_radians();
+                    let pitch_delta = -input.mouse_delta_y * input.look_sensitivity.to_radians();
+                    
+                    // Get current rotation as Euler angles
+                    // YXZ order: (yaw around Y, pitch around X, roll around Z)
+                    let (yaw_current, pitch_current, _roll) = transform.rotation.to_euler(EulerRot::YXZ);
+                    
+                    // Update yaw (wraps naturally) - X mouse moves yaw (left/right look)
+                    let new_yaw = yaw_current + yaw_delta;
+                    
+                    // Update pitch (clamped to prevent flipping) - Y mouse moves pitch (up/down look)
+                    let new_pitch = (pitch_current + pitch_delta).clamp(-1.55, 1.55); // ~89 degrees
+                    
+                    // Reconstruct rotation from Euler angles
+                    // YXZ: (yaw, pitch, roll)
+                    transform.rotation = Quat::from_euler(EulerRot::YXZ, new_yaw, new_pitch, 0.0);
+                }
+                
+                // ========== PAN (Middle-click + drag) ==========
+                if input.pan_delta_x.abs() > 0.01 || input.pan_delta_y.abs() > 0.01 {
+                    let right_vec = transform.right();
+                    let up_vec = transform.up();
+                    
+                    // Pan perpendicular to view direction (screen-space movement)
+                    let pan_move = 
+                        right_vec.as_vec3() * -input.pan_delta_x * input.pan_speed +
+                        up_vec.as_vec3() * input.pan_delta_y * input.pan_speed;
+                    
+                    transform.translation += pan_move;
+                }
+                
+                // ========== ZOOM/DOLLY (Scroll wheel) ==========
+                if input.zoom_delta.abs() > 0.01 {
+                    let forward_vec = transform.forward();
+                    // Use exponential scaling for smooth zoom at any distance
+                    let current_distance = transform.translation.length().max(1.0);
+                    let zoom_amount = input.zoom_delta * input.zoom_speed * (current_distance * 0.1).max(0.5);
+                    transform.translation += forward_vec.as_vec3() * zoom_amount;
+                }
             }
         }
     }
