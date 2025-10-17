@@ -3,6 +3,7 @@ use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::{Button, ButtonVariants as _, Toggle}, h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
     chart::{LineChart, BarChart, AreaChart},
+    PixelsExt,
 };
 // OPTIMIZED: Using new zero-copy viewport
 use gpui_component::viewport_optimized::OptimizedViewport;
@@ -34,8 +35,8 @@ enum GraphType {
     Bar,
 }
 
-/// Viewport Panel - OPTIMIZED 3D rendering viewport with camera controls
-/// Now uses zero-copy pipeline for 3x faster performance
+/// Viewport Panel - OPTIMIZED 3D rendering viewport with PRO camera controls
+/// Studio-quality navigation: FPS mode, Pan, Orbit, Zoom
 pub struct ViewportPanel {
     viewport: Entity<OptimizedViewport>,
     viewport_controls: ViewportControls,
@@ -46,10 +47,22 @@ pub struct ViewportPanel {
     // TPS tracking for rolling graph
     tps_history: RefCell<VecDeque<TpsDataPoint>>,
     tps_sample_counter: RefCell<usize>,
+    // Mouse tracking for camera control - Rc<RefCell<>> for shared mutable state across closures!
+    last_mouse_pos: Rc<RefCell<Option<Point<Pixels>>>>,
+    mouse_right_captured: Rc<RefCell<bool>>,  // Right-click for look
+    mouse_middle_captured: Rc<RefCell<bool>>, // Middle-click for pan
+    // Keyboard state for WASD + modifiers
+    keys_pressed: Rc<RefCell<std::collections::HashSet<String>>>,
+    alt_pressed: Rc<RefCell<bool>>,  // Alt for orbit mode
+    // Focus handle for input
+    focus_handle: FocusHandle,
 }
 
 impl ViewportPanel {
-    pub fn new(viewport: Entity<OptimizedViewport>, render_enabled: Arc<std::sync::atomic::AtomicBool>) -> Self {
+    pub fn new<V>(viewport: Entity<OptimizedViewport>, render_enabled: Arc<std::sync::atomic::AtomicBool>, cx: &mut Context<V>) -> Self 
+    where
+        V: 'static,
+    {
         Self {
             viewport,
             viewport_controls: ViewportControls::new(),
@@ -58,6 +71,12 @@ impl ViewportPanel {
             fps_sample_counter: RefCell::new(0),
             tps_history: RefCell::new(VecDeque::with_capacity(60)),
             tps_sample_counter: RefCell::new(0),
+            last_mouse_pos: Rc::new(RefCell::new(None)),
+            mouse_right_captured: Rc::new(RefCell::new(false)),
+            mouse_middle_captured: Rc::new(RefCell::new(false)),
+            keys_pressed: Rc::new(RefCell::new(std::collections::HashSet::new())),
+            alt_pressed: Rc::new(RefCell::new(false)),
+            focus_handle: cx.focus_handle(),
         }
     }
 
@@ -73,6 +92,30 @@ impl ViewportPanel {
     where
         V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
     {
+        // Clone Arc/Rc for closures
+        let gpu_clone_key_down = gpu_engine.clone();
+        let gpu_clone_key_up = gpu_engine.clone();
+        let gpu_clone_mouse = gpu_engine.clone();
+        let gpu_clone_scroll = gpu_engine.clone();
+        
+        // Clone Rc<RefCell<>> - now these WILL be shared!
+        let keys_pressed = self.keys_pressed.clone();
+        let keys_pressed_up = self.keys_pressed.clone();
+        
+        let last_mouse_pos_down = self.last_mouse_pos.clone();
+        let last_mouse_pos_move = self.last_mouse_pos.clone();
+        
+        let mouse_right_down = self.mouse_right_captured.clone();
+        let mouse_right_move = self.mouse_right_captured.clone();
+        let mouse_right_up = self.mouse_right_captured.clone();
+        let mouse_right_scroll = self.mouse_right_captured.clone();
+        
+        let mouse_middle_down = self.mouse_middle_captured.clone();
+        let mouse_middle_move = self.mouse_middle_captured.clone();
+        let mouse_middle_up = self.mouse_middle_captured.clone();
+        
+        let alt_key = self.alt_pressed.clone();
+        
         let mut viewport_div = div()
             .flex() // Enable flexbox
             .flex_col() // Column direction
@@ -83,12 +126,183 @@ impl ViewportPanel {
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
+            .track_focus(&self.focus_handle)
+            .on_key_down(cx.listener(move |_this, event: &gpui::KeyDownEvent, _window, _cx| {
+                let key = event.keystroke.key.to_lowercase();
+                keys_pressed.borrow_mut().insert(key.clone());
+                
+                // Update camera input
+                if let Ok(engine) = gpu_clone_key_down.lock() {
+                    if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                        if let Ok(mut input) = bevy_renderer.camera_input.lock() {
+                            let keys = keys_pressed.borrow();
+                            input.forward = 0.0;
+                            input.right = 0.0;
+                            input.up = 0.0;
+                            
+                            if keys.contains("w") { input.forward += 1.0; }
+                            if keys.contains("s") { input.forward -= 1.0; }
+                            if keys.contains("d") { input.right += 1.0; }
+                            if keys.contains("a") { input.right -= 1.0; }
+                            if keys.contains("space") { input.up += 1.0; }
+                            if keys.contains("shift") {
+                                input.up -= 1.0;
+                                input.boost = true;
+                            } else {
+                                input.boost = false;
+                            }
+                        }
+                    }
+                }
+            }))
+            .on_key_up(cx.listener(move |_this, event: &gpui::KeyUpEvent, _window, _cx| {
+                let key = event.keystroke.key.to_lowercase();
+                keys_pressed_up.borrow_mut().remove(&key);
+                
+                // Update camera input
+                if let Ok(engine) = gpu_clone_key_up.lock() {
+                    if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                        if let Ok(mut input) = bevy_renderer.camera_input.lock() {
+                            let keys = keys_pressed_up.borrow();
+                            input.forward = 0.0;
+                            input.right = 0.0;
+                            input.up = 0.0;
+                            
+                            if keys.contains("w") { input.forward += 1.0; }
+                            if keys.contains("s") { input.forward -= 1.0; }
+                            if keys.contains("d") { input.right += 1.0; }
+                            if keys.contains("a") { input.right -= 1.0; }
+                            if keys.contains("space") { input.up += 1.0; }
+                            if keys.contains("shift") {
+                                input.up -= 1.0;
+                                input.boost = true;
+                            } else {
+                                input.boost = false;
+                            }
+                        }
+                    }
+                }
+            }))
             .child(
-                // Main viewport - should grow to fill space
+                // Main viewport - should grow to fill space and handle mouse events
                 div()
                     .flex() // Enable flex
                     .flex_1() // Grow to fill available space
                     .size_full() // Take full size
+                    .on_mouse_down(
+                        gpui::MouseButton::Left,
+                        cx.listener(move |_this, event: &MouseDownEvent, _window, _cx| {
+                            println!("[VIEWPORT-INNER] ⬅️ LEFT CLICK at position: x={:.2}, y={:.2}", 
+                                event.position.x.as_f32(), event.position.y.as_f32());
+                        }),
+                    )
+                    .on_mouse_down(
+                        gpui::MouseButton::Right,
+                        cx.listener(move |_this, event: &MouseDownEvent, _window, cx| {
+                            println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                            println!("[VIEWPORT] ➡️ RIGHT CLICK - Look Mode");
+                            println!("Position: x={:.2}, y={:.2}", event.position.x.as_f32(), event.position.y.as_f32());
+                            
+                            // Right-click to capture mouse for camera look
+                            *mouse_right_down.borrow_mut() = true;
+                            *last_mouse_pos_down.borrow_mut() = Some(event.position);
+                            
+                            println!("Mouse look enabled: {}", *mouse_right_down.borrow());
+                            println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                            
+                            cx.stop_propagation();
+                        }),
+                    )
+                    .on_mouse_up(
+                        gpui::MouseButton::Right,
+                        cx.listener(move |_this, event: &MouseUpEvent, _window, cx| {
+                            // Release mouse capture
+                            println!("[VIEWPORT] ✅ RIGHT RELEASE - Look Mode Off at x={:.2}, y={:.2}", 
+                                event.position.x.as_f32(), event.position.y.as_f32());
+                            *mouse_right_up.borrow_mut() = false;
+                            
+                            cx.stop_propagation();
+                        }),
+                    )
+                    .on_mouse_move(cx.listener(move |_this, event: &MouseMoveEvent, _window, _cx| {
+                        let current_pos = event.position;
+                        
+                        // Check if mouse is captured for look or pan
+                        let is_right_captured = *mouse_right_move.borrow();
+                        let is_middle_captured = *mouse_middle_move.borrow();
+                        
+                        let mut mouse_delta = (0.0f32, 0.0f32);
+                        
+                        // Only calculate delta if we have a previous position AND mouse is captured
+                        if (is_right_captured || is_middle_captured) {
+                            if let Some(last_pos) = *last_mouse_pos_move.borrow() {
+                                let dx: f32 = (current_pos.x - last_pos.x).into();
+                                let dy: f32 = (current_pos.y - last_pos.y).into();
+                                mouse_delta = (dx, dy);
+                            }
+                        }
+                        
+                        // Always update last position when captured
+                        if is_right_captured || is_middle_captured {
+                            *last_mouse_pos_move.borrow_mut() = Some(current_pos);
+                        }
+                        
+                        // Update camera input with mouse delta - ACCUMULATE, don't replace!
+                        if let Ok(engine) = gpu_clone_mouse.lock() {
+                            if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                                if let Ok(mut input) = bevy_renderer.camera_input.lock() {
+                                    // Look mode (right-click) - ACCUMULATE deltas for smoother input
+                                    if is_right_captured && (mouse_delta.0.abs() > 0.01 || mouse_delta.1.abs() > 0.01) {
+                                        input.mouse_delta_x += mouse_delta.0;
+                                        input.mouse_delta_y += mouse_delta.1;
+                                    }
+                                    
+                                    // Pan mode (middle-click) - ACCUMULATE deltas
+                                    if is_middle_captured && (mouse_delta.0.abs() > 0.01 || mouse_delta.1.abs() > 0.01) {
+                                        input.pan_delta_x += mouse_delta.0;
+                                        input.pan_delta_y += mouse_delta.1;
+                                    }
+                                }
+                            }
+                        }
+                    }))
+                    .on_scroll_wheel(cx.listener(move |_this, event: &gpui::ScrollWheelEvent, _window, _cx| {
+                        let scroll_delta: f32 = event.delta.pixel_delta(px(1.0)).y.into();
+                        
+                        if let Ok(engine) = gpu_clone_scroll.lock() {
+                            if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                                if let Ok(mut input) = bevy_renderer.camera_input.lock() {
+                                    // If right-click held: adjust movement speed
+                                    if *mouse_right_scroll.borrow() {
+                                        let speed_change = scroll_delta * 0.1;
+                                        input.move_speed = (input.move_speed + speed_change).clamp(0.5, 50.0);
+                                        println!("[VIEWPORT] 🎚️ Move Speed: {:.1} units/sec", input.move_speed);
+                                    } 
+                                    // Otherwise: zoom (dolly)
+                                    else {
+                                        input.zoom_delta = scroll_delta;
+                                        println!("[VIEWPORT] 🔍 Zoom: {:.2}", scroll_delta);
+                                    }
+                                }
+                            }
+                        }
+                    }))
+                    .on_mouse_down(
+                        gpui::MouseButton::Middle,
+                        cx.listener(move |_this, event: &MouseDownEvent, _window, cx| {
+                            println!("[VIEWPORT] 🖱️ MIDDLE CLICK - Pan Mode");
+                            *mouse_middle_down.borrow_mut() = true;
+                            cx.stop_propagation();
+                        }),
+                    )
+                    .on_mouse_up(
+                        gpui::MouseButton::Middle,
+                        cx.listener(move |_this, _event: &MouseUpEvent, _window, cx| {
+                            println!("[VIEWPORT] 🖱️ MIDDLE RELEASE - Pan Mode Off");
+                            *mouse_middle_up.borrow_mut() = false;
+                            cx.stop_propagation();
+                        }),
+                    )
                     .child(self.viewport.clone())
             )
             .when(state.show_viewport_controls, |viewport_div| {

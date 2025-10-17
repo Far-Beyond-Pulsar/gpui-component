@@ -43,16 +43,79 @@ struct GameObjectMarker {
     id: u64,
 }
 
+/// Marker component for the main camera
+#[derive(Component)]
+struct MainCamera;
+
+/// Camera controller input state - updated from GPUI
+/// Studio-quality viewport navigation
+#[derive(Resource, Default, Clone)]
+pub struct CameraInput {
+    // Movement (WASD)
+    pub forward: f32,    // W/S
+    pub right: f32,      // A/D
+    pub up: f32,         // Space/Shift
+    
+    // Mouse look (right-click + drag)
+    pub mouse_delta_x: f32,
+    pub mouse_delta_y: f32,
+    
+    // Pan (middle-click + drag)
+    pub pan_delta_x: f32,
+    pub pan_delta_y: f32,
+    
+    // Zoom (scroll wheel)
+    pub zoom_delta: f32,
+    
+    // Speed modifiers
+    pub move_speed: f32,
+    pub pan_speed: f32,
+    pub zoom_speed: f32,
+    pub look_sensitivity: f32,
+    pub boost: bool,     // Shift for faster movement
+    
+    // Orbit mode (Alt + mouse)
+    pub orbit_mode: bool,
+    pub orbit_distance: f32,
+    pub focus_point: Vec3,
+}
+
+impl CameraInput {
+    pub fn new() -> Self {
+        Self {
+            forward: 0.0,
+            right: 0.0,
+            up: 0.0,
+            mouse_delta_x: 0.0,
+            mouse_delta_y: 0.0,
+            pan_delta_x: 0.0,
+            pan_delta_y: 0.0,
+            zoom_delta: 0.0,
+            // PROFESSIONAL SETTINGS - like Blender/Unity/Unreal
+            move_speed: 10.0,        // Units per second (adjusted by boost)
+            pan_speed: 0.01,         // Screen pixels to world units
+            zoom_speed: 1.0,         // Scroll to movement multiplier
+            look_sensitivity: 0.15,  // Degrees per pixel (smooth and responsive)
+            boost: false,
+            orbit_mode: false,
+            orbit_distance: 10.0,
+            focus_point: Vec3::ZERO,
+        }
+    }
+}
+
 /// Shared game state resource - thread-safe access to game objects
 #[derive(Resource, Clone)]
 struct SharedGameState {
     objects: Arc<Mutex<Vec<crate::subsystems::game::GameObject>>>,
+    camera_input: Arc<Mutex<CameraInput>>,
 }
 
 impl Default for SharedGameState {
     fn default() -> Self {
         Self {
             objects: Arc::new(Mutex::new(Vec::new())),
+            camera_input: Arc::new(Mutex::new(CameraInput::new())),
         }
     }
 }
@@ -84,6 +147,8 @@ pub struct BevyRenderer {
     aligned_row_bytes: usize,
     // Shared game state for updating scene objects
     game_state: Arc<Mutex<Vec<crate::subsystems::game::GameObject>>>,
+    // Camera input for movement controls
+    pub camera_input: Arc<Mutex<CameraInput>>,
 }
 
 impl BevyRenderer {
@@ -94,14 +159,16 @@ impl BevyRenderer {
         let frame_count = Arc::new(AtomicU64::new(0));
         let metrics = Arc::new(Mutex::new(RenderMetrics::default()));
         let game_state = Arc::new(Mutex::new(Vec::new()));
+        let camera_input = Arc::new(Mutex::new(CameraInput::new()));
         
         // Calculate aligned row size once
         let aligned_row_bytes = RenderDevice::align_copy_bytes_per_row(width as usize * 4);
         
-        // Spawn Bevy app on dedicated thread with shared game state
+        // Spawn Bevy app on dedicated thread with shared game state and camera input
         let game_state_clone = game_state.clone();
+        let camera_input_clone = camera_input.clone();
         thread::spawn(move || {
-            run_bevy_app(width, height, frame_sender, running_clone, game_state_clone);
+            run_bevy_app(width, height, frame_sender, running_clone, game_state_clone, camera_input_clone);
         });
         
         // Wait for initialization with timeout
@@ -119,6 +186,7 @@ impl BevyRenderer {
             metrics,
             aligned_row_bytes,
             game_state,
+            camera_input,
         }
     }
     
@@ -262,6 +330,7 @@ fn run_bevy_app(
     frame_sender: Sender<Arc<Vec<u8>>>, 
     _running: Arc<AtomicBool>,
     game_state: Arc<Mutex<Vec<crate::subsystems::game::GameObject>>>,
+    camera_input: Arc<Mutex<CameraInput>>,
 ) {
     println!("[BevyApp] Starting optimized renderer (BGRA8UnormSrgb format)");
     
@@ -269,7 +338,7 @@ fn run_bevy_app(
     
     app.insert_resource(FrameConfig { width, height })
         .insert_resource(ClearColor(Color::srgb(0.1, 0.1, 0.15)))
-        .insert_resource(SharedGameState { objects: game_state })
+        .insert_resource(SharedGameState { objects: game_state, camera_input })
         .add_plugins(
             DefaultPlugins
                 .set(ImagePlugin::default_nearest())
@@ -283,7 +352,7 @@ fn run_bevy_app(
         .add_plugins(ImageCopyPlugin { sender: frame_sender })
         .add_plugins(ScheduleRunnerPlugin::run_loop(Duration::from_secs_f64(1.0 / 60.0)))
         .add_systems(Startup, setup)
-        .add_systems(Update, update_game_objects_system);
+        .add_systems(Update, (update_game_objects_system, camera_controller_system).chain());
     
     println!("[BevyApp] Running render loop");
     app.run();
@@ -351,6 +420,7 @@ fn setup(
         },
         Transform::from_xyz(0.0, 2.5, 6.0).looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y),
         Tonemapping::None, // CRITICAL: Disable tonemapping for headless rendering
+        MainCamera, // Marker for camera controller
     ));
     
     println!("[BevyApp] ========== Camera spawned with tonemapping disabled ==========");
@@ -484,6 +554,144 @@ fn update_game_objects_system(
                 );
             }
         }
+    }
+}
+
+/// Camera controller system - WASD movement relative to camera angle, mouse look
+/// Professional studio-quality camera controller with immediate response
+/// Supports: FPS mode, Pan, Orbit, Zoom - like Blender/Unity/Unreal
+fn camera_controller_system(
+    game_state: Res<SharedGameState>,
+    time: Res<Time>,
+    mut query: Query<&mut Transform, With<MainCamera>>,
+) {
+    if let Ok(mut input) = game_state.camera_input.lock() {
+        for mut transform in query.iter_mut() {
+            let dt = time.delta_secs();
+            
+            // Calculate movement speed with boost
+            let speed = if input.boost {
+                input.move_speed * 3.0  // 3x boost with Shift
+            } else {
+                input.move_speed
+            };
+            
+            // ========== ORBIT MODE (Alt + Mouse) ==========
+            if input.orbit_mode {
+                // Orbit around focus point
+                if input.mouse_delta_x.abs() > 0.01 || input.mouse_delta_y.abs() > 0.01 {
+                    // Convert pixels to radians (sensitivity already tuned)
+                    let yaw = input.mouse_delta_x * input.look_sensitivity.to_radians();
+                    let pitch = input.mouse_delta_y * input.look_sensitivity.to_radians();
+                    
+                    // Current direction from focus point to camera
+                    let offset = transform.translation - input.focus_point;
+                    let distance = offset.length();
+                    
+                    // Rotate around focus point
+                    let yaw_rotation = Quat::from_rotation_y(-yaw);
+                    let right = transform.right();
+                    let pitch_rotation = Quat::from_axis_angle(*right, -pitch);
+                    
+                    let rotation = yaw_rotation * pitch_rotation;
+                    let new_offset = rotation * offset;
+                    
+                    transform.translation = input.focus_point + new_offset.normalize() * distance;
+                    transform.look_at(input.focus_point, Vec3::Y);
+                }
+                
+                // Zoom in orbit mode (adjust distance)
+                if input.zoom_delta.abs() > 0.01 {
+                    let offset = transform.translation - input.focus_point;
+                    let distance_change = input.zoom_delta * input.zoom_speed * 0.5; // Scale it nicely
+                    let new_distance = (offset.length() - distance_change).max(1.0);
+                    transform.translation = input.focus_point + offset.normalize() * new_distance;
+                }
+            } 
+            // ========== FREE CAMERA MODE (FPS-like) ==========
+            else {
+                // Get camera basis vectors (relative to camera orientation)
+                let forward = transform.forward();
+                let right = transform.right();
+                let up = Vec3::Y; // World up for vertical movement
+                
+                // Calculate movement velocity (frame-rate independent)
+                let mut velocity = Vec3::ZERO;
+                
+                // Forward/backward (W/S) - relative to camera's forward direction
+                if input.forward.abs() > 0.01 {
+                    velocity += forward.as_vec3() * input.forward * speed * dt;
+                }
+                
+                // Strafe left/right (A/D) - relative to camera's right direction  
+                if input.right.abs() > 0.01 {
+                    velocity += right.as_vec3() * input.right * speed * dt;
+                }
+                
+                // Up/down (Space/Shift) - always world Y axis
+                if input.up.abs() > 0.01 {
+                    velocity += up * input.up * speed * dt;
+                }
+                
+                // Apply movement
+                transform.translation += velocity;
+                
+                // ========== MOUSE LOOK (Right-click + drag) ==========
+                if input.mouse_delta_x.abs() > 0.01 || input.mouse_delta_y.abs() > 0.01 {
+                    // Convert pixels to radians with tuned sensitivity
+                    // Mouse X (left/right) = Yaw (rotate around Y axis)
+                    // Mouse Y (up/down) = Pitch (rotate around X axis)
+                    // NOTE: Positive X delta = mouse right = look right (no inversion needed)
+                    // NOTE: Positive Y delta = mouse down = look down (invert for FPS feel)
+                    let yaw_delta = input.mouse_delta_x * input.look_sensitivity.to_radians();
+                    let pitch_delta = -input.mouse_delta_y * input.look_sensitivity.to_radians();
+                    
+                    // Get current rotation as Euler angles
+                    // YXZ order: (yaw around Y, pitch around X, roll around Z)
+                    let (yaw_current, pitch_current, _roll) = transform.rotation.to_euler(EulerRot::YXZ);
+                    
+                    // Update yaw (wraps naturally) - X mouse moves yaw (left/right look)
+                    let new_yaw = yaw_current - yaw_delta;  // Subtract for correct direction
+                    
+                    // Update pitch (clamped to prevent flipping) - Y mouse moves pitch (up/down look)
+                    let new_pitch = (pitch_current + pitch_delta).clamp(-1.55, 1.55); // ~89 degrees
+                    
+                    // Reconstruct rotation from Euler angles
+                    // YXZ: (yaw, pitch, roll)
+                    transform.rotation = Quat::from_euler(EulerRot::YXZ, new_yaw, new_pitch, 0.0);
+                }
+                
+                // ========== PAN (Middle-click + drag) ==========
+                if input.pan_delta_x.abs() > 0.01 || input.pan_delta_y.abs() > 0.01 {
+                    let right_vec = transform.right();
+                    let up_vec = transform.up();
+                    
+                    // Pan perpendicular to view direction (screen-space movement)
+                    let pan_move = 
+                        right_vec.as_vec3() * -input.pan_delta_x * input.pan_speed +
+                        up_vec.as_vec3() * input.pan_delta_y * input.pan_speed;
+                    
+                    transform.translation += pan_move;
+                }
+                
+                // ========== ZOOM/DOLLY (Scroll wheel) ==========
+                if input.zoom_delta.abs() > 0.01 {
+                    let forward_vec = transform.forward();
+                    // Use exponential scaling for smooth zoom at any distance
+                    let current_distance = transform.translation.length().max(1.0);
+                    let zoom_amount = input.zoom_delta * input.zoom_speed * (current_distance * 0.1).max(0.5);
+                    transform.translation += forward_vec.as_vec3() * zoom_amount;
+                }
+            }
+        }
+        
+        // CRITICAL: Clear deltas after they've been consumed
+        // This prevents stuttering and ensures smooth camera control
+        input.mouse_delta_x = 0.0;
+        input.mouse_delta_y = 0.0;
+        input.pan_delta_x = 0.0;
+        input.pan_delta_y = 0.0;
+        input.zoom_delta = 0.0;
     }
 }
 
