@@ -120,13 +120,20 @@ impl Default for SharedGameState {
     }
 }
 
-/// Performance metrics for monitoring
+/// Comprehensive performance metrics for monitoring
 #[derive(Debug, Clone, Default)]
 pub struct RenderMetrics {
     pub frames_rendered: u64,
     pub avg_frame_time_us: u64,
     pub last_copy_time_us: u64,
     pub total_bytes_transferred: u64,
+    pub bevy_fps: f64,              // Actual Bevy render FPS
+    pub pipeline_time_us: u64,       // Total pipeline time (render + copy)
+    pub gpu_time_us: u64,            // GPU render time
+    pub cpu_time_us: u64,            // CPU processing time
+    pub memory_usage_mb: f64,        // GPU memory usage
+    pub draw_calls: u32,             // Number of draw calls per frame
+    pub vertices_drawn: u32,         // Vertices rendered per frame
 }
 
 /// Production Bevy renderer with zero-copy optimizations
@@ -149,6 +156,9 @@ pub struct BevyRenderer {
     game_state: Arc<Mutex<Vec<crate::subsystems::game::GameObject>>>,
     // Camera input for movement controls
     pub camera_input: Arc<Mutex<CameraInput>>,
+    // Performance tracking
+    last_frame_time: Instant,
+    frame_times: Vec<Duration>,
 }
 
 impl BevyRenderer {
@@ -187,6 +197,8 @@ impl BevyRenderer {
             aligned_row_bytes,
             game_state,
             camera_input,
+            last_frame_time: Instant::now(),
+            frame_times: Vec::with_capacity(120),
         }
     }
     
@@ -195,6 +207,28 @@ impl BevyRenderer {
     pub fn render(&mut self, framebuffer: &mut Framebuffer) {
         let render_start = Instant::now();
         let frame_num = self.frame_count.fetch_add(1, Ordering::Relaxed);
+        
+        // Calculate frame time for FPS tracking
+        let frame_time = self.last_frame_time.elapsed();
+        self.last_frame_time = Instant::now();
+        
+        // Track frame times for accurate FPS calculation
+        self.frame_times.push(frame_time);
+        if self.frame_times.len() > 120 {
+            self.frame_times.remove(0);
+        }
+        
+        // Calculate current Bevy FPS from frame times
+        let bevy_fps = if !self.frame_times.is_empty() {
+            let avg_frame_time = self.frame_times.iter().sum::<Duration>() / self.frame_times.len() as u32;
+            if avg_frame_time.as_secs_f64() > 0.0 {
+                1.0 / avg_frame_time.as_secs_f64()
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        };
         
         // Drain channel for latest frame (non-blocking)
         let mut got_new_frame = false;
@@ -205,14 +239,20 @@ impl BevyRenderer {
         
         // Copy latest frame to framebuffer with optimized row handling
         if let Some(ref frame_data) = self.last_frame {
+            let copy_start = Instant::now();
             self.copy_frame_optimized(frame_data, framebuffer);
+            let copy_time = copy_start.elapsed();
             
             if got_new_frame {
-                let copy_time = render_start.elapsed();
+                let pipeline_time = render_start.elapsed();
                 if let Ok(mut metrics) = self.metrics.lock() {
                     metrics.frames_rendered += 1;
                     metrics.last_copy_time_us = copy_time.as_micros() as u64;
                     metrics.total_bytes_transferred += framebuffer.buffer.len() as u64;
+                    metrics.bevy_fps = bevy_fps;
+                    metrics.pipeline_time_us = pipeline_time.as_micros() as u64;
+                    metrics.cpu_time_us = copy_time.as_micros() as u64;
+                    metrics.gpu_time_us = frame_time.as_micros() as u64;
                     
                     // Update rolling average
                     let count = metrics.frames_rendered;
@@ -350,7 +390,8 @@ fn run_bevy_app(
                 .disable::<WinitPlugin>(),
         )
         .add_plugins(ImageCopyPlugin { sender: frame_sender })
-        .add_plugins(ScheduleRunnerPlugin::run_loop(Duration::from_secs_f64(1.0 / 60.0)))
+        // Run uncapped - Duration::ZERO means no artificial frame limiting
+        .add_plugins(ScheduleRunnerPlugin::run_loop(Duration::ZERO))
         .add_systems(Startup, setup)
         .add_systems(Update, (update_game_objects_system, camera_controller_system).chain());
     

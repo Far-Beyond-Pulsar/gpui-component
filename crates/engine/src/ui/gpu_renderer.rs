@@ -155,6 +155,52 @@ impl GpuRenderer {
             0.0
         }
     }
+    
+    /// Get Bevy renderer FPS (actual render engine frame rate)
+    pub fn get_bevy_fps(&self) -> f32 {
+        if let Some(ref renderer) = self.bevy_renderer {
+            let metrics = renderer.get_metrics();
+            metrics.bevy_fps as f32
+        } else {
+            0.0
+        }
+    }
+    
+    /// Get comprehensive render metrics
+    pub fn get_render_metrics(&self) -> Option<RenderMetrics> {
+        if let Some(ref renderer) = self.bevy_renderer {
+            Some(renderer.get_metrics())
+        } else {
+            None
+        }
+    }
+    
+    /// Get pipeline time in microseconds
+    pub fn get_pipeline_time_us(&self) -> u64 {
+        if let Some(ref renderer) = self.bevy_renderer {
+            renderer.get_metrics().pipeline_time_us
+        } else {
+            0
+        }
+    }
+    
+    /// Get GPU time in microseconds
+    pub fn get_gpu_time_us(&self) -> u64 {
+        if let Some(ref renderer) = self.bevy_renderer {
+            renderer.get_metrics().gpu_time_us
+        } else {
+            0
+        }
+    }
+    
+    /// Get CPU time in microseconds
+    pub fn get_cpu_time_us(&self) -> u64 {
+        if let Some(ref renderer) = self.bevy_renderer {
+            renderer.get_metrics().cpu_time_us
+        } else {
+            0
+        }
+    }
 
     pub fn resize(&mut self, display_width: u32, display_height: u32) {
         if self.display_width != display_width || self.display_height != display_height {

@@ -552,12 +552,17 @@ impl ViewportPanel {
     where
         V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
     {
-        let (engine_fps, _frame_count, _pattern_name) = if let Ok(engine) = gpu_engine.lock() {
-            let fps = engine.get_fps();
-            let frames = engine.get_frame_count();
-            (fps, frames, "GPU 3D Scene".to_string())
+        // Get comprehensive metrics
+        let (ui_fps, bevy_fps, pipeline_us, gpu_us, cpu_us, render_metrics) = if let Ok(engine) = gpu_engine.lock() {
+            let ui_fps = engine.get_fps();
+            let bevy_fps = engine.get_bevy_fps();
+            let pipeline = engine.get_pipeline_time_us();
+            let gpu = engine.get_gpu_time_us();
+            let cpu = engine.get_cpu_time_us();
+            let metrics = engine.get_render_metrics();
+            (ui_fps, bevy_fps, pipeline, gpu, cpu, metrics)
         } else {
-            (0.0, 0, "Unknown".to_string())
+            (0.0, 0.0, 0, 0, 0, None)
         };
 
         // Get game thread metrics
@@ -565,18 +570,18 @@ impl ViewportPanel {
         let game_tick_count = game_thread.get_tick_count();
         let game_enabled = game_thread.is_enabled();
 
-        // Update FPS history for rolling graph using interior mutability
+        // Update FPS history - track BOTH UI and Bevy FPS
         let mut fps_history = self.fps_history.borrow_mut();
         let mut fps_sample_counter = self.fps_sample_counter.borrow_mut();
         
         fps_history.push_back(FpsDataPoint {
             index: *fps_sample_counter,
-            fps: engine_fps as f64,
+            fps: ui_fps as f64,
         });
         *fps_sample_counter += 1;
         
-        // Keep only last 60 samples
-        if fps_history.len() > 60 {
+        // Keep only last 120 samples for smoother graph
+        if fps_history.len() > 120 {
             fps_history.pop_front();
         }
 
@@ -595,8 +600,8 @@ impl ViewportPanel {
         });
         *tps_sample_counter += 1;
         
-        // Keep only last 60 samples
-        if tps_history.len() > 60 {
+        // Keep only last 120 samples
+        if tps_history.len() > 120 {
             tps_history.pop_front();
         }
 
@@ -613,28 +618,51 @@ impl ViewportPanel {
             .rounded(cx.theme().radius)
             .border_1()
             .border_color(cx.theme().border)
+            // HEADER ROW - FPS indicators
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap_3()
                     .w_full()
                     .items_center()
                     .justify_between()
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap_3()
                             .items_center()
+                            // UI FPS
                             .child(
                                 div()
                                     .text_xs()
                                     .font_semibold()
-                                    .text_color(if engine_fps > 200.0 {
+                                    .text_color(if ui_fps > 300.0 {
                                         cx.theme().success
-                                    } else if engine_fps > 120.0 {
+                                    } else if ui_fps > 144.0 {
                                         cx.theme().warning
                                     } else {
-                                        cx.theme().muted_foreground
+                                        cx.theme().danger
                                     })
-                                    .child(format!("{:.0} FPS", engine_fps))
+                                    .child(format!("UI: {:.0} FPS", ui_fps))
+                            )
+                            // Bevy/Renderer FPS
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_semibold()
+                                    .text_color(if bevy_fps > 200.0 {
+                                        cx.theme().success
+                                    } else if bevy_fps > 60.0 {
+                                        cx.theme().warning
+                                    } else {
+                                        cx.theme().danger
+                                    })
+                                    .child(format!("Render: {:.0} FPS", bevy_fps))
+                            )
+                            // Pipeline time
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!("Pipeline: {:.2}ms", pipeline_us as f64 / 1000.0))
                             )
                             .child({
                                 let enabled = self.render_enabled.clone();
@@ -808,5 +836,107 @@ impl ViewportPanel {
                         )
                 )
             })
+            // DETAILED METRICS SECTION
+            .child(
+                v_flex()
+                    .w_full()
+                    .gap_1()
+                    .mt_2()
+                    .pt_2()
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_semibold()
+                            .text_color(cx.theme().foreground)
+                            .child("⚡ Performance Details")
+                    )
+                    .child(
+                        h_flex()
+                            .gap_4()
+                            .w_full()
+                            .child(
+                                v_flex()
+                                    .gap_1()
+                                    .flex_1()
+                                    .child(
+                                        h_flex()
+                                            .justify_between()
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(cx.theme().muted_foreground)
+                                                    .child("GPU Time:")
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    
+                                                    .text_color(cx.theme().foreground)
+                                                    .child(format!("{:.2}ms", gpu_us as f64 / 1000.0))
+                                            )
+                                    )
+                                    .child(
+                                        h_flex()
+                                            .justify_between()
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(cx.theme().muted_foreground)
+                                                    .child("CPU Time:")
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    
+                                                    .text_color(cx.theme().foreground)
+                                                    .child(format!("{:.2}ms", cpu_us as f64 / 1000.0))
+                                            )
+                                    )
+                            )
+                            .child(
+                                v_flex()
+                                    .gap_1()
+                                    .flex_1()
+                                    .child(
+                                        h_flex()
+                                            .justify_between()
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(cx.theme().muted_foreground)
+                                                    .child("Frame Time:")
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    
+                                                    .text_color(cx.theme().foreground)
+                                                    .child(format!("{:.2}ms", if bevy_fps > 0.0 { 1000.0 / bevy_fps } else { 0.0 }))
+                                            )
+                                    )
+                                    .when_some(render_metrics, |this, metrics| {
+                                        this.child(
+                                            h_flex()
+                                                .justify_between()
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        .text_color(cx.theme().muted_foreground)
+                                                        .child("Data Xfer:")
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        
+                                                        .text_color(cx.theme().foreground)
+                                                        .child(format!("{:.1}MB", metrics.total_bytes_transferred as f64 / 1_048_576.0))
+                                                )
+                                        )
+                                    })
+                            )
+                    )
+            )
     }
 }
