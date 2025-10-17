@@ -142,6 +142,9 @@ impl Element for ViewportElement {
     ) {
         if let Some(ref texture) = self.texture {
             let _ = window.paint_image(bounds, Corners::all(px(0.0)), texture.clone(), 0, false);
+        } else {
+            // DEBUG: Show when texture is None
+            println!("[VIEWPORT-ELEMENT] ⚠️  No texture to paint! bounds: {:?}", bounds);
         }
     }
 }
@@ -197,6 +200,9 @@ impl OptimizedViewport {
 
         if let Some(ref texture_pair) = result {
             self.previous_texture = Some(texture_pair.clone());
+            println!("[VIEWPORT] ✅ Texture updated! Generation: {}", texture_pair.1);
+        } else {
+            println!("[VIEWPORT] ⚠️  No texture available from background task");
         }
 
         match result {
@@ -286,13 +292,17 @@ pub fn create_optimized_viewport<V: 'static>(
 
     viewport.update(cx, |viewport, cx| {
         let task = cx.spawn(async move |viewport_entity, cx| {
+            println!("[VIEWPORT-BG-TASK] 🚀 Background texture processing task started");
+            
             loop {
                 futures::select! {
                     refresh_result = refresh_receiver.recv().fuse() => {
                         if refresh_result.is_err() {
+                            println!("[VIEWPORT-BG-TASK] ❌ Refresh channel closed, exiting");
                             break;
                         }
 
+                        println!("[VIEWPORT-BG-TASK] 🔄 Received refresh signal, creating texture...");
                         processing_flag_ref.store(true, Ordering::Relaxed);
 
                         // Get front buffer and create texture
@@ -301,15 +311,20 @@ pub fn create_optimized_viewport<V: 'static>(
                             let buffer_guard = match front_buffer.lock() {
                                 Ok(guard) => guard,
                                 Err(_) => {
+                                    println!("[VIEWPORT-BG-TASK] ⚠️  Failed to lock front buffer");
                                     processing_flag_ref.store(false, Ordering::Relaxed);
                                     continue;
                                 }
                             };
 
                             if buffer_guard.width == 0 || buffer_guard.height == 0 {
+                                println!("[VIEWPORT-BG-TASK] ⚠️  Buffer has zero dimensions");
                                 processing_flag_ref.store(false, Ordering::Relaxed);
                                 continue;
                             }
+
+                            println!("[VIEWPORT-BG-TASK] 📐 Creating texture {}x{}, gen: {}", 
+                                buffer_guard.width, buffer_guard.height, buffer_guard.generation);
 
                             // Zero-copy texture creation
                             let texture = OptimizedViewport::create_texture_optimized(&buffer_guard);
@@ -319,6 +334,7 @@ pub fn create_optimized_viewport<V: 'static>(
                             
                             texture.map(|tex| {
                                 GPU_MEM_TRACKER.track_allocation(initial_width, initial_height);
+                                println!("[VIEWPORT-BG-TASK] ✅ Texture created successfully, gen: {}", generation);
                                 (tex, generation)
                             })
                         };
@@ -330,18 +346,26 @@ pub fn create_optimized_viewport<V: 'static>(
                             });
 
                             if update_result.is_err() {
+                                println!("[VIEWPORT-BG-TASK] ❌ Failed to update viewport entity");
                                 break;
                             }
+                            
+                            println!("[VIEWPORT-BG-TASK] ✅ Viewport notified of new texture");
+                        } else {
+                            println!("[VIEWPORT-BG-TASK] ⚠️  Texture creation failed");
                         }
 
                         processing_flag_ref.store(false, Ordering::Relaxed);
                     },
                     shutdown_result = shutdown_receiver.recv().fuse() => {
                         let _ = shutdown_result;
+                        println!("[VIEWPORT-BG-TASK] 🛑 Shutdown signal received, exiting");
                         break;
                     }
                 }
             }
+            
+            println!("[VIEWPORT-BG-TASK] 💤 Background task exited");
         });
 
         viewport.task_handle = Some(task);

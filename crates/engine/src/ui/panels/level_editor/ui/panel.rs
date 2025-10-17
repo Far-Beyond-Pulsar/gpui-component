@@ -144,6 +144,8 @@ impl LevelEditorPanel {
         let mut frame_count = 0u64;
         let mut consecutive_fast_frames = 0u32;
         let max_cpu_usage = 85;
+        
+        println!("[RENDER-THREAD] 🎬 Starting render loop...");
 
         while render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
             let frame_start = std::time::Instant::now();
@@ -176,6 +178,12 @@ impl LevelEditorPanel {
                 buffers.swap_buffers();
                 refresh_hook();
                 frame_count += 1;
+                
+                if frame_count % 120 == 1 {
+                    println!("[RENDER-THREAD] 🎬 Rendered {} frames, calling refresh_hook", frame_count);
+                }
+            } else if frame_count % 120 == 1 {
+                println!("[RENDER-THREAD] ⚠️  Frame {} render failed or buffer locked", frame_count);
             }
 
             let frame_time = frame_start.elapsed();
@@ -197,16 +205,9 @@ impl LevelEditorPanel {
             let sleep_time = Duration::from_secs_f32(total_frame_time - work_time).max(Duration::from_millis(1));
 
             thread::sleep(sleep_time);
-
-            if frame_count % 30 == 0 {
-                thread::yield_now();
-                thread::sleep(Duration::from_micros(100));
-            }
-
-            if frame_count % 120 == 0 {
-                thread::sleep(Duration::from_millis(2));
-            }
         }
+        
+        println!("[RENDER-THREAD] 🛑 Render loop exited");
     }
 
     pub fn toggle_rendering(&mut self) {
