@@ -80,65 +80,6 @@ impl ViewportPanel {
         }
     }
 
-    /// Update camera input based on current keyboard/mouse state
-    fn update_camera_input(&self, gpu_engine: &Arc<Mutex<crate::ui::gpu_renderer::GpuRenderer>>, mouse_delta: (f32, f32)) {
-        if let Ok(engine) = gpu_engine.lock() {
-            if let Some(ref bevy_renderer) = engine.bevy_renderer {
-                if let Ok(mut input) = bevy_renderer.camera_input.lock() {
-                    let keys = self.keys_pressed.borrow();
-                    
-                    // WASD movement
-                    input.forward = 0.0;
-                    input.right = 0.0;
-                    input.up = 0.0;
-                    
-                    if keys.contains("w") {
-                        input.forward += 1.0;
-                    }
-                    if keys.contains("s") {
-                        input.forward -= 1.0;
-                    }
-                    if keys.contains("d") {
-                        input.right += 1.0;
-                    }
-                    if keys.contains("a") {
-                        input.right -= 1.0;
-                    }
-                    if keys.contains("space") {
-                        input.up += 1.0;
-                    }
-                    if keys.contains("shift") {
-                        input.up -= 1.0;
-                        input.boost = true;
-                    } else {
-                        input.boost = false;
-                    }
-                    
-                    // Mouse look (only when right-click captured)
-                    if *self.mouse_right_captured.borrow() {
-                        input.mouse_delta_x = mouse_delta.0;
-                        input.mouse_delta_y = mouse_delta.1;
-                    } else {
-                        input.mouse_delta_x = 0.0;
-                        input.mouse_delta_y = 0.0;
-                    }
-                    
-                    // Pan (only when middle-click captured)
-                    if *self.mouse_middle_captured.borrow() {
-                        input.pan_delta_x = mouse_delta.0;
-                        input.pan_delta_y = mouse_delta.1;
-                    } else {
-                        input.pan_delta_x = 0.0;
-                        input.pan_delta_y = 0.0;
-                    }
-                    
-                    // Orbit mode when Alt is pressed
-                    input.orbit_mode = *self.alt_pressed.borrow();
-                }
-            }
-        }
-    }
-
     pub fn render<V: 'static>(
         &mut self,
         state: &mut LevelEditorState,
@@ -151,16 +92,11 @@ impl ViewportPanel {
     where
         V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
     {
-        // === UPDATE CAMERA INPUT EVERY FRAME ===
-        // This ensures responsive, continuous camera updates (60+ FPS)
-        self.update_camera_input(gpu_engine, (0.0, 0.0));
-        
         // Clone Arc/Rc for closures
         let gpu_clone_key_down = gpu_engine.clone();
         let gpu_clone_key_up = gpu_engine.clone();
         let gpu_clone_mouse = gpu_engine.clone();
         let gpu_clone_scroll = gpu_engine.clone();
-        let gpu_clone_mouse_up = gpu_engine.clone();
         
         // Clone Rc<RefCell<>> - now these WILL be shared!
         let keys_pressed = self.keys_pressed.clone();
@@ -285,15 +221,6 @@ impl ViewportPanel {
                                 event.position.x.as_f32(), event.position.y.as_f32());
                             *mouse_right_up.borrow_mut() = false;
                             
-                            // Clear mouse delta
-                            if let Ok(engine) = gpu_clone_mouse_up.lock() {
-                                if let Some(ref bevy_renderer) = engine.bevy_renderer {
-                                    if let Ok(mut input) = bevy_renderer.camera_input.lock() {
-                                        input.mouse_delta_x = 0.0;
-                                        input.mouse_delta_y = 0.0;
-                                    }
-                                }
-                            }
                             cx.stop_propagation();
                         }),
                     )
@@ -306,36 +233,34 @@ impl ViewportPanel {
                         
                         let mut mouse_delta = (0.0f32, 0.0f32);
                         
-                        if let Some(last_pos) = *last_mouse_pos_move.borrow() {
-                            if is_right_captured || is_middle_captured {
+                        // Only calculate delta if we have a previous position AND mouse is captured
+                        if (is_right_captured || is_middle_captured) {
+                            if let Some(last_pos) = *last_mouse_pos_move.borrow() {
                                 let dx: f32 = (current_pos.x - last_pos.x).into();
                                 let dy: f32 = (current_pos.y - last_pos.y).into();
                                 mouse_delta = (dx, dy);
                             }
                         }
                         
-                        *last_mouse_pos_move.borrow_mut() = Some(current_pos);
+                        // Always update last position when captured
+                        if is_right_captured || is_middle_captured {
+                            *last_mouse_pos_move.borrow_mut() = Some(current_pos);
+                        }
                         
-                        // Update camera input with mouse delta
+                        // Update camera input with mouse delta - ACCUMULATE, don't replace!
                         if let Ok(engine) = gpu_clone_mouse.lock() {
                             if let Some(ref bevy_renderer) = engine.bevy_renderer {
                                 if let Ok(mut input) = bevy_renderer.camera_input.lock() {
-                                    // Look mode (right-click)
-                                    if is_right_captured {
-                                        input.mouse_delta_x = mouse_delta.0;
-                                        input.mouse_delta_y = mouse_delta.1;
-                                    } else {
-                                        input.mouse_delta_x = 0.0;
-                                        input.mouse_delta_y = 0.0;
+                                    // Look mode (right-click) - ACCUMULATE deltas for smoother input
+                                    if is_right_captured && (mouse_delta.0.abs() > 0.01 || mouse_delta.1.abs() > 0.01) {
+                                        input.mouse_delta_x += mouse_delta.0;
+                                        input.mouse_delta_y += mouse_delta.1;
                                     }
                                     
-                                    // Pan mode (middle-click)
-                                    if is_middle_captured {
-                                        input.pan_delta_x = mouse_delta.0;
-                                        input.pan_delta_y = mouse_delta.1;
-                                    } else {
-                                        input.pan_delta_x = 0.0;
-                                        input.pan_delta_y = 0.0;
+                                    // Pan mode (middle-click) - ACCUMULATE deltas
+                                    if is_middle_captured && (mouse_delta.0.abs() > 0.01 || mouse_delta.1.abs() > 0.01) {
+                                        input.pan_delta_x += mouse_delta.0;
+                                        input.pan_delta_y += mouse_delta.1;
                                     }
                                 }
                             }

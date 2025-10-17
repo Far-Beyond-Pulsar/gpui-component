@@ -94,8 +94,8 @@ impl CameraInput {
             // PROFESSIONAL SETTINGS - like Blender/Unity/Unreal
             move_speed: 10.0,        // Units per second (adjusted by boost)
             pan_speed: 0.01,         // Screen pixels to world units
-            zoom_speed: 0.5,         // Scroll to movement multiplier (reduced for control)
-            look_sensitivity: 0.25,  // Degrees per pixel (responsive and precise)
+            zoom_speed: 1.0,         // Scroll to movement multiplier
+            look_sensitivity: 0.15,  // Degrees per pixel (smooth and responsive)
             boost: false,
             orbit_mode: false,
             orbit_distance: 10.0,
@@ -565,7 +565,7 @@ fn camera_controller_system(
     time: Res<Time>,
     mut query: Query<&mut Transform, With<MainCamera>>,
 ) {
-    if let Ok(input) = game_state.camera_input.lock() {
+    if let Ok(mut input) = game_state.camera_input.lock() {
         for mut transform in query.iter_mut() {
             let dt = time.delta_secs();
             
@@ -641,7 +641,9 @@ fn camera_controller_system(
                     // Convert pixels to radians with tuned sensitivity
                     // Mouse X (left/right) = Yaw (rotate around Y axis)
                     // Mouse Y (up/down) = Pitch (rotate around X axis)
-                    let yaw_delta = -input.mouse_delta_x * input.look_sensitivity.to_radians();
+                    // NOTE: Positive X delta = mouse right = look right (no inversion needed)
+                    // NOTE: Positive Y delta = mouse down = look down (invert for FPS feel)
+                    let yaw_delta = input.mouse_delta_x * input.look_sensitivity.to_radians();
                     let pitch_delta = -input.mouse_delta_y * input.look_sensitivity.to_radians();
                     
                     // Get current rotation as Euler angles
@@ -649,7 +651,7 @@ fn camera_controller_system(
                     let (yaw_current, pitch_current, _roll) = transform.rotation.to_euler(EulerRot::YXZ);
                     
                     // Update yaw (wraps naturally) - X mouse moves yaw (left/right look)
-                    let new_yaw = yaw_current + yaw_delta;
+                    let new_yaw = yaw_current - yaw_delta;  // Subtract for correct direction
                     
                     // Update pitch (clamped to prevent flipping) - Y mouse moves pitch (up/down look)
                     let new_pitch = (pitch_current + pitch_delta).clamp(-1.55, 1.55); // ~89 degrees
@@ -682,6 +684,14 @@ fn camera_controller_system(
                 }
             }
         }
+        
+        // CRITICAL: Clear deltas after they've been consumed
+        // This prevents stuttering and ensures smooth camera control
+        input.mouse_delta_x = 0.0;
+        input.mouse_delta_y = 0.0;
+        input.pan_delta_x = 0.0;
+        input.pan_delta_y = 0.0;
+        input.zoom_delta = 0.0;
     }
 }
 
