@@ -165,13 +165,14 @@ pub struct ViewportPanel {
     input_state: InputState,
     // Track if input thread has been spawned
     input_thread_spawned: Arc<AtomicBool>,
-    // Mouse tracking for camera control - Rc<RefCell<>> for shared mutable state across closures!
-    last_mouse_pos: Rc<RefCell<Option<Point<Pixels>>>>,
-    mouse_right_captured: Rc<RefCell<bool>>,  // Right-click for look
-    mouse_middle_captured: Rc<RefCell<bool>>, // Middle-click for pan
-    // Keyboard state for WASD + modifiers
+    // Mouse tracking - ALL ATOMIC! No RefCell!
+    last_mouse_x: Arc<AtomicI32>,
+    last_mouse_y: Arc<AtomicI32>,
+    mouse_right_captured: Arc<AtomicBool>,
+    mouse_middle_captured: Arc<AtomicBool>,
+    // Keyboard state for WASD + modifiers - NOT NEEDED ANYMORE, using atomics directly!
     keys_pressed: Rc<RefCell<std::collections::HashSet<String>>>,
-    alt_pressed: Rc<RefCell<bool>>,  // Alt for orbit mode
+    alt_pressed: Rc<RefCell<bool>>,
     // Focus handle for input
     focus_handle: FocusHandle,
 }
@@ -206,9 +207,10 @@ impl ViewportPanel {
             ui_consistency_counter: RefCell::new(0),
             input_state,
             input_thread_spawned: Arc::new(AtomicBool::new(false)),
-            last_mouse_pos: Rc::new(RefCell::new(None)),
-            mouse_right_captured: Rc::new(RefCell::new(false)),
-            mouse_middle_captured: Rc::new(RefCell::new(false)),
+            last_mouse_x: Arc::new(AtomicI32::new(0)),
+            last_mouse_y: Arc::new(AtomicI32::new(0)),
+            mouse_right_captured: Arc::new(AtomicBool::new(false)),
+            mouse_middle_captured: Arc::new(AtomicBool::new(false)),
             keys_pressed: Rc::new(RefCell::new(std::collections::HashSet::new())),
             alt_pressed: Rc::new(RefCell::new(false)),
             focus_handle: cx.focus_handle(),
@@ -288,12 +290,9 @@ impl ViewportPanel {
         let input_state_mouse = self.input_state.clone();
         let input_state_scroll = self.input_state.clone();
         
-        // Clone Rc<RefCell<>> - now these WILL be shared!
-        let keys_pressed = self.keys_pressed.clone();
-        let keys_pressed_up = self.keys_pressed.clone();
-        
-        let last_mouse_pos_down = self.last_mouse_pos.clone();
-        let last_mouse_pos_move = self.last_mouse_pos.clone();
+        // Clone atomics for mouse tracking - NO RefCell!
+        let last_mouse_x = self.last_mouse_x.clone();
+        let last_mouse_y = self.last_mouse_y.clone();
         
         let mouse_right_down = self.mouse_right_captured.clone();
         let mouse_right_move = self.mouse_right_captured.clone();
@@ -303,10 +302,6 @@ impl ViewportPanel {
         let mouse_middle_down = self.mouse_middle_captured.clone();
         let mouse_middle_move = self.mouse_middle_captured.clone();
         let mouse_middle_up = self.mouse_middle_captured.clone();
-        
-        let alt_key = self.alt_pressed.clone();
-        let input_time_key = self.last_input_time.clone();
-        let input_time_mouse = self.last_input_time.clone();
         
         let mut viewport_div = div()
             .flex() // Enable flexbox
@@ -320,73 +315,34 @@ impl ViewportPanel {
             .rounded(cx.theme().radius)
             .track_focus(&self.focus_handle)
             .on_key_down(move |event: &gpui::KeyDownEvent, _phase, _cx| {
-                // FAST PATH: Skip processing for non-movement keys immediately
+                // ULTRA FAST PATH: Update atomics directly, no allocations, no hashing, no RefCell!
                 let key = &event.keystroke.key;
-                let is_movement_key = matches!(key.as_ref(), "w" | "W" | "s" | "S" | "a" | "A" | "d" | "D" | "space" | " " | "shift");
-                if !is_movement_key {
-                    return; // Early return - do NOTHING for non-movement keys
+                match key.as_ref() {
+                    "w" | "W" => input_state_key_down.forward.store(1, Ordering::Relaxed),
+                    "s" | "S" => input_state_key_down.forward.store(-1, Ordering::Relaxed),
+                    "d" | "D" => input_state_key_down.right.store(1, Ordering::Relaxed),
+                    "a" | "A" => input_state_key_down.right.store(-1, Ordering::Relaxed),
+                    "space" | " " => input_state_key_down.up.store(1, Ordering::Relaxed),
+                    "shift" => {
+                        input_state_key_down.up.store(-1, Ordering::Relaxed);
+                        input_state_key_down.boost.store(true, Ordering::Relaxed);
+                    }
+                    _ => return, // Ignore all other keys instantly
                 }
-                
-                // Track input time for latency measurement (only for movement keys)
-                *input_time_key.borrow_mut() = Some(std::time::Instant::now());
-                
-                let key_lower = key.to_lowercase();
-                keys_pressed.borrow_mut().insert(key_lower);
-                
-                // Update lock-free input state (no mutex!) - only check relevant keys
-                let keys = keys_pressed.borrow();
-                let mut forward = 0;
-                let mut right = 0;
-                let mut up = 0;
-                let mut boost = false;
-                
-                if keys.contains("w") { forward += 1; }
-                if keys.contains("s") { forward -= 1; }
-                if keys.contains("d") { right += 1; }
-                if keys.contains("a") { right -= 1; }
-                if keys.contains("space") || keys.contains(" ") { up += 1; }
-                if keys.contains("shift") {
-                    up -= 1;
-                    boost = true;
-                }
-                
-                input_state_key_down.forward.store(forward, Ordering::Relaxed);
-                input_state_key_down.right.store(right, Ordering::Relaxed);
-                input_state_key_down.up.store(up, Ordering::Relaxed);
-                input_state_key_down.boost.store(boost, Ordering::Relaxed);
             })
             .on_key_up(move |event: &gpui::KeyUpEvent, _phase, _cx| {
-                // FAST PATH: Skip processing for non-movement keys immediately
+                // ULTRA FAST PATH: Update atomics directly, no allocations, no hashing, no RefCell!
                 let key = &event.keystroke.key;
-                let is_movement_key = matches!(key.as_ref(), "w" | "W" | "s" | "S" | "a" | "A" | "d" | "D" | "space" | " " | "shift");
-                if !is_movement_key {
-                    return; // Early return - do NOTHING for non-movement keys
+                match key.as_ref() {
+                    "w" | "W" | "s" | "S" => input_state_key_up.forward.store(0, Ordering::Relaxed),
+                    "d" | "D" | "a" | "A" => input_state_key_up.right.store(0, Ordering::Relaxed),
+                    "space" | " " => input_state_key_up.up.store(0, Ordering::Relaxed),
+                    "shift" => {
+                        input_state_key_up.up.store(0, Ordering::Relaxed);
+                        input_state_key_up.boost.store(false, Ordering::Relaxed);
+                    }
+                    _ => return, // Ignore all other keys instantly
                 }
-                
-                let key_lower = key.to_lowercase();
-                keys_pressed_up.borrow_mut().remove(&key_lower);
-                
-                // Update lock-free input state (no mutex!) - only check relevant keys
-                let keys = keys_pressed_up.borrow();
-                let mut forward = 0;
-                let mut right = 0;
-                let mut up = 0;
-                let mut boost = false;
-                
-                if keys.contains("w") { forward += 1; }
-                if keys.contains("s") { forward -= 1; }
-                if keys.contains("d") { right += 1; }
-                if keys.contains("a") { right -= 1; }
-                if keys.contains("space") || keys.contains(" ") { up += 1; }
-                if keys.contains("shift") {
-                    up -= 1;
-                    boost = true;
-                }
-                
-                input_state_key_up.forward.store(forward, Ordering::Relaxed);
-                input_state_key_up.right.store(right, Ordering::Relaxed);
-                input_state_key_up.up.store(up, Ordering::Relaxed);
-                input_state_key_up.boost.store(boost, Ordering::Relaxed);
             })
             .child(
                 // Main viewport - should grow to fill space and handle mouse events
@@ -403,90 +359,71 @@ impl ViewportPanel {
                     )
                     .on_mouse_down(
                         gpui::MouseButton::Right,
-                        move |event: &MouseDownEvent, _phase, _cx| {
-                            println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                            println!("[VIEWPORT] ➡️ RIGHT CLICK - Look Mode");
-                            println!("Position: x={:.2}, y={:.2}", event.position.x.as_f32(), event.position.y.as_f32());
-                            
-                            // Right-click to capture mouse for camera look
-                            *mouse_right_down.borrow_mut() = true;
-                            *last_mouse_pos_down.borrow_mut() = Some(event.position);
-                            
-                            println!("Mouse look enabled: {}", *mouse_right_down.borrow());
-                            println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                        move |_event: &MouseDownEvent, _phase, _cx| {
+                            // Just set atomic flag - no RefCell!
+                            mouse_right_down.store(true, Ordering::Relaxed);
                         },
                     )
                     .on_mouse_up(
                         gpui::MouseButton::Right,
-                        move |event: &MouseUpEvent, _phase, _cx| {
-                            // Release mouse capture
-                            println!("[VIEWPORT] ✅ RIGHT RELEASE - Look Mode Off at x={:.2}, y={:.2}", 
-                                event.position.x.as_f32(), event.position.y.as_f32());
-                            *mouse_right_up.borrow_mut() = false;
+                        move |_event: &MouseUpEvent, _phase, _cx| {
+                            // Just clear atomic flag - no RefCell!
+                            mouse_right_up.store(false, Ordering::Relaxed);
                         },
                     )
                     .on_mouse_move(move |event: &MouseMoveEvent, _phase, _cx| {
-                        // Track input time for latency measurement
-                        *input_time_mouse.borrow_mut() = Some(std::time::Instant::now());
-                        
+                        // NO BORROWS! Pure atomic operations
                         let current_pos = event.position;
                         
-                        // Check if mouse is captured for look or pan
-                        let is_right_captured = *mouse_right_move.borrow();
-                        let is_middle_captured = *mouse_middle_move.borrow();
+                        let is_right_captured = mouse_right_move.load(Ordering::Relaxed);
+                        let is_middle_captured = mouse_middle_move.load(Ordering::Relaxed);
                         
-                        let mut mouse_delta = (0.0f32, 0.0f32);
-                        
-                        // Only calculate delta if we have a previous position AND mouse is captured
-                        if (is_right_captured || is_middle_captured) {
-                            if let Some(last_pos) = *last_mouse_pos_move.borrow() {
-                                let dx: f32 = (current_pos.x - last_pos.x).into();
-                                let dy: f32 = (current_pos.y - last_pos.y).into();
-                                mouse_delta = (dx, dy);
-                            }
-                        }
-                        
-                        // Always update last position when captured
                         if is_right_captured || is_middle_captured {
-                            *last_mouse_pos_move.borrow_mut() = Some(current_pos);
-                        }
-                        
-                        // Update lock-free input state (no mutex!)
-                        if is_right_captured && (mouse_delta.0.abs() > 0.01 || mouse_delta.1.abs() > 0.01) {
-                            input_state_mouse.set_mouse_delta(mouse_delta.0, mouse_delta.1);
-                        }
-                        
-                        if is_middle_captured && (mouse_delta.0.abs() > 0.01 || mouse_delta.1.abs() > 0.01) {
-                            input_state_mouse.set_pan_delta(mouse_delta.0, mouse_delta.1);
+                            // Store position as atomics (x and y as i32 * 1000)
+                            let x_f32: f32 = current_pos.x.into();
+                            let y_f32: f32 = current_pos.y.into();
+                            let x_atomic = (x_f32 * 1000.0) as i32;
+                            let y_atomic = (y_f32 * 1000.0) as i32;
+                            
+                            // Get last position from atomics
+                            let last_x = last_mouse_x.swap(x_atomic, Ordering::Relaxed);
+                            let last_y = last_mouse_y.swap(y_atomic, Ordering::Relaxed);
+                            
+                            if last_x != 0 || last_y != 0 {
+                                let dx = (x_atomic - last_x) as f32 / 1000.0;
+                                let dy = (y_atomic - last_y) as f32 / 1000.0;
+                                
+                                // Update input state atomically
+                                if is_right_captured && (dx.abs() > 0.01 || dy.abs() > 0.01) {
+                                    input_state_mouse.set_mouse_delta(dx, dy);
+                                }
+                                
+                                if is_middle_captured && (dx.abs() > 0.01 || dy.abs() > 0.01) {
+                                    input_state_mouse.set_pan_delta(dx, dy);
+                                }
+                            }
                         }
                     })
                     .on_scroll_wheel(move |event: &gpui::ScrollWheelEvent, _phase, _cx| {
                         let scroll_delta: f32 = event.delta.pixel_delta(px(1.0)).y.into();
                         
-                        // Update lock-free input state (no mutex!)
-                        if *mouse_right_scroll.borrow() {
-                            let speed_change = scroll_delta * 0.1;
-                            input_state_scroll.adjust_move_speed(speed_change);
-                            let new_speed = input_state_scroll.move_speed.load(Ordering::Relaxed) as f32 / 100.0;
-                            println!("[VIEWPORT] 🎚️ Move Speed: {:.1} units/sec", new_speed);
+                        // Pure atomic operations - no RefCell!
+                        if mouse_right_scroll.load(Ordering::Relaxed) {
+                            input_state_scroll.adjust_move_speed(scroll_delta * 0.1);
                         } else {
-                            let zoom = scroll_delta * 0.5;
-                            input_state_scroll.set_zoom_delta(zoom);
-                            println!("[VIEWPORT] 🔍 Zoom delta: {:.2}", zoom);
+                            input_state_scroll.set_zoom_delta(scroll_delta * 0.5);
                         }
                     })
                     .on_mouse_down(
                         gpui::MouseButton::Middle,
-                        move |event: &MouseDownEvent, _phase, _cx| {
-                            println!("[VIEWPORT] 🖱️ MIDDLE CLICK - Pan Mode");
-                            *mouse_middle_down.borrow_mut() = true;
+                        move |_event: &MouseDownEvent, _phase, _cx| {
+                            mouse_middle_down.store(true, Ordering::Relaxed);
                         },
                     )
                     .on_mouse_up(
                         gpui::MouseButton::Middle,
                         move |_event: &MouseUpEvent, _phase, _cx| {
-                            println!("[VIEWPORT] 🖱️ MIDDLE RELEASE - Pan Mode Off");
-                            *mouse_middle_up.borrow_mut() = false;
+                            mouse_middle_up.store(false, Ordering::Relaxed);
                         },
                     )
                     .child(self.viewport.clone())

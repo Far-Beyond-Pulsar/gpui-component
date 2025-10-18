@@ -56,8 +56,8 @@ pub struct SelectFont(usize);
 #[action(namespace = story, no_json)]
 pub struct SelectRadius(usize);
 
-#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
-#[action(namespace = pulsar)]
+#[derive(Action, Clone, PartialEq, Eq)]
+#[action(namespace = pulsar, no_json)]
 pub struct OpenSettings;
 
 fn main() {

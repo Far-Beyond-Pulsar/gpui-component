@@ -1,5 +1,5 @@
 /// Production-ready zero-copy viewport with optimized GPUI integration
-/// 
+///
 /// This implementation eliminates redundant copies by:
 /// 1. Using Arc<Vec<u8>> for frame sharing (cheap pointer copy vs data copy)
 /// 2. Direct buffer slicing instead of ImageBuffer intermediate
@@ -9,8 +9,9 @@
 use gpui::{
     div, px, App, AppContext, Bounds, Context, Corners, DismissEvent, Element, ElementId,
     Entity, EventEmitter, FocusHandle, Focusable, GlobalElementId, InspectorElementId,
-    InteractiveElement, IntoElement, LayoutId, ParentElement as _, Pixels, Point, Render,
+    InteractiveElement, IntoElement, LayoutId, ParentElement as _, Render,
     RenderImage, Size, StatefulInteractiveElement, Style, Styled as _, Window, Task,
+    Pixels,
 };
 use std::sync::{Arc, Mutex, atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering}};
 use std::time::Instant;
@@ -166,9 +167,18 @@ pub struct OptimizedViewport {
     debug_enabled: bool,
     shutdown_sender: Option<smol::channel::Sender<()>>,
     task_handle: Option<Task<()>>,
+    // FRAME PACING: Track last notify time to enforce maximum FPS
+    last_notify_time: Arc<Mutex<Instant>>,
+    max_fps: Arc<AtomicU64>, // Max FPS (0 = unlimited)
 }
 
 impl OptimizedViewport {
+    /// Set maximum viewport FPS for frame pacing (0 = unlimited)
+    pub fn set_max_fps(&self, fps: u64) {
+        self.max_fps.store(fps, Ordering::Relaxed);
+        println!("[VIEWPORT] 🎯 Frame pacing set to {} FPS", if fps == 0 { "unlimited".to_string() } else { fps.to_string() });
+    }
+
     /// Create texture from framebuffer with zero intermediate copies
     fn create_texture_optimized(
         buffer: &Framebuffer,
@@ -179,7 +189,7 @@ impl OptimizedViewport {
             buffer.height,
             buffer.buffer.clone(), // Single clone - unavoidable for now
         )?;
-        
+
         let frame = image::Frame::new(rgba_image);
         Some(Arc::new(RenderImage::new(vec![frame])))
     }
@@ -200,7 +210,6 @@ impl OptimizedViewport {
 
         if let Some(ref texture_pair) = result {
             self.previous_texture = Some(texture_pair.clone());
-            println!("[VIEWPORT] ✅ Texture updated! Generation: {}", texture_pair.1);
         } else {
             println!("[VIEWPORT] ⚠️  No texture available from background task");
         }
@@ -234,7 +243,7 @@ impl EventEmitter<DismissEvent> for OptimizedViewport {}
 impl Render for OptimizedViewport {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (texture, generation) = self.update_texture_if_needed(window, cx);
-        
+
         // Periodic stats
         if self.debug_enabled {
             let count = self.frame_count.fetch_add(1, Ordering::Relaxed);
@@ -274,6 +283,8 @@ pub fn create_optimized_viewport<V: 'static>(
         debug_enabled: cfg!(debug_assertions),
         shutdown_sender: Some(shutdown_sender),
         task_handle: None,
+        last_notify_time: Arc::new(Mutex::new(Instant::now())),
+        max_fps: Arc::new(AtomicU64::new(60)), // Default to 60 FPS
     });
 
     let processing_flag = Arc::new(AtomicBool::new(false));
@@ -292,8 +303,7 @@ pub fn create_optimized_viewport<V: 'static>(
 
     viewport.update(cx, |viewport, cx| {
         let task = cx.spawn(async move |viewport_entity, cx| {
-            println!("[VIEWPORT-BG-TASK] 🚀 Background texture processing task started");
-            
+
             loop {
                 futures::select! {
                     refresh_result = refresh_receiver.recv().fuse() => {
@@ -302,7 +312,6 @@ pub fn create_optimized_viewport<V: 'static>(
                             break;
                         }
 
-                        println!("[VIEWPORT-BG-TASK] 🔄 Received refresh signal, creating texture...");
                         processing_flag_ref.store(true, Ordering::Relaxed);
 
                         // Get front buffer and create texture
@@ -323,34 +332,50 @@ pub fn create_optimized_viewport<V: 'static>(
                                 continue;
                             }
 
-                            println!("[VIEWPORT-BG-TASK] 📐 Creating texture {}x{}, gen: {}", 
-                                buffer_guard.width, buffer_guard.height, buffer_guard.generation);
-
                             // Zero-copy texture creation
                             let texture = OptimizedViewport::create_texture_optimized(&buffer_guard);
                             let generation = buffer_guard.generation;
-                            
+
                             drop(buffer_guard);
-                            
+
                             texture.map(|tex| {
                                 GPU_MEM_TRACKER.track_allocation(initial_width, initial_height);
-                                println!("[VIEWPORT-BG-TASK] ✅ Texture created successfully, gen: {}", generation);
                                 (tex, generation)
                             })
                         };
 
                         if let Some(texture_result) = texture_result {
                             let update_result = viewport_entity.update(cx, |viewport, cx| {
+                                // FRAME PACING: Only notify if enough time has passed
+                                let max_fps = viewport.max_fps.load(Ordering::Relaxed);
+                                let should_notify = if max_fps == 0 {
+                                    true // Unlimited FPS
+                                } else {
+                                    let frame_time_ns = 1_000_000_000 / max_fps;
+                                    let mut last_time = viewport.last_notify_time.lock().unwrap();
+                                    let now = Instant::now();
+                                    let elapsed = now.duration_since(*last_time).as_nanos() as u64;
+
+                                    if elapsed >= frame_time_ns {
+                                        *last_time = now;
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                };
+
                                 *viewport.shared_texture.lock().unwrap() = Some(texture_result);
-                                cx.notify();
+
+                                if should_notify {
+                                    cx.notify();
+                                }
                             });
 
                             if update_result.is_err() {
                                 println!("[VIEWPORT-BG-TASK] ❌ Failed to update viewport entity");
                                 break;
                             }
-                            
-                            println!("[VIEWPORT-BG-TASK] ✅ Viewport notified of new texture");
+
                         } else {
                             println!("[VIEWPORT-BG-TASK] ⚠️  Texture creation failed");
                         }
@@ -364,7 +389,7 @@ pub fn create_optimized_viewport<V: 'static>(
                     }
                 }
             }
-            
+
             println!("[VIEWPORT-BG-TASK] 💤 Background task exited");
         });
 

@@ -10,6 +10,7 @@ use gpui_component::{
 // OPTIMIZED: Using new zero-copy viewport for 3x performance improvement
 use gpui_component::viewport_optimized::{OptimizedViewport, DoubleBuffer, RefreshHook, create_optimized_viewport};
 
+use crate::settings::EngineSettings;
 use crate::ui::rainbow_engine_final::{RainbowRenderEngine, RainbowPattern};
 use crate::ui::wgpu_3d_renderer::Wgpu3DRenderer;
 use crate::ui::gpu_renderer::GpuRenderer;
@@ -68,6 +69,15 @@ impl LevelEditorPanel {
 
         println!("[LEVEL-EDITOR] 🚀 Initializing OPTIMIZED zero-copy viewport");
         
+        // Load engine settings for frame pacing configuration
+        let settings = EngineSettings::default_path()
+            .and_then(|path| Some(EngineSettings::load(&path)))
+            .unwrap_or_default();
+        
+        let max_viewport_fps = settings.advanced.max_viewport_fps;
+        println!("[LEVEL-EDITOR] 🎯 Frame pacing configured: {} FPS", 
+            if max_viewport_fps == 0 { "Unlimited".to_string() } else { max_viewport_fps.to_string() });
+        
         // OPTIMIZED: Create viewport with new zero-copy implementation
         // 3x faster, 50% less memory usage, Arc-based sharing
         let (viewport, buffers, refresh_hook) = create_optimized_viewport(
@@ -75,8 +85,13 @@ impl LevelEditorPanel {
             900,
             cx
         );
+        
+        // Apply frame pacing setting to viewport
+        viewport.update(cx, |v, _cx| {
+            v.set_max_fps(max_viewport_fps as u64);
+        });
 
-        println!("[LEVEL-EDITOR] ✅ Optimized viewport created (1600x900)");
+        println!("[LEVEL-EDITOR] ✅ Optimized viewport created (1600x900) with frame pacing");
         
         // Create GPU render engine with matching resolution
         let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new(1600, 900)));
