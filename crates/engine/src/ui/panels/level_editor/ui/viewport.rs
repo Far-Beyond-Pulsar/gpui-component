@@ -163,6 +163,8 @@ pub struct ViewportPanel {
     ui_consistency_counter: RefCell<usize>,
     // Lock-free input state - no mutex contention on UI thread!
     input_state: InputState,
+    // Track if input thread has been spawned
+    input_thread_spawned: Arc<AtomicBool>,
     // Mouse tracking for camera control - Rc<RefCell<>> for shared mutable state across closures!
     last_mouse_pos: Rc<RefCell<Option<Point<Pixels>>>>,
     mouse_right_captured: Rc<RefCell<bool>>,  // Right-click for look
@@ -203,6 +205,7 @@ impl ViewportPanel {
             ui_consistency_history: RefCell::new(VecDeque::with_capacity(120)),
             ui_consistency_counter: RefCell::new(0),
             input_state,
+            input_thread_spawned: Arc::new(AtomicBool::new(false)),
             last_mouse_pos: Rc::new(RefCell::new(None)),
             mouse_right_captured: Rc::new(RefCell::new(false)),
             mouse_middle_captured: Rc::new(RefCell::new(false)),
@@ -224,55 +227,60 @@ impl ViewportPanel {
     where
         V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
     {
-        // Spawn dedicated input processing thread (runs in background, no UI blocking!)
-        let input_state_for_thread = self.input_state.clone();
-        let gpu_engine_for_thread = gpu_engine.clone();
-        
-        std::thread::spawn(move || {
-            loop {
-                // Sleep for ~8ms (~120Hz processing rate)
-                std::thread::sleep(std::time::Duration::from_millis(8));
-                
-                // Try to acquire GPU engine lock without blocking
-                if let Ok(engine) = gpu_engine_for_thread.try_lock() {
-                    if let Some(ref bevy_renderer) = engine.bevy_renderer {
-                        if let Ok(mut input) = bevy_renderer.camera_input.try_lock() {
-                            // Read atomic values (no blocking!)
-                            input.forward = input_state_for_thread.forward.load(Ordering::Relaxed) as f32;
-                            input.right = input_state_for_thread.right.load(Ordering::Relaxed) as f32;
-                            input.up = input_state_for_thread.up.load(Ordering::Relaxed) as f32;
-                            input.boost = input_state_for_thread.boost.load(Ordering::Relaxed);
-                            
-                            // Read and convert mouse deltas
-                            let mouse_x = input_state_for_thread.mouse_delta_x.swap(0, Ordering::Relaxed);
-                            let mouse_y = input_state_for_thread.mouse_delta_y.swap(0, Ordering::Relaxed);
-                            if mouse_x != 0 || mouse_y != 0 {
-                                input.mouse_delta_x = mouse_x as f32 / 1000.0;
-                                input.mouse_delta_y = mouse_y as f32 / 1000.0;
+        // Spawn dedicated input processing thread ONLY ONCE (not every frame!)
+        if !self.input_thread_spawned.load(Ordering::Relaxed) {
+            self.input_thread_spawned.store(true, Ordering::Relaxed);
+            
+            let input_state_for_thread = self.input_state.clone();
+            let gpu_engine_for_thread = gpu_engine.clone();
+            
+            std::thread::spawn(move || {
+                println!("[INPUT-THREAD] �� Dedicated input processing thread started");
+                loop {
+                    // Sleep for ~8ms (~120Hz processing rate)
+                    std::thread::sleep(std::time::Duration::from_millis(8));
+                    
+                    // Try to acquire GPU engine lock without blocking
+                    if let Ok(engine) = gpu_engine_for_thread.try_lock() {
+                        if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                            if let Ok(mut input) = bevy_renderer.camera_input.try_lock() {
+                                // Read atomic values (no blocking!)
+                                input.forward = input_state_for_thread.forward.load(Ordering::Relaxed) as f32;
+                                input.right = input_state_for_thread.right.load(Ordering::Relaxed) as f32;
+                                input.up = input_state_for_thread.up.load(Ordering::Relaxed) as f32;
+                                input.boost = input_state_for_thread.boost.load(Ordering::Relaxed);
+                                
+                                // Read and convert mouse deltas
+                                let mouse_x = input_state_for_thread.mouse_delta_x.swap(0, Ordering::Relaxed);
+                                let mouse_y = input_state_for_thread.mouse_delta_y.swap(0, Ordering::Relaxed);
+                                if mouse_x != 0 || mouse_y != 0 {
+                                    input.mouse_delta_x = mouse_x as f32 / 1000.0;
+                                    input.mouse_delta_y = mouse_y as f32 / 1000.0;
+                                }
+                                
+                                // Read pan deltas
+                                let pan_x = input_state_for_thread.pan_delta_x.swap(0, Ordering::Relaxed);
+                                let pan_y = input_state_for_thread.pan_delta_y.swap(0, Ordering::Relaxed);
+                                if pan_x != 0 || pan_y != 0 {
+                                    input.pan_delta_x = pan_x as f32 / 1000.0;
+                                    input.pan_delta_y = pan_y as f32 / 1000.0;
+                                }
+                                
+                                // Read zoom delta
+                                let zoom = input_state_for_thread.zoom_delta.swap(0, Ordering::Relaxed);
+                                if zoom != 0 {
+                                    input.zoom_delta = zoom as f32 / 1000.0;
+                                }
+                                
+                                // Update move speed
+                                input.move_speed = input_state_for_thread.move_speed.load(Ordering::Relaxed) as f32 / 100.0;
                             }
-                            
-                            // Read pan deltas
-                            let pan_x = input_state_for_thread.pan_delta_x.swap(0, Ordering::Relaxed);
-                            let pan_y = input_state_for_thread.pan_delta_y.swap(0, Ordering::Relaxed);
-                            if pan_x != 0 || pan_y != 0 {
-                                input.pan_delta_x = pan_x as f32 / 1000.0;
-                                input.pan_delta_y = pan_y as f32 / 1000.0;
-                            }
-                            
-                            // Read zoom delta
-                            let zoom = input_state_for_thread.zoom_delta.swap(0, Ordering::Relaxed);
-                            if zoom != 0 {
-                                input.zoom_delta = zoom as f32 / 1000.0;
-                            }
-                            
-                            // Update move speed
-                            input.move_speed = input_state_for_thread.move_speed.load(Ordering::Relaxed) as f32 / 100.0;
                         }
                     }
+                    // If lock fails, skip this cycle - no blocking!
                 }
-                // If lock fails, skip this cycle - no blocking!
-            }
-        });
+            });
+        }
         
         // Clone input state for closures (lock-free!)
         let input_state_key_down = self.input_state.clone();
