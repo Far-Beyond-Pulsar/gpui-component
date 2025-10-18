@@ -13,9 +13,68 @@ use super::actions::*;
 use crate::ui::shared::ViewportControls;
 use engine_backend::GameThread;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::collections::VecDeque;
 use std::cell::RefCell;
 use std::rc::Rc;
+
+/// Lock-free input state using atomics - no mutex contention!
+#[derive(Clone)]
+struct InputState {
+    // Keyboard movement (atomic for lock-free access)
+    forward: Arc<AtomicI32>,  // -1, 0, 1
+    right: Arc<AtomicI32>,    // -1, 0, 1
+    up: Arc<AtomicI32>,       // -1, 0, 1
+    boost: Arc<AtomicBool>,
+    
+    // Mouse deltas (stored as i32 * 1000 for fractional precision)
+    mouse_delta_x: Arc<AtomicI32>,
+    mouse_delta_y: Arc<AtomicI32>,
+    pan_delta_x: Arc<AtomicI32>,
+    pan_delta_y: Arc<AtomicI32>,
+    zoom_delta: Arc<AtomicI32>,
+    
+    // Move speed adjustment
+    move_speed: Arc<AtomicI32>, // * 100 for precision
+}
+
+impl InputState {
+    fn new() -> Self {
+        Self {
+            forward: Arc::new(AtomicI32::new(0)),
+            right: Arc::new(AtomicI32::new(0)),
+            up: Arc::new(AtomicI32::new(0)),
+            boost: Arc::new(AtomicBool::new(false)),
+            mouse_delta_x: Arc::new(AtomicI32::new(0)),
+            mouse_delta_y: Arc::new(AtomicI32::new(0)),
+            pan_delta_x: Arc::new(AtomicI32::new(0)),
+            pan_delta_y: Arc::new(AtomicI32::new(0)),
+            zoom_delta: Arc::new(AtomicI32::new(0)),
+            move_speed: Arc::new(AtomicI32::new(1000)), // 10.0 * 100
+        }
+    }
+    
+    // Set mouse delta (converts f32 to i32 * 1000)
+    fn set_mouse_delta(&self, x: f32, y: f32) {
+        self.mouse_delta_x.store((x * 1000.0) as i32, Ordering::Relaxed);
+        self.mouse_delta_y.store((y * 1000.0) as i32, Ordering::Relaxed);
+    }
+    
+    fn set_pan_delta(&self, x: f32, y: f32) {
+        self.pan_delta_x.store((x * 1000.0) as i32, Ordering::Relaxed);
+        self.pan_delta_y.store((y * 1000.0) as i32, Ordering::Relaxed);
+    }
+    
+    fn set_zoom_delta(&self, z: f32) {
+        self.zoom_delta.store((z * 1000.0) as i32, Ordering::Relaxed);
+    }
+    
+    fn adjust_move_speed(&self, delta: f32) {
+        let current = self.move_speed.load(Ordering::Relaxed) as f32 / 100.0;
+        let new_speed = (current + delta).clamp(0.5, 100.0);
+        self.move_speed.store((new_speed * 100.0) as i32, Ordering::Relaxed);
+    }
+}
 
 #[derive(Clone)]
 struct FpsDataPoint {
@@ -102,6 +161,8 @@ pub struct ViewportPanel {
     // UI refresh consistency tracking (tracks FPS variance over time)
     ui_consistency_history: RefCell<VecDeque<UiConsistencyDataPoint>>,
     ui_consistency_counter: RefCell<usize>,
+    // Lock-free input state - no mutex contention on UI thread!
+    input_state: InputState,
     // Mouse tracking for camera control - Rc<RefCell<>> for shared mutable state across closures!
     last_mouse_pos: Rc<RefCell<Option<Point<Pixels>>>>,
     mouse_right_captured: Rc<RefCell<bool>>,  // Right-click for look
@@ -118,6 +179,8 @@ impl ViewportPanel {
     where
         V: 'static,
     {
+        let input_state = InputState::new();
+        
         Self {
             viewport,
             viewport_controls: ViewportControls::new(),
@@ -139,6 +202,7 @@ impl ViewportPanel {
             last_input_time: RefCell::new(None),
             ui_consistency_history: RefCell::new(VecDeque::with_capacity(120)),
             ui_consistency_counter: RefCell::new(0),
+            input_state,
             last_mouse_pos: Rc::new(RefCell::new(None)),
             mouse_right_captured: Rc::new(RefCell::new(false)),
             mouse_middle_captured: Rc::new(RefCell::new(false)),
@@ -160,11 +224,61 @@ impl ViewportPanel {
     where
         V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
     {
-        // Clone Arc/Rc for closures
-        let gpu_clone_key_down = gpu_engine.clone();
-        let gpu_clone_key_up = gpu_engine.clone();
-        let gpu_clone_mouse = gpu_engine.clone();
-        let gpu_clone_scroll = gpu_engine.clone();
+        // Spawn dedicated input processing thread (runs in background, no UI blocking!)
+        let input_state_for_thread = self.input_state.clone();
+        let gpu_engine_for_thread = gpu_engine.clone();
+        
+        std::thread::spawn(move || {
+            loop {
+                // Sleep for ~8ms (~120Hz processing rate)
+                std::thread::sleep(std::time::Duration::from_millis(8));
+                
+                // Try to acquire GPU engine lock without blocking
+                if let Ok(engine) = gpu_engine_for_thread.try_lock() {
+                    if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                        if let Ok(mut input) = bevy_renderer.camera_input.try_lock() {
+                            // Read atomic values (no blocking!)
+                            input.forward = input_state_for_thread.forward.load(Ordering::Relaxed) as f32;
+                            input.right = input_state_for_thread.right.load(Ordering::Relaxed) as f32;
+                            input.up = input_state_for_thread.up.load(Ordering::Relaxed) as f32;
+                            input.boost = input_state_for_thread.boost.load(Ordering::Relaxed);
+                            
+                            // Read and convert mouse deltas
+                            let mouse_x = input_state_for_thread.mouse_delta_x.swap(0, Ordering::Relaxed);
+                            let mouse_y = input_state_for_thread.mouse_delta_y.swap(0, Ordering::Relaxed);
+                            if mouse_x != 0 || mouse_y != 0 {
+                                input.mouse_delta_x = mouse_x as f32 / 1000.0;
+                                input.mouse_delta_y = mouse_y as f32 / 1000.0;
+                            }
+                            
+                            // Read pan deltas
+                            let pan_x = input_state_for_thread.pan_delta_x.swap(0, Ordering::Relaxed);
+                            let pan_y = input_state_for_thread.pan_delta_y.swap(0, Ordering::Relaxed);
+                            if pan_x != 0 || pan_y != 0 {
+                                input.pan_delta_x = pan_x as f32 / 1000.0;
+                                input.pan_delta_y = pan_y as f32 / 1000.0;
+                            }
+                            
+                            // Read zoom delta
+                            let zoom = input_state_for_thread.zoom_delta.swap(0, Ordering::Relaxed);
+                            if zoom != 0 {
+                                input.zoom_delta = zoom as f32 / 1000.0;
+                            }
+                            
+                            // Update move speed
+                            input.move_speed = input_state_for_thread.move_speed.load(Ordering::Relaxed) as f32 / 100.0;
+                        }
+                    }
+                }
+                // If lock fails, skip this cycle - no blocking!
+            }
+        });
+        
+        // Clone input state for closures (lock-free!)
+        let input_state_key_down = self.input_state.clone();
+        let input_state_key_up = self.input_state.clone();
+        let input_state_mouse = self.input_state.clone();
+        let input_state_scroll = self.input_state.clone();
         
         // Clone Rc<RefCell<>> - now these WILL be shared!
         let keys_pressed = self.keys_pressed.clone();
@@ -197,65 +311,75 @@ impl ViewportPanel {
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
             .track_focus(&self.focus_handle)
-            .on_key_down(cx.listener(move |_this, event: &gpui::KeyDownEvent, _window, _cx| {
-                // Track input time for latency measurement
+            .on_key_down(move |event: &gpui::KeyDownEvent, _phase, _cx| {
+                // FAST PATH: Skip processing for non-movement keys immediately
+                let key = &event.keystroke.key;
+                let is_movement_key = matches!(key.as_ref(), "w" | "W" | "s" | "S" | "a" | "A" | "d" | "D" | "space" | " " | "shift");
+                if !is_movement_key {
+                    return; // Early return - do NOTHING for non-movement keys
+                }
+                
+                // Track input time for latency measurement (only for movement keys)
                 *input_time_key.borrow_mut() = Some(std::time::Instant::now());
                 
-                let key = event.keystroke.key.to_lowercase();
-                keys_pressed.borrow_mut().insert(key.clone());
+                let key_lower = key.to_lowercase();
+                keys_pressed.borrow_mut().insert(key_lower);
                 
-                // Update camera input
-                if let Ok(engine) = gpu_clone_key_down.lock() {
-                    if let Some(ref bevy_renderer) = engine.bevy_renderer {
-                        if let Ok(mut input) = bevy_renderer.camera_input.lock() {
-                            let keys = keys_pressed.borrow();
-                            input.forward = 0.0;
-                            input.right = 0.0;
-                            input.up = 0.0;
-                            
-                            if keys.contains("w") { input.forward += 1.0; }
-                            if keys.contains("s") { input.forward -= 1.0; }
-                            if keys.contains("d") { input.right += 1.0; }
-                            if keys.contains("a") { input.right -= 1.0; }
-                            if keys.contains("space") { input.up += 1.0; }
-                            if keys.contains("shift") {
-                                input.up -= 1.0;
-                                input.boost = true;
-                            } else {
-                                input.boost = false;
-                            }
-                        }
-                    }
-                }
-            }))
-            .on_key_up(cx.listener(move |_this, event: &gpui::KeyUpEvent, _window, _cx| {
-                let key = event.keystroke.key.to_lowercase();
-                keys_pressed_up.borrow_mut().remove(&key);
+                // Update lock-free input state (no mutex!) - only check relevant keys
+                let keys = keys_pressed.borrow();
+                let mut forward = 0;
+                let mut right = 0;
+                let mut up = 0;
+                let mut boost = false;
                 
-                // Update camera input
-                if let Ok(engine) = gpu_clone_key_up.lock() {
-                    if let Some(ref bevy_renderer) = engine.bevy_renderer {
-                        if let Ok(mut input) = bevy_renderer.camera_input.lock() {
-                            let keys = keys_pressed_up.borrow();
-                            input.forward = 0.0;
-                            input.right = 0.0;
-                            input.up = 0.0;
-                            
-                            if keys.contains("w") { input.forward += 1.0; }
-                            if keys.contains("s") { input.forward -= 1.0; }
-                            if keys.contains("d") { input.right += 1.0; }
-                            if keys.contains("a") { input.right -= 1.0; }
-                            if keys.contains("space") { input.up += 1.0; }
-                            if keys.contains("shift") {
-                                input.up -= 1.0;
-                                input.boost = true;
-                            } else {
-                                input.boost = false;
-                            }
-                        }
-                    }
+                if keys.contains("w") { forward += 1; }
+                if keys.contains("s") { forward -= 1; }
+                if keys.contains("d") { right += 1; }
+                if keys.contains("a") { right -= 1; }
+                if keys.contains("space") || keys.contains(" ") { up += 1; }
+                if keys.contains("shift") {
+                    up -= 1;
+                    boost = true;
                 }
-            }))
+                
+                input_state_key_down.forward.store(forward, Ordering::Relaxed);
+                input_state_key_down.right.store(right, Ordering::Relaxed);
+                input_state_key_down.up.store(up, Ordering::Relaxed);
+                input_state_key_down.boost.store(boost, Ordering::Relaxed);
+            })
+            .on_key_up(move |event: &gpui::KeyUpEvent, _phase, _cx| {
+                // FAST PATH: Skip processing for non-movement keys immediately
+                let key = &event.keystroke.key;
+                let is_movement_key = matches!(key.as_ref(), "w" | "W" | "s" | "S" | "a" | "A" | "d" | "D" | "space" | " " | "shift");
+                if !is_movement_key {
+                    return; // Early return - do NOTHING for non-movement keys
+                }
+                
+                let key_lower = key.to_lowercase();
+                keys_pressed_up.borrow_mut().remove(&key_lower);
+                
+                // Update lock-free input state (no mutex!) - only check relevant keys
+                let keys = keys_pressed_up.borrow();
+                let mut forward = 0;
+                let mut right = 0;
+                let mut up = 0;
+                let mut boost = false;
+                
+                if keys.contains("w") { forward += 1; }
+                if keys.contains("s") { forward -= 1; }
+                if keys.contains("d") { right += 1; }
+                if keys.contains("a") { right -= 1; }
+                if keys.contains("space") || keys.contains(" ") { up += 1; }
+                if keys.contains("shift") {
+                    up -= 1;
+                    boost = true;
+                }
+                
+                input_state_key_up.forward.store(forward, Ordering::Relaxed);
+                input_state_key_up.right.store(right, Ordering::Relaxed);
+                input_state_key_up.up.store(up, Ordering::Relaxed);
+                input_state_key_up.boost.store(boost, Ordering::Relaxed);
+            })
             .child(
                 // Main viewport - should grow to fill space and handle mouse events
                 div()
@@ -264,14 +388,14 @@ impl ViewportPanel {
                     .size_full() // Take full size
                     .on_mouse_down(
                         gpui::MouseButton::Left,
-                        cx.listener(move |_this, event: &MouseDownEvent, _window, _cx| {
+                        move |event: &MouseDownEvent, _phase, _cx| {
                             println!("[VIEWPORT-INNER] ⬅️ LEFT CLICK at position: x={:.2}, y={:.2}", 
                                 event.position.x.as_f32(), event.position.y.as_f32());
-                        }),
+                        },
                     )
                     .on_mouse_down(
                         gpui::MouseButton::Right,
-                        cx.listener(move |_this, event: &MouseDownEvent, _window, cx| {
+                        move |event: &MouseDownEvent, _phase, _cx| {
                             println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                             println!("[VIEWPORT] ➡️ RIGHT CLICK - Look Mode");
                             println!("Position: x={:.2}, y={:.2}", event.position.x.as_f32(), event.position.y.as_f32());
@@ -282,22 +406,18 @@ impl ViewportPanel {
                             
                             println!("Mouse look enabled: {}", *mouse_right_down.borrow());
                             println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                            
-                            cx.stop_propagation();
-                        }),
+                        },
                     )
                     .on_mouse_up(
                         gpui::MouseButton::Right,
-                        cx.listener(move |_this, event: &MouseUpEvent, _window, cx| {
+                        move |event: &MouseUpEvent, _phase, _cx| {
                             // Release mouse capture
                             println!("[VIEWPORT] ✅ RIGHT RELEASE - Look Mode Off at x={:.2}, y={:.2}", 
                                 event.position.x.as_f32(), event.position.y.as_f32());
                             *mouse_right_up.borrow_mut() = false;
-                            
-                            cx.stop_propagation();
-                        }),
+                        },
                     )
-                    .on_mouse_move(cx.listener(move |_this, event: &MouseMoveEvent, _window, _cx| {
+                    .on_mouse_move(move |event: &MouseMoveEvent, _phase, _cx| {
                         // Track input time for latency measurement
                         *input_time_mouse.borrow_mut() = Some(std::time::Instant::now());
                         
@@ -323,62 +443,43 @@ impl ViewportPanel {
                             *last_mouse_pos_move.borrow_mut() = Some(current_pos);
                         }
                         
-                        // Update camera input with mouse delta - SET deltas directly (Bevy will clear them)
-                        if let Ok(engine) = gpu_clone_mouse.lock() {
-                            if let Some(ref bevy_renderer) = engine.bevy_renderer {
-                                if let Ok(mut input) = bevy_renderer.camera_input.lock() {
-                                    // Look mode (right-click) - SET deltas directly, Bevy will clear them
-                                    if is_right_captured && (mouse_delta.0.abs() > 0.01 || mouse_delta.1.abs() > 0.01) {
-                                        // Direct assignment - no accumulation needed, Bevy reads and clears each frame
-                                        input.mouse_delta_x = mouse_delta.0;
-                                        input.mouse_delta_y = mouse_delta.1;
-                                    }
-                                    
-                                    // Pan mode (middle-click) - SET deltas directly
-                                    if is_middle_captured && (mouse_delta.0.abs() > 0.01 || mouse_delta.1.abs() > 0.01) {
-                                        input.pan_delta_x = mouse_delta.0;
-                                        input.pan_delta_y = mouse_delta.1;
-                                    }
-                                }
-                            }
+                        // Update lock-free input state (no mutex!)
+                        if is_right_captured && (mouse_delta.0.abs() > 0.01 || mouse_delta.1.abs() > 0.01) {
+                            input_state_mouse.set_mouse_delta(mouse_delta.0, mouse_delta.1);
                         }
-                    }))
-                    .on_scroll_wheel(cx.listener(move |_this, event: &gpui::ScrollWheelEvent, _window, _cx| {
+                        
+                        if is_middle_captured && (mouse_delta.0.abs() > 0.01 || mouse_delta.1.abs() > 0.01) {
+                            input_state_mouse.set_pan_delta(mouse_delta.0, mouse_delta.1);
+                        }
+                    })
+                    .on_scroll_wheel(move |event: &gpui::ScrollWheelEvent, _phase, _cx| {
                         let scroll_delta: f32 = event.delta.pixel_delta(px(1.0)).y.into();
                         
-                        if let Ok(engine) = gpu_clone_scroll.lock() {
-                            if let Some(ref bevy_renderer) = engine.bevy_renderer {
-                                if let Ok(mut input) = bevy_renderer.camera_input.lock() {
-                                    // If right-click held: adjust movement speed
-                                    if *mouse_right_scroll.borrow() {
-                                        let speed_change = scroll_delta * 0.1;
-                                        input.move_speed = (input.move_speed + speed_change).clamp(0.5, 100.0);
-                                        println!("[VIEWPORT] 🎚️ Move Speed: {:.1} units/sec", input.move_speed);
-                                    } 
-                                    // Otherwise: zoom (dolly) - SET directly (Bevy clears it)
-                                    else {
-                                        input.zoom_delta = scroll_delta * 0.5; // Scale down for smoother zoom
-                                        println!("[VIEWPORT] 🔍 Zoom delta: {:.2}", input.zoom_delta);
-                                    }
-                                }
-                            }
+                        // Update lock-free input state (no mutex!)
+                        if *mouse_right_scroll.borrow() {
+                            let speed_change = scroll_delta * 0.1;
+                            input_state_scroll.adjust_move_speed(speed_change);
+                            let new_speed = input_state_scroll.move_speed.load(Ordering::Relaxed) as f32 / 100.0;
+                            println!("[VIEWPORT] 🎚️ Move Speed: {:.1} units/sec", new_speed);
+                        } else {
+                            let zoom = scroll_delta * 0.5;
+                            input_state_scroll.set_zoom_delta(zoom);
+                            println!("[VIEWPORT] 🔍 Zoom delta: {:.2}", zoom);
                         }
-                    }))
+                    })
                     .on_mouse_down(
                         gpui::MouseButton::Middle,
-                        cx.listener(move |_this, event: &MouseDownEvent, _window, cx| {
+                        move |event: &MouseDownEvent, _phase, _cx| {
                             println!("[VIEWPORT] 🖱️ MIDDLE CLICK - Pan Mode");
                             *mouse_middle_down.borrow_mut() = true;
-                            cx.stop_propagation();
-                        }),
+                        },
                     )
                     .on_mouse_up(
                         gpui::MouseButton::Middle,
-                        cx.listener(move |_this, _event: &MouseUpEvent, _window, cx| {
+                        move |_event: &MouseUpEvent, _phase, _cx| {
                             println!("[VIEWPORT] 🖱️ MIDDLE RELEASE - Pan Mode Off");
                             *mouse_middle_up.borrow_mut() = false;
-                            cx.stop_propagation();
-                        }),
+                        },
                     )
                     .child(self.viewport.clone())
             )
