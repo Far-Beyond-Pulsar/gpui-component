@@ -1,39 +1,40 @@
 use crate::settings::EngineSettings;
-use gpui::*;
-use gpui_component::Root;
 use directories::ProjectDirs;
-use std::path::PathBuf;
-use ui::app::PulsarApp;
-use ui::project_selector::ProjectSelected;
-use ui::entry_window::EntryWindow;
-use ui::settings_window::SettingsWindow;
 use gpui::Action;
 use gpui::SharedString;
+use gpui::*;
 use gpui_component::scroll::ScrollbarShow;
+use gpui_component::Root;
+use gpui_component::TitleBar;
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
+use ui::app::PulsarApp;
+use ui::entry_window::EntryWindow;
+use ui::project_selector::ProjectSelected;
+use ui::settings_window::SettingsWindow;
 
 mod assets;
 mod compiler;
 mod graph;
-mod ui;
 mod recent_projects;
 pub mod settings;
 pub mod themes;
+mod ui;
 pub use assets::Assets;
 
 // +--------------------------------------------+
 // |  Compile-time engine info from Cargo.toml  |
 // +--------------------------------------------+
 
-pub const ENGINE_NAME:         &str = env!("CARGO_PKG_NAME");
-pub const ENGINE_LICENSE:      &str = env!("CARGO_PKG_LICENSE");
-pub const ENGINE_AUTHORS:      &str = env!("CARGO_PKG_AUTHORS");
-pub const ENGINE_VERSION:      &str = env!("CARGO_PKG_VERSION");
-pub const ENGINE_HOMEPAGE:     &str = env!("CARGO_PKG_HOMEPAGE");
-pub const ENGINE_REPOSITORY:   &str = env!("CARGO_PKG_REPOSITORY");
-pub const ENGINE_DESCRIPTION:  &str = env!("CARGO_PKG_DESCRIPTION");
+pub const ENGINE_NAME: &str = env!("CARGO_PKG_NAME");
+pub const ENGINE_LICENSE: &str = env!("CARGO_PKG_LICENSE");
+pub const ENGINE_AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
+pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const ENGINE_HOMEPAGE: &str = env!("CARGO_PKG_HOMEPAGE");
+pub const ENGINE_REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
+pub const ENGINE_DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 pub const ENGINE_LICENSE_FILE: &str = env!("CARGO_PKG_LICENSE_FILE");
 
 // +----------------------------------+
@@ -70,8 +71,8 @@ fn main() {
     let proj_dirs = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
         .expect("Could not determine app data directory");
     let appdata_dir = proj_dirs.data_dir();
-    let themes_dir  = appdata_dir.join("themes");
-    let config_dir  = appdata_dir.join("configs");
+    let themes_dir = appdata_dir.join("themes");
+    let config_dir = appdata_dir.join("configs");
     let config_file = config_dir.join("engine.toml");
 
     println!("App data directory: {:?}", appdata_dir);
@@ -116,8 +117,7 @@ fn main() {
     println!("Loading engine settings from {:?}", config_file);
     let mut engine_settings = EngineSettings::load(&config_file);
 
-    let app = Application::new()
-        .with_assets(Assets);
+    let app = Application::new().with_assets(Assets);
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(8)
@@ -142,7 +142,7 @@ fn main() {
 
         gpui_component::init(cx);
         crate::themes::init(cx);
-        crate::ui::terminal::init(cx);  // Initialize terminal keybindings (Tab handling)
+        crate::ui::terminal::init(cx); // Initialize terminal keybindings (Tab handling)
 
         cx.bind_keys([KeyBinding::new("ctrl-,", OpenSettings, None)]);
         cx.on_action(|_: &OpenSettings, cx| {
@@ -157,7 +157,7 @@ fn main() {
 
         let entry_options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(entry_window_bounds)),
-            titlebar: None,
+            titlebar: Some(TitleBar::title_bar_options()),
             window_min_size: Some(gpui::Size {
                 width: px(800.),
                 height: px(500.),
@@ -201,7 +201,10 @@ fn main() {
 }
 
 fn open_engine_window(project_path: PathBuf, cx: &mut App) {
-    eprintln!("DEBUG: open_engine_window called with path: {:?}", project_path);
+    eprintln!(
+        "DEBUG: open_engine_window called with path: {:?}",
+        project_path
+    );
     let mut window_size = size(px(1200.), px(800.));
     if let Some(display) = cx.primary_display() {
         let display_size = display.bounds().size;
@@ -213,7 +216,7 @@ fn open_engine_window(project_path: PathBuf, cx: &mut App) {
 
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-        titlebar: None,
+        titlebar: Some(TitleBar::title_bar_options()),
         window_min_size: Some(gpui::Size {
             width: px(1200.),
             height: px(800.),
@@ -257,7 +260,7 @@ fn open_settings_window(cx: &mut App) {
 
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-        titlebar: None,
+        titlebar: Some(TitleBar::title_bar_options()),
         window_min_size: Some(Size {
             width: px(600.),
             height: px(400.),
