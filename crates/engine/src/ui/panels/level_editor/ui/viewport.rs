@@ -59,6 +59,12 @@ struct InputLatencyDataPoint {
     latency_ms: f64,
 }
 
+#[derive(Clone)]
+struct UiConsistencyDataPoint {
+    index: usize,
+    consistency_score: f64, // Lower is better - represents stddev of FPS
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum GraphType {
     Line,
@@ -93,6 +99,9 @@ pub struct ViewportPanel {
     input_latency_history: RefCell<VecDeque<InputLatencyDataPoint>>,
     input_latency_counter: RefCell<usize>,
     last_input_time: RefCell<Option<std::time::Instant>>,
+    // UI refresh consistency tracking (tracks FPS variance over time)
+    ui_consistency_history: RefCell<VecDeque<UiConsistencyDataPoint>>,
+    ui_consistency_counter: RefCell<usize>,
     // Mouse tracking for camera control - Rc<RefCell<>> for shared mutable state across closures!
     last_mouse_pos: Rc<RefCell<Option<Point<Pixels>>>>,
     mouse_right_captured: Rc<RefCell<bool>>,  // Right-click for look
@@ -128,6 +137,8 @@ impl ViewportPanel {
             input_latency_history: RefCell::new(VecDeque::with_capacity(120)),
             input_latency_counter: RefCell::new(0),
             last_input_time: RefCell::new(None),
+            ui_consistency_history: RefCell::new(VecDeque::with_capacity(120)),
+            ui_consistency_counter: RefCell::new(0),
             last_mouse_pos: Rc::new(RefCell::new(None)),
             mouse_right_captured: Rc::new(RefCell::new(false)),
             mouse_middle_captured: Rc::new(RefCell::new(false)),
@@ -663,6 +674,43 @@ impl ViewportPanel {
         drop(fps_history);
         drop(fps_sample_counter);
 
+        // Calculate UI refresh consistency (FPS variance/stddev) for consistency tracking
+        let ui_consistency_score = if fps_data.len() >= 10 {
+            // Calculate standard deviation of last 30 FPS samples (or all if less)
+            let sample_size = fps_data.len().min(30);
+            let recent_fps: Vec<f64> = fps_data.iter()
+                .rev()
+                .take(sample_size)
+                .map(|d| d.fps)
+                .collect();
+            
+            let mean = recent_fps.iter().sum::<f64>() / recent_fps.len() as f64;
+            let variance = recent_fps.iter()
+                .map(|fps| (fps - mean).powi(2))
+                .sum::<f64>() / recent_fps.len() as f64;
+            variance.sqrt() // Standard deviation - lower is more consistent
+        } else {
+            0.0
+        };
+
+        // Update UI consistency history
+        let mut ui_consistency_history = self.ui_consistency_history.borrow_mut();
+        let mut ui_consistency_counter = self.ui_consistency_counter.borrow_mut();
+        
+        ui_consistency_history.push_back(UiConsistencyDataPoint {
+            index: *ui_consistency_counter,
+            consistency_score: ui_consistency_score,
+        });
+        *ui_consistency_counter += 1;
+        
+        if ui_consistency_history.len() > 120 {
+            ui_consistency_history.pop_front();
+        }
+        
+        let ui_consistency_data: Vec<UiConsistencyDataPoint> = ui_consistency_history.iter().cloned().collect();
+        drop(ui_consistency_history);
+        drop(ui_consistency_counter);
+
         // Update TPS history for rolling graph
         let mut tps_history = self.tps_history.borrow_mut();
         let mut tps_sample_counter = self.tps_sample_counter.borrow_mut();
@@ -938,6 +986,66 @@ impl ViewportPanel {
                                             if d.fps >= 120.0 {
                                                 success_color
                                             } else if d.fps >= 60.0 {
+                                                warning_color
+                                            } else {
+                                                danger_color
+                                            }
+                                        })
+                                        .tick_margin(10)
+                                        .into_any_element()
+                                })
+                        )
+                )
+            })
+            // UI REFRESH CONSISTENCY GRAPH - Shows FPS variance over time (lower is better/more consistent)
+            .when(!ui_consistency_data.is_empty(), |this| {
+                this.child(
+                    v_flex()
+                        .w_full()
+                        .mt_2()
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_semibold()
+                                .text_color(cx.theme().foreground)
+                                .child("📊 UI Refresh Consistency (StdDev) - Lower is smoother")
+                        )
+                        .child(
+                            div()
+                                .h(px(80.))
+                                .w_full()
+                                .child(if *fps_graph_state.borrow() {
+                                    // Line mode - Area chart
+                                    let theme = cx.theme();
+                                    let stroke_color = theme.chart_2;
+                                    let fill_color = stroke_color.opacity(0.2);
+
+                                    AreaChart::new(ui_consistency_data.clone())
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.consistency_score)
+                                        .stroke(stroke_color)
+                                        .fill(fill_color)
+                                        .linear()
+                                        .tick_margin(10)
+                                        .into_any_element()
+                                } else {
+                                    // Bar mode with color coding: Green (consistent), Yellow (moderate), Red (inconsistent)
+                                    let theme = cx.theme();
+                                    let success_color = theme.success;
+                                    let warning_color = theme.warning;
+                                    let danger_color = theme.danger;
+
+                                    BarChart::new(ui_consistency_data.clone())
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.consistency_score)
+                                        .fill(move |d| {
+                                            // Color code based on consistency score (stddev):
+                                            // Green: < 2.0 (very consistent)
+                                            // Yellow: 2.0-5.0 (moderate jitter)
+                                            // Red: > 5.0 (inconsistent/hitchy)
+                                            if d.consistency_score < 2.0 {
+                                                success_color
+                                            } else if d.consistency_score < 5.0 {
                                                 warning_color
                                             } else {
                                                 danger_color
