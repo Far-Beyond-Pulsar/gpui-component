@@ -118,7 +118,11 @@ impl PulsarApp {
 
         let window_options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-            titlebar: None,
+            titlebar: Some(gpui::TitlebarOptions {
+                title: None,
+                appears_transparent: true,
+                traffic_light_position: None, // No traffic lights
+            }),
             window_min_size: Some(gpui::Size {
                 width: px(400.),
                 height: px(300.),
@@ -432,7 +436,11 @@ impl PulsarApp {
                     },
                     size: size(px(1000.0), px(700.0)),
                 })),
-                titlebar: None,
+                titlebar: Some(gpui::TitlebarOptions {
+                    title: None,
+                    appears_transparent: true,
+                    traffic_light_position: None, // No traffic lights
+                }),
                 kind: WindowKind::Normal,
                 is_resizable: true,
                 window_decorations: Some(gpui::WindowDecorations::Client),
@@ -476,7 +484,11 @@ impl PulsarApp {
                     },
                     size: size(px(900.0), px(600.0)),
                 })),
-                titlebar: None,
+                titlebar: Some(gpui::TitlebarOptions {
+                    title: None,
+                    appears_transparent: true,
+                    traffic_light_position: None, // No traffic lights
+                }),
                 kind: WindowKind::Normal,
                 is_resizable: true,
                 window_decorations: Some(gpui::WindowDecorations::Client),
@@ -509,7 +521,11 @@ impl PulsarApp {
                     },
                     size: size(px(1000.0), px(700.0)),
                 })),
-                titlebar: None,
+                titlebar: Some(gpui::TitlebarOptions {
+                    title: None,
+                    appears_transparent: true,
+                    traffic_light_position: None, // No traffic lights
+                }),
                 kind: WindowKind::Normal,
                 is_resizable: true,
                 window_decorations: Some(gpui::WindowDecorations::Client),

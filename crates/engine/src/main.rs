@@ -157,7 +157,11 @@ fn main() {
 
         let entry_options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(entry_window_bounds)),
-            titlebar: None,
+            titlebar: Some(gpui::TitlebarOptions {
+                title: None,
+                appears_transparent: true,
+                traffic_light_position: None, // No traffic lights
+            }),
             window_min_size: Some(gpui::Size {
                 width: px(800.),
                 height: px(500.),
@@ -213,7 +217,11 @@ fn open_engine_window(project_path: PathBuf, cx: &mut App) {
 
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-        titlebar: None,
+        titlebar: Some(gpui::TitlebarOptions {
+            title: None,
+            appears_transparent: true,
+            traffic_light_position: None, // No traffic lights
+        }),
         window_min_size: Some(gpui::Size {
             width: px(1200.),
             height: px(800.),
@@ -257,7 +265,11 @@ fn open_settings_window(cx: &mut App) {
 
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-        titlebar: None,
+        titlebar: Some(gpui::TitlebarOptions {
+            title: None,
+            appears_transparent: true,
+            traffic_light_position: None, // No traffic lights
+        }),
         window_min_size: Some(Size {
             width: px(600.),
             height: px(400.),
