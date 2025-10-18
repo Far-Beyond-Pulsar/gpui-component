@@ -124,10 +124,10 @@ impl PulsarApp {
                 height: px(300.),
             }),
             kind: WindowKind::Normal,
+            is_resizable: true,
+            window_decorations: Some(gpui::WindowDecorations::Client),
             #[cfg(target_os = "linux")]
             window_background: gpui::WindowBackgroundAppearance::Transparent,
-            #[cfg(target_os = "linux")]
-            window_decorations: Some(gpui::WindowDecorations::Client),
             ..Default::default()
         };
 
@@ -434,6 +434,8 @@ impl PulsarApp {
                 })),
                 titlebar: None,
                 kind: WindowKind::Normal,
+                is_resizable: true,
+                window_decorations: Some(gpui::WindowDecorations::Client),
                 window_min_size: Some(gpui::Size {
                     width: px(600.),
                     height: px(400.),
@@ -476,6 +478,8 @@ impl PulsarApp {
                 })),
                 titlebar: None,
                 kind: WindowKind::Normal,
+                is_resizable: true,
+                window_decorations: Some(gpui::WindowDecorations::Client),
                 window_min_size: Some(gpui::Size {
                     width: px(500.),
                     height: px(300.),
@@ -507,6 +511,8 @@ impl PulsarApp {
                 })),
                 titlebar: None,
                 kind: WindowKind::Normal,
+                is_resizable: true,
+                window_decorations: Some(gpui::WindowDecorations::Client),
                 window_min_size: Some(gpui::Size {
                     width: px(600.),
                     height: px(400.),

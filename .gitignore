@@ -9,3 +9,5 @@ index.scip
 blueprint.json
 *.wav
 *.mp3
+*.stacks
+profile.json.gz

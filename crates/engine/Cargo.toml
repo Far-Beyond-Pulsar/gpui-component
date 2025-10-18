@@ -64,6 +64,8 @@ which = "6"  # Find executables in PATH
 alacritty_terminal = { git = "https://github.com/zed-industries/alacritty.git", branch = "add-hush-login-flag" }  # Professional terminal emulator
 itertools.workspace = true  # Iterator utilities
 libc = "0.2"  # Low-level system calls for PTY
+device_query = "2.1"  # Raw keyboard/mouse input polling - bypasses GPUI for viewport controls
+winapi = { version = "0.3", features = ["winuser"] }  # Windows API for keyboard hook to suppress WASD events
 
 [dev-dependencies]
 tempfile = "3.8"

@@ -12,6 +12,9 @@ members = [
 default-members = ["crates/engine"]
 resolver = "2"
 
+[profile.release]
+debug = true
+
 [workspace.dependencies]
 gpui = { git = "https://github.com/tristanpoland/zed", features = ["runtime_shaders", "macos-blade"] }
 gpui_macros = { git = "https://github.com/tristanpoland/zed" }

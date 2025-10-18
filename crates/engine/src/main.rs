@@ -163,10 +163,10 @@ fn main() {
                 height: px(500.),
             }),
             kind: WindowKind::Normal,
+            is_resizable: true,
+            window_decorations: Some(gpui::WindowDecorations::Client),
             #[cfg(target_os = "linux")]
             window_background: gpui::WindowBackgroundAppearance::Transparent,
-            #[cfg(target_os = "linux")]
-            window_decorations: Some(gpui::WindowDecorations::Client),
             ..Default::default()
         };
 
@@ -219,10 +219,10 @@ fn open_engine_window(project_path: PathBuf, cx: &mut App) {
             height: px(800.),
         }),
         kind: WindowKind::Normal,
+        is_resizable: true,
+        window_decorations: Some(gpui::WindowDecorations::Client),
         #[cfg(target_os = "linux")]
         window_background: gpui::WindowBackgroundAppearance::Transparent,
-        #[cfg(target_os = "linux")]
-        window_decorations: Some(gpui::WindowDecorations::Client),
         ..Default::default()
     };
 
@@ -263,6 +263,7 @@ fn open_settings_window(cx: &mut App) {
             height: px(400.),
         }),
         kind: WindowKind::Normal,
+        is_resizable: true,
         window_decorations: Some(gpui::WindowDecorations::Client),
         #[cfg(target_os = "linux")]
         window_background: gpui::WindowBackgroundAppearance::Transparent,
