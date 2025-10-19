@@ -5,6 +5,7 @@
 //! ## Macros
 //!
 //! - `#[blueprint]` - Mark a function as a blueprint node and auto-register it
+//! - `#[bp_import]` - Declare external crate imports for a blueprint node
 //! - `exec_output!()` - Define execution output points in control flow nodes
 
 use proc_macro::TokenStream;
@@ -46,6 +47,17 @@ use syn::{parse_macro_input, ItemFn, Pat, ReturnType, FnArg, Stmt, Expr};
 ///     } else {
 ///         exec_output!("False");
 ///     }
+/// }
+/// ```
+///
+/// ## Node with External Imports
+/// ```ignore
+/// #[bp_import(reqwest::{Client, Error})]
+/// #[bp_import(serde_json)]
+/// #[blueprint(type: NodeTypes::fn_, category: "HTTP")]
+/// fn http_get(url: String) -> String {
+///     let client = Client::new();
+///     // ... implementation
 /// }
 /// ```
 #[proc_macro_attribute]
@@ -146,6 +158,14 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
         quote! { &[#(#docs),*] }
     };
 
+    // Extract bp_import attributes
+    let imports = extract_bp_imports(&input);
+    let imports_array = if imports.is_empty() {
+        quote! { &[] }
+    } else {
+        quote! { &[#(#imports),*] }
+    };
+
     // Convert function source to string for storage
     let fn_source = quote!(#input).to_string();
 
@@ -174,6 +194,7 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
             documentation: #docs_array,
             category: #category_str,
             color: #color_opt,
+            imports: #imports_array,
         };
     };
 
@@ -191,6 +212,78 @@ fn extract_string_value(attr_str: &str, key: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Extract bp_import attributes from a function
+fn extract_bp_imports(func: &ItemFn) -> Vec<proc_macro2::TokenStream> {
+    let mut imports = Vec::new();
+
+    for attr in &func.attrs {
+        if attr.path().is_ident("bp_import") {
+            // Parse the import specification
+            if let Ok(import_spec) = parse_bp_import_attr(attr) {
+                imports.push(import_spec);
+            }
+        }
+    }
+
+    imports
+}
+
+/// Parse a bp_import attribute into NodeImport tokens
+/// Handles forms like:
+/// - #[bp_import(reqwest)]
+/// - #[bp_import(reqwest::Client)]
+/// - #[bp_import(reqwest::{Client, Error})]
+fn parse_bp_import_attr(attr: &syn::Attribute) -> syn::Result<proc_macro2::TokenStream> {
+    let tokens = attr.meta.require_list()?.tokens.clone();
+    let tokens_str = tokens.to_string();
+
+    // Parse the import path
+    // Format can be: "crate_name" or "crate_name :: item" or "crate_name :: { item1 , item2 }"
+    let (crate_name, items) = parse_import_path(&tokens_str);
+
+    let items_array = if items.is_empty() {
+        quote! { &[] }
+    } else {
+        quote! { &[#(#items),*] }
+    };
+
+    Ok(quote! {
+        crate::NodeImport {
+            crate_name: #crate_name,
+            items: #items_array,
+        }
+    })
+}
+
+/// Parse an import path string like "reqwest::{Client, Error}" into (crate_name, [items])
+fn parse_import_path(path_str: &str) -> (String, Vec<String>) {
+    let path_str = path_str.trim();
+
+    // Check if there's a :: separator
+    if let Some(sep_pos) = path_str.find("::") {
+        let crate_name = path_str[..sep_pos].trim().to_string();
+        let rest = path_str[sep_pos + 2..].trim();
+
+        // Check if items are in braces
+        if rest.starts_with('{') && rest.ends_with('}') {
+            // Parse items from braces
+            let items_str = &rest[1..rest.len() - 1];
+            let items: Vec<String> = items_str
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            (crate_name, items)
+        } else {
+            // Single item without braces
+            (crate_name, vec![rest.to_string()])
+        }
+    } else {
+        // No ::, just a crate name
+        (path_str.to_string(), vec![])
+    }
 }
 
 /// Find all exec_output!() labels in a function
@@ -282,6 +375,32 @@ pub fn exec_output(input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
-// Note: bp_doc is no longer a proc-macro. It's just a marker attribute
-// that the #[blueprint] macro looks for. This way it doesn't get consumed
-// before blueprint can see it.
+/// Declare external crate imports for a blueprint node.
+///
+/// This attribute macro marks dependencies that should be:
+/// 1. Added to the generated game's Cargo.toml
+/// 2. Imported when the node is inlined in generated code
+///
+/// # Syntax
+///
+/// - `#[bp_import(crate_name)]` - Import entire crate
+/// - `#[bp_import(crate_name::item)]` - Import specific item
+/// - `#[bp_import(crate_name::{item1, item2})]` - Import multiple items
+///
+/// # Examples
+///
+/// ```ignore
+/// #[bp_import(reqwest::{Client, Error})]
+/// #[bp_import(serde_json)]
+/// #[blueprint(type: NodeTypes::fn_, category: "HTTP")]
+/// fn http_get(url: String) -> String {
+///     let client = Client::new();
+///     // ...
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn bp_import(_args: TokenStream, input: TokenStream) -> TokenStream {
+    // This is a marker attribute - it doesn't transform the code
+    // The #[blueprint] macro extracts these attributes
+    input
+}

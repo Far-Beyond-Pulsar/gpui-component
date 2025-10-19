@@ -10,7 +10,7 @@ mod registry;
 pub use registry::*;
 
 // Re-export macros
-pub use pulsar_macros::{blueprint, exec_output};
+pub use pulsar_macros::{blueprint, bp_import, exec_output};
 
 // =============================================================================
 // Node Type Enum (for blueprint attribute)
