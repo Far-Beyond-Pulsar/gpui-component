@@ -9,7 +9,7 @@ members = [
     "test_game",
 ]
 
-default-members = ["crates/engine"]
+default-members = ["crates/engine"] 
 resolver = "2"
 
 [profile.release]
