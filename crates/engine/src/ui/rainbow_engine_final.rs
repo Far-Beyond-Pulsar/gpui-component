@@ -1,22 +1,5 @@
-// DEPRECATED: This file is stale - kept for reference only
-// Use GpuRenderer with WgpuViewport for pure GPU rendering instead
-
+use gpui_component::viewport_final::Framebuffer;
 use std::time::Instant;
-
-// Stub Framebuffer for backward compatibility
-pub struct Framebuffer {
-    pub width: u32,
-    pub height: u32,
-    pub buffer: Vec<u8>,
-    data: Vec<u8>,
-}
-
-impl Framebuffer {
-    pub fn clear(&mut self, _color: [u8; 4]) {}
-    pub fn set_pixel(&mut self, _x: u32, _y: u32, _color: [u8; 4]) {}
-    pub fn get_pixel(&self, _x: u32, _y: u32) -> [u8; 4] { [0, 0, 0, 255] }
-    pub fn mark_dirty_all(&mut self) {}
-}
 
 /// High-performance rainbow render engine targeting 240 FPS
 pub struct RainbowRenderEngine {
