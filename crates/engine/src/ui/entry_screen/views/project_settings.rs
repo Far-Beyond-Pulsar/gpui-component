@@ -189,21 +189,27 @@ pub fn render_project_settings(screen: &EntryScreen, settings: &ProjectSettings,
         .items_center()
         .justify_center()
         .bg(theme.background.opacity(0.95))
+        .z_index(999)
         .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
             // Close modal when clicking on background
             this.close_project_settings(cx);
         }))
         .child(
             h_flex()
-                .w(px(1100.))
-                .h(px(700.))
+                .w(px(1200.))
+                .h(px(800.))
                 .bg(theme.background)
                 .rounded_xl()
                 .border_1()
                 .border_color(theme.border)
                 .shadow_lg()
-                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
+                .overflow_hidden()
+                .on_click(|_, _, cx| {
                     // Stop propagation to prevent closing modal when clicking inside content
+                    cx.stop_propagation();
+                })
+                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
+                    // Stop propagation for mouse down too
                     cx.stop_propagation();
                 })
                 .child(render_settings_sidebar(settings, cx))
@@ -561,6 +567,38 @@ fn render_metadata_tab(settings: &ProjectSettings, cx: &mut Context<EntryScreen>
     let config_path = settings.project_path.join("Pulsar.toml");
     let has_config = config_path.exists();
     
+    // Try to read the config file
+    let config_content = if has_config {
+        std::fs::read_to_string(&config_path).ok()
+    } else {
+        None
+    };
+    
+    // Parse basic info from config
+    let (project_name, project_version, engine_version) = if let Some(ref content) = config_content {
+        let name = content.lines()
+            .find(|line| line.trim().starts_with("name"))
+            .and_then(|line| line.split('=').nth(1))
+            .map(|s| s.trim().trim_matches('"').to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
+        
+        let version = content.lines()
+            .find(|line| line.trim().starts_with("version"))
+            .and_then(|line| line.split('=').nth(1))
+            .map(|s| s.trim().trim_matches('"').to_string())
+            .unwrap_or_else(|| "0.1.0".to_string());
+        
+        let engine = content.lines()
+            .find(|line| line.trim().starts_with("engine_version"))
+            .and_then(|line| line.split('=').nth(1))
+            .map(|s| s.trim().trim_matches('"').to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
+        
+        (name, version, engine)
+    } else {
+        ("Unknown".to_string(), "0.1.0".to_string(), "Unknown".to_string())
+    };
+    
     v_flex()
         .gap_6()
         .child(
@@ -568,12 +606,55 @@ fn render_metadata_tab(settings: &ProjectSettings, cx: &mut Context<EntryScreen>
                 .text_2xl()
                 .font_weight(gpui::FontWeight::BOLD)
                 .text_color(theme.foreground)
-                .child("Project Metadata")
+                .child("Project Metadata & Configuration")
         )
         .child(Divider::horizontal())
-        .child(render_info_section("Configuration", vec![
-            ("Pulsar.toml", if has_config { "Present" } else { "Missing" }.to_string()),
-            ("Config Path", config_path.to_string_lossy().to_string()),
+        .child(
+            div()
+                .p_4()
+                .rounded_lg()
+                .bg(if has_config { theme.accent.opacity(0.1) } else { hsla(0.0, 0.8, 0.6, 0.1) })
+                .border_1()
+                .border_color(if has_config { theme.accent.opacity(0.3) } else { hsla(0.0, 0.8, 0.6, 0.3) })
+                .child(
+                    h_flex()
+                        .gap_3()
+                        .items_center()
+                        .child(
+                            Icon::new(if has_config { IconName::Folder } else { IconName::AlertCircle })
+                                .size(px(24.))
+                                .text_color(if has_config { theme.accent } else { hsla(0.0, 0.8, 0.6, 1.0) })
+                        )
+                        .child(
+                            v_flex()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                                        .text_color(theme.foreground)
+                                        .child(if has_config { "Configuration File Found" } else { "Configuration File Missing" })
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(theme.muted_foreground)
+                                        .child(config_path.to_string_lossy().to_string())
+                                )
+                        )
+                )
+        )
+        .when(has_config, |this| {
+            this.child(render_info_section("Project Information", vec![
+                ("Name", project_name.clone()),
+                ("Version", project_version),
+                ("Engine Version", engine_version),
+            ], &theme))
+        })
+        .child(render_info_section("Project Structure", vec![
+            ("Project Root", settings.project_path.to_string_lossy().to_string()),
+            ("Assets Folder", settings.project_path.join("assets").to_string_lossy().to_string()),
+            ("Scenes Folder", settings.project_path.join("scenes").to_string_lossy().to_string()),
+            ("Scripts Folder", settings.project_path.join("scripts").to_string_lossy().to_string()),
         ], &theme))
         .child(
             div()
@@ -590,31 +671,31 @@ fn render_metadata_tab(settings: &ProjectSettings, cx: &mut Context<EntryScreen>
                                 .text_sm()
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                 .text_color(theme.accent)
-                                .child("Project Metadata Fields")
+                                .child("📋 Pulsar.toml Fields")
                         )
                         .child(
                             div()
                                 .text_xs()
                                 .text_color(theme.muted_foreground)
-                                .child("• Project name, version, and description")
+                                .child("• [project] - name, version, engine_version")
                         )
                         .child(
                             div()
                                 .text_xs()
                                 .text_color(theme.muted_foreground)
-                                .child("• Author information and license")
+                                .child("• [settings] - default_scene, window settings")
                         )
                         .child(
                             div()
                                 .text_xs()
                                 .text_color(theme.muted_foreground)
-                                .child("• Engine version and dependencies")
+                                .child("• [build] - target platforms, optimization")
                         )
                         .child(
                             div()
                                 .text_xs()
                                 .text_color(theme.muted_foreground)
-                                .child("• Build settings and target platforms")
+                                .child("• [dependencies] - project dependencies")
                         )
                 )
         )
@@ -622,16 +703,63 @@ fn render_metadata_tab(settings: &ProjectSettings, cx: &mut Context<EntryScreen>
             v_flex()
                 .gap_3()
                 .child(
-                    Button::new("edit-config")
-                        .label("Edit Pulsar.toml")
-                        .icon(IconName::Folder)
-                        .with_variant(gpui_component::button::ButtonVariant::Primary)
-                        .on_click({
-                            let path = config_path.clone();
-                            move |_, _, _| {
-                                let _ = open::that(&path);
-                            }
-                        })
+                    h_flex()
+                        .gap_3()
+                        .child(
+                            Button::new("edit-config")
+                                .label("Edit Configuration")
+                                .icon(IconName::Folder)
+                                .with_variant(gpui_component::button::ButtonVariant::Primary)
+                                .on_click({
+                                    let path = config_path.clone();
+                                    move |_, _, _| {
+                                        let _ = open::that(&path);
+                                    }
+                                })
+                        )
+                        .child(
+                            Button::new("validate-config")
+                                .label("Validate Project")
+                                .icon(IconName::Activity)
+                                .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                .on_click({
+                                    let path = settings.project_path.clone();
+                                    move |_, _, _| {
+                                        // Validate project structure
+                                        let required_dirs = ["assets", "scenes", "scripts"];
+                                        let mut missing = Vec::new();
+                                        
+                                        for dir in required_dirs {
+                                            let dir_path = path.join(dir);
+                                            if !dir_path.exists() {
+                                                missing.push(dir);
+                                            }
+                                        }
+                                        
+                                        if missing.is_empty() {
+                                            println!("✓ Project structure is valid");
+                                        } else {
+                                            println!("⚠ Missing directories: {}", missing.join(", "));
+                                        }
+                                    }
+                                })
+                        )
+                        .child(
+                            Button::new("create-missing")
+                                .label("Create Missing Folders")
+                                .icon(IconName::FolderOpen)
+                                .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                .on_click({
+                                    let path = settings.project_path.clone();
+                                    move |_, _, _| {
+                                        let dirs = ["assets", "scenes", "scripts", "prefabs"];
+                                        for dir in dirs {
+                                            let _ = std::fs::create_dir_all(path.join(dir));
+                                        }
+                                        println!("✓ Created project folders");
+                                    }
+                                })
+                        )
                 )
         )
 }
@@ -707,6 +835,18 @@ fn render_disk_info_tab(settings: &ProjectSettings, cx: &mut Context<EntryScreen
 
 fn render_performance_tab(settings: &ProjectSettings, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();
+    let project_size = settings.disk_size.unwrap_or(0);
+    let git_size = settings.git_repo_size.unwrap_or(0);
+    
+    // Calculate repository health score
+    let health_score = calculate_repo_health(settings);
+    let health_color = if health_score >= 80.0 {
+        theme.accent
+    } else if health_score >= 50.0 {
+        hsla(45.0 / 360.0, 0.8, 0.6, 1.0) // Orange-ish
+    } else {
+        hsla(0.0, 0.8, 0.6, 1.0) // Red-ish
+    };
     
     v_flex()
         .gap_6()
@@ -718,10 +858,548 @@ fn render_performance_tab(settings: &ProjectSettings, cx: &mut Context<EntryScre
                 .child("Performance & Optimization")
         )
         .child(Divider::horizontal())
-        .child(render_info_section("Project Stats", vec![
+        .child(
+            h_flex()
+                .gap_6()
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .gap_2()
+                        .p_4()
+                        .border_1()
+                        .border_color(theme.border)
+                        .rounded_lg()
+                        .bg(theme.sidebar)
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(theme.muted_foreground)
+                                .child("Repository Health")
+                        )
+                        .child(
+                            div()
+                                .text_3xl()
+                                .font_weight(gpui::FontWeight::BOLD)
+                                .text_color(health_color)
+                                .child(format!("{:.0}%", health_score))
+                        )
+                        .child(
+                            div()
+                                .w_full()
+                                .h(px(6.))
+                                .bg(theme.border)
+                                .rounded_full()
+                                .child(
+                                    div()
+                                        .w(relative(health_score / 100.0))
+                                        .h_full()
+                                        .bg(health_color)
+                                        .rounded_full()
+                                )
+                        )
+                )
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .gap_2()
+                        .p_4()
+                        .border_1()
+                        .border_color(theme.border)
+                        .rounded_lg()
+                        .bg(theme.sidebar)
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(theme.muted_foreground)
+                                .child("Total Commits")
+                        )
+                        .child(
+                            div()
+                                .text_3xl()
+                                .font_weight(gpui::FontWeight::BOLD)
+                                .text_color(theme.primary)
+                                .child(settings.commit_count.map(|c| c.to_string()).unwrap_or_else(|| "0".to_string()))
+                        )
+                )
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .gap_2()
+                        .p_4()
+                        .border_1()
+                        .border_color(theme.border)
+                        .rounded_lg()
+                        .bg(theme.sidebar)
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(theme.muted_foreground)
+                                .child("Disk Usage")
+                        )
+                        .child(
+                            div()
+                                .text_3xl()
+                                .font_weight(gpui::FontWeight::BOLD)
+                                .text_color(theme.accent)
+                                .child(format_size(Some(project_size)))
+                        )
+                )
+        )
+        .child(render_info_section("Repository Statistics", vec![
             ("Total Commits", settings.commit_count.map(|c| c.to_string()).unwrap_or_else(|| "N/A".to_string())),
-            ("Repository Age", "Calculate from first commit".to_string()),
+            ("Total Branches", settings.branch_count.map(|c| c.to_string()).unwrap_or_else(|| "N/A".to_string())),
+            ("Git Repository Size", format_size(Some(git_size))),
+            ("Git Size Ratio", if project_size > 0 {
+                format!("{:.1}%", (git_size as f64 / project_size as f64) * 100.0)
+            } else {
+                "N/A".to_string()
+            }),
         ], &theme))
+        .child(
+            v_flex()
+                .gap_2()
+                .child(
+                    div()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(theme.foreground)
+                        .mb_2()
+                        .child("Optimization Recommendations")
+                )
+                .children(generate_optimization_recommendations(settings, &theme))
+        )
+        .child(
+            v_flex()
+                .gap_3()
+                .child(
+                    div()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(theme.foreground)
+                        .mb_2()
+                        .child("Optimization Actions")
+                )
+                .child(
+                    h_flex()
+                        .gap_3()
+                        .child(
+                            Button::new("run-gc")
+                                .label("Run Git GC")
+                                .icon(IconName::Activity)
+                                .with_variant(gpui_component::button::ButtonVariant::Primary)
+                                .on_click({
+                                    let path = settings.project_path.clone();
+                                    move |_, _, _| {
+                                        let _ = std::process::Command::new("git")
+                                            .args(&["gc", "--aggressive"])
+                                            .current_dir(&path)
+                                            .spawn();
+                                    }
+                                })
+                        )
+                        .child(
+                            Button::new("prune-now")
+                                .label("Prune Objects")
+                                .icon(IconName::Trash)
+                                .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                .on_click({
+                                    let path = settings.project_path.clone();
+                                    move |_, _, _| {
+                                        let _ = std::process::Command::new("git")
+                                            .args(&["prune", "--expire=now"])
+                                            .current_dir(&path)
+                                            .spawn();
+                                    }
+                                })
+                        )
+                        .child(
+                            Button::new("clean-untracked")
+                                .label("Clean Untracked Files")
+                                .icon(IconName::Trash)
+                                .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                .on_click({
+                                    let path = settings.project_path.clone();
+                                    move |_, _, _| {
+                                        let _ = std::process::Command::new("git")
+                                            .args(&["clean", "-fd"])
+                                            .current_dir(&path)
+                                            .spawn();
+                                    }
+                                })
+                        )
+                )
+        )
+}
+
+fn calculate_repo_health(settings: &ProjectSettings) -> f32 {
+    let mut score = 100.0;
+    
+    // Penalize for large git size ratio
+    if let (Some(git_size), Some(project_size)) = (settings.git_repo_size, settings.disk_size) {
+        if project_size > 0 {
+            let ratio = (git_size as f64 / project_size as f64) * 100.0;
+            if ratio > 50.0 {
+                score -= 20.0; // Large git size
+            } else if ratio > 30.0 {
+                score -= 10.0;
+            }
+        }
+    }
+    
+    // Penalize for uncommitted changes
+    if let Some(changes) = settings.uncommitted_changes {
+        if changes > 50 {
+            score -= 20.0; // Too many uncommitted changes
+        } else if changes > 20 {
+            score -= 10.0;
+        }
+    }
+    
+    // Bonus for having CI/CD
+    if !settings.workflow_files.is_empty() {
+        score += 10.0;
+    }
+    
+    // Bonus for recent activity
+    if settings.last_commit_date.is_some() {
+        score += 5.0;
+    }
+    
+    score.max(0.0).min(100.0)
+}
+
+fn generate_optimization_recommendations(settings: &ProjectSettings, theme: &gpui_component::theme::Theme) -> Vec<gpui::AnyElement> {
+    let mut recommendations = Vec::new();
+    
+    // Check git size ratio
+    if let (Some(git_size), Some(project_size)) = (settings.git_repo_size, settings.disk_size) {
+        if project_size > 0 {
+            let ratio = (git_size as f64 / project_size as f64) * 100.0;
+            if ratio > 30.0 {
+                recommendations.push(
+                    render_recommendation_card(
+                        "Large Git Repository",
+                        &format!("Your .git folder is {:.1}% of total project size. Consider running 'git gc' to compress the repository.", ratio),
+                        "high",
+                        theme,
+                    )
+                );
+            }
+        }
+    }
+    
+    // Check uncommitted changes
+    if let Some(changes) = settings.uncommitted_changes {
+        if changes > 20 {
+            recommendations.push(
+                render_recommendation_card(
+                    "Many Uncommitted Changes",
+                    &format!("You have {} uncommitted file(s). Consider committing or stashing your changes.", changes),
+                    "medium",
+                    theme,
+                )
+            );
+        }
+    }
+    
+    // Check for CI/CD
+    if settings.workflow_files.is_empty() && settings.remote_url.is_some() {
+        recommendations.push(
+            render_recommendation_card(
+                "No CI/CD Configuration",
+                "Consider adding GitHub Actions workflows to automate builds and tests.",
+                "low",
+                theme,
+            )
+        );
+    }
+    
+    // General recommendations
+    recommendations.push(
+        render_recommendation_card(
+            "Use .gitignore",
+            "Ensure build artifacts and dependencies are excluded from version control.",
+            "info",
+            theme,
+        )
+    );
+    
+    recommendations.push(
+        render_recommendation_card(
+            "Consider Git LFS",
+            "For large binary assets (textures, models), use Git Large File Storage to reduce repository size.",
+            "info",
+            theme,
+        )
+    );
+    
+    if recommendations.is_empty() {
+        recommendations.push(
+            render_recommendation_card(
+                "Repository Optimized",
+                "Your repository is in good shape! No major optimizations needed.",
+                "success",
+                theme,
+            )
+        );
+    }
+    
+    recommendations
+}
+
+fn render_recommendation_card(title: &str, desc: &str, severity: &str, theme: &gpui_component::theme::Theme) -> gpui::AnyElement {
+    let (bg_color, border_color, icon_color) = match severity {
+        "high" => (
+            hsla(0.0, 0.8, 0.6, 0.1),
+            hsla(0.0, 0.8, 0.6, 0.3),
+            hsla(0.0, 0.8, 0.6, 1.0),
+        ),
+        "medium" => (
+            hsla(45.0 / 360.0, 0.8, 0.6, 0.1),
+            hsla(45.0 / 360.0, 0.8, 0.6, 0.3),
+            hsla(45.0 / 360.0, 0.8, 0.6, 1.0),
+        ),
+        "low" | "info" => (
+            theme.accent.opacity(0.1),
+            theme.accent.opacity(0.3),
+            theme.accent,
+        ),
+        "success" => (
+            theme.primary.opacity(0.1),
+            theme.primary.opacity(0.3),
+            theme.primary,
+        ),
+        _ => (
+            theme.muted.opacity(0.1),
+            theme.muted.opacity(0.3),
+            theme.muted_foreground,
+        ),
+    };
+    
+    h_flex()
+        .gap_3()
+        .p_3()
+        .rounded_lg()
+        .bg(bg_color)
+        .border_1()
+        .border_color(border_color)
+        .child(
+            Icon::new(IconName::Activity)
+                .size(px(20.))
+                .text_color(icon_color)
+        )
+        .child(
+            v_flex()
+                .flex_1()
+                .gap_1()
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(theme.foreground)
+                        .child(title.to_string())
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child(desc.to_string())
+                )
+        )
+        .into_any_element()
+}
+
+fn render_integrations_tab(settings: &ProjectSettings, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+    let theme = cx.theme();
+    let remote_url = settings.remote_url.clone();
+    let project_path = settings.project_path.clone();
+    
+    v_flex()
+        .gap_6()
+        .child(
+            div()
+                .text_2xl()
+                .font_weight(gpui::FontWeight::BOLD)
+                .text_color(theme.foreground)
+                .child("Editor & Tool Integrations")
+        )
+        .child(Divider::horizontal())
+        .child(
+            div()
+                .text_sm()
+                .text_color(theme.muted_foreground)
+                .child("Connect your project with external tools and code editors")
+        )
+        .child(
+            v_flex()
+                .gap_3()
+                .child(
+                    div()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(theme.foreground)
+                        .mb_2()
+                        .child("Code Editors")
+                )
+                .child(render_editor_integration_card(
+                    "Visual Studio Code",
+                    "Open project in VS Code",
+                    IconName::Code,
+                    "code",
+                    &project_path,
+                    &theme,
+                ))
+                .child(render_editor_integration_card(
+                    "Visual Studio",
+                    "Open project in Visual Studio",
+                    IconName::Code,
+                    "devenv",
+                    &project_path,
+                    &theme,
+                ))
+                .child(render_editor_integration_card(
+                    "Sublime Text",
+                    "Open project in Sublime Text",
+                    IconName::Code,
+                    "subl",
+                    &project_path,
+                    &theme,
+                ))
+                .child(render_editor_integration_card(
+                    "Vim / Neovim",
+                    "Open project in terminal editor",
+                    IconName::Terminal,
+                    "vim",
+                    &project_path,
+                    &theme,
+                ))
+        )
+        .child(
+            v_flex()
+                .gap_3()
+                .child(
+                    div()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(theme.foreground)
+                        .mb_2()
+                        .child("Version Control")
+                )
+                .child(render_tool_integration_card(
+                    "GitHub Desktop",
+                    "Open in GitHub Desktop application",
+                    IconName::GitHub,
+                    settings.remote_url.is_some(),
+                    {
+                        let url = remote_url.clone();
+                        let path = project_path.clone();
+                        move |_, _, _| {
+                            if let Some(remote) = &url {
+                                // GitHub Desktop protocol
+                                let repo_url = remote.trim_end_matches(".git");
+                                let _ = open::that(format!("x-github-client://openRepo/{}?branch=main", repo_url));
+                            } else {
+                                let _ = open::that(&path);
+                            }
+                        }
+                    },
+                    &theme,
+                ))
+                .child(render_tool_integration_card(
+                    "GitKraken",
+                    "Open repository in GitKraken",
+                    IconName::GitHub,
+                    true,
+                    {
+                        let path = project_path.clone();
+                        move |_, _, _| {
+                            let _ = std::process::Command::new("gitkraken")
+                                .args(&["-p", path.to_str().unwrap_or("")])
+                                .spawn();
+                        }
+                    },
+                    &theme,
+                ))
+                .child(render_tool_integration_card(
+                    "SourceTree",
+                    "Open repository in SourceTree",
+                    IconName::GitHub,
+                    true,
+                    {
+                        let path = project_path.clone();
+                        move |_, _, _| {
+                            let _ = open::that(format!("sourcetree://cloneRepo?type=local&url={}", path.to_str().unwrap_or("")));
+                        }
+                    },
+                    &theme,
+                ))
+                .child(render_tool_integration_card(
+                    "Git GUI",
+                    "Launch built-in Git graphical interface",
+                    IconName::GitHub,
+                    true,
+                    {
+                        let path = project_path.clone();
+                        move |_, _, _| {
+                            let _ = std::process::Command::new("git")
+                                .args(&["gui"])
+                                .current_dir(&path)
+                                .spawn();
+                        }
+                    },
+                    &theme,
+                ))
+        )
+        .child(
+            v_flex()
+                .gap_3()
+                .child(
+                    div()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(theme.foreground)
+                        .mb_2()
+                        .child("System Tools")
+                )
+                .child(render_tool_integration_card(
+                    "File Manager",
+                    "Open project folder in system file manager",
+                    IconName::FolderOpen,
+                    true,
+                    {
+                        let path = project_path.clone();
+                        move |_, _, _| {
+                            let _ = open::that(&path);
+                        }
+                    },
+                    &theme,
+                ))
+                .child(render_tool_integration_card(
+                    "Terminal",
+                    "Open project in system terminal",
+                    IconName::Terminal,
+                    true,
+                    {
+                        let path = project_path.clone();
+                        move |_, _, _| {
+                            #[cfg(windows)]
+                            {
+                                let _ = std::process::Command::new("cmd")
+                                    .args(&["/c", "start", "cmd", "/k", "cd", path.to_str().unwrap_or("")])
+                                    .spawn();
+                            }
+                            #[cfg(target_os = "macos")]
+                            {
+                                let _ = std::process::Command::new("open")
+                                    .args(&["-a", "Terminal", path.to_str().unwrap_or("")])
+                                    .spawn();
+                            }
+                            #[cfg(target_os = "linux")]
+                            {
+                                let _ = std::process::Command::new("gnome-terminal")
+                                    .args(&["--working-directory", path.to_str().unwrap_or("")])
+                                    .spawn();
+                            }
+                        }
+                    },
+                    &theme,
+                ))
+        )
         .child(
             div()
                 .p_4()
@@ -737,76 +1415,40 @@ fn render_performance_tab(settings: &ProjectSettings, cx: &mut Context<EntryScre
                                 .text_sm()
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                 .text_color(theme.accent)
-                                .child("Optimization Recommendations")
+                                .child("💡 Integration Tips")
                         )
                         .child(
                             div()
                                 .text_xs()
                                 .text_color(theme.muted_foreground)
-                                .child("• Run 'git gc' to compress repository data")
+                                .child("• Install tools to enable integrations")
                         )
                         .child(
                             div()
                                 .text_xs()
                                 .text_color(theme.muted_foreground)
-                                .child("• Use .gitignore to exclude build artifacts")
+                                .child("• Some integrations require tool-specific setup")
                         )
                         .child(
                             div()
                                 .text_xs()
                                 .text_color(theme.muted_foreground)
-                                .child("• Consider Git LFS for large binary assets")
+                                .child("• Click any card to launch the tool with your project")
                         )
-                )
-        )
-        .child(
-            v_flex()
-                .gap_3()
-                .child(
-                    Button::new("run-gc")
-                        .label("Optimize Repository")
-                        .icon(IconName::Activity)
-                        .with_variant(gpui_component::button::ButtonVariant::Primary)
-                        .on_click({
-                            let path = settings.project_path.clone();
-                            move |_, _, _| {
-                                let _ = std::process::Command::new("git")
-                                    .args(&["gc", "--aggressive"])
-                                    .current_dir(&path)
-                                    .spawn();
-                            }
-                        })
                 )
         )
 }
 
-fn render_integrations_tab(settings: &ProjectSettings, cx: &mut Context<EntryScreen>) -> impl IntoElement {
-    let theme = cx.theme();
-    
-    v_flex()
-        .gap_6()
-        .child(
-            div()
-                .text_2xl()
-                .font_weight(gpui::FontWeight::BOLD)
-                .text_color(theme.foreground)
-                .child("Integrations")
-        )
-        .child(Divider::horizontal())
-        .child(
-            div()
-                .text_sm()
-                .text_color(theme.muted_foreground)
-                .child("Connect your project with external tools and services")
-        )
-        .child(render_integration_card("GitHub", "View repository, issues, and pull requests", IconName::GitHub, settings.remote_url.is_some(), cx))
-        .child(render_integration_card("VS Code", "Open project in Visual Studio Code", IconName::Code, true, cx))
-        .child(render_integration_card("Git GUI", "Launch Git graphical interface", IconName::GitHub, true, cx))
-        .child(render_integration_card("Terminal", "Open in system terminal", IconName::Terminal, true, cx))
-}
-
-fn render_integration_card(name: &str, desc: &str, icon: IconName, available: bool, cx: &mut Context<EntryScreen>) -> impl IntoElement {
-    let theme = cx.theme();
+fn render_editor_integration_card(
+    name: &str,
+    desc: &str,
+    icon: IconName,
+    command: &str,
+    project_path: &std::path::PathBuf,
+    theme: &gpui_component::theme::Theme,
+) -> impl IntoElement {
+    let cmd = command.to_string();
+    let path = project_path.clone();
     
     h_flex()
         .p_4()
@@ -815,11 +1457,17 @@ fn render_integration_card(name: &str, desc: &str, icon: IconName, available: bo
         .border_color(theme.border)
         .rounded_lg()
         .bg(theme.sidebar)
-        .hover(|this| this.bg(theme.muted.opacity(0.1)))
+        .hover(|this| this.bg(theme.muted.opacity(0.1)).border_color(theme.primary))
+        .cursor_pointer()
+        .on_click(move |_, _, _| {
+            let _ = std::process::Command::new(&cmd)
+                .arg(path.to_str().unwrap_or(""))
+                .spawn();
+        })
         .child(
             Icon::new(icon)
                 .size(px(24.))
-                .text_color(if available { theme.primary } else { theme.muted_foreground })
+                .text_color(theme.primary)
         )
         .child(
             v_flex()
@@ -839,6 +1487,61 @@ fn render_integration_card(name: &str, desc: &str, icon: IconName, available: bo
                 )
         )
         .child(
+            Icon::new(IconName::ArrowUp)
+                .size(px(16.))
+                .text_color(theme.muted_foreground)
+        )
+}
+
+fn render_tool_integration_card<F>(
+    name: &str,
+    desc: &str,
+    icon: IconName,
+    available: bool,
+    on_click: F,
+    theme: &gpui_component::theme::Theme,
+) -> impl IntoElement 
+where
+    F: Fn(&gpui::ClickEvent, &mut Window, &mut Context<gpui::AnyView>) + 'static,
+{
+    h_flex()
+        .p_4()
+        .gap_3()
+        .border_1()
+        .border_color(theme.border)
+        .rounded_lg()
+        .bg(theme.sidebar)
+        .hover(|this| {
+            if available {
+                this.bg(theme.muted.opacity(0.1)).border_color(theme.primary)
+            } else {
+                this
+            }
+        })
+        .when(available, |this| this.cursor_pointer().on_click(on_click))
+        .child(
+            Icon::new(icon)
+                .size(px(24.))
+                .text_color(if available { theme.primary } else { theme.muted_foreground })
+        )
+        .child(
+            v_flex()
+                .flex_1()
+                .gap_1()
+                .child(
+                    div()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(if available { theme.foreground } else { theme.muted_foreground })
+                        .child(name.to_string())
+                )
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(theme.muted_foreground)
+                        .child(desc.to_string())
+                )
+        )
+        .child(
             div()
                 .px_2()
                 .py_1()
@@ -847,7 +1550,7 @@ fn render_integration_card(name: &str, desc: &str, icon: IconName, available: bo
                 .text_xs()
                 .font_weight(gpui::FontWeight::MEDIUM)
                 .text_color(if available { theme.accent } else { theme.muted_foreground })
-                .child(if available { "Available" } else { "N/A" })
+                .child(if available { "Ready" } else { "N/A" })
         )
 }
 

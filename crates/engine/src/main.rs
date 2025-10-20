@@ -151,8 +151,8 @@ fn main() {
 
         cx.activate(true);
 
-        // Open the entry/launcher window first (smaller size)
-        let entry_window_size = size(px(1280.), px(720.));
+        // Open the entry/launcher window first (appropriate size for studio-quality launcher)
+        let entry_window_size = size(px(1600.), px(900.));
         let entry_window_bounds = Bounds::centered(None, entry_window_size, cx);
 
         let entry_options = WindowOptions {
@@ -163,8 +163,8 @@ fn main() {
                 traffic_light_position: None, // No traffic lights
             }),
             window_min_size: Some(gpui::Size {
-                width: px(1280.),
-                height: px(720.),
+                width: px(1600.),
+                height: px(900.),
             }),
             kind: WindowKind::Normal,
             is_resizable: true,

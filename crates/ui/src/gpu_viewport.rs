@@ -12,13 +12,13 @@
 /// 6. GPUI composites the texture directly - ZERO COPIES!
 
 use gpui::{
-    div, px, App, Bounds, Context, Corners, DismissEvent, Element, ElementId,
+    div, App, Bounds, Context, DismissEvent, Element, ElementId,
     Entity, EventEmitter, FocusHandle, Focusable, GlobalElementId, InspectorElementId,
     InteractiveElement, IntoElement, LayoutId, ParentElement as _, Pixels, Render,
-    Size, StatefulInteractiveElement, Styled as _, Window, DevicePixels,
-    ExternalTextureId, ExternalTexture as ExternalTexturePrimitive, DrawOrder,
+    Size, StatefulInteractiveElement, Styled as _, Window, DevicePixels, ScaledPixels,
+    ExternalTextureId, ContentMask, Corners,
 };
-use std::sync::{Arc, atomic::{AtomicBool, AtomicU64, Ordering}};
+use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
 
 /// GPU viewport with zero-copy rendering
 pub struct GpuViewport {
@@ -52,51 +52,16 @@ impl GpuViewport {
         }
     }
 
-    /// Initialize the GPU texture
-    pub fn initialize(&mut self, window: &mut Window) {
-        if self.texture_id.is_some() {
-            return; // Already initialized
-        }
-
-        let size = Size {
-            width: DevicePixels(self.width as i32),
-            height: DevicePixels(self.height as i32),
-        };
-
-        // Register external texture with GPUI's atlas
-        match window.sprite_atlas().register_external_texture(size, gpu::TextureFormat::Bgra8Unorm) {
-            Ok(texture_id) => {
-                println!("[GPU-VIEWPORT] ✅ Registered external texture: {:?}, size: {}x{}",
-                    texture_id, self.width, self.height);
-                self.texture_id = Some(texture_id);
-            }
-            Err(e) => {
-                eprintln!("[GPU-VIEWPORT] ❌ Failed to register external texture: {}", e);
-            }
-        }
-    }
-
-    /// Resize the viewport
-    pub fn resize(&mut self, window: &mut Window, width: u32, height: u32) {
-        if width == self.width && height == self.height {
-            return;
-        }
-
-        // Unregister old texture
-        if let Some(texture_id) = self.texture_id.take() {
-            window.sprite_atlas().unregister_external_texture(texture_id);
-        }
-
-        self.width = width;
-        self.height = height;
-
-        // Re-initialize with new size
-        self.initialize(window);
-    }
-
     /// Get texture ID for rendering
     pub fn texture_id(&self) -> Option<ExternalTextureId> {
         self.texture_id
+    }
+
+    /// Set texture ID (called from external initialization)
+    pub fn set_texture_id(&mut self, texture_id: ExternalTextureId) {
+        self.texture_id = Some(texture_id);
+        println!("[GPU-VIEWPORT] ✅ Set external texture: {:?}, size: {}x{}",
+            texture_id, self.width, self.height);
     }
 
     /// Get dimensions
@@ -104,42 +69,13 @@ impl GpuViewport {
         (self.width, self.height)
     }
 
-    /// Map texture for CPU writes (returns GPU-visible memory)
-    ///
-    /// SAFETY: The returned slice is valid until unmap() is called.
-    /// Do not use after calling unmap()!
-    pub unsafe fn map(&self, window: &Window) -> Option<&mut [u8]> {
-        let texture_id = self.texture_id?;
-
-        match window.sprite_atlas().map_external_texture(texture_id) {
-            Ok(buffer) => {
-                if self.debug {
-                    println!("[GPU-VIEWPORT] 🗺️  Mapped texture buffer: {} bytes", buffer.len());
-                }
-                Some(buffer)
-            }
-            Err(e) => {
-                eprintln!("[GPU-VIEWPORT] ❌ Failed to map texture: {}", e);
-                None
-            }
-        }
-    }
-
-    /// Unmap texture after CPU writes
-    pub fn unmap(&self, window: &Window) {
-        if let Some(texture_id) = self.texture_id {
-            if let Err(e) = window.sprite_atlas().unmap_external_texture(texture_id) {
-                eprintln!("[GPU-VIEWPORT] ❌ Failed to unmap texture: {}", e);
-            }
-        }
-    }
-
-    /// Swap front/back buffers for tear-free display
-    pub fn swap_buffers(&self, window: &Window) {
-        if let Some(texture_id) = self.texture_id {
-            if let Err(e) = window.sprite_atlas().swap_external_texture_buffers(texture_id) {
-                eprintln!("[GPU-VIEWPORT] ❌ Failed to swap buffers: {}", e);
-            }
+    /// Resize the viewport
+    pub fn resize(&mut self, width: u32, height: u32) {
+        if width != self.width || height != self.height {
+            self.width = width;
+            self.height = height;
+            // Note: Caller must re-register the texture with new dimensions
+            self.texture_id = None;
         }
     }
 }
@@ -161,12 +97,7 @@ impl Focusable for GpuViewport {
 impl EventEmitter<DismissEvent> for GpuViewport {}
 
 impl Render for GpuViewport {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Initialize on first render
-        if self.texture_id.is_none() {
-            self.initialize(window);
-        }
-
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let texture_id = self.texture_id;
         let frame = self.frame_count.fetch_add(1, Ordering::Relaxed);
 
@@ -234,30 +165,17 @@ impl Element for GpuViewportElement {
         _request_layout: &mut Self::RequestLayoutState,
         _prepaint: &mut Self::PrepaintState,
         window: &mut Window,
-        cx: &mut App,
+        _cx: &mut App,
     ) {
         if let Some(texture_id) = self.texture_id {
-            // Paint the external texture directly into the scene
-            let content_mask = gpui::ContentMask {
-                bounds: gpui::Bounds {
-                    origin: bounds.origin.map(|p| p.into()),
-                    size: bounds.size.map(|p| p.into()),
-                },
-            };
+            // Convert bounds from Pixels to ScaledPixels
+            let scaled_bounds: Bounds<ScaledPixels> = bounds.map(|p| p.into());
 
+            // Paint the external texture into the scene
             window.paint_external_texture(
-                ExternalTexturePrimitive {
-                    order: DrawOrder::new(0), // TODO: Get proper draw order
-                    bounds: gpui::Bounds {
-                        origin: bounds.origin.map(|p| p.into()),
-                        size: bounds.size.map(|p| p.into()),
-                    },
-                    corner_radii: Corners::all(gpui::ScaledPixels(0.0)),
-                    content_mask,
-                    opacity: 1.0,
-                    grayscale: false,
-                    texture_id,
-                },
+                scaled_bounds,
+                Corners::all(ScaledPixels(0.0)),
+                texture_id,
             );
         }
     }
@@ -276,5 +194,5 @@ pub fn create_gpu_viewport<V: 'static>(
     height: u32,
     cx: &mut Context<V>,
 ) -> Entity<GpuViewport> {
-    cx.new(|cx| GpuViewport::new(width, height, cx))
+    cx.new_entity(|cx| GpuViewport::new(width, height, cx))
 }

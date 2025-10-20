@@ -156,14 +156,15 @@ impl EntryScreen {
     }
     
     pub(crate) fn calculate_columns(&self, width: Pixels) -> usize {
-        // Account for container padding (24px total) + card width (320px) + gap (12px between cards)
-        let container_padding = 24.0;
+        // Account for sidebar width (72px) + container padding (.p_12() = 48px each side = 96px total) + card width (320px) + gap (24px between cards)
+        let sidebar_width = 72.0;
+        let container_padding = 96.0; // 48px left + 48px right from .p_12()
         let card_width = 320.0;
-        let gap_size = 12.0;
+        let gap_size = 24.0; // .gap_6() = 6 * 4 = 24px
         
         // Convert Pixels to f32
         let width_f32: f32 = width.into();
-        let available_width = width_f32 - container_padding;
+        let available_width = width_f32 - sidebar_width - container_padding;
         
         // Calculate how many cards fit: (available_width + gap) / (card_width + gap)
         let columns = ((available_width + gap_size) / (card_width + gap_size)).floor() as usize;
