@@ -29,6 +29,7 @@ pub struct EntryScreen {
     pub(crate) is_fetching_updates: bool,
     pub(crate) show_git_upstream_prompt: Option<(PathBuf, String)>, // (project_path, template_url_if_template)
     pub(crate) git_upstream_url: String,
+    pub(crate) project_settings: Option<views::ProjectSettings>,
 }
 
 impl EntryScreen {
@@ -55,6 +56,7 @@ impl EntryScreen {
             is_fetching_updates: false,
             show_git_upstream_prompt: None,
             git_upstream_url: String::new(),
+            project_settings: None,
         }
     }
     
@@ -373,6 +375,32 @@ impl EntryScreen {
         cx.notify();
     }
     
+    pub(crate) fn open_project_settings(&mut self, project_path: PathBuf, project_name: String, cx: &mut Context<Self>) {
+        let mut settings = views::ProjectSettings::new(project_path, project_name);
+        settings.load_all_data();
+        self.project_settings = Some(settings);
+        cx.notify();
+    }
+    
+    pub(crate) fn close_project_settings(&mut self, cx: &mut Context<Self>) {
+        self.project_settings = None;
+        cx.notify();
+    }
+    
+    pub(crate) fn change_project_settings_tab(&mut self, tab: views::ProjectSettingsTab, cx: &mut Context<Self>) {
+        if let Some(settings) = &mut self.project_settings {
+            settings.active_tab = tab;
+            cx.notify();
+        }
+    }
+    
+    pub(crate) fn refresh_project_settings(&mut self, cx: &mut Context<Self>) {
+        if let Some(settings) = &mut self.project_settings {
+            settings.load_all_data();
+            cx.notify();
+        }
+    }
+    
     pub(crate) fn browse_project_location(&mut self, cx: &mut Context<Self>) {
         let file_dialog = rfd::AsyncFileDialog::new()
             .set_title("Choose Project Location")
@@ -469,6 +497,11 @@ impl Render for EntryScreen {
         // Show upstream prompt if needed
         if self.show_git_upstream_prompt.is_some() {
             return views::render_upstream_prompt(self, cx).into_any_element();
+        }
+        
+        // Show project settings if needed
+        if let Some(ref settings) = self.project_settings {
+            return views::render_project_settings(self, settings, cx).into_any_element();
         }
         
         v_flex()

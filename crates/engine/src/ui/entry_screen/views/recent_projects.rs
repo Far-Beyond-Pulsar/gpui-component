@@ -105,6 +105,7 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
         let proj_path = project.path.clone();
         let is_git = project.is_git;
         let proj_name = project.name.clone();
+        let proj_name_for_settings = proj_name.clone();
         let last_opened = project.last_opened.clone().unwrap_or_else(|| "Unknown".to_string());
         
         // Get git fetch status
@@ -216,6 +217,19 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                                     _ => this
                                 }
                             })
+                            .child(
+                                Button::new(SharedString::from(format!("settings-{}", proj_path)))
+                                    .icon(IconName::Settings)
+                                    .tooltip("Project settings")
+                                    .with_variant(gpui_component::button::ButtonVariant::Ghost)
+                                    .on_click(cx.listener({
+                                        let path = proj_path.clone();
+                                        let name = proj_name_for_settings.clone();
+                                        move |this, _, _, cx| {
+                                            this.open_project_settings(std::path::PathBuf::from(&path), name.clone(), cx);
+                                        }
+                                    }))
+                            )
                             .child(
                                 Button::new(SharedString::from(format!("location-{}", proj_path)))
                                     .icon(IconName::FolderOpen)
