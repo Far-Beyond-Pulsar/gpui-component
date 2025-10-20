@@ -72,7 +72,7 @@ impl EntryScreen {
         let recent_projects = RecentProjectsList::load(&recent_projects_path);
         
         let templates = vec![
-            Template::new("Blank Project", "Empty project with minimal structure", IconName::Folder, "https://github.com/pulsar-templates/blank.git", "Basic"),
+            Template::new("Blank Project", "Empty project with minimal structure", IconName::Folder, "https://github.com/Far-Beyond-Pulsar/Template-Blank", "Basic"),
             Template::new("Core", "Core engine features and systems", IconName::Settings, "https://github.com/pulsar-templates/core.git", "Basic"),
             Template::new("2D Platformer", "Classic side-scrolling platformer", IconName::Gamepad, "https://github.com/pulsar-templates/2d-platformer.git", "2D"),
             Template::new("2D Top-Down", "Top-down 2D game with camera", IconName::Map, "https://github.com/pulsar-templates/2d-topdown.git", "2D"),
