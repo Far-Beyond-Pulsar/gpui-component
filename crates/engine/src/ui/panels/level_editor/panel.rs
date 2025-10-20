@@ -3,7 +3,7 @@ use gpui_component::{
     button::Button, dock::{Panel, PanelEvent}, h_flex, resizable::{h_resizable, resizable_panel, ResizableState}, v_flex, ActiveTheme as _, IconName, Selectable, StyledExt,
     chart::LineChart,
 };
-use gpui_component::viewport_final::{Viewport, DoubleBuffer, RefreshHook, create_viewport_with_background_rendering};
+// use gpui_component::viewport_final::{Viewport, DoubleBuffer, RefreshHook, create_viewport_with_background_rendering};
 
 use crate::ui::shared::{Toolbar, ToolbarButton, ViewportControls, StatusBar};
 use crate::ui::rainbow_engine_final::{RainbowRenderEngine, RainbowPattern};
@@ -13,6 +13,10 @@ use std::thread;
 use std::time::Duration;
 use std::collections::VecDeque;
 use std::cell::RefCell;
+// Stub types
+type Viewport = ();
+type DoubleBuffer = ();
+type RefreshHook = fn();
 
 #[derive(Clone)]
 struct FpsDataPoint {

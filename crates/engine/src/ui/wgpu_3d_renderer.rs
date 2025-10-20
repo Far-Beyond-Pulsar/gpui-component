@@ -1,4 +1,5 @@
-use gpui_component::viewport_final::Framebuffer;
+// DEPRECATED: This file is stale - use GpuRenderer with WgpuViewport instead
+use crate::ui::rainbow_engine_final::Framebuffer;
 use std::time::Instant;
 
 /// Simple 3D renderer using software rendering

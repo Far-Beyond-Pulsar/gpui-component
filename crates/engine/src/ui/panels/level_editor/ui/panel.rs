@@ -7,14 +7,21 @@ use gpui_component::{
     ActiveTheme as _,
     StyledExt,
 };
-// OPTIMIZED: Using new zero-copy viewport for 3x performance improvement
-use gpui_component::viewport_optimized::{OptimizedViewport, DoubleBuffer, RefreshHook, create_optimized_viewport};
 
 use crate::settings::EngineSettings;
-use crate::ui::rainbow_engine_final::{RainbowRenderEngine, RainbowPattern};
-use crate::ui::wgpu_3d_renderer::Wgpu3DRenderer;
 use crate::ui::gpu_renderer::GpuRenderer;
 use crate::ui::shared::StatusBar;
+use crate::ui::rainbow_engine_final::RainbowPattern;
+
+// Stub types for old code that hasn't been fully migrated yet
+type OptimizedViewport = ();
+type DoubleBuffer = ();
+type RefreshHook = fn();
+
+// Stub function for old viewport creation
+fn create_optimized_viewport<V>(_w: u32, _h: u32, cx: &mut Context<V>) -> (Entity<OptimizedViewport>, Arc<DoubleBuffer>, RefreshHook) {
+    (cx.new(|_| ()), Arc::new(()), || {})
+}
 use engine_backend::{GameThread, GameState};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -85,11 +92,9 @@ impl LevelEditorPanel {
             900,
             cx
         );
-        
-        // Apply frame pacing setting to viewport
-        viewport.update(cx, |v, _cx| {
-            v.set_max_fps(max_viewport_fps as u64);
-        });
+
+        // DEPRECATED: Frame pacing now handled by WgpuViewport internally
+        // viewport.update(cx, |v, _cx| { v.set_max_fps(max_viewport_fps as u64); });
 
         println!("[LEVEL-EDITOR] ✅ Optimized viewport created (1600x900) with frame pacing");
         
@@ -131,7 +136,7 @@ impl LevelEditorPanel {
             scene_browser: SceneBrowser::new(),
             hierarchy: HierarchyPanel::new(),
             properties: PropertiesPanel::new(),
-            viewport_panel: ViewportPanel::new(viewport.clone(), render_enabled.clone(), cx),
+            viewport_panel: ViewportPanel::new(&gpu_engine, render_enabled.clone(), cx).expect("Failed to create viewport panel"),
             toolbar: ToolbarPanel::new(),
             horizontal_resizable_state,
             vertical_resizable_state,
@@ -146,83 +151,16 @@ impl LevelEditorPanel {
         }
     }
 
-    /// Controlled render thread with proper double buffering and CPU throttling
+    /// DEPRECATED: Old render thread - ViewportPanel now handles rendering internally
     fn render_thread_controlled(
-        gpu_engine: Arc<Mutex<GpuRenderer>>,
-        buffers: Arc<DoubleBuffer>,
-        refresh_hook: RefreshHook,
-        render_enabled: Arc<std::sync::atomic::AtomicBool>,
-        game_thread: Arc<GameThread>,
+        _gpu_engine: Arc<Mutex<GpuRenderer>>,
+        _buffers: Arc<DoubleBuffer>,
+        _refresh_hook: RefreshHook,
+        _render_enabled: Arc<std::sync::atomic::AtomicBool>,
+        _game_thread: Arc<GameThread>,
     ) {
-        let base_frame_time = Duration::from_millis(8);
-        let mut adaptive_frame_time = base_frame_time;
-        let mut frame_count = 0u64;
-        let mut consecutive_fast_frames = 0u32;
-        let max_cpu_usage = 85;
-        
-        println!("[RENDER-THREAD] 🎬 Starting render loop...");
-
-        while render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
-            let frame_start = std::time::Instant::now();
-
-            // Sync game objects to renderer before rendering
-            if let Ok(game_state) = game_thread.get_state().lock() {
-                let objects = game_state.objects.clone();
-                if let Ok(mut engine) = gpu_engine.try_lock() {
-                    if let Some(ref mut bevy_renderer) = engine.bevy_renderer {
-                        bevy_renderer.update_game_objects(objects);
-                    }
-                }
-            }
-
-            // Always use GPU renderer
-            let render_successful = if let Ok(mut engine_guard) = gpu_engine.try_lock() {
-                let back_buffer = buffers.get_back_buffer();
-                let buffer_lock_result = back_buffer.try_lock();
-                if let Ok(mut buffer_guard) = buffer_lock_result {
-                    engine_guard.render(&mut *buffer_guard);
-                    true
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
-            if render_successful {
-                buffers.swap_buffers();
-                refresh_hook();
-                frame_count += 1;
-                
-                if frame_count % 120 == 1 {
-                    println!("[RENDER-THREAD] 🎬 Rendered {} frames, calling refresh_hook", frame_count);
-                }
-            } else if frame_count % 120 == 1 {
-                println!("[RENDER-THREAD] ⚠️  Frame {} render failed or buffer locked", frame_count);
-            }
-
-            let frame_time = frame_start.elapsed();
-
-            if frame_time < adaptive_frame_time.mul_f32(0.5) {
-                consecutive_fast_frames += 1;
-                if consecutive_fast_frames > 10 {
-                    adaptive_frame_time = adaptive_frame_time.mul_f32(1.1).min(Duration::from_millis(16));
-                    consecutive_fast_frames = 0;
-                }
-            } else {
-                consecutive_fast_frames = 0;
-                adaptive_frame_time = adaptive_frame_time.mul_f32(0.99).max(base_frame_time);
-            }
-
-            let target_cpu_usage = max_cpu_usage as f32 / 100.0;
-            let work_time = frame_time.as_secs_f32();
-            let total_frame_time = work_time / target_cpu_usage;
-            let sleep_time = Duration::from_secs_f32(total_frame_time - work_time).max(Duration::from_millis(1));
-
-            thread::sleep(sleep_time);
-        }
-        
-        println!("[RENDER-THREAD] 🛑 Render loop exited");
+        // NO-OP: Rendering is now handled by ViewportPanel with WgpuViewport
+        println!("[RENDER-THREAD] Stub render thread - actual rendering done by WgpuViewport");
     }
 
     pub fn toggle_rendering(&mut self) {
