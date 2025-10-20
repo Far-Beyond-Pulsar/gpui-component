@@ -189,7 +189,6 @@ pub fn render_project_settings(screen: &EntryScreen, settings: &ProjectSettings,
         .items_center()
         .justify_center()
         .bg(theme.background.opacity(0.95))
-        .z_index(999)
         .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
             // Close modal when clicking on background
             this.close_project_settings(cx);
@@ -204,10 +203,6 @@ pub fn render_project_settings(screen: &EntryScreen, settings: &ProjectSettings,
                 .border_color(theme.border)
                 .shadow_lg()
                 .overflow_hidden()
-                .on_click(|_, _, cx| {
-                    // Stop propagation to prevent closing modal when clicking inside content
-                    cx.stop_propagation();
-                })
                 .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
                     // Stop propagation for mouse down too
                     cx.stop_propagation();
@@ -621,7 +616,7 @@ fn render_metadata_tab(settings: &ProjectSettings, cx: &mut Context<EntryScreen>
                         .gap_3()
                         .items_center()
                         .child(
-                            Icon::new(if has_config { IconName::Folder } else { IconName::AlertCircle })
+                            Icon::new(if has_config { IconName::Folder } else { IconName::WarningTriangle })
                                 .size(px(24.))
                                 .text_color(if has_config { theme.accent } else { hsla(0.0, 0.8, 0.6, 1.0) })
                         )
@@ -1030,7 +1025,7 @@ fn render_performance_tab(settings: &ProjectSettings, cx: &mut Context<EntryScre
 }
 
 fn calculate_repo_health(settings: &ProjectSettings) -> f32 {
-    let mut score = 100.0;
+    let mut score: f32 = 100.0;
     
     // Penalize for large git size ratio
     if let (Some(git_size), Some(project_size)) = (settings.git_repo_size, settings.disk_size) {
@@ -1063,7 +1058,7 @@ fn calculate_repo_health(settings: &ProjectSettings) -> f32 {
         score += 5.0;
     }
     
-    score.max(0.0).min(100.0)
+    score.max(0.0_f32).min(100.0)
 }
 
 fn generate_optimization_recommendations(settings: &ProjectSettings, theme: &gpui_component::theme::Theme) -> Vec<gpui::AnyElement> {
@@ -1459,7 +1454,7 @@ fn render_editor_integration_card(
         .bg(theme.sidebar)
         .hover(|this| this.bg(theme.muted.opacity(0.1)).border_color(theme.primary))
         .cursor_pointer()
-        .on_click(move |_, _, _| {
+        .on_mouse_down(gpui::MouseButton::Left, move |_, _, _| {
             let _ = std::process::Command::new(&cmd)
                 .arg(path.to_str().unwrap_or(""))
                 .spawn();
@@ -1500,9 +1495,9 @@ fn render_tool_integration_card<F>(
     available: bool,
     on_click: F,
     theme: &gpui_component::theme::Theme,
-) -> impl IntoElement 
+) -> impl IntoElement
 where
-    F: Fn(&gpui::ClickEvent, &mut Window, &mut Context<gpui::AnyView>) + 'static,
+    F: Fn(&gpui::MouseDownEvent, &mut Window, &mut App) + 'static,
 {
     h_flex()
         .p_4()
@@ -1518,7 +1513,7 @@ where
                 this
             }
         })
-        .when(available, |this| this.cursor_pointer().on_click(on_click))
+        .when(available, |this| this.cursor_pointer().on_mouse_down(gpui::MouseButton::Left, on_click))
         .child(
             Icon::new(icon)
                 .size(px(24.))

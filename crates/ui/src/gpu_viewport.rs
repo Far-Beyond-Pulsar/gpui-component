@@ -12,7 +12,7 @@
 /// 6. GPUI composites the texture directly - ZERO COPIES!
 
 use gpui::{
-    div, App, Bounds, Context, DismissEvent, Element, ElementId,
+    div, App, AppContext, Bounds, Context, DismissEvent, Element, ElementId,
     Entity, EventEmitter, FocusHandle, Focusable, GlobalElementId, InspectorElementId,
     InteractiveElement, IntoElement, LayoutId, ParentElement as _, Pixels, Render,
     Size, StatefulInteractiveElement, Styled as _, Window, DevicePixels, ScaledPixels,
@@ -168,13 +168,17 @@ impl Element for GpuViewportElement {
         _cx: &mut App,
     ) {
         if let Some(texture_id) = self.texture_id {
-            // Convert bounds from Pixels to ScaledPixels
-            let scaled_bounds: Bounds<ScaledPixels> = bounds.map(|p| p.into());
+            // Convert bounds from Pixels to ScaledPixels using scale factor
+            let scale_factor = window.scale_factor();
+            let scaled_bounds = bounds.scale(scale_factor);
+
+            // Create corner radii using the constructor
+            let corner_radii: Corners<ScaledPixels> = Default::default();
 
             // Paint the external texture into the scene
             window.paint_external_texture(
                 scaled_bounds,
-                Corners::all(ScaledPixels(0.0)),
+                corner_radii,
                 texture_id,
             );
         }
@@ -194,5 +198,5 @@ pub fn create_gpu_viewport<V: 'static>(
     height: u32,
     cx: &mut Context<V>,
 ) -> Entity<GpuViewport> {
-    cx.new_entity(|cx| GpuViewport::new(width, height, cx))
+    cx.new(|cx| GpuViewport::new(width, height, cx))
 }

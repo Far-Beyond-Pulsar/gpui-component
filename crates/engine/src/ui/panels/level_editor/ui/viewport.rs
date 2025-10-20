@@ -5,8 +5,8 @@ use gpui_component::{
     chart::{LineChart, BarChart, AreaChart},
     PixelsExt,
 };
-// OPTIMIZED: Using new zero-copy viewport
-use gpui_component::viewport_optimized::OptimizedViewport;
+// NEW: True zero-copy GPU viewport using ExternalTexture
+use gpui_component::gpu_viewport::GpuViewport;
 
 use super::state::{CameraMode, LevelEditorState};
 use super::actions::*;
@@ -130,10 +130,11 @@ enum GraphType {
     Bar,
 }
 
-/// Viewport Panel - OPTIMIZED 3D rendering viewport with PRO camera controls
+/// Viewport Panel - TRUE ZERO-COPY GPU 3D rendering viewport with PRO camera controls
 /// Studio-quality navigation: FPS mode, Pan, Orbit, Zoom
+/// Direct GPU rendering - NO CPU COPIES!
 pub struct ViewportPanel {
-    viewport: Entity<OptimizedViewport>,
+    viewport: Entity<GpuViewport>,
     viewport_controls: ViewportControls,
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
     // FPS tracking for rolling graph - using RefCell for interior mutability
@@ -178,7 +179,7 @@ pub struct ViewportPanel {
 }
 
 impl ViewportPanel {
-    pub fn new<V>(viewport: Entity<OptimizedViewport>, render_enabled: Arc<std::sync::atomic::AtomicBool>, cx: &mut Context<V>) -> Self 
+    pub fn new<V>(viewport: Entity<GpuViewport>, render_enabled: Arc<std::sync::atomic::AtomicBool>, cx: &mut Context<V>) -> Self
     where
         V: 'static,
     {
