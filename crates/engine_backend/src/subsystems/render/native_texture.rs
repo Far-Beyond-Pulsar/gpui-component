@@ -39,19 +39,24 @@ impl NativeTextureHandle {
         #[cfg(target_os = "windows")]
         {
             use wgpu_hal::api::Dx12;
+            use windows::core::Interface;
             
             // Get the HAL texture for DirectX 12
             if let Some(hal_tex) = texture.as_hal::<Dx12>() {
-                // The returned type is impl Deref<Target = <Dx12 as Api>::Texture>
                 let dx12_texture = &*hal_tex;
                 
-                // Get the raw D3D12 resource
+                // Get the raw D3D12 resource (ID3D12Resource COM object)
                 let resource = dx12_texture.raw_resource();
-                // Convert the COM interface to a raw pointer
-                let resource_ptr = resource as *const _ as usize;
                 
-                println!("[NATIVE-TEXTURE] ✅ Extracted D3D12 resource: 0x{:X}", resource_ptr);
-                Some(NativeTextureHandle::D3D11(resource_ptr))
+                // Clone the COM interface to get our own reference
+                let resource_clone = resource.clone();
+                
+                // Convert to raw pointer (this is what GPUI needs)
+                let raw_ptr = std::mem::transmute::<_, *mut std::ffi::c_void>(resource_clone);
+                let ptr_addr = raw_ptr as usize;
+                
+                println!("[NATIVE-TEXTURE] ✅ Extracted D3D12 resource pointer: 0x{:X}", ptr_addr);
+                Some(NativeTextureHandle::D3D11(ptr_addr))
             } else {
                 println!("[NATIVE-TEXTURE] ❌ Failed to get HAL texture for DirectX");
                 None
@@ -61,7 +66,6 @@ impl NativeTextureHandle {
         #[cfg(target_os = "macos")]
         {
             use wgpu_hal::api::Metal;
-            use metal::foreign_types::ForeignType;
             
             // Get the HAL texture for Metal
             if let Some(hal_tex) = texture.as_hal::<Metal>() {

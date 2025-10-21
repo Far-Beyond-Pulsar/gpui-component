@@ -35,6 +35,10 @@ use std::{
 };
 use super::Framebuffer;
 
+// Render target dimensions
+const RENDER_WIDTH: u32 = 1600;
+const RENDER_HEIGHT: u32 = 900;
+
 /// Camera controller input state
 #[derive(Resource, Default, Clone)]
 pub struct CameraInput {
@@ -236,6 +240,7 @@ impl BevyRenderer {
         println!("[BEVY-RENDERER] Step 6: ScheduleRunnerPlugin added");
         
         println!("[BEVY-RENDERER] Step 7: Adding resources and systems...");
+        let shared_textures_clone = shared_textures.clone();
         app.insert_resource(ClearColor(Color::srgb(0.2, 0.2, 0.3)))
             .insert_resource(camera_input.lock().unwrap().clone())
             .insert_resource(RenderStats::default())
@@ -243,6 +248,13 @@ impl BevyRenderer {
             .insert_resource(SharedTexturesResource(shared_textures))
             // ZERO-COPY: Setup scene with direct GPU texture rendering
             .add_systems(Startup, setup_scene)
+            .add_systems(Update, || {
+                static FRAME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+                let f = FRAME.fetch_add(1, Ordering::Relaxed);
+                if f % 60 == 0 {
+                    println!("[BEVY-RENDERER] 🎬 UPDATE SYSTEM RUNNING! Frame {}", f);
+                }
+            })
             .add_systems(Update, update_camera_from_input)
             .add_systems(Update, animate_ball)
             .add_systems(Update, check_shutdown)
@@ -254,6 +266,10 @@ impl BevyRenderer {
         println!("[BEVY-RENDERER] Step 9: Adding render extraction system...");
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             println!("[BEVY-RENDERER] ✅ RenderApp found!");
+            
+            // Insert SharedTexturesResource in RenderWorld too
+            render_app.insert_resource(SharedTexturesResource(shared_textures_clone));
+            
             // ZERO-COPY: Extract native GPU handles from wgpu textures
             render_app.add_systems(ExtractSchedule, extract_native_texture_handles);
             println!("[BEVY-RENDERER] ✅ HAL extraction system added");
