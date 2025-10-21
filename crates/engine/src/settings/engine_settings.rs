@@ -46,6 +46,13 @@ pub struct AdvancedSettings {
     pub debug_logging: bool,
     /// Enable experimental features
     pub experimental_features: bool,
+    /// Maximum viewport refresh rate in FPS (30, 60, 120, 144, 240, or 0 for unlimited)
+    #[serde(default = "default_max_viewport_fps")]
+    pub max_viewport_fps: u32,
+}
+
+fn default_max_viewport_fps() -> u32 {
+    60 // Default to 60 FPS for smooth, consistent frame pacing
 }
 
 impl Default for EngineSettings {
@@ -85,6 +92,7 @@ impl Default for AdvancedSettings {
             performance_level: 1,
             debug_logging: false,
             experimental_features: false,
+            max_viewport_fps: 60,
         }
     }
 }

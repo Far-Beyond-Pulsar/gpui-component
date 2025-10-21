@@ -1,14 +1,30 @@
 use gpui::*;
 use gpui_component::{
-    button::Button, dock::{Panel, PanelEvent}, h_flex, resizable::{h_resizable, resizable_panel, ResizableState}, v_flex, ActiveTheme as _, IconName, Selectable, StyledExt
+    button::Button, dock::{Panel, PanelEvent}, h_flex, resizable::{h_resizable, resizable_panel, ResizableState}, v_flex, ActiveTheme as _, IconName, Selectable, StyledExt,
+    chart::LineChart,
 };
 use gpui_component::viewport_final::{Viewport, DoubleBuffer, RefreshHook, create_viewport_with_background_rendering};
 
 use crate::ui::shared::{Toolbar, ToolbarButton, ViewportControls, StatusBar};
 use crate::ui::rainbow_engine_final::{RainbowRenderEngine, RainbowPattern};
+use engine_backend::{GameThread, GameState};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+use std::collections::VecDeque;
+use std::cell::RefCell;
+
+#[derive(Clone)]
+struct FpsDataPoint {
+    index: usize,
+    fps: f64,
+}
+
+#[derive(Clone)]
+struct TpsDataPoint {
+    index: usize,
+    tps: f64,
+}
 
 pub struct LevelEditorPanel {
     focus_handle: FocusHandle,
@@ -27,6 +43,17 @@ pub struct LevelEditorPanel {
     current_pattern: RainbowPattern,
     render_speed: f32,
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
+    
+    // Game thread state
+    game_thread: Arc<GameThread>,
+    
+    // FPS tracking for rolling graph - using RefCell for interior mutability
+    fps_history: RefCell<VecDeque<FpsDataPoint>>,
+    fps_sample_counter: RefCell<usize>,
+    
+    // TPS tracking for rolling graph
+    tps_history: RefCell<VecDeque<TpsDataPoint>>,
+    tps_sample_counter: RefCell<usize>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -40,6 +67,7 @@ pub enum CameraMode {
 
 impl LevelEditorPanel {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+        println!("[LEVEL-EDITOR] ===== INITIALIZING LEVEL EDITOR PANEL =====");
         let resizable_state = ResizableState::new(cx);
         
         // Create viewport with zero-copy background rendering
@@ -52,6 +80,13 @@ impl LevelEditorPanel {
         // Create rainbow render engine
         let render_engine = Arc::new(Mutex::new(RainbowRenderEngine::new()));
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        
+        // Create and start game thread
+        println!("[LEVEL-EDITOR] Creating game thread with target 60 TPS...");
+        let game_thread = Arc::new(GameThread::new(60.0)); // Target 60 TPS
+        println!("[LEVEL-EDITOR] Starting game thread...");
+        game_thread.start();
+        println!("[LEVEL-EDITOR] Game thread started successfully!");
         
         // Spawn render thread that uses the refresh hook to trigger GPUI reactive updates
         let engine_clone = render_engine.clone();
@@ -95,6 +130,7 @@ impl LevelEditorPanel {
         });
 
         println!("[LEVEL-EDITOR] Created viewport and render engine, starting render thread...");
+        println!("[LEVEL-EDITOR] ===== LEVEL EDITOR PANEL READY =====");
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -111,6 +147,11 @@ impl LevelEditorPanel {
             current_pattern: RainbowPattern::Waves,
             render_speed: 2.0,
             render_enabled,
+            game_thread,
+            fps_history: RefCell::new(VecDeque::with_capacity(60)),
+            fps_sample_counter: RefCell::new(0),
+            tps_history: RefCell::new(VecDeque::with_capacity(60)),
+            tps_sample_counter: RefCell::new(0),
         }
     }
 
@@ -240,6 +281,10 @@ impl LevelEditorPanel {
     pub fn toggle_rendering(&mut self) {
         let current = self.render_enabled.load(std::sync::atomic::Ordering::Relaxed);
         self.render_enabled.store(!current, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn toggle_game_thread(&mut self) {
+        self.game_thread.toggle();
     }
 
     pub fn set_rainbow_pattern(&mut self, pattern: RainbowPattern) {
@@ -470,8 +515,6 @@ impl LevelEditorPanel {
     }
 
     fn render_performance_overlay(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        // Since the new viewport doesn't expose metrics directly, we'll use our own metrics from the engine
-        
         // Get rainbow engine metrics
         let (engine_fps, frame_count, pattern_name) = if let Ok(engine) = self.render_engine.lock() {
             let fps = engine.get_fps();
@@ -482,16 +525,63 @@ impl LevelEditorPanel {
             (0.0, 0, "Unknown".to_string())
         };
 
+        // Get game thread metrics
+        let game_tps = self.game_thread.get_tps();
+        let game_tick_count = self.game_thread.get_tick_count();
+        let game_enabled = self.game_thread.is_enabled();
+
+        // Update FPS history for rolling graph using interior mutability
+        let mut fps_history = self.fps_history.borrow_mut();
+        let mut fps_sample_counter = self.fps_sample_counter.borrow_mut();
+        
+        fps_history.push_back(FpsDataPoint {
+            index: *fps_sample_counter,
+            fps: engine_fps as f64,
+        });
+        *fps_sample_counter += 1;
+        
+        // Keep only last 60 samples
+        if fps_history.len() > 60 {
+            fps_history.pop_front();
+        }
+
+        // Prepare data for the FPS chart
+        let fps_data: Vec<FpsDataPoint> = fps_history.iter().cloned().collect();
+        drop(fps_history);
+        drop(fps_sample_counter);
+
+        // Update TPS history for rolling graph
+        let mut tps_history = self.tps_history.borrow_mut();
+        let mut tps_sample_counter = self.tps_sample_counter.borrow_mut();
+        
+        tps_history.push_back(TpsDataPoint {
+            index: *tps_sample_counter,
+            tps: game_tps as f64,
+        });
+        *tps_sample_counter += 1;
+        
+        // Keep only last 60 samples
+        if tps_history.len() > 60 {
+            tps_history.pop_front();
+        }
+
+        // Prepare data for the TPS chart
+        let tps_data: Vec<TpsDataPoint> = tps_history.iter().cloned().collect();
+        drop(tps_history);
+        drop(tps_sample_counter);
+
         v_flex()
-            .gap_1()
-            .p_2()
-            .bg(cx.theme().background.opacity(0.9))
+            .gap_2()
+            .p_3()
+            .w(px(340.))
+            .bg(cx.theme().background.opacity(0.95))
             .rounded(cx.theme().radius)
             .border_1()
             .border_color(cx.theme().border)
             .child(
                 h_flex()
                     .gap_2()
+                    .items_center()
                     .child(
                         div()
                             .text_xs()
@@ -504,7 +594,6 @@ impl LevelEditorPanel {
                                 cx.theme().accent 
                             })
                             .child(format!("🌈 {:.1} FPS", engine_fps))
-                            .text_color(cx.theme().foreground)
                     )
                     .child(
                         div()
@@ -523,12 +612,47 @@ impl LevelEditorPanel {
             .child(
                 h_flex()
                     .gap_2()
+                    .items_center()
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_semibold()
+                            .text_color(if game_tps > 55.0 { 
+                                cx.theme().success 
+                            } else if game_tps > 30.0 { 
+                                cx.theme().warning 
+                            } else { 
+                                cx.theme().destructive 
+                            })
+                            .child(format!("🎮 {:.1} TPS", game_tps))
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("Target: 60"))
+                    )
+                    .child(
+                        Button::new("toggle_game")
+                            .child(if game_enabled { "⏸" } else { "▶" })
+                            .on_click(cx.listener(|this, _event, _window, _cx| {
+                                this.toggle_game_thread();
+                            }))
+                    )
+            )
+            .child(
+                h_flex()
+                    .gap_2()
                     .child(
                         div()
                             .text_xs()
                             .text_color(cx.theme().foreground)
-                            .child(format!("Frames: {}", frame_count))
+                            .child(format!("Frames: {} | Ticks: {}", frame_count, game_tick_count))
                     )
+            )
+            .child(
+                h_flex()
+                    .gap_2()
                     .child(
                         div()
                             .text_xs()
@@ -552,8 +676,68 @@ impl LevelEditorPanel {
                             .child(format!("Mode: Final"))
                     )
             )
+            .when(!fps_data.is_empty(), |this| {
+                this.child(
+                    v_flex()
+                        .w_full()
+                        .mt_2()
+                        .border_t_1()
+                        .border_color(cx.theme().border)
+                        .pt_2()
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_semibold()
+                                .text_color(cx.theme().foreground)
+                                .mb_1()
+                                .child("FPS Graph")
+                        )
+                        .child(
+                            div()
+                                .h(px(100.))
+                                .w_full()
+                                .child(
+                                    LineChart::new(fps_data)
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.fps)
+                                        .linear()
+                                        .tick_margin(10)
+                                )
+                        )
+                )
+            })
+            .when(!tps_data.is_empty(), |this| {
+                this.child(
+                    v_flex()
+                        .w_full()
+                        .mt_2()
+                        .border_t_1()
+                        .border_color(cx.theme().border)
+                        .pt_2()
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_semibold()
+                                .text_color(cx.theme().foreground)
+                                .mb_1()
+                                .child("TPS Graph")
+                        )
+                        .child(
+                            div()
+                                .h(px(100.))
+                                .w_full()
+                                .child(
+                                    LineChart::new(tps_data)
+                                        .x(|d| SharedString::from(format!("{}", d.index)))
+                                        .y(|d| d.tps)
+                                        .linear()
+                                        .tick_margin(10)
+                                )
+                        )
+                )
+            })
     }
-
+    
     fn render_properties(&self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .size_full()

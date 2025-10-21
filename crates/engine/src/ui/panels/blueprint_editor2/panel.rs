@@ -108,6 +108,10 @@ pub struct BlueprintEditorPanel {
     // Tab system - flat navigation like Unreal
     pub open_tabs: Vec<GraphTab>,
     pub active_tab_index: usize,
+    // Overlay visibility toggles
+    pub show_debug_overlay: bool,
+    pub show_minimap: bool,
+    pub show_graph_controls: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -503,6 +507,9 @@ impl BlueprintEditorPanel {
                 library_id: None,
             }],
             active_tab_index: 0,
+            show_debug_overlay: true,
+            show_minimap: true,
+            show_graph_controls: true,
         };
 
         result
@@ -3642,7 +3649,12 @@ impl Render for BlueprintEditorPanel {
             .child(ToolbarRenderer::render(self, cx))
             .child(self.render_tab_bar(cx))
             .child(
-                div().flex_1().child(
+                div()
+                    .flex_1() // Grow to fill remaining space
+                    .flex() // Enable flexbox
+                    .flex_row() // Row direction for resizable panels
+                    .min_h_0() // Allow shrinking below content size
+                    .child(
                     h_resizable("blueprint-editor-panels", self.resizable_state.clone())
                         .child(
                             // Left sidebar with vertical split: macros (top) and variables (bottom)
@@ -3668,8 +3680,8 @@ impl Render for BlueprintEditorPanel {
                         )
                         .child(
                             resizable_panel()
-                                .size(px(320.))
-                                .size_range(px(250.)..px(500.))
+                                .size(px(250.))  // Reduced from 320 to fit content better
+                                .size_range(px(200.)..px(400.))
                                 .child(super::properties::PropertiesRenderer::render(self, cx))
                         ),
                 ),
@@ -3682,7 +3694,9 @@ impl Render for BlueprintEditorPanel {
                         .absolute()
                         .top_0()
                         .left_0()
-                        .size_full()
+                        .w_full() // Only take full width for positioning context
+                        .h_full() // Only take full height for positioning context
+                        .occlude() // Prevent interaction with background
                         .child(div().absolute().child(menu_entity)),
                 )
             })
@@ -3693,7 +3707,8 @@ impl Render for BlueprintEditorPanel {
                         .absolute()
                         .top_0()
                         .left_0()
-                        .size_full()
+                        .w_full() // Only take full width for positioning context
+                        .h_full() // Only take full height for positioning context
                         .on_mouse_move(cx.listener(|panel, event: &MouseMoveEvent, _window, cx| {
                             // Check if mouse is outside tooltip and hide if so
                             let mouse_pos =
@@ -3711,7 +3726,8 @@ impl Render for BlueprintEditorPanel {
                         .absolute()
                         .top_0()
                         .left_0()
-                        .size_full()
+                        .w_full() // Only take full width for positioning context
+                        .h_full() // Only take full height for positioning context
                         .on_mouse_down(
                             gpui::MouseButton::Left,
                             cx.listener(|panel, _event, _window, cx| {

@@ -602,6 +602,9 @@ impl SettingsScreen {
 
     fn render_performance_setting(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme();
+        
+        let fps_options = vec![30u32, 60, 120, 144, 240, 0];
+        let current_fps = self.settings.advanced.max_viewport_fps;
 
         v_flex()
             .gap_3()
@@ -638,9 +641,48 @@ impl SettingsScreen {
                             .text_color(theme.muted_foreground)
                     )
                     .child(
+                        v_flex()
+                            .gap_2()
+                            .child(
+                                Label::new("Viewport Max FPS (Frame Pacing)")
+                                    .text_sm()
+                                    .text_color(theme.foreground)
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .children(fps_options.iter().map(|&fps| {
+                                        let label = if fps == 0 { "Unlimited".to_string() } else { format!("{} FPS", fps) };
+                                        let is_selected = current_fps == fps;
+                                        
+                                        let mut btn = Button::new(SharedString::from(format!("fps-{}", fps)))
+                                            .label(label);
+                                        
+                                        if is_selected {
+                                            btn = btn.primary();
+                                        } else {
+                                            btn = btn.ghost();
+                                        }
+                                        
+                                        btn.on_click(cx.listener(move |screen, _, _window, cx| {
+                                            screen.settings.advanced.max_viewport_fps = fps;
+                                            screen.settings.save(&screen.config_path);
+                                            cx.notify();
+                                        }))
+                                    }))
+                            )
+                            .child(
+                                Label::new("Controls viewport refresh rate for consistent frame pacing")
+                                    .text_xs()
+                                    .text_color(theme.muted_foreground)
+                            )
+                    )
+                    .child(
                         Button::new("save-performance")
                             .primary()
-                            .label("Save")
+                            .label("Save All Settings")
                             .on_click(cx.listener(|screen, _, _window, cx| {
                                 screen.settings.save(&screen.config_path);
                                 cx.notify();

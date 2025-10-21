@@ -66,16 +66,6 @@ impl GpuMemTracker {
 
         self.allocations.lock().insert(id, info);
 
-        println!(
-            "[GPU-MEM] ALLOC #{}: {}x{} = {} bytes (total: {} allocs, {} MB)",
-            id,
-            width,
-            height,
-            size_bytes,
-            current,
-            self.total_allocated.load(Ordering::Relaxed) as f64 / 1_000_000.0
-        );
-
         id
     }
 
@@ -84,15 +74,6 @@ impl GpuMemTracker {
             self.total_freed.fetch_add(info.size_bytes as u64, Ordering::Relaxed);
             let current = self.current_allocations.fetch_sub(1, Ordering::Relaxed) - 1;
 
-            println!(
-                "[GPU-MEM] FREE #{}: {}x{} = {} bytes (remaining: {} allocs, leaked: {} MB)",
-                id,
-                info.width,
-                info.height,
-                info.size_bytes,
-                current,
-                (self.total_allocated.load(Ordering::Relaxed) - self.total_freed.load(Ordering::Relaxed)) as f64 / 1_000_000.0
-            );
         } else {
             println!("[GPU-MEM] WARNING: Attempted to free unknown allocation #{}", id);
         }
@@ -131,6 +112,13 @@ impl GpuMemTracker {
 
     pub fn get_leaked_bytes(&self) -> u64 {
         self.total_allocated.load(Ordering::Relaxed) - self.total_freed.load(Ordering::Relaxed)
+    }
+    
+    /// Get current memory stats (leaked_bytes, current_allocations)
+    pub fn get_stats(&self) -> (u64, usize) {
+        let leaked = self.get_leaked_bytes();
+        let current = self.current_allocations.load(Ordering::Relaxed);
+        (leaked, current)
     }
 }
 

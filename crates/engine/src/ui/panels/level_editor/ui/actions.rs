@@ -33,6 +33,12 @@ actions!(
         ToggleWireframe,
         ToggleLighting,
         TogglePerformanceOverlay,
+        ToggleViewportControls,
+        ToggleCameraModeSelector,
+        ToggleViewportOptions,
+        Toggle3DRenderer,
+        ToggleGpuRenderer,
+        ToggleFpsGraphType,
 
         // Camera modes
         PerspectiveView,

@@ -3,7 +3,7 @@ edition = "2021"
 name = "pulsar_engine"
 description = "A modern high-performance game engine written in Rust"
 publish = false
-version = "0.1.38"
+version = "0.1.40"
 
 [profile.dev.package."*"]
 opt-level = 3
@@ -64,6 +64,10 @@ which = "6"  # Find executables in PATH
 alacritty_terminal = { git = "https://github.com/zed-industries/alacritty.git", branch = "add-hush-login-flag" }  # Professional terminal emulator
 itertools.workspace = true  # Iterator utilities
 libc = "0.2"  # Low-level system calls for PTY
+device_query = "2.1"  # Raw keyboard/mouse input polling - bypasses GPUI for viewport controls
+winapi = { version = "0.3", features = ["winuser"] }  # Windows API for keyboard hook to suppress WASD events
+sysinfo = "0.30"  # System information
+reqwest = { version = "0.12", features = ["json"] }  # HTTP client for GitHub API
 
 [dev-dependencies]
 tempfile = "3.8"

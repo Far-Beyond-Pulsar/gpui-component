@@ -57,8 +57,8 @@ pub struct SelectFont(usize);
 #[action(namespace = story, no_json)]
 pub struct SelectRadius(usize);
 
-#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
-#[action(namespace = pulsar)]
+#[derive(Action, Clone, PartialEq, Eq)]
+#[action(namespace = pulsar, no_json)]
 pub struct OpenSettings;
 
 fn main() {
@@ -151,22 +151,22 @@ fn main() {
 
         cx.activate(true);
 
-        // Open the entry/launcher window first (smaller size)
-        let entry_window_size = size(px(1000.), px(600.));
+        // Open the entry/launcher window first (appropriate size for studio-quality launcher)
+        let entry_window_size = size(px(1600.), px(900.));
         let entry_window_bounds = Bounds::centered(None, entry_window_size, cx);
 
         let entry_options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(entry_window_bounds)),
             titlebar: Some(TitleBar::title_bar_options()),
             window_min_size: Some(gpui::Size {
-                width: px(800.),
-                height: px(500.),
+                width: px(1600.),
+                height: px(900.),
             }),
             kind: WindowKind::Normal,
+            is_resizable: true,
+            window_decorations: Some(gpui::WindowDecorations::Client),
             #[cfg(target_os = "linux")]
             window_background: gpui::WindowBackgroundAppearance::Transparent,
-            #[cfg(target_os = "linux")]
-            window_decorations: Some(gpui::WindowDecorations::Client),
             ..Default::default()
         };
 
@@ -222,10 +222,10 @@ fn open_engine_window(project_path: PathBuf, cx: &mut App) {
             height: px(800.),
         }),
         kind: WindowKind::Normal,
+        is_resizable: true,
+        window_decorations: Some(gpui::WindowDecorations::Client),
         #[cfg(target_os = "linux")]
         window_background: gpui::WindowBackgroundAppearance::Transparent,
-        #[cfg(target_os = "linux")]
-        window_decorations: Some(gpui::WindowDecorations::Client),
         ..Default::default()
     };
 
@@ -266,6 +266,7 @@ fn open_settings_window(cx: &mut App) {
             height: px(400.),
         }),
         kind: WindowKind::Normal,
+        is_resizable: true,
         window_decorations: Some(gpui::WindowDecorations::Client),
         #[cfg(target_os = "linux")]
         window_background: gpui::WindowBackgroundAppearance::Transparent,

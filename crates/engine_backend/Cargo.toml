@@ -21,3 +21,24 @@ uuid = { version = "1.4", features = ["v4"] }
 tokio = { version = "1", features = ["full"] }
 rapier3d.workspace = true
 nalgebra = { version = "0.32", features = ["serde-serialize"] }
+
+# Rendering dependencies
+bevy = { version = "0.17.2", default-features = false, features = [
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_asset",
+    "bevy_winit",
+    "bevy_pbr",
+    "x11",
+    "wayland",
+] }
+wgpu = "23"
+image = "0.25"
+bytemuck = { version = "1.14", features = ["derive"] }
+crossbeam-channel = "0.5"
+futures = "0.3"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_System_Threading",
+] }

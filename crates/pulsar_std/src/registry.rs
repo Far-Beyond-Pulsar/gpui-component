@@ -30,6 +30,17 @@ pub struct NodeParameter {
     pub ty: &'static str,
 }
 
+/// Import statement metadata for a blueprint node
+#[derive(Debug, Clone)]
+pub struct NodeImport {
+    /// The crate/module being imported (e.g., "reqwest", "std::collections")
+    pub crate_name: &'static str,
+
+    /// The specific items being imported (e.g., ["Client", "Error"])
+    /// Empty slice means import the whole crate/module
+    pub items: &'static [&'static str],
+}
+
 /// Complete metadata about a blueprint node
 #[derive(Debug, Clone)]
 pub struct NodeMetadata {
@@ -62,6 +73,9 @@ pub struct NodeMetadata {
 
     /// Optional hex color for the node
     pub color: Option<&'static str>,
+
+    /// External imports required by this node
+    pub imports: &'static [NodeImport],
 }
 
 /// Global registry of all blueprint nodes
