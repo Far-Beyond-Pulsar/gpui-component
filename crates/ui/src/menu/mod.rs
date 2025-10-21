@@ -1,8 +1,9 @@
 use gpui::App;
 
 mod menu_item;
-mod app_menu_bar;
 
+pub mod app_menu_bar;
+pub use app_menu_bar::AppMenuBar;
 pub mod context_menu;
 pub mod popup_menu;
 

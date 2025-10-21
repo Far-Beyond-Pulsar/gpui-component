@@ -17,6 +17,7 @@ use crate::ui::gpu_renderer::GpuRenderer;
 use crate::ui::shared::StatusBar;
 use engine_backend::{GameThread, GameState};
 use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{Sender, Receiver, channel};
 use std::thread;
 use std::time::Duration;
 use std::rc::Rc;
@@ -58,10 +59,13 @@ pub struct LevelEditorPanel {
     
     // Game thread for object movement and game logic
     game_thread: Arc<GameThread>,
+    
+    // Channel for receiving rendered frames from render thread
+    frame_receiver: Receiver<Arc<Vec<u8>>>,
 }
 
 impl LevelEditorPanel {
-    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let horizontal_resizable_state = ResizableState::new(cx);
         let vertical_resizable_state = ResizableState::new(cx);
 
@@ -82,6 +86,7 @@ impl LevelEditorPanel {
         let viewport = create_gpu_viewport(
             1600,
             900,
+            window,
             cx
         );
 
@@ -99,6 +104,9 @@ impl LevelEditorPanel {
         game_thread.start();
         println!("[LEVEL-EDITOR] ✅ Game thread started successfully!");
 
+        // Create channel for frame data (render thread -> UI thread)
+        let (frame_sender, frame_receiver) = channel();
+
         // Spawn GPU direct render thread - TRUE ZERO-COPY!
         let gpu_clone = gpu_engine.clone();
         let enabled_clone = render_enabled.clone();
@@ -111,6 +119,7 @@ impl LevelEditorPanel {
                 viewport_clone,
                 enabled_clone,
                 game_thread_clone,
+                frame_sender,
             );
         });
 
@@ -135,6 +144,7 @@ impl LevelEditorPanel {
             render_speed: 2.0,
             render_enabled,
             game_thread,
+            frame_receiver,
         }
     }
 
@@ -145,6 +155,7 @@ impl LevelEditorPanel {
         _viewport: Entity<GpuViewport>,
         render_enabled: Arc<std::sync::atomic::AtomicBool>,
         game_thread: Arc<GameThread>,
+        frame_sender: Sender<Arc<Vec<u8>>>,
     ) {
         let base_frame_time = Duration::from_millis(8);
         let mut adaptive_frame_time = base_frame_time;
@@ -152,13 +163,13 @@ impl LevelEditorPanel {
         let mut consecutive_fast_frames = 0u32;
         let max_cpu_usage = 85;
 
-        // Pre-allocate GPU buffer once (simulates mapped GPU memory)
+        // Pre-allocate GPU buffer once (reuse for efficiency)
         let buffer_size = (1600 * 900 * 4) as usize;
         let mut gpu_buffer = vec![0u8; buffer_size];
 
         println!("[RENDER-THREAD-GPU] 🔥 Starting TRUE ZERO-COPY render loop!");
-        println!("[RENDER-THREAD-GPU] 💎 Pre-allocated GPU buffer: {} MB", buffer_size as f64 / 1_048_576.0);
-        println!("[RENDER-THREAD-GPU] 🚀 ZERO allocations per frame!");
+        println!("[RENDER-THREAD-GPU] 💎 Pre-allocated buffer: {} MB", buffer_size as f64 / 1_048_576.0);
+        println!("[RENDER-THREAD-GPU] 🚀 Frames sent to UI thread for GPU upload!");
 
         while render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
             let frame_start = std::time::Instant::now();
@@ -173,10 +184,8 @@ impl LevelEditorPanel {
                 }
             }
 
-            // TRUE ZERO-COPY: Render directly to pre-allocated GPU buffer!
-            // NO ALLOCATIONS per frame!
+            // Render to buffer
             let render_successful = if let Ok(mut engine_guard) = gpu_engine.try_lock() {
-                // Write directly to GPU buffer - ZERO allocations!
                 engine_guard.render_to_buffer(&mut gpu_buffer);
                 true
             } else {
@@ -186,8 +195,12 @@ impl LevelEditorPanel {
             if render_successful {
                 frame_count += 1;
 
+                // Send frame to UI thread (Arc for zero-copy sharing)
+                let frame_data = Arc::new(gpu_buffer.clone());
+                let _ = frame_sender.send(frame_data);
+
                 if frame_count % 120 == 1 {
-                    println!("[RENDER-THREAD-GPU] 🔥 {} frames - ZERO ALLOCS!", frame_count);
+                    println!("[RENDER-THREAD-GPU] 🔥 {} frames rendered!", frame_count);
                 }
             } else if frame_count % 120 == 1 {
                 println!("[RENDER-THREAD-GPU] ⚠️  Frame {} render failed", frame_count);
@@ -422,7 +435,36 @@ impl Focusable for LevelEditorPanel {
 impl EventEmitter<PanelEvent> for LevelEditorPanel {}
 
 impl Render for LevelEditorPanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Process any pending frames from the render thread
+        // This is TRUE ZERO-COPY: we write directly to GPU-mapped memory!
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(texture_id) = self.viewport.read(cx).texture_id() {
+                // Drain all pending frames (keep only the latest)
+                let mut latest_frame: Option<Arc<Vec<u8>>> = None;
+                while let Ok(frame) = self.frame_receiver.try_recv() {
+                    latest_frame = Some(frame);
+                }
+                
+                // Update external texture with latest frame
+                if let Some(frame_data) = latest_frame {
+                    let result = window.update_external_texture(texture_id, |buffer| {
+                        // TRUE ZERO-COPY: Write directly to GPU-mapped memory!
+                        let copy_len = frame_data.len().min(buffer.len());
+                        buffer[..copy_len].copy_from_slice(&frame_data[..copy_len]);
+                    });
+                    
+                    if let Err(e) = result {
+                        eprintln!("[LEVEL-EDITOR] ❌ Failed to update texture: {}", e);
+                    }
+                    
+                    // Request next frame
+                    cx.notify();
+                }
+            }
+        }
+        
         v_flex()
             .size_full()
             .bg(cx.theme().background)

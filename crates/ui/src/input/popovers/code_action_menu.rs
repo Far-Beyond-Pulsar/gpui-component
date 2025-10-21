@@ -254,13 +254,13 @@ impl CodeActionMenu {
 
     fn on_action_up(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.list.update(cx, |this, cx| {
-            this.on_action_select_prev(&actions::SelectPrev, window, cx)
+            this.on_action_select_prev(&actions::SelectUp, window, cx)
         });
     }
 
     fn on_action_down(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.list.update(cx, |this, cx| {
-            this.on_action_select_next(&actions::SelectNext, window, cx)
+            this.on_action_select_next(&actions::SelectDown, window, cx)
         });
     }
 
@@ -331,6 +331,7 @@ impl Render for CodeActionMenu {
 
         deferred(
             editor_popover("code-action-menu", cx)
+                .absolute()
                 .left(pos.x)
                 .top(pos.y)
                 .max_w(max_width)

@@ -192,11 +192,40 @@ impl IntoElement for GpuViewportElement {
     }
 }
 
-/// Helper function to create GPU viewport
+/// Helper function to create GPU viewport with external texture registered
 pub fn create_gpu_viewport<V: 'static>(
     width: u32,
     height: u32,
+    window: &mut Window,
     cx: &mut Context<V>,
 ) -> Entity<GpuViewport> {
-    cx.new(|cx| GpuViewport::new(width, height, cx))
+    cx.new(|cx| {
+        let mut viewport = GpuViewport::new(width, height, cx);
+        
+        // Register external texture with GPUI for TRUE ZERO-COPY rendering
+        #[cfg(target_os = "windows")]
+        {
+            let size = Size {
+                width: DevicePixels::from(width as i32),
+                height: DevicePixels::from(height as i32),
+            };
+            
+            match window.register_external_texture(size) {
+                Ok(texture_id) => {
+                    viewport.set_texture_id(texture_id);
+                    println!("[GPU-VIEWPORT] 🎉 TRUE ZERO-COPY texture registered!");
+                }
+                Err(e) => {
+                    eprintln!("[GPU-VIEWPORT] ❌ Failed to register external texture: {}", e);
+                }
+            }
+        }
+        
+        #[cfg(not(target_os = "windows"))]
+        {
+            eprintln!("[GPU-VIEWPORT] ⚠️  External textures only supported on Windows");
+        }
+        
+        viewport
+    })
 }

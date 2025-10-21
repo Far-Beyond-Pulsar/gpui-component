@@ -1,6 +1,6 @@
-use crate::actions::{Cancel, Confirm, SelectNext, SelectPrev};
-use crate::input::{SelectLeft, SelectRight};
-use crate::menu::menu_item::MenuItem;
+use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
+use crate::actions::{SelectLeft, SelectRight};
+use crate::menu::menu_item::MenuItemElement;
 use crate::scroll::{Scrollbar, ScrollbarState};
 use crate::{
     button::Button, h_flex, popover::Popover, v_flex, ActiveTheme, Icon, IconName, Selectable,
@@ -13,7 +13,7 @@ use gpui::{
     InteractiveElement, IntoElement, KeyBinding, ParentElement, Pixels, Render, ScrollHandle,
     SharedString, StatefulInteractiveElement, Styled, WeakEntity, Window,
 };
-use gpui::{Half, MouseDownEvent, Subscription};
+use gpui::{Half, MouseDownEvent, OwnedMenuItem, Subscription};
 use std::rc::Rc;
 
 const CONTEXT: &str = "PopupMenu";
@@ -22,8 +22,8 @@ pub fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("enter", Confirm { secondary: false }, Some(CONTEXT)),
         KeyBinding::new("escape", Cancel, Some(CONTEXT)),
-        KeyBinding::new("up", SelectPrev, Some(CONTEXT)),
-        KeyBinding::new("down", SelectNext, Some(CONTEXT)),
+        KeyBinding::new("up", SelectUp, Some(CONTEXT)),
+        KeyBinding::new("down", SelectDown, Some(CONTEXT)),
         KeyBinding::new("left", SelectLeft, Some(CONTEXT)),
         KeyBinding::new("right", SelectRight, Some(CONTEXT)),
     ]);
@@ -68,13 +68,15 @@ pub(crate) enum PopupMenuItem {
         disabled: bool,
         is_link: bool,
         action: Option<Box<dyn Action>>,
-        handler: Rc<dyn Fn(&mut Window, &mut App)>,
+        // For link item
+        handler: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
     },
     ElementItem {
         icon: Option<Icon>,
         disabled: bool,
+        action: Box<dyn Action>,
         render: Box<dyn Fn(&mut Window, &mut App) -> AnyElement + 'static>,
-        handler: Rc<dyn Fn(&mut Window, &mut App)>,
+        handler: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
     },
     Submenu {
         icon: Option<Icon>,
@@ -85,6 +87,7 @@ pub(crate) enum PopupMenuItem {
 }
 
 impl PopupMenuItem {
+    #[inline]
     fn is_clickable(&self) -> bool {
         !matches!(self, PopupMenuItem::Separator)
             && matches!(
@@ -102,13 +105,14 @@ impl PopupMenuItem {
             )
     }
 
+    #[inline]
     fn is_separator(&self) -> bool {
         matches!(self, PopupMenuItem::Separator)
     }
 }
 
 pub struct PopupMenu {
-    focus_handle: FocusHandle,
+    pub(crate) focus_handle: FocusHandle,
     pub(crate) menu_items: Vec<PopupMenuItem>,
     /// The focus handle of Entity to handle actions.
     pub(crate) action_context: Option<FocusHandle>,
@@ -126,6 +130,8 @@ pub struct PopupMenu {
     external_link_icon: bool,
     scroll_handle: ScrollHandle,
     scroll_state: ScrollbarState,
+    // This will update on render
+    submenu_anchor: (Corner, Pixels),
 
     _subscriptions: Vec<Subscription>,
 }
@@ -148,6 +154,7 @@ impl PopupMenu {
             scroll_state: ScrollbarState::default(),
             external_link_icon: true,
             size: Size::default(),
+            submenu_anchor: (Corner::TopLeft, Pixels::ZERO),
             _subscriptions: vec![],
         }
     }
@@ -157,11 +164,17 @@ impl PopupMenu {
         cx: &mut App,
         f: impl FnOnce(Self, &mut Window, &mut Context<PopupMenu>) -> Self,
     ) -> Entity<Self> {
-        cx.new(|cx| {
-            let mut menu = Self::new(cx);
-            menu.action_context = window.focused(cx);
-            f(menu, window, cx)
-        })
+        cx.new(|cx| f(Self::new(cx), window, cx))
+    }
+
+    /// Set the focus handle of Entity to handle actions.
+    ///
+    /// When the menu is dismissed or before an action is triggered, the focus will be returned to this handle.
+    ///
+    /// Then the action will be dispatched to this handle.
+    pub fn action_context(mut self, handle: FocusHandle) -> Self {
+        self.action_context = Some(handle);
+        self
     }
 
     /// Set min width of the popup menu, default is 120px
@@ -248,7 +261,7 @@ impl PopupMenu {
             disabled,
             action: None,
             is_link: true,
-            handler: Rc::new(move |_, cx| cx.open_url(&href)),
+            handler: Some(Rc::new(move |_, cx| cx.open_url(&href))),
         });
         self
     }
@@ -278,7 +291,7 @@ impl PopupMenu {
             disabled,
             action: None,
             is_link: true,
-            handler: Rc::new(move |_, cx| cx.open_url(&href)),
+            handler: Some(Rc::new(move |_, cx| cx.open_url(&href))),
         });
         self
     }
@@ -383,9 +396,10 @@ impl PopupMenu {
     {
         self.menu_items.push(PopupMenuItem::ElementItem {
             render: Box::new(move |window, cx| builder(window, cx).into_any_element()),
-            handler: self.wrap_handler(action),
+            action,
             icon: Some(icon.into()),
             disabled,
+            handler: None,
         });
         self.has_icon = true;
         self
@@ -420,7 +434,8 @@ impl PopupMenu {
         if checked {
             self.menu_items.push(PopupMenuItem::ElementItem {
                 render: Box::new(move |window, cx| builder(window, cx).into_any_element()),
-                handler: self.wrap_handler(action),
+                action,
+                handler: None,
                 icon: Some(IconName::Check.into()),
                 disabled,
             });
@@ -428,18 +443,13 @@ impl PopupMenu {
         } else {
             self.menu_items.push(PopupMenuItem::ElementItem {
                 render: Box::new(move |window, cx| builder(window, cx).into_any_element()),
-                handler: self.wrap_handler(action),
+                action,
+                handler: None,
                 icon: None,
                 disabled,
             });
         }
         self
-    }
-
-    fn wrap_handler(&self, action: Box<dyn Action>) -> Rc<dyn Fn(&mut Window, &mut App)> {
-        Rc::new(move |window, cx| {
-            window.dispatch_action(action.boxed_clone(), cx);
-        })
     }
 
     /// Use small size, the menu item will have smaller height.
@@ -539,8 +549,41 @@ impl PopupMenu {
             disabled,
             action: Some(action.boxed_clone()),
             is_link: false,
-            handler: self.wrap_handler(action),
+            handler: None,
         });
+        self
+    }
+
+    pub(super) fn with_menu_items<I>(
+        mut self,
+        items: impl IntoIterator<Item = I>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self
+    where
+        I: Into<OwnedMenuItem>,
+    {
+        for item in items {
+            match item.into() {
+                OwnedMenuItem::Action { name, action, .. } => {
+                    self = self.menu(name, action.boxed_clone())
+                }
+                OwnedMenuItem::Separator => {
+                    self = self.separator();
+                }
+                OwnedMenuItem::Submenu(submenu) => {
+                    self = self.submenu(submenu.name, window, cx, move |menu, window, cx| {
+                        menu.with_menu_items(submenu.items.clone(), window, cx)
+                    })
+                }
+                OwnedMenuItem::SystemMenu(_) => {}
+            }
+        }
+
+        if self.menu_items.len() > 20 {
+            self.scrollable = true;
+        }
+
         self
     }
 
@@ -580,12 +623,25 @@ impl PopupMenu {
             Some(index) => {
                 let item = self.menu_items.get(index);
                 match item {
-                    Some(PopupMenuItem::Item { handler, .. }) => {
-                        handler(window, cx);
+                    Some(PopupMenuItem::Item {
+                        handler, action, ..
+                    }) => {
+                        if let Some(handler) = handler {
+                            handler(window, cx);
+                        } else if let Some(action) = action.as_ref() {
+                            self.dispatch_confirm_action(action, window, cx);
+                        }
+
                         self.dismiss(&Cancel, window, cx)
                     }
-                    Some(PopupMenuItem::ElementItem { handler, .. }) => {
-                        handler(window, cx);
+                    Some(PopupMenuItem::ElementItem {
+                        handler, action, ..
+                    }) => {
+                        if let Some(handler) = handler {
+                            handler(window, cx);
+                        } else {
+                            self.dispatch_confirm_action(action, window, cx);
+                        }
                         self.dismiss(&Cancel, window, cx)
                     }
                     _ => {}
@@ -593,6 +649,19 @@ impl PopupMenu {
             }
             _ => {}
         }
+    }
+
+    fn dispatch_confirm_action(
+        &self,
+        action: &Box<dyn Action>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(context) = self.action_context.as_ref() {
+            context.focus(window);
+        }
+
+        window.dispatch_action(action.boxed_clone(), cx);
     }
 
     fn set_selected_index(&mut self, ix: usize, cx: &mut Context<Self>) {
@@ -603,7 +672,26 @@ impl PopupMenu {
         }
     }
 
-    fn select_next(&mut self, _: &SelectNext, _: &mut Window, cx: &mut Context<Self>) {
+    fn select_up(&mut self, _: &SelectUp, _: &mut Window, cx: &mut Context<Self>) {
+        cx.stop_propagation();
+        let ix = self.selected_index.unwrap_or(0);
+
+        if let Some((prev_ix, _)) = self
+            .menu_items
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(i, item)| *i < ix && item.is_clickable())
+        {
+            self.set_selected_index(prev_ix, cx);
+            return;
+        }
+
+        let last_clickable_ix = self.clickable_menu_items().last().map(|(ix, _)| ix);
+        self.set_selected_index(last_clickable_ix.unwrap_or(0), cx);
+    }
+
+    fn select_down(&mut self, _: &SelectDown, _: &mut Window, cx: &mut Context<Self>) {
         cx.stop_propagation();
         let Some(ix) = self.selected_index else {
             self.set_selected_index(0, cx);
@@ -623,81 +711,87 @@ impl PopupMenu {
         self.set_selected_index(0, cx);
     }
 
-    fn select_prev(&mut self, _: &SelectPrev, _: &mut Window, cx: &mut Context<Self>) {
-        cx.stop_propagation();
-        let ix = self.selected_index.unwrap_or(0);
-
-        if let Some((prev_ix, _)) = self
-            .menu_items
-            .iter()
-            .enumerate()
-            .rev()
-            .find(|(i, item)| *i < ix && item.is_clickable())
-        {
-            self.set_selected_index(prev_ix, cx);
-            return;
-        }
-
-        let last_clickable_ix = self.clickable_menu_items().last().map(|(ix, _)| ix);
-        self.set_selected_index(last_clickable_ix.unwrap_or(0), cx);
-    }
-
     fn select_left(&mut self, _: &SelectLeft, window: &mut Window, cx: &mut Context<Self>) {
-        let (anchor, _) = self.child_menu_anchor(window);
-        if matches!(anchor, Corner::TopLeft | Corner::BottomLeft) {
-            self._unselect_submenu(window, cx);
+        let handled = if matches!(self.submenu_anchor.0, Corner::TopLeft | Corner::BottomLeft) {
+            self._unselect_submenu(window, cx)
         } else {
-            self._select_submenu(window, cx);
-        }
+            self._select_submenu(window, cx)
+        };
 
         if self.parent_side(cx).is_left() {
             self._focus_parent_menu(window, cx);
         }
+
+        if handled {
+            return;
+        }
+
+        // For parent AppMenuBar to handle.
+        if self.parent_menu.is_none() {
+            cx.propagate();
+        }
     }
 
     fn select_right(&mut self, _: &SelectRight, window: &mut Window, cx: &mut Context<Self>) {
-        let (anchor, _) = self.child_menu_anchor(window);
-        if matches!(anchor, Corner::TopLeft | Corner::BottomLeft) {
-            self._select_submenu(window, cx);
+        let handled = if matches!(self.submenu_anchor.0, Corner::TopLeft | Corner::BottomLeft) {
+            self._select_submenu(window, cx)
         } else {
-            self._unselect_submenu(window, cx);
-        }
+            self._unselect_submenu(window, cx)
+        };
 
         if self.parent_side(cx).is_right() {
             self._focus_parent_menu(window, cx);
         }
-    }
 
-    fn _select_submenu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(active_submenu) = self.active_submenu() {
-            // Focus the submenu, so that can be handle the action.
-            active_submenu.update(cx, |view, cx| {
-                view.focus_handle(cx).focus(window);
-                view.set_selected_index(0, cx);
-            });
-            cx.notify();
+        if handled {
+            return;
+        }
+
+        // For parent AppMenuBar to handle.
+        if self.parent_menu.is_none() {
+            cx.propagate();
         }
     }
 
-    fn _unselect_submenu(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+    fn _select_submenu(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if let Some(active_submenu) = self.active_submenu() {
+            // Focus the submenu, so that can be handle the action.
+            active_submenu.update(cx, |view, cx| {
+                view.set_selected_index(0, cx);
+                view.focus_handle.focus(window);
+            });
+            cx.notify();
+            return true;
+        }
+
+        return false;
+    }
+
+    fn _unselect_submenu(&mut self, _: &mut Window, cx: &mut Context<Self>) -> bool {
         if let Some(active_submenu) = self.active_submenu() {
             active_submenu.update(cx, |view, cx| {
                 view.selected_index = None;
                 cx.notify();
             });
+            return true;
         }
+
+        return false;
     }
 
     fn _focus_parent_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(parent) = self.parent_menu.as_ref() {
-            self.selected_index = None;
-            if let Some(parent) = parent.upgrade() {
-                parent.update(cx, |view, cx| {
-                    view.focus_handle.focus(window);
-                    cx.notify();
-                });
-            }
-        }
+        let Some(parent) = self.parent_menu.as_ref() else {
+            return;
+        };
+        let Some(parent) = parent.upgrade() else {
+            return;
+        };
+
+        self.selected_index = None;
+        parent.update(cx, |view, cx| {
+            view.focus_handle.focus(window);
+            cx.notify();
+        });
     }
 
     fn parent_side(&self, cx: &App) -> Side {
@@ -709,11 +803,9 @@ impl PopupMenu {
             return Side::Left;
         };
 
-        let parent_x = parent.read(cx).bounds.origin.x;
-        if parent_x < self.bounds.origin.x {
-            Side::Left
-        } else {
-            Side::Right
+        match parent.read(cx).submenu_anchor.0 {
+            Corner::TopLeft | Corner::BottomLeft => Side::Left,
+            Corner::TopRight | Corner::BottomRight => Side::Right,
         }
     }
 
@@ -741,12 +833,23 @@ impl PopupMenu {
     }
 
     fn render_key_binding(
+        &self,
         action: Option<Box<dyn Action>>,
         window: &mut Window,
         _: &mut Context<Self>,
     ) -> Option<impl IntoElement> {
         let action = action?;
-        Kbd::binding_for_action(action.as_ref(), None, window).map(|this| {
+
+        match self
+            .action_context
+            .as_ref()
+            .and_then(|handle| Kbd::binding_for_action_in(action.as_ref(), handle, window))
+        {
+            Some(kbd) => Some(kbd),
+            // Fallback to App level key binding
+            None => Kbd::binding_for_action(action.as_ref(), None, window),
+        }
+        .map(|this| {
             this.p_0()
                 .flex_nowrap()
                 .border_0()
@@ -788,21 +891,21 @@ impl PopupMenu {
     }
 
     /// Calculate the anchor corner and left offset for child submenu
-    fn child_menu_anchor(&self, window: &Window) -> (Corner, Pixels) {
+    fn update_submenu_menu_anchor(&mut self, window: &Window) {
         let bounds = self.bounds;
         let max_width = self.max_width();
         let (anchor, left) = if max_width + bounds.origin.x > window.bounds().size.width {
-            (Corner::TopRight, -px(14.))
+            (Corner::TopRight, -px(16.))
         } else {
-            (Corner::TopLeft, bounds.size.width)
+            (Corner::TopLeft, bounds.size.width - px(8.))
         };
 
         let is_bottom_pos = bounds.origin.y + bounds.size.height > window.bounds().size.height;
-        if is_bottom_pos {
+        self.submenu_anchor = if is_bottom_pos {
             (anchor.other_side_corner_along(gpui::Axis::Vertical), left)
         } else {
             (anchor, left)
-        }
+        };
     }
 
     fn render_item(
@@ -815,28 +918,33 @@ impl PopupMenu {
     ) -> impl IntoElement {
         let has_icon = self.has_icon;
         let selected = self.selected_index == Some(ix);
-        const EDGE_PADDING: Pixels = px(8.);
-        const INNER_PADDING: Pixels = px(4.);
+        const EDGE_PADDING: Pixels = px(4.);
+        const INNER_PADDING: Pixels = px(8.);
+
+        let is_submenu = matches!(item, PopupMenuItem::Submenu { .. });
+        let group_name = format!("popup-menu-item-{}", ix);
 
         let (item_height, radius) = match self.size {
             Size::Small => (px(20.), state.radius.half()),
             _ => (px(26.), state.radius),
         };
 
-        let this = MenuItem::new(ix)
+        let this = MenuItemElement::new(ix, &group_name)
             .relative()
             .text_sm()
             .py_0()
             .px(INNER_PADDING)
             .rounded(radius)
             .items_center()
-            .hovered(selected)
-            .on_mouse_enter(cx.listener(move |this, _, _, cx| {
-                if this.selected_index == Some(ix) {
-                    return;
+            .selected(selected)
+            .on_hover(cx.listener(move |this, hovered, _, cx| {
+                if *hovered {
+                    this.selected_index = Some(ix);
+                } else if !is_submenu && this.selected_index == Some(ix) {
+                    // TODO: Better handle the submenu unselection when hover out
+                    this.selected_index = None;
                 }
 
-                this.selected_index = Some(ix);
                 cx.notify();
             }));
 
@@ -871,6 +979,7 @@ impl PopupMenu {
                 .disabled(*disabled)
                 .child(
                     h_flex()
+                        .flex_1()
                         .min_h(item_height)
                         .items_center()
                         .gap_x_1()
@@ -887,7 +996,7 @@ impl PopupMenu {
             } => {
                 let show_link_icon = *is_link && self.external_link_icon;
                 let action = action.as_ref().map(|action| action.boxed_clone());
-                let key = Self::render_key_binding(action, window, cx);
+                let key = self.render_key_binding(action, window, cx);
 
                 this.when(!disabled, |this| {
                     this.on_click(
@@ -948,22 +1057,23 @@ impl PopupMenu {
                         ),
                 )
                 .when(selected, |this| {
-                    let (anchor, left) = self.child_menu_anchor(window);
-                    let is_bottom_pos = matches!(anchor, Corner::BottomLeft | Corner::BottomRight);
-
-                    this.child(
+                    this.child({
+                        let (anchor, left) = self.submenu_anchor;
+                        let is_bottom_pos =
+                            matches!(anchor, Corner::BottomLeft | Corner::BottomRight);
                         anchored()
                             .anchor(anchor)
                             .child(
                                 div()
+                                    .id("submenu")
                                     .occlude()
                                     .when(is_bottom_pos, |this| this.bottom_0())
                                     .when(!is_bottom_pos, |this| this.top_neg_1())
                                     .left(left)
                                     .child(menu.clone()),
                             )
-                            .snap_to_window_with_margin(Edges::all(EDGE_PADDING)),
-                    )
+                            .snap_to_window_with_margin(Edges::all(EDGE_PADDING))
+                    })
                 }),
         }
     }
@@ -984,6 +1094,8 @@ struct ItemState {
 
 impl Render for PopupMenu {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.update_submenu_menu_anchor(window);
+
         let view = cx.entity().clone();
         let items_count = self.menu_items.len();
 
@@ -1004,8 +1116,8 @@ impl Render for PopupMenu {
             .id("popup-menu")
             .key_context(CONTEXT)
             .track_focus(&self.focus_handle)
-            .on_action(cx.listener(Self::select_next))
-            .on_action(cx.listener(Self::select_prev))
+            .on_action(cx.listener(Self::select_up))
+            .on_action(cx.listener(Self::select_down))
             .on_action(cx.listener(Self::select_left))
             .on_action(cx.listener(Self::select_right))
             .on_action(cx.listener(Self::confirm))
@@ -1056,7 +1168,7 @@ impl Render for PopupMenu {
                     }),
             )
             .when(self.scrollable, |this| {
-                // TODO: When the menu is limited by `overflow_y_scroll`, the sub-menu will cannot be displayed.
+                // TODO: When the menu is limited by `overflow_y_scroll`, the sub-menu cannot be displayed.
                 this.child(
                     div()
                         .absolute()
