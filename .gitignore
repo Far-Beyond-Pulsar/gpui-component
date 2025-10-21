@@ -11,4 +11,6 @@ blueprint.json
 *.mp3
 *.stacks
 profile.json.gz
+.envrc
+.direnv
 *.zip
