@@ -421,12 +421,20 @@ fn setup_scene(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
     shared_textures: Res<SharedTexturesResource>,
+    render_device: Res<RenderDevice>,
 ) {
     println!("[BEVY-RENDERER] 🎬 setup_scene called - creating render textures");
     
     // Create render target textures
-    let texture_0 = images.add(create_render_texture());
-    let texture_1 = images.add(create_render_texture());
+    #[cfg(target_os = "windows")]
+    let (texture_0, texture_1) = unsafe {
+        create_shared_render_textures(&render_device, &mut images)
+    };
+    
+    #[cfg(not(target_os = "windows"))]
+    let (texture_0, texture_1) = {
+        (images.add(create_render_texture()), images.add(create_render_texture()))
+    };
 
     println!("[BEVY-RENDERER] 📦 Created {} render textures", 2);
     
