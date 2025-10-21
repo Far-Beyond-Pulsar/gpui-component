@@ -209,52 +209,65 @@ impl BevyRenderer {
         println!("[BEVY-RENDERER] 🎮🎮🎮 BEVY THREAD STARTING! 🎮🎮🎮");
         println!("[BEVY-RENDERER] Thread ID: {:?}", std::thread::current().id());
         println!("[BEVY-RENDERER] Render size: {}x{}", width, height);
+        println!("[BEVY-RENDERER] Architecture: ZERO-COPY shared GPU textures!");
         println!("========================================");
 
         println!("[BEVY-RENDERER] Step 1: Creating App...");
         let mut app = App::new();
         println!("[BEVY-RENDERER] Step 2: App created successfully");
         
-        println!("[BEVY-RENDERER] Step 3: Adding DefaultPlugins (without Window)...");
-        app.add_plugins(DefaultPlugins.build().disable::<WindowPlugin>());
+        println!("[BEVY-RENDERER] Step 3: Adding DefaultPlugins (headless mode)...");
+        // Based on official Bevy headless example
+        app.add_plugins(
+            DefaultPlugins
+                .set(bevy::window::WindowPlugin {
+                    primary_window: None,
+                    exit_condition: bevy::window::ExitCondition::DontExit,
+                    ..default()
+                })
+                .disable::<bevy::winit::WinitPlugin>()
+        );
         println!("[BEVY-RENDERER] Step 4: DefaultPlugins added");
         
-        println!("[BEVY-RENDERER] Step 5: Adding RenderPlugin...");
-        app.add_plugins(RenderPlugin::default());
-        println!("[BEVY-RENDERER] Step 6: RenderPlugin added");
+        println!("[BEVY-RENDERER] Step 5: Adding ScheduleRunnerPlugin (120 FPS)...");
+        app.add_plugins(bevy::app::ScheduleRunnerPlugin::run_loop(
+            Duration::from_secs_f64(1.0 / 120.0),
+        ));
+        println!("[BEVY-RENDERER] Step 6: ScheduleRunnerPlugin added");
         
-        println!("[BEVY-RENDERER] Step 7: Adding PbrPlugin...");
-        app.add_plugins(PbrPlugin::default());
-        println!("[BEVY-RENDERER] Step 8: PbrPlugin added");
-        
-        println!("[BEVY-RENDERER] Step 9: Adding resources and systems...");
+        println!("[BEVY-RENDERER] Step 7: Adding resources and systems...");
         app.insert_resource(ClearColor(Color::srgb(0.2, 0.2, 0.3)))
             .insert_resource(camera_input.lock().unwrap().clone())
             .insert_resource(RenderStats::default())
             .insert_resource(ShutdownSignal(shutdown))
             .insert_resource(SharedTexturesResource(shared_textures))
+            // ZERO-COPY: Setup scene with direct GPU texture rendering
             .add_systems(Startup, setup_scene)
             .add_systems(Update, update_camera_from_input)
             .add_systems(Update, animate_ball)
             .add_systems(Update, check_shutdown)
             .add_systems(Update, update_camera_render_target)
+            // ZERO-COPY: Swap texture indices after rendering (double-buffer)
             .add_systems(Last, swap_render_textures);
-        println!("[BEVY-RENDERER] Step 10: Resources and systems added");
+        println!("[BEVY-RENDERER] Step 8: Resources and systems added");
 
-        println!("[BEVY-RENDERER] Step 11: Adding render extraction system...");
+        println!("[BEVY-RENDERER] Step 9: Adding render extraction system...");
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             println!("[BEVY-RENDERER] ✅ RenderApp found!");
+            // ZERO-COPY: Extract native GPU handles from wgpu textures
             render_app.add_systems(ExtractSchedule, extract_native_texture_handles);
-            println!("[BEVY-RENDERER] ✅ Extract system added");
+            println!("[BEVY-RENDERER] ✅ HAL extraction system added");
         } else {
             println!("[BEVY-RENDERER] ❌ WARNING: No RenderApp found!");
         }
 
-        println!("[BEVY-RENDERER] Step 12: Starting Bevy event loop...");
+        println!("[BEVY-RENDERER] Step 10: Starting Bevy loop (headless, 120 FPS)...");
+        println!("[BEVY-RENDERER] 🚀 ZERO-COPY: Bevy renders → Shared GPU textures → GPUI displays");
         std::io::stdout().flush().ok();
+        
         app.run();
         
-        println!("[BEVY-RENDERER] ⛔ Bevy event loop exited");
+        println!("[BEVY-RENDERER] ⛔ Bevy loop exited");
     }
 
     /// Render a frame (GPUI calls this)
@@ -365,112 +378,114 @@ fn setup_scene(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
-    shared_textures_res: Res<SharedTexturesResource>,
+    shared_textures: Res<SharedTexturesResource>,
 ) {
-    println!("[BevyRenderer] 🎨 Setting up scene with SHARED DOUBLE-BUFFER textures");
-
-    // Create TWO render target textures for ping-pong rendering
-    let size = Extent3d {
-        width: 1920,
-        height: 1500,
-        depth_or_array_layers: 1,
-    };
-
-    let create_render_texture = || -> Image {
-        let mut img = Image {
-            texture_descriptor: TextureDescriptor {
-                label: None,  // Label isn't needed for rendering
-                size,
-                dimension: TextureDimension::D2,
-                format: TextureFormat::Bgra8UnormSrgb,
-                mip_level_count: 1,
-                sample_count: 1,
-                usage: TextureUsages::TEXTURE_BINDING
-                    | TextureUsages::COPY_SRC  // For native handle extraction
-                    | TextureUsages::RENDER_ATTACHMENT,  // For camera rendering
-                view_formats: &[],
-            },
-            ..default()
-        };
-        img.resize(size);
-        img
-    };
-
+    println!("[BEVY-RENDERER] 🎬 setup_scene called - creating render textures");
+    
+    // Create render target textures
     let texture_0 = images.add(create_render_texture());
     let texture_1 = images.add(create_render_texture());
 
-    println!("[BevyRenderer] Created 2 shared textures for double-buffering");
-
-    // Store handles in SharedTexturesResource for GPUI access
-    if let Ok(mut textures_lock) = shared_textures_res.0.lock() {
+    println!("[BEVY-RENDERER] 📦 Created {} render textures", 2);
+    
+    // Store in shared resource
+    if let Ok(mut textures_lock) = shared_textures.0.lock() {
         *textures_lock = Some(SharedGpuTextures {
             textures: Arc::new([texture_0.clone(), texture_1.clone()]),
             native_handles: Arc::new(Mutex::new(None)),
             write_index: Arc::new(AtomicUsize::new(0)),
             read_index: Arc::new(AtomicUsize::new(1)),
             frame_number: Arc::new(AtomicU64::new(0)),
-            width: size.width,
-            height: size.height,
+            width: RENDER_WIDTH,
+            height: RENDER_HEIGHT,
         });
-        println!("[BevyRenderer] ✅ Shared textures registered!");
+        println!("[BEVY-RENDERER] ✅ Stored shared textures in resource");
     }
 
-    // Camera targeting texture 0 initially (we'll swap each frame)
+    // Camera targeting texture 0 initially
     commands.spawn((
         Camera3d::default(),
         Camera {
             target: RenderTarget::Image(texture_0.into()),
-            clear_color: ClearColorConfig::Custom(Color::srgb(0.2, 0.2, 0.3)),
             ..default()
         },
-        Transform::from_xyz(0.0, 5.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
-        Tonemapping::None,
+        Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
         MainCamera,
     ));
+    
+    println!("[BEVY-RENDERER] 📷 Camera spawned");
 
-    // Ground plane
+    // Light
     commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(20.0, 20.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.3, 0.5, 0.3),
-            ..default()
-        })),
-    ));
-
-    // Bouncing ball
-    commands.spawn((
-        Mesh3d(meshes.add(Sphere::new(0.5))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.8, 0.2, 0.2),
-            ..default()
-        })),
-        Transform::from_xyz(0.0, 2.0, 0.0),
-        AnimatedBall { time: 0.0 },
-    ));
-
-    // Lights
-    commands.spawn((
-        DirectionalLight {
-            color: Color::WHITE,
-            illuminance: 10000.0,
+        PointLight {
+            intensity: 1500.0,
+            shadows_enabled: true,
             ..default()
         },
-        Transform::from_xyz(4.0, 8.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(4.0, 8.0, 4.0),
     ));
+
+    // Plane
+    commands.spawn((
+        Mesh3d(meshes.add(Plane3d::default().mesh().size(5.0, 5.0))),
+        MeshMaterial3d(materials.add(Color::srgb(0.3, 0.5, 0.3))),
+    ));
+
+    // Cube
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+        MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
+        Transform::from_xyz(0.0, 0.5, 0.0),
+    ));
+
+    // Ball
+    commands.spawn((
+        Mesh3d(meshes.add(Sphere::new(0.5))),
+        MeshMaterial3d(materials.add(Color::srgb(1.0, 0.2, 0.2))),
+        Transform::from_xyz(1.5, 0.5, 0.0),
+        AnimatedBall,
+    ));
+    
+    println!("[BEVY-RENDERER] 🎭 Scene setup complete!");
+}
+
+/// Create a render target texture for camera output
+fn create_render_texture() -> Image {
+    let size = Extent3d {
+        width: RENDER_WIDTH,
+        height: RENDER_HEIGHT,
+        depth_or_array_layers: 1,
+    };
+
+    let mut img = Image {
+        texture_descriptor: TextureDescriptor {
+            label: None,
+            size,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Bgra8UnormSrgb,
+            mip_level_count: 1,
+            sample_count: 1,
+            usage: TextureUsages::TEXTURE_BINDING
+                | TextureUsages::COPY_SRC
+                | TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        },
+        ..default()
+    };
+    img.resize(size);
+    img
 }
 
 #[derive(Component)]
-struct AnimatedBall {
-    time: f32,
-}
+struct AnimatedBall;
 
 fn animate_ball(
     time: Res<Time>,
-    mut query: Query<(&mut Transform, &mut AnimatedBall)>,
+    mut query: Query<&mut Transform, With<AnimatedBall>>,
 ) {
-    for (mut transform, mut ball) in query.iter_mut() {
-        ball.time += time.delta_secs();
-        let altitude = (ball.time * 3.0).sin().abs() * 2.0 + 0.5;
+    for mut transform in query.iter_mut() {
+        let t = time.elapsed_secs();
+        let altitude = (t * 3.0).sin().abs() * 2.0 + 0.5;
         transform.translation.y = altitude;
     }
 }
