@@ -10,7 +10,7 @@
 
 use std::collections::{HashMap,HashSet,VecDeque};
 use crate::graph::{GraphDescription,NodeInstance,ConnectionType};
-use super::node_metadata::{NodeMetadata,NodeType};
+use super::node_metadata::{NodeMetadata,NodeTypes};
 
 /// Resolves data flow for a graph
 pub struct DataResolver {
@@ -131,7 +131,7 @@ impl DataResolver {
             // Check if this node is pure according to its metadata
             if let Some(node_meta) = metadata.get(&node.node_type) {
                 // A node is pure if metadata says so AND it has a return type
-                if node_meta.node_type == NodeType::Pure && node_meta.return_type.is_some() {
+                if node_meta.node_type == NodeTypes::pure && node_meta.return_type.is_some() {
                     pure_nodes.insert(node_id.clone());
                     dependencies.insert(node_id.clone(), Vec::new());
                 }
@@ -270,7 +270,7 @@ impl DataResolver {
 
                 let is_pure = if let Some(node_meta) = metadata.get(&source_node.node_type) {
                     eprintln!("[DATA_RESOLVER] Found metadata for '{}': type={:?}", source_node.node_type, node_meta.node_type);
-                    node_meta.node_type == NodeType::Pure
+                    node_meta.node_type == NodeTypes::pure
                 } else {
                     eprintln!("[DATA_RESOLVER] NO METADATA FOUND for node type '{}'", source_node.node_type);
                     false

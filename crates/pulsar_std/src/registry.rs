@@ -6,22 +6,7 @@
 //! be queried by the engine to build the node library.
 
 use linkme::distributed_slice;
-
-/// Node type classification
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NodeType {
-    /// Pure function: no exec pins, only data flow
-    Pure,
-
-    /// Simple function: one exec in, one exec out
-    Function,
-
-    /// Control flow: one exec in, multiple exec outs via exec_output!()
-    ControlFlow,
-
-    /// Event: defines an entry point function (e.g., main, begin_play)
-    Event,
-}
+use crate::{NodeTypes};
 
 /// Parameter metadata
 #[derive(Debug, Clone)]
@@ -48,7 +33,7 @@ pub struct NodeMetadata {
     pub name: &'static str,
 
     /// Type of node (pure, fn, control_flow, event)
-    pub node_type: NodeType,
+    pub node_type: NodeTypes,
 
     /// Function parameters (inputs)
     pub params: &'static [NodeParameter],

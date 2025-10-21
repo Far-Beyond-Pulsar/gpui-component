@@ -38,7 +38,7 @@ mod tests {
 
         // Test add node (pure)
         let add_node = metadata.get("add").unwrap();
-        assert_eq!(add_node.node_type, node_metadata::NodeType::Pure);
+        assert_eq!(add_node.node_type, node_metadata::NodeTypes::pure);
         assert_eq!(add_node.params.len(), 2);
         assert!(add_node.return_type.is_some());
         assert!(add_node.exec_inputs.is_empty());
@@ -46,7 +46,7 @@ mod tests {
 
         // Test branch node (control flow)
         let branch_node = metadata.get("branch").unwrap();
-        assert_eq!(branch_node.node_type, node_metadata::NodeType::ControlFlow);
+        assert_eq!(branch_node.node_type, node_metadata::NodeTypes::control_flow);
         assert_eq!(branch_node.params.len(), 1);
         assert_eq!(branch_node.exec_outputs.len(), 2);
         assert!(branch_node.exec_outputs.contains(&"True"));
@@ -54,7 +54,7 @@ mod tests {
 
         // Test print_string node (function)
         let print_node = metadata.get("print_string").unwrap();
-        assert_eq!(print_node.node_type, node_metadata::NodeType::Function);
+        assert_eq!(print_node.node_type, node_metadata::NodeTypes::fn_);
         assert_eq!(print_node.params.len(), 1);
         assert_eq!(print_node.exec_inputs.len(), 1);
         assert_eq!(print_node.exec_outputs.len(), 1);
