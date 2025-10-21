@@ -3449,8 +3449,8 @@ dependencies = [
  "tokio",
  "uuid",
  "wgpu 26.0.1",
- "wgpu-core 26.0.1",
  "wgpu-hal 26.0.4",
+ "wgpu-types 26.0.0",
  "windows 0.58.0",
 ]
 

@@ -1,16 +1,19 @@
 // Rendering subsystem for Pulsar Engine Backend
 
 pub mod bevy_renderer;
-pub mod wgpu_renderer;
+// pub mod wgpu_renderer; // Disabled - using BevyRenderer with zero-copy HAL integration
 pub mod zero_copy_buffer;
 pub mod shared_gpu_texture;
 pub mod native_texture;
 
-pub use wgpu_renderer::WgpuRenderer;
+// pub use wgpu_renderer::WgpuRenderer; // Disabled
 pub use bevy_renderer::{BevyRenderer, RenderMetrics, CameraInput};
 pub use zero_copy_buffer::{ZeroCopyFrameBuffer, PersistentMappedBuffer};
 pub use shared_gpu_texture::{SharedGpuTexture, SharedTextureFormat, GpuSyncPrimitive};
 pub use native_texture::{NativeTextureHandle, SharedTextureInfo, TextureFormat};
+
+// Stub for compatibility
+pub struct WgpuRenderer;
 
 // Re-export common types
 pub struct Framebuffer {

@@ -184,6 +184,7 @@ impl LevelEditorPanel {
             // NO allocations - just writing a pointer!
             if let Ok(engine_guard) = gpu_engine.try_lock() {
                 if let Some(native_handle) = engine_guard.get_native_texture_handle() {
+                    println!("[LEVEL-EDITOR] 📥 Got native handle from Bevy: {:?}", native_handle);
                     // Convert to UI handle type
                     let ui_handle = match native_handle {
                         #[cfg(target_os = "windows")]
@@ -203,8 +204,13 @@ impl LevelEditorPanel {
                     // Update the shared handle storage - viewport reads this when painting!
                     if let Ok(mut handle_storage) = viewport_handle_storage.lock() {
                         *handle_storage = Some(ui_handle);
+                        println!("[LEVEL-EDITOR] 💾 Stored handle in viewport storage");
                     }
+                } else {
+                    println!("[LEVEL-EDITOR] ⚠️ No native handle available from Bevy yet");
                 }
+            } else {
+                println!("[LEVEL-EDITOR] ⚠️ Could not lock GPU engine");
             }
 
             frame_count += 1;

@@ -33,23 +33,25 @@ impl NativeTextureHandle {
         texture: &Texture,
         _device: &RenderDevice,
     ) -> Option<Self> {
-        // Use wgpu's HAL to extract native handles
-        // This gives us direct access to the underlying GPU API objects
+        // Use wgpu's as_hal to extract native GPU handles
+        // This gives us direct access to the underlying DirectX/Metal/Vulkan objects
 
         #[cfg(target_os = "windows")]
         {
-            use wgpu_core::hal_api::HalApi;
             use wgpu_hal::api::Dx12;
             
             // Get the HAL texture for DirectX 12
-            let hal_texture = texture.as_hal::<Dx12>();
-            if let Some(hal_tex) = hal_texture {
+            if let Some(hal_tex) = texture.as_hal::<Dx12>() {
+                // The returned type is impl Deref<Target = <Dx12 as Api>::Texture>
+                let dx12_texture = &*hal_tex;
+                
                 // Get the raw D3D12 resource
-                let raw_tex = hal_tex.as_ref();
-                // For GPUI integration, we pass the texture pointer
-                let ptr = raw_tex as *const _ as *mut std::ffi::c_void;
-                println!("[NATIVE-TEXTURE] ✅ Extracted D3D12 texture: {:p}", ptr);
-                Some(NativeTextureHandle::D3D11(ptr as usize))
+                let resource = dx12_texture.raw_resource();
+                // Convert the COM interface to a raw pointer
+                let resource_ptr = resource as *const _ as usize;
+                
+                println!("[NATIVE-TEXTURE] ✅ Extracted D3D12 resource: 0x{:X}", resource_ptr);
+                Some(NativeTextureHandle::D3D11(resource_ptr))
             } else {
                 println!("[NATIVE-TEXTURE] ❌ Failed to get HAL texture for DirectX");
                 None
@@ -58,17 +60,19 @@ impl NativeTextureHandle {
 
         #[cfg(target_os = "macos")]
         {
-            use wgpu_core::hal_api::HalApi;
             use wgpu_hal::api::Metal;
+            use metal::foreign_types::ForeignType;
             
             // Get the HAL texture for Metal
-            let hal_texture = texture.as_hal::<Metal>();
-            if let Some(hal_tex) = hal_texture {
-                // Get the raw Metal texture
-                let raw_tex = hal_tex.as_ref();
-                let ptr = raw_tex as *const _ as *mut std::ffi::c_void;
-                println!("[NATIVE-TEXTURE] ✅ Extracted Metal texture: {:p}", ptr);
-                Some(NativeTextureHandle::Metal(ptr as usize))
+            if let Some(hal_tex) = texture.as_hal::<Metal>() {
+                let metal_texture = &*hal_tex;
+                
+                // Get the raw MTLTexture pointer
+                let texture_ref = metal_texture.raw_texture();
+                let texture_ptr = texture_ref.as_ptr() as usize;
+                
+                println!("[NATIVE-TEXTURE] ✅ Extracted Metal texture: 0x{:X}", texture_ptr);
+                Some(NativeTextureHandle::Metal(texture_ptr))
             } else {
                 println!("[NATIVE-TEXTURE] ❌ Failed to get HAL texture for Metal");
                 None
@@ -77,17 +81,17 @@ impl NativeTextureHandle {
 
         #[cfg(target_os = "linux")]
         {
-            use wgpu_core::hal_api::HalApi;
             use wgpu_hal::api::Vulkan;
             
             // Get the HAL texture for Vulkan
-            let hal_texture = texture.as_hal::<Vulkan>();
-            if let Some(hal_tex) = hal_texture {
-                // Get the raw Vulkan image
-                let raw_tex = hal_tex.as_ref();
-                let ptr = raw_tex as *const _ as u64;
-                println!("[NATIVE-TEXTURE] ✅ Extracted Vulkan image: 0x{:X}", ptr);
-                Some(NativeTextureHandle::Vulkan(ptr))
+            if let Some(hal_tex) = texture.as_hal::<Vulkan>() {
+                let vk_texture = &*hal_tex;
+                
+                // Get the raw VkImage handle
+                let image_handle = vk_texture.raw_handle();
+                
+                println!("[NATIVE-TEXTURE] ✅ Extracted Vulkan image: 0x{:X}", image_handle);
+                Some(NativeTextureHandle::Vulkan(image_handle))
             } else {
                 println!("[NATIVE-TEXTURE] ❌ Failed to get HAL texture for Vulkan");
                 None

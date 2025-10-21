@@ -509,8 +509,12 @@ fn extract_native_texture_handles(
     images: Res<RenderAssets<GpuImage>>,
     render_device: Res<RenderDevice>,
 ) {
+    println!("[BEVY-RENDERER] 🔍 Extracting native texture handles...");
+    
     if let Ok(textures_lock) = shared_textures.0.lock() {
         if let Some(ref textures) = *textures_lock {
+            println!("[BEVY-RENDERER] 📦 Found {} textures to extract", textures.textures.len());
+            
             // Extract native handles from both textures
             #[cfg(target_os = "windows")]
             let mut native_handles = [
@@ -531,24 +535,36 @@ fn extract_native_texture_handles(
             ];
 
             for (i, handle) in textures.textures.iter().enumerate() {
+                println!("[BEVY-RENDERER] 🔎 Checking texture {}", i);
                 if let Some(gpu_image) = images.get(handle) {
+                    println!("[BEVY-RENDERER] ✅ Got GpuImage for texture {}", i);
                     // Extract native DirectX/Metal/Vulkan handle from wgpu texture
                     unsafe {
                         if let Some(native_handle) = crate::subsystems::render::NativeTextureHandle::from_wgpu_texture(
                             &gpu_image.texture,
                             &render_device,
                         ) {
+                            println!("[BEVY-RENDERER] 🎉 Successfully extracted native handle {}: {:?}", i, native_handle);
                             native_handles[i] = native_handle;
+                        } else {
+                            println!("[BEVY-RENDERER] ❌ Failed to extract native handle {}", i);
                         }
                     }
+                } else {
+                    println!("[BEVY-RENDERER] ❌ No GpuImage for texture {}", i);
                 }
             }
 
             // Store native handles for GPUI to access
             if let Ok(mut handles_lock) = textures.native_handles.lock() {
                 *handles_lock = Some(native_handles);
+                println!("[BEVY-RENDERER] 💾 Stored native handles for GPUI");
             }
+        } else {
+            println!("[BEVY-RENDERER] ⚠️ No shared textures found");
         }
+    } else {
+        println!("[BEVY-RENDERER] ❌ Failed to lock shared textures");
     }
 }
 
