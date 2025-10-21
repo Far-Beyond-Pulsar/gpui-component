@@ -36,7 +36,7 @@ fn get_runtime() -> &'static tokio::runtime::Runtime {
 /// - Performance metrics tracking
 pub struct GpuRenderer {
     pub bevy_renderer: Option<BevyRenderer>,
-    temp_framebuffer: BackendFramebuffer,
+    // NO temp_framebuffer! Render DIRECTLY to output!
     render_width: u32,
     render_height: u32,
     display_width: u32,
@@ -78,7 +78,7 @@ impl GpuRenderer {
 
         Self {
             bevy_renderer,
-            temp_framebuffer: BackendFramebuffer::new(width, height),
+            // NO temp_framebuffer!
             render_width: width,
             render_height: height,
             display_width,
@@ -93,12 +93,18 @@ impl GpuRenderer {
         self.frame_count += 1;
 
         if let Some(ref mut renderer) = self.bevy_renderer {
-            // OPTIMIZED: Use new backend with metrics
-            renderer.render(&mut self.temp_framebuffer);
+            // Create backend framebuffer wrapping the SAME buffer!
+            let mut backend_fb = BackendFramebuffer {
+                buffer: std::mem::take(&mut framebuffer.buffer), // MOVE, not clone!
+                width: framebuffer.width,
+                height: framebuffer.height,
+            };
 
-            // Convert temp framebuffer to viewport format
-            let copy_len = self.temp_framebuffer.buffer.len().min(framebuffer.buffer.len());
-            framebuffer.buffer[..copy_len].copy_from_slice(&self.temp_framebuffer.buffer[..copy_len]);
+            // Render DIRECTLY - modifies buffer in-place!
+            renderer.render(&mut backend_fb);
+
+            // Move buffer back
+            framebuffer.buffer = backend_fb.buffer;
             framebuffer.generation += 1;
             
             // Print metrics periodically
@@ -128,12 +134,19 @@ impl GpuRenderer {
         self.frame_count += 1;
 
         if let Some(ref mut renderer) = self.bevy_renderer {
-            // Render to temp buffer first
-            renderer.render(&mut self.temp_framebuffer);
+            // Create temp Vec wrapping gpu_buffer
+            let mut buffer_vec = gpu_buffer.to_vec(); // TODO: Still a copy!
+            let mut backend_fb = BackendFramebuffer {
+                buffer: buffer_vec,
+                width: self.display_width,
+                height: self.display_height,
+            };
 
-            // Copy to GPU buffer (this is the ONLY copy - GPU visible memory!)
-            let copy_len = self.temp_framebuffer.buffer.len().min(gpu_buffer.len());
-            gpu_buffer[..copy_len].copy_from_slice(&self.temp_framebuffer.buffer[..copy_len]);
+            renderer.render(&mut backend_fb);
+
+            // Copy back
+            let copy_len = backend_fb.buffer.len().min(gpu_buffer.len());
+            gpu_buffer[..copy_len].copy_from_slice(&backend_fb.buffer[..copy_len]);
 
             // Print metrics periodically
             if self.last_metrics_print.elapsed().as_secs() >= 5 {
@@ -271,7 +284,7 @@ impl GpuRenderer {
             self.render_height = display_height;
             self.display_width = display_width;
             self.display_height = display_height;
-            self.temp_framebuffer.resize(display_width, display_height);
+            // NO temp_framebuffer to resize!
             
             println!("[GPU-RENDERER] Resizing to {}x{}", display_width, display_height);
             
