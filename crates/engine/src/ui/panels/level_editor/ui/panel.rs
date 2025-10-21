@@ -107,16 +107,18 @@ impl LevelEditorPanel {
         // Create channel for frame data (render thread -> UI thread)
         let (frame_sender, frame_receiver) = channel();
 
+        // Get shared handle storage from viewport for background thread access
+        let viewport_handle_storage = viewport.read(cx).get_shared_handle_storage();
+
         // Spawn GPU direct render thread - TRUE ZERO-COPY!
         let gpu_clone = gpu_engine.clone();
         let enabled_clone = render_enabled.clone();
         let game_thread_clone = game_thread.clone();
-        let viewport_clone = viewport.clone();
 
         thread::spawn(move || {
             Self::render_thread_gpu_direct(
                 gpu_clone,
-                viewport_clone,
+                viewport_handle_storage,
                 enabled_clone,
                 game_thread_clone,
                 frame_sender,
@@ -148,33 +150,27 @@ impl LevelEditorPanel {
         }
     }
 
-    /// TRUE ZERO-COPY GPU render thread - Writes directly to GPU-visible memory!
-    /// NO CPU COPIES - NO ALLOCATIONS - MAXIMUM PERFORMANCE!
+    /// TRUE ZERO-COPY immediate-mode thread - NO BUFFERS, NO COPIES!
+    /// Bevy renders to shared GPU textures independently
+    /// We just grab the native handle and pass it to the viewport!
     fn render_thread_gpu_direct(
         gpu_engine: Arc<Mutex<GpuRenderer>>,
-        _viewport: Entity<GpuViewport>,
+        viewport_handle_storage: Arc<Mutex<Option<gpui_component::gpu_viewport::NativeTextureHandle>>>,
         render_enabled: Arc<std::sync::atomic::AtomicBool>,
         game_thread: Arc<GameThread>,
-        frame_sender: Sender<Arc<Vec<u8>>>,
+        _frame_sender: Sender<Arc<Vec<u8>>>,
     ) {
-        let base_frame_time = Duration::from_millis(8);
-        let mut adaptive_frame_time = base_frame_time;
+        let target_fps = 60; // UI update rate
+        let frame_time = Duration::from_millis(1000 / target_fps);
         let mut frame_count = 0u64;
-        let mut consecutive_fast_frames = 0u32;
-        let max_cpu_usage = 85;
 
-        // Pre-allocate GPU buffer once (reuse for efficiency)
-        let buffer_size = (1600 * 900 * 4) as usize;
-        let mut gpu_buffer = vec![0u8; buffer_size];
-
-        println!("[RENDER-THREAD-GPU] 🔥 Starting TRUE ZERO-COPY render loop!");
-        println!("[RENDER-THREAD-GPU] 💎 Pre-allocated buffer: {} MB", buffer_size as f64 / 1_048_576.0);
-        println!("[RENDER-THREAD-GPU] 🚀 Frames sent to UI thread for GPU upload!");
+        println!("[RENDER-THREAD-GPU] 🔥 Starting TRUE ZERO-COPY immediate-mode loop!");
+        println!("[RENDER-THREAD-GPU] 🚀 NO buffers, NO copies - pure pointer sharing!");
 
         while render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
             let frame_start = std::time::Instant::now();
 
-            // Sync game objects to renderer before rendering
+            // Sync game objects to renderer
             if let Ok(game_state) = game_thread.get_state().lock() {
                 let objects = game_state.objects.clone();
                 if let Ok(mut engine) = gpu_engine.try_lock() {
@@ -184,50 +180,47 @@ impl LevelEditorPanel {
                 }
             }
 
-            // Render to buffer
-            let render_successful = if let Ok(mut engine_guard) = gpu_engine.try_lock() {
-                engine_guard.render_to_buffer(&mut gpu_buffer);
-                true
-            } else {
-                false
-            };
+            // Get the native texture handle from Bevy and update viewport storage
+            // NO allocations - just writing a pointer!
+            if let Ok(engine_guard) = gpu_engine.try_lock() {
+                if let Some(native_handle) = engine_guard.get_native_texture_handle() {
+                    // Convert to UI handle type
+                    let ui_handle = match native_handle {
+                        #[cfg(target_os = "windows")]
+                        engine_backend::subsystems::render::NativeTextureHandle::D3D11(ptr) => {
+                            gpui_component::gpu_viewport::NativeTextureHandle::D3D11(ptr)
+                        }
+                        #[cfg(target_os = "macos")]
+                        engine_backend::subsystems::render::NativeTextureHandle::Metal(ptr) => {
+                            gpui_component::gpu_viewport::NativeTextureHandle::Metal(ptr)
+                        }
+                        #[cfg(target_os = "linux")]
+                        engine_backend::subsystems::render::NativeTextureHandle::Vulkan(img) => {
+                            gpui_component::gpu_viewport::NativeTextureHandle::Vulkan(img)
+                        }
+                    };
 
-            if render_successful {
-                frame_count += 1;
-
-                // Send frame to UI thread (Arc for zero-copy sharing)
-                let frame_data = Arc::new(gpu_buffer.clone());
-                let _ = frame_sender.send(frame_data);
-
-                if frame_count % 120 == 1 {
-                    println!("[RENDER-THREAD-GPU] 🔥 {} frames rendered!", frame_count);
+                    // Update the shared handle storage - viewport reads this when painting!
+                    if let Ok(mut handle_storage) = viewport_handle_storage.lock() {
+                        *handle_storage = Some(ui_handle);
+                    }
                 }
-            } else if frame_count % 120 == 1 {
-                println!("[RENDER-THREAD-GPU] ⚠️  Frame {} render failed", frame_count);
             }
 
-            let frame_time = frame_start.elapsed();
+            frame_count += 1;
 
-            if frame_time < adaptive_frame_time.mul_f32(0.5) {
-                consecutive_fast_frames += 1;
-                if consecutive_fast_frames > 10 {
-                    adaptive_frame_time = adaptive_frame_time.mul_f32(1.1).min(Duration::from_millis(16));
-                    consecutive_fast_frames = 0;
-                }
-            } else {
-                consecutive_fast_frames = 0;
-                adaptive_frame_time = adaptive_frame_time.mul_f32(0.99).max(base_frame_time);
+            if frame_count % 60 == 1 {
+                println!("[UI-SYNC] 🔄 Updated viewport handle (frame {})", frame_count);
             }
 
-            let target_cpu_usage = max_cpu_usage as f32 / 100.0;
-            let work_time = frame_time.as_secs_f32();
-            let total_frame_time = work_time / target_cpu_usage;
-            let sleep_time = Duration::from_secs_f32(total_frame_time - work_time).max(Duration::from_millis(1));
-
-            thread::sleep(sleep_time);
+            // Simple fixed framerate for UI updates
+            let elapsed = frame_start.elapsed();
+            if elapsed < frame_time {
+                thread::sleep(frame_time - elapsed);
+            }
         }
 
-        println!("[RENDER-THREAD-GPU] 🛑 GPU direct render loop exited");
+        println!("[RENDER-THREAD-GPU] 🛑 Immediate-mode loop exited");
     }
 
     pub fn toggle_rendering(&mut self) {
@@ -435,36 +428,11 @@ impl Focusable for LevelEditorPanel {
 impl EventEmitter<PanelEvent> for LevelEditorPanel {}
 
 impl Render for LevelEditorPanel {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Process any pending frames from the render thread
-        // This is TRUE ZERO-COPY: we write directly to GPU-mapped memory!
-        #[cfg(target_os = "windows")]
-        {
-            if let Some(texture_id) = self.viewport.read(cx).texture_id() {
-                // Drain all pending frames (keep only the latest)
-                let mut latest_frame: Option<Arc<Vec<u8>>> = None;
-                while let Ok(frame) = self.frame_receiver.try_recv() {
-                    latest_frame = Some(frame);
-                }
-                
-                // Update external texture with latest frame
-                if let Some(frame_data) = latest_frame {
-                    let result = window.update_external_texture(texture_id, |buffer| {
-                        // TRUE ZERO-COPY: Write directly to GPU-mapped memory!
-                        let copy_len = frame_data.len().min(buffer.len());
-                        buffer[..copy_len].copy_from_slice(&frame_data[..copy_len]);
-                    });
-                    
-                    if let Err(e) = result {
-                        eprintln!("[LEVEL-EDITOR] ❌ Failed to update texture: {}", e);
-                    }
-                    
-                    // Request next frame
-                    cx.notify();
-                }
-            }
-        }
-        
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // IMMEDIATE MODE: No frame processing needed!
+        // The render thread updates the viewport's native texture handle directly
+        // GPUI displays it immediately - NO buffers, NO copies!
+
         v_flex()
             .size_full()
             .bg(cx.theme().background)

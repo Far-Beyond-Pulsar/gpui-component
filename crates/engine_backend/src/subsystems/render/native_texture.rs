@@ -17,16 +17,13 @@ use bevy::render::{
 #[derive(Clone, Copy, Debug)]
 pub enum NativeTextureHandle {
     #[cfg(target_os = "windows")]
-    D3D11(usize), // ID3D11Texture2D* as usize
+    D3D11(usize), // ID3D11ShaderResourceView* as usize
 
     #[cfg(target_os = "macos")]
     Metal(usize), // MTLTexture* as usize
 
     #[cfg(target_os = "linux")]
-    Vulkan(u64), // VkImage as u64
-
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    Unsupported,
+    Vulkan(u64), // VkImageView as u64
 }
 
 impl NativeTextureHandle {

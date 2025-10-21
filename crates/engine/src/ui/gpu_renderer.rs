@@ -89,80 +89,38 @@ impl GpuRenderer {
         }
     }
 
-    pub fn render(&mut self, framebuffer: &mut ViewportFramebuffer) {
+    pub fn render(&mut self, _framebuffer: &mut ViewportFramebuffer) {
         self.frame_count += 1;
 
-        if let Some(ref mut renderer) = self.bevy_renderer {
-            // Create backend framebuffer wrapping the SAME buffer!
-            let mut backend_fb = BackendFramebuffer {
-                buffer: std::mem::take(&mut framebuffer.buffer), // MOVE, not clone!
-                width: framebuffer.width,
-                height: framebuffer.height,
-            };
+        // IMMEDIATE MODE: No rendering here!
+        // Viewport should call get_native_texture_handle() and use GPUI's immediate mode
+        // This method is just a stub for compatibility
 
-            // Render DIRECTLY - modifies buffer in-place!
-            renderer.render(&mut backend_fb);
-
-            // Move buffer back
-            framebuffer.buffer = backend_fb.buffer;
-            framebuffer.generation += 1;
-            
+        if let Some(ref renderer) = self.bevy_renderer {
             // Print metrics periodically
             if self.last_metrics_print.elapsed().as_secs() >= 5 {
                 let metrics = renderer.get_metrics();
                 let fps = self.get_fps();
-                println!("\n[GPU-RENDERER] Performance Metrics:");
-                println!("  Frames rendered: {}", metrics.frames_rendered);
-                println!("  Avg frame time: {}μs ({:.2}ms)", metrics.avg_frame_time_us, metrics.avg_frame_time_us as f64 / 1000.0);
-                println!("  Last frame: {}μs", metrics.last_copy_time_us);
-                println!("  Data transferred: {:.2} MB", metrics.total_bytes_transferred as f64 / 1_048_576.0);
-                println!("  Current FPS: {:.1}", fps);
+                println!("\n[GPU-RENDERER] 🚀 IMMEDIATE MODE - NO COPIES:");
+                println!("  Bevy frames rendered: {}", metrics.frames_rendered);
+                println!("  Bevy FPS: {:.1}", metrics.bevy_fps);
+                println!("  🔥 TRUE ZERO-COPY - Direct GPU texture display!");
                 self.last_metrics_print = Instant::now();
             }
-        } else {
-            // Fallback rendering
-            if self.frame_count % 120 == 0 {
-                println!("[GPU-RENDERER] Frame {} - Using fallback renderer", self.frame_count);
-            }
-            self.render_fallback(framebuffer);
         }
     }
 
-    /// TRUE ZERO-COPY: Render directly to GPU-visible buffer slice!
-    /// NO allocations, NO intermediate copies!
-    pub fn render_to_buffer(&mut self, gpu_buffer: &mut [u8]) {
-        self.frame_count += 1;
+    /// TRUE ZERO-COPY: Get native GPU texture handle for immediate-mode rendering
+    /// NO buffers, NO copies - just a raw pointer for GPUI to display!
+    pub fn get_native_texture_handle(&self) -> Option<engine_backend::subsystems::render::NativeTextureHandle> {
+        self.bevy_renderer.as_ref()?.get_current_native_handle()
+    }
 
-        if let Some(ref mut renderer) = self.bevy_renderer {
-            // Create temp Vec wrapping gpu_buffer
-            let mut buffer_vec = gpu_buffer.to_vec(); // TODO: Still a copy!
-            let mut backend_fb = BackendFramebuffer {
-                buffer: buffer_vec,
-                width: self.display_width,
-                height: self.display_height,
-            };
-
-            renderer.render(&mut backend_fb);
-
-            // Copy back
-            let copy_len = backend_fb.buffer.len().min(gpu_buffer.len());
-            gpu_buffer[..copy_len].copy_from_slice(&backend_fb.buffer[..copy_len]);
-
-            // Print metrics periodically
-            if self.last_metrics_print.elapsed().as_secs() >= 5 {
-                let metrics = renderer.get_metrics();
-                let fps = self.get_fps();
-                println!("\n[GPU-RENDERER] 🔥 ZERO-COPY Performance:");
-                println!("  Frames rendered: {}", metrics.frames_rendered);
-                println!("  Avg frame time: {}μs ({:.2}ms)", metrics.avg_frame_time_us, metrics.avg_frame_time_us as f64 / 1000.0);
-                println!("  Current FPS: {:.1}", fps);
-                println!("  🚀 DIRECT GPU WRITES - ONE COPY TO GPU!");
-                self.last_metrics_print = Instant::now();
-            }
-        } else {
-            // Fallback: render animated pattern directly to GPU buffer
-            self.render_fallback_to_buffer(gpu_buffer);
-        }
+    /// DEPRECATED: Use get_native_texture_handle() + immediate mode instead!
+    /// This method does NOTHING in zero-copy mode
+    pub fn render_to_buffer(&mut self, _gpu_buffer: &mut [u8]) {
+        // NO-OP in TRUE zero-copy mode
+        // Viewport should use get_native_texture_handle() and GPUI immediate rendering
     }
 
     fn render_fallback(&self, framebuffer: &mut ViewportFramebuffer) {

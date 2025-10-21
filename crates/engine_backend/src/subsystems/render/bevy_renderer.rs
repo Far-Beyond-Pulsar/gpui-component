@@ -13,10 +13,14 @@ use bevy::{
     pbr::PbrPlugin,
     core_pipeline::tonemapping::Tonemapping,
     render::{
+        render_asset::RenderAssets,
         render_resource::{
             Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
         },
+        renderer::RenderDevice,
+        texture::GpuImage,
         RenderPlugin,
+        RenderApp, ExtractSchedule,
     },
     window::WindowPlugin,
 };
@@ -217,7 +221,13 @@ impl BevyRenderer {
             .add_systems(Update, update_camera_from_input)
             .add_systems(Update, animate_ball)
             .add_systems(Update, check_shutdown)
+            .add_systems(Update, update_camera_render_target)  // Update camera target each frame
             .add_systems(Last, swap_render_textures);
+
+        // Add render graph system to extract native handles
+        if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
+            render_app.add_systems(ExtractSchedule, extract_native_texture_handles);
+        }
 
         app.run();
     }
@@ -259,6 +269,22 @@ impl BevyRenderer {
     /// Get shared textures for GPUI integration
     pub fn get_shared_textures(&self) -> Option<SharedGpuTextures> {
         self.shared_textures.lock().ok()?.clone()
+    }
+
+    /// Get the native GPU texture handle for the current display frame
+    /// This is what GPUI uses for IMMEDIATE MODE rendering - just a raw pointer!
+    pub fn get_current_native_handle(&self) -> Option<crate::subsystems::render::NativeTextureHandle> {
+        let textures = self.shared_textures.lock().ok()?;
+        let textures = textures.as_ref()?;
+
+        // Get the read index (which texture GPUI should display)
+        let read_idx = textures.read_index.load(Ordering::Acquire);
+
+        // Get the native handles
+        let handles_lock = textures.native_handles.lock().ok()?;
+        let handles = handles_lock.as_ref()?;
+
+        Some(handles[read_idx])
     }
 
     /// Update camera input from GPUI
@@ -305,40 +331,61 @@ fn setup_scene(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
+    shared_textures_res: Res<SharedTexturesResource>,
 ) {
-    println!("[BevyRenderer] 🎨 Setting up scene");
+    println!("[BevyRenderer] 🎨 Setting up scene with SHARED DOUBLE-BUFFER textures");
 
-    // Create render target texture (this will become a shared texture)
+    // Create TWO render target textures for ping-pong rendering
     let size = Extent3d {
         width: 1920,
         height: 1500,
         depth_or_array_layers: 1,
     };
 
-    let mut render_target = Image {
-        texture_descriptor: TextureDescriptor {
-            label: Some("bevy_render_target"),
-            size,
-            dimension: TextureDimension::D2,
-            format: TextureFormat::Bgra8UnormSrgb,
-            mip_level_count: 1,
-            sample_count: 1,
-            usage: TextureUsages::TEXTURE_BINDING
-                | TextureUsages::COPY_DST
-                | TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        },
-        ..default()
+    let create_render_texture = || -> Image {
+        let mut img = Image {
+            texture_descriptor: TextureDescriptor {
+                label: None,  // Label isn't needed for rendering
+                size,
+                dimension: TextureDimension::D2,
+                format: TextureFormat::Bgra8UnormSrgb,
+                mip_level_count: 1,
+                sample_count: 1,
+                usage: TextureUsages::TEXTURE_BINDING
+                    | TextureUsages::COPY_SRC  // For native handle extraction
+                    | TextureUsages::RENDER_ATTACHMENT,  // For camera rendering
+                view_formats: &[],
+            },
+            ..default()
+        };
+        img.resize(size);
+        img
     };
-    render_target.resize(size);
 
-    let render_target_handle = images.add(render_target);
+    let texture_0 = images.add(create_render_texture());
+    let texture_1 = images.add(create_render_texture());
 
-    // Camera targeting the shared texture
+    println!("[BevyRenderer] Created 2 shared textures for double-buffering");
+
+    // Store handles in SharedTexturesResource for GPUI access
+    if let Ok(mut textures_lock) = shared_textures_res.0.lock() {
+        *textures_lock = Some(SharedGpuTextures {
+            textures: Arc::new([texture_0.clone(), texture_1.clone()]),
+            native_handles: Arc::new(Mutex::new(None)),
+            write_index: Arc::new(AtomicUsize::new(0)),
+            read_index: Arc::new(AtomicUsize::new(1)),
+            frame_number: Arc::new(AtomicU64::new(0)),
+            width: size.width,
+            height: size.height,
+        });
+        println!("[BevyRenderer] ✅ Shared textures registered!");
+    }
+
+    // Camera targeting texture 0 initially (we'll swap each frame)
     commands.spawn((
         Camera3d::default(),
         Camera {
-            target: RenderTarget::Image(render_target_handle.into()),
+            target: RenderTarget::Image(texture_0.into()),
             clear_color: ClearColorConfig::Custom(Color::srgb(0.2, 0.2, 0.3)),
             ..default()
         },
@@ -431,9 +478,77 @@ fn check_shutdown(shutdown: Res<ShutdownSignal>, mut exit: MessageWriter<AppExit
     }
 }
 
+/// Update camera to render to the current write texture (ping-pong)
+/// NO ALLOCATIONS - just updates the handle reference
+fn update_camera_render_target(
+    shared_textures_res: Res<SharedTexturesResource>,
+    mut camera_query: Query<&mut Camera, With<MainCamera>>,
+) {
+    if let Ok(textures_lock) = shared_textures_res.0.lock() {
+        if let Some(ref textures) = *textures_lock {
+            let write_idx = textures.write_index.load(Ordering::Acquire);
+            let target_handle = &textures.textures[write_idx];
+
+            for mut camera in camera_query.iter_mut() {
+                // Handle::clone() just increments Arc refcount, cheap operation
+                camera.target = RenderTarget::Image(target_handle.clone().into());
+            }
+        }
+    }
+}
+
 /// Shared textures resource wrapper
 #[derive(Resource)]
 struct SharedTexturesResource(Arc<Mutex<Option<SharedGpuTextures>>>);
+
+/// Extract native GPU texture handles from wgpu and store for GPUI
+fn extract_native_texture_handles(
+    shared_textures: Res<SharedTexturesResource>,
+    images: Res<RenderAssets<GpuImage>>,
+    render_device: Res<RenderDevice>,
+) {
+    if let Ok(textures_lock) = shared_textures.0.lock() {
+        if let Some(ref textures) = *textures_lock {
+            // Extract native handles from both textures
+            #[cfg(target_os = "windows")]
+            let mut native_handles = [
+                crate::subsystems::render::NativeTextureHandle::D3D11(0),
+                crate::subsystems::render::NativeTextureHandle::D3D11(0),
+            ];
+
+            #[cfg(target_os = "macos")]
+            let mut native_handles = [
+                crate::subsystems::render::NativeTextureHandle::Metal(0),
+                crate::subsystems::render::NativeTextureHandle::Metal(0),
+            ];
+
+            #[cfg(target_os = "linux")]
+            let mut native_handles = [
+                crate::subsystems::render::NativeTextureHandle::Vulkan(0),
+                crate::subsystems::render::NativeTextureHandle::Vulkan(0),
+            ];
+
+            for (i, handle) in textures.textures.iter().enumerate() {
+                if let Some(gpu_image) = images.get(handle) {
+                    // Extract native DirectX/Metal/Vulkan handle from wgpu texture
+                    unsafe {
+                        if let Some(native_handle) = crate::subsystems::render::NativeTextureHandle::from_wgpu_texture(
+                            &gpu_image.texture,
+                            &render_device,
+                        ) {
+                            native_handles[i] = native_handle;
+                        }
+                    }
+                }
+            }
+
+            // Store native handles for GPUI to access
+            if let Ok(mut handles_lock) = textures.native_handles.lock() {
+                *handles_lock = Some(native_handles);
+            }
+        }
+    }
+}
 
 /// After rendering, swap texture indices for GPUI to display
 fn swap_render_textures(
