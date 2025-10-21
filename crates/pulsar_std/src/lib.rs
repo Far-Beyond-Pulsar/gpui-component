@@ -10,7 +10,7 @@ mod registry;
 pub use registry::*;
 
 // Re-export macros
-pub use pulsar_macros::{blueprint, exec_output};
+pub use pulsar_macros::{blueprint, bp_import, exec_output};
 
 // =============================================================================
 // Node Type Enum (for blueprint attribute)
@@ -18,6 +18,7 @@ pub use pulsar_macros::{blueprint, exec_output};
 
 /// Node type for the `#[blueprint(type: ...)]` attribute
 #[allow(non_camel_case_types)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeTypes {
     /// Pure function: no side effects, no exec pins, only data flow
     pure,

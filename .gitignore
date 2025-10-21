@@ -13,3 +13,4 @@ blueprint.json
 profile.json.gz
 .envrc
 .direnv
+*.zip
