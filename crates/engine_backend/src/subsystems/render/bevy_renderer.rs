@@ -292,9 +292,15 @@ impl BevyRenderer {
             // Insert SharedTexturesResource in RenderWorld too
             render_app.insert_resource(SharedTexturesResource(shared_textures_clone));
             
-            // ZERO-COPY: Create DXGI shared textures at render world startup
+            // ZERO-COPY: Initialize DXGI shared textures (Windows only)
+            // This runs once on the first render frame BEFORE extraction
             #[cfg(target_os = "windows")]
-            render_app.add_systems(Startup, initialize_shared_textures);
+            render_app.add_systems(
+                Render,
+                initialize_shared_textures
+                    .before(extract_native_texture_handles)
+                    .in_set(bevy::render::RenderSystems::Render)
+            );
             
             // ZERO-COPY: Extract native GPU handles from wgpu textures
             // Run in Render schedule AFTER textures are prepared, not during Extract
@@ -302,7 +308,8 @@ impl BevyRenderer {
                 Render,
                 extract_native_texture_handles.in_set(bevy::render::RenderSystems::Render)
             );
-            println!("[BEVY-RENDERER] ✅ HAL extraction system added to Render schedule");
+            
+            println!("[BEVY-RENDERER] ✅ HAL extraction and initialization systems added to Render schedule");
         } else {
             println!("[BEVY-RENDERER] ❌ WARNING: No RenderApp found!");
         }
@@ -811,11 +818,26 @@ fn swap_render_textures(
 fn initialize_shared_textures(
     render_device: Res<RenderDevice>,
 ) {
+    use std::sync::OnceLock;
     use crate::subsystems::render::DxgiSharedTexture;
     use wgpu_hal::api::Dx12;
     use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
 
-    println!("[BEVY-RENDERER] 🔧 Initializing DXGI shared textures in render world...");
+    // Ensure this only runs once
+    static INITIALIZED: OnceLock<bool> = OnceLock::new();
+    if INITIALIZED.get().is_some() {
+        return; // Already initialized
+    }
+    
+    // Mark as initialized first to prevent re-entry
+    if INITIALIZED.set(true).is_err() {
+        return; // Another thread beat us
+    }
+
+    println!("========================================");
+    println!("[BEVY-RENDERER] 🔧 INITIALIZING DXGI SHARED TEXTURES");
+    println!("[BEVY-RENDERER] 🎯 This is the CRITICAL initialization step!");
+    println!("========================================");
 
     // Get DX12 device from wgpu
     let hal_device_ref = unsafe { render_device.wgpu_device().as_hal::<Dx12>() };
@@ -877,6 +899,7 @@ fn initialize_shared_textures(
 
     println!("[BEVY-RENDERER] ✅ Shared textures ready - DX12 and DX11 can access same VRAM!");
     println!("[BEVY-RENDERER] 🎯 TRUE ZERO-COPY rendering enabled");
+    println!("========================================");
 
     // Keep the shared textures alive (they're in Arc, will be cleaned up with the renderer)
     std::mem::forget(shared_tex_0);
