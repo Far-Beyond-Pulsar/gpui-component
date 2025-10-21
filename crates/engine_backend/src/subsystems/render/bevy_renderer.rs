@@ -20,7 +20,7 @@ use bevy::{
         renderer::RenderDevice,
         texture::GpuImage,
         RenderPlugin,
-        RenderApp, ExtractSchedule,
+        RenderApp, ExtractSchedule, Render,
     },
     window::WindowPlugin,
 };
@@ -222,6 +222,16 @@ impl BevyRenderer {
         
         println!("[BEVY-RENDERER] Step 3: Adding DefaultPlugins (headless mode)...");
         // Based on official Bevy headless example
+        // Force DX12 backend for DXGI shared resource compatibility
+        #[cfg(target_os = "windows")]
+        let backend_config = bevy::render::settings::Backends::DX12;
+        
+        #[cfg(target_os = "macos")]
+        let backend_config = bevy::render::settings::Backends::METAL;
+        
+        #[cfg(target_os = "linux")]
+        let backend_config = bevy::render::settings::Backends::VULKAN;
+        
         app.add_plugins(
             DefaultPlugins
                 .set(bevy::window::WindowPlugin {
@@ -229,9 +239,18 @@ impl BevyRenderer {
                     exit_condition: bevy::window::ExitCondition::DontExit,
                     ..default()
                 })
+                .set(RenderPlugin {
+                    render_creation: bevy::render::settings::RenderCreation::Automatic(
+                        bevy::render::settings::WgpuSettings {
+                            backends: Some(backend_config),
+                            ..default()
+                        }
+                    ),
+                    ..default()
+                })
                 .disable::<bevy::winit::WinitPlugin>()
         );
-        println!("[BEVY-RENDERER] Step 4: DefaultPlugins added");
+        println!("[BEVY-RENDERER] Step 4: DefaultPlugins added with DX12 backend");
         
         println!("[BEVY-RENDERER] Step 5: Adding ScheduleRunnerPlugin (120 FPS)...");
         app.add_plugins(bevy::app::ScheduleRunnerPlugin::run_loop(
@@ -271,8 +290,12 @@ impl BevyRenderer {
             render_app.insert_resource(SharedTexturesResource(shared_textures_clone));
             
             // ZERO-COPY: Extract native GPU handles from wgpu textures
-            render_app.add_systems(ExtractSchedule, extract_native_texture_handles);
-            println!("[BEVY-RENDERER] ✅ HAL extraction system added");
+            // Run in Render schedule AFTER textures are prepared, not during Extract
+            render_app.add_systems(
+                Render,
+                extract_native_texture_handles.in_set(bevy::render::RenderSystems::Render)
+            );
+            println!("[BEVY-RENDERER] ✅ HAL extraction system added to Render schedule");
         } else {
             println!("[BEVY-RENDERER] ❌ WARNING: No RenderApp found!");
         }

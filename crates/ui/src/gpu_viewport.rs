@@ -12,11 +12,11 @@
 use gpui::*;
 use std::sync::{Arc, Mutex};
 
-/// Native GPU texture handle - platform specific pointer
+/// Native GPU texture handle - platform specific
 #[derive(Clone, Copy, Debug)]
 pub enum NativeTextureHandle {
     #[cfg(target_os = "windows")]
-    D3D11(usize), // ID3D11ShaderResourceView* as usize
+    D3D11(usize), // HANDLE (NT handle) for DXGI shared resource - opened in DX11 to create SRV
 
     #[cfg(target_os = "macos")]
     Metal(usize), // MTLTexture* as usize

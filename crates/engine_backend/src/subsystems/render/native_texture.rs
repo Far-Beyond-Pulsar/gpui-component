@@ -17,7 +17,7 @@ use bevy::render::{
 #[derive(Clone, Copy, Debug)]
 pub enum NativeTextureHandle {
     #[cfg(target_os = "windows")]
-    D3D11(usize), // ID3D11ShaderResourceView* as usize
+    D3D11(usize), // HANDLE (NT handle) for DXGI shared resource - can be opened in both DX11 and DX12
 
     #[cfg(target_os = "macos")]
     Metal(usize), // MTLTexture* as usize
@@ -38,29 +38,47 @@ impl NativeTextureHandle {
 
         #[cfg(target_os = "windows")]
         {
+            // Use DX12 for DXGI shared resource compatibility
             use wgpu_hal::api::Dx12;
-            use windows::core::Interface;
             
-            // Get the HAL texture for DirectX 12
             if let Some(hal_tex) = texture.as_hal::<Dx12>() {
                 let dx12_texture = &*hal_tex;
-                
-                // Get the raw D3D12 resource (ID3D12Resource COM object)
                 let resource = dx12_texture.raw_resource();
                 
-                // Clone the COM interface to get our own reference
-                let resource_clone = resource.clone();
-                
-                // Convert to raw pointer (this is what GPUI needs)
-                let raw_ptr = std::mem::transmute::<_, *mut std::ffi::c_void>(resource_clone);
-                let ptr_addr = raw_ptr as usize;
-                
-                println!("[NATIVE-TEXTURE] ✅ Extracted D3D12 resource pointer: 0x{:X}", ptr_addr);
-                Some(NativeTextureHandle::D3D11(ptr_addr))
+                if let Some(hal_device) = _device.wgpu_device().as_hal::<Dx12>() {
+                    let d3d12_device: &windows::Win32::Graphics::Direct3D12::ID3D12Device = hal_device.raw_device();
+                    
+                    unsafe {
+                        // Try to create shared handle
+                        // This will fail if texture doesn't have ALLOW_SIMULTANEOUS_ACCESS flag
+                        match d3d12_device.CreateSharedHandle(
+                            resource,
+                            None,
+                            0x80000000 | 0x40000000, // GENERIC_READ | GENERIC_WRITE
+                            None,
+                        ) {
+                            Ok(shared_handle) => {
+                                let handle_value = shared_handle.0 as usize;
+                                println!("[NATIVE-TEXTURE] ✅ Created DX12 shared handle: 0x{:X}", handle_value);
+                                return Some(NativeTextureHandle::D3D11(handle_value));
+                            }
+                            Err(e) => {
+                                // Expected error: wgpu doesn't create textures with ALLOW_SIMULTANEOUS_ACCESS
+                                // We need to pre-create shared textures and wrap them in wgpu
+                                println!("[NATIVE-TEXTURE] ⚠️ CreateSharedHandle failed (expected): {:?}", e);
+                                println!("[NATIVE-TEXTURE] ℹ️ Textures need ALLOW_SIMULTANEOUS_ACCESS flag");
+                                println!("[NATIVE-TEXTURE] ℹ️ Next: Implement pre-created shared textures");
+                            }
+                        }
+                    }
+                } else {
+                    println!("[NATIVE-TEXTURE] ❌ Failed to get D3D12 device");
+                }
             } else {
-                println!("[NATIVE-TEXTURE] ❌ Failed to get HAL texture for DirectX");
-                None
+                println!("[NATIVE-TEXTURE] ❌ Not a DX12 texture (wrong backend?)");
             }
+            
+            None
         }
 
         #[cfg(target_os = "macos")]

@@ -43,4 +43,8 @@ futures = "0.3"
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [
     "Win32_System_Threading",
+    "Win32_Graphics_Direct3D12",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Foundation",
 ] }
+anyhow = "1.0"
