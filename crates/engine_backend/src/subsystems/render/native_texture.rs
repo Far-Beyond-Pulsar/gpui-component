@@ -12,6 +12,24 @@ use bevy::render::{
     render_resource::Texture,
     renderer::RenderDevice,
 };
+use anyhow::{Context, Result};
+
+#[cfg(target_os = "windows")]
+use std::sync::OnceLock;
+
+/// Global storage for DXGI shared texture handles
+#[cfg(target_os = "windows")]
+static SHARED_TEXTURE_HANDLES: OnceLock<Vec<usize>> = OnceLock::new();
+
+/// Store the shared texture handles for later extraction
+#[cfg(target_os = "windows")]
+pub fn store_shared_handles(handles: Vec<usize>) {
+    println!("[NATIVE-TEXTURE] 💾 Storing {} shared handles globally", handles.len());
+    for (i, h) in handles.iter().enumerate() {
+        println!("[NATIVE-TEXTURE] 📍 Handle {}: 0x{:X}", i, h);
+    }
+    SHARED_TEXTURE_HANDLES.set(handles).ok();
+}
 
 /// Native GPU texture handle - platform-specific
 #[derive(Clone, Copy, Debug)]
@@ -38,7 +56,21 @@ impl NativeTextureHandle {
 
         #[cfg(target_os = "windows")]
         {
-            // Use DX12 for DXGI shared resource compatibility
+            // First priority: Use pre-created DXGI shared handles
+            if let Some(handles) = SHARED_TEXTURE_HANDLES.get() {
+                if !handles.is_empty() {
+                    // TODO: Map texture to correct handle index
+                    // For now, alternate between the two handles
+                    static TEXTURE_INDEX: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+                    let index = TEXTURE_INDEX.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % handles.len();
+                    
+                    let handle = handles[index];
+                    println!("[NATIVE-TEXTURE] ✅ Using pre-created DXGI shared handle[{}]: 0x{:X}", index, handle);
+                    return Some(NativeTextureHandle::D3D11(handle));
+                }
+            }
+
+            // Fallback: Try to create shared handle (will fail for wgpu textures)
             use wgpu_hal::api::Dx12;
             
             if let Some(hal_tex) = texture.as_hal::<Dx12>() {
@@ -63,11 +95,9 @@ impl NativeTextureHandle {
                                 return Some(NativeTextureHandle::D3D11(handle_value));
                             }
                             Err(e) => {
-                                // Expected error: wgpu doesn't create textures with ALLOW_SIMULTANEOUS_ACCESS
-                                // We need to pre-create shared textures and wrap them in wgpu
-                                println!("[NATIVE-TEXTURE] ⚠️ CreateSharedHandle failed (expected): {:?}", e);
-                                println!("[NATIVE-TEXTURE] ℹ️ Textures need ALLOW_SIMULTANEOUS_ACCESS flag");
-                                println!("[NATIVE-TEXTURE] ℹ️ Next: Implement pre-created shared textures");
+                                // Expected error for wgpu-created textures
+                                println!("[NATIVE-TEXTURE] ⚠️ CreateSharedHandle failed: {:?}", e);
+                                println!("[NATIVE-TEXTURE] ℹ️ This is expected for wgpu textures without ALLOW_SIMULTANEOUS_ACCESS");
                             }
                         }
                     }
@@ -75,7 +105,7 @@ impl NativeTextureHandle {
                     println!("[NATIVE-TEXTURE] ❌ Failed to get D3D12 device");
                 }
             } else {
-                println!("[NATIVE-TEXTURE] ❌ Not a DX12 texture (wrong backend?)");
+                println!("[NATIVE-TEXTURE] ❌ Not a DX12 texture");
             }
             
             None
