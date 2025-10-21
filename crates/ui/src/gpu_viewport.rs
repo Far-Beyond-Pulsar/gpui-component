@@ -164,32 +164,28 @@ impl Element for GpuViewportElement {
         window: &mut Window,
         _cx: &mut App,
     ) {
-        // Get the current native texture handle
-        if let Ok(handle_lock) = self.texture_handle.lock() {
-            if let Some(handle) = *handle_lock {
-                // Paint using IMMEDIATE MODE - NO registration, NO buffering!
-                // Just pass the raw pointer directly to the renderer
-                #[cfg(target_os = "windows")]
-                unsafe {
-                    if let NativeTextureHandle::D3D11(srv_ptr) = handle {
-                        paint_immediate_d3d11_texture(window, bounds, srv_ptr);
-                    }
-                }
+        // IMMEDIATE MODE: The renderer will read directly from our shared storage!
+        // We just need to tell GPUI to render a "raw texture quad" at these bounds
+        // The DirectX/Metal/Vulkan renderer will pull the latest pointer from our storage
 
-                #[cfg(target_os = "macos")]
-                unsafe {
-                    if let NativeTextureHandle::Metal(texture_ptr) = handle {
-                        paint_immediate_metal_texture(window, bounds, texture_ptr);
-                    }
-                }
+        let scale_factor = window.scale_factor();
+        let scaled_bounds = bounds.scale(scale_factor);
 
-                #[cfg(target_os = "linux")]
-                unsafe {
-                    if let NativeTextureHandle::Vulkan(image_view) = handle {
-                        paint_immediate_vulkan_texture(window, bounds, image_view);
-                    }
-                }
-            }
+        // Pass the shared storage handle to GPUI's renderer
+        // The renderer will dereference it during its render pass - NO MAIN THREAD DELAY!
+        #[cfg(target_os = "windows")]
+        unsafe {
+            paint_immediate_d3d11_texture(window, scaled_bounds, self.texture_handle.clone());
+        }
+
+        #[cfg(target_os = "macos")]
+        unsafe {
+            paint_immediate_metal_texture(window, scaled_bounds, self.texture_handle.clone());
+        }
+
+        #[cfg(target_os = "linux")]
+        unsafe {
+            paint_immediate_vulkan_texture(window, scaled_bounds, self.texture_handle.clone());
         }
     }
 }
@@ -202,27 +198,74 @@ impl IntoElement for GpuViewportElement {
 }
 
 // Platform-specific immediate-mode painting functions
-// These call directly into GPUI's DirectX/Metal/Vulkan renderers
+// These queue a "raw texture quad" command that the renderer executes later
+// The renderer will dereference the Arc<Mutex<>> during its render pass - ZERO MAIN THREAD DELAY!
 
 #[cfg(target_os = "windows")]
-unsafe fn paint_immediate_d3d11_texture(window: &mut Window, bounds: Bounds<Pixels>, srv_ptr: usize) {
-    // TODO: Call window.draw_raw_texture_immediate() once we expose it
-    // For now this is a stub - needs GPUI Window API extension
+unsafe fn paint_immediate_d3d11_texture(
+    window: &mut Window,
+    bounds: Bounds<ScaledPixels>,
+    handle_storage: Arc<Mutex<Option<NativeTextureHandle>>>
+) {
+    // Get the current texture handle from shared storage
+    let texture_handle = if let Ok(guard) = handle_storage.lock() {
+        if let Some(NativeTextureHandle::D3D11(ptr)) = *guard {
+            println!("[GPU-VIEWPORT] 🎨 Got D3D11 handle: 0x{:X}", ptr);
+            ptr as *mut std::ffi::c_void
+        } else {
+            println!("[GPU-VIEWPORT] ⚠️ No texture handle set yet");
+            return; // No texture set yet
+        }
+    } else {
+        println!("[GPU-VIEWPORT] ❌ Failed to lock handle storage");
+        return; // Lock failed
+    };
 
-    let _ = (window, bounds, srv_ptr); // Suppress warnings
-
-    // This should call something like:
-    // window.draw_raw_texture_immediate(srv_ptr as *mut c_void, bounds);
+    // Call the immediate-mode renderer through Window
+    // This happens during paint phase - the DirectX renderer executes it immediately
+    // bounds is already in ScaledPixels, but the Window API expects Pixels
+    // The Window method will rescale it internally, so we convert back to logical pixels
+    let scale_factor = window.scale_factor();
+    let pixel_bounds = Bounds {
+        origin: point(
+            px((bounds.origin.x / ScaledPixels::from(scale_factor))),
+            px((bounds.origin.y / ScaledPixels::from(scale_factor)))
+        ),
+        size: size(
+            px((bounds.size.width / ScaledPixels::from(scale_factor))),
+            px((bounds.size.height / ScaledPixels::from(scale_factor)))
+        ),
+    };
+    
+    println!("[GPU-VIEWPORT] 🖼️ Drawing at bounds: {:?}", pixel_bounds);
+    
+    // SAFETY: We're passing a valid D3D11 texture handle that came from Bevy's renderer
+    // The handle is valid for this frame and we're calling during the paint phase
+    if let Err(e) = window.draw_raw_texture_immediate(texture_handle, pixel_bounds) {
+        eprintln!("[GPU-VIEWPORT] ❌ Failed to draw texture: {}", e);
+    } else {
+        println!("[GPU-VIEWPORT] ✅ Successfully drew texture");
+    }
 }
 
 #[cfg(target_os = "macos")]
-unsafe fn paint_immediate_metal_texture(window: &mut Window, bounds: Bounds<Pixels>, texture_ptr: usize) {
-    let _ = (window, bounds, texture_ptr);
+unsafe fn paint_immediate_metal_texture(
+    window: &mut Window,
+    bounds: Bounds<ScaledPixels>,
+    handle_storage: Arc<Mutex<Option<NativeTextureHandle>>>
+) {
+    // TODO: Implement Metal immediate mode when needed
+    let _ = (window, bounds, handle_storage);
 }
 
 #[cfg(target_os = "linux")]
-unsafe fn paint_immediate_vulkan_texture(window: &mut Window, bounds: Bounds<Pixels>, image_view: u64) {
-    let _ = (window, bounds, image_view);
+unsafe fn paint_immediate_vulkan_texture(
+    window: &mut Window,
+    bounds: Bounds<ScaledPixels>,
+    handle_storage: Arc<Mutex<Option<NativeTextureHandle>>>
+) {
+    // TODO: Implement Vulkan immediate mode when needed
+    let _ = (window, bounds, handle_storage);
 }
 
 /// Helper to create a GPU viewport - NO texture registration needed!

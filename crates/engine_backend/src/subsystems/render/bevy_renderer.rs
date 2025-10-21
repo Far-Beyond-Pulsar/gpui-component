@@ -284,7 +284,9 @@ impl BevyRenderer {
         let handles_lock = textures.native_handles.lock().ok()?;
         let handles = handles_lock.as_ref()?;
 
-        Some(handles[read_idx])
+        let handle = handles[read_idx];
+        println!("[BEVY-RENDERER] 📤 Providing native handle for index {}: {:?}", read_idx, handle);
+        Some(handle)
     }
 
     /// Update camera input from GPUI

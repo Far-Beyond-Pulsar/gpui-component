@@ -30,39 +30,73 @@ impl NativeTextureHandle {
     /// Extract native handle from Bevy's wgpu texture
     /// This is UNSAFE but required for zero-copy integration with GPUI
     pub unsafe fn from_wgpu_texture(
-        _texture: &Texture,
+        texture: &Texture,
         _device: &RenderDevice,
     ) -> Option<Self> {
-        // TODO: Use wgpu's HAL to extract native handles
-        // For now, return None until we implement HAL access
+        // Use wgpu's HAL to extract native handles
+        // This gives us direct access to the underlying GPU API objects
 
         #[cfg(target_os = "windows")]
         {
-            // Need to access wgpu's HAL layer:
-            // let hal_texture = texture.as_hal::<wgpu::hal::dx11::Api>();
-            // let dx11_ptr = hal_texture.unwrap().raw_resource();
-            // Some(NativeTextureHandle::D3D11(dx11_ptr as usize))
-            None
+            use wgpu_core::hal_api::HalApi;
+            use wgpu_hal::api::Dx12;
+            
+            // Get the HAL texture for DirectX 12
+            let hal_texture = texture.as_hal::<Dx12>();
+            if let Some(hal_tex) = hal_texture {
+                // Get the raw D3D12 resource
+                let raw_tex = hal_tex.as_ref();
+                // For GPUI integration, we pass the texture pointer
+                let ptr = raw_tex as *const _ as *mut std::ffi::c_void;
+                println!("[NATIVE-TEXTURE] ✅ Extracted D3D12 texture: {:p}", ptr);
+                Some(NativeTextureHandle::D3D11(ptr as usize))
+            } else {
+                println!("[NATIVE-TEXTURE] ❌ Failed to get HAL texture for DirectX");
+                None
+            }
         }
 
         #[cfg(target_os = "macos")]
         {
-            // let hal_texture = texture.as_hal::<wgpu::hal::metal::Api>();
-            // let metal_ptr = hal_texture.unwrap().raw_texture();
-            // Some(NativeTextureHandle::Metal(metal_ptr as usize))
-            None
+            use wgpu_core::hal_api::HalApi;
+            use wgpu_hal::api::Metal;
+            
+            // Get the HAL texture for Metal
+            let hal_texture = texture.as_hal::<Metal>();
+            if let Some(hal_tex) = hal_texture {
+                // Get the raw Metal texture
+                let raw_tex = hal_tex.as_ref();
+                let ptr = raw_tex as *const _ as *mut std::ffi::c_void;
+                println!("[NATIVE-TEXTURE] ✅ Extracted Metal texture: {:p}", ptr);
+                Some(NativeTextureHandle::Metal(ptr as usize))
+            } else {
+                println!("[NATIVE-TEXTURE] ❌ Failed to get HAL texture for Metal");
+                None
+            }
         }
 
         #[cfg(target_os = "linux")]
         {
-            // let hal_texture = texture.as_hal::<wgpu::hal::vulkan::Api>();
-            // let vk_image = hal_texture.unwrap().raw_image();
-            // Some(NativeTextureHandle::Vulkan(vk_image))
-            None
+            use wgpu_core::hal_api::HalApi;
+            use wgpu_hal::api::Vulkan;
+            
+            // Get the HAL texture for Vulkan
+            let hal_texture = texture.as_hal::<Vulkan>();
+            if let Some(hal_tex) = hal_texture {
+                // Get the raw Vulkan image
+                let raw_tex = hal_tex.as_ref();
+                let ptr = raw_tex as *const _ as u64;
+                println!("[NATIVE-TEXTURE] ✅ Extracted Vulkan image: 0x{:X}", ptr);
+                Some(NativeTextureHandle::Vulkan(ptr))
+            } else {
+                println!("[NATIVE-TEXTURE] ❌ Failed to get HAL texture for Vulkan");
+                None
+            }
         }
 
         #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
         {
+            println!("[NATIVE-TEXTURE] ❌ Unsupported platform");
             None
         }
     }

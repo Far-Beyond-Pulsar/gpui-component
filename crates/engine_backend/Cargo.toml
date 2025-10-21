@@ -32,7 +32,9 @@ bevy = { version = "0.17.2", default-features = false, features = [
     "x11",
     "wayland",
 ] }
-wgpu = "23"
+wgpu = "26"
+wgpu-hal = "26"
+wgpu-core = "26"
 image = "0.25"
 bytemuck = { version = "1.14", features = ["derive"] }
 crossbeam-channel = "0.5"
