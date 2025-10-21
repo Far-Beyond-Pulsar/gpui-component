@@ -4,11 +4,13 @@ pub mod bevy_renderer;
 pub mod wgpu_renderer;
 pub mod zero_copy_buffer;
 pub mod shared_gpu_texture;
+pub mod native_texture;
 
 pub use wgpu_renderer::WgpuRenderer;
 pub use bevy_renderer::{BevyRenderer, RenderMetrics, CameraInput};
 pub use zero_copy_buffer::{ZeroCopyFrameBuffer, PersistentMappedBuffer};
 pub use shared_gpu_texture::{SharedGpuTexture, SharedTextureFormat, GpuSyncPrimitive};
+pub use native_texture::{NativeTextureHandle, SharedTextureInfo, TextureFormat};
 
 // Re-export common types
 pub struct Framebuffer {

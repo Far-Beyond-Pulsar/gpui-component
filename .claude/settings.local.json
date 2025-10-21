@@ -43,7 +43,8 @@
       "Bash(timeout 90 cargo check -p gpui-component)",
       "Read(//c/Users/redst/**)",
       "Bash(timeout 90 cargo check -p pulsar_std)",
-      "Bash(timeout 120 cargo build:*)"
+      "Bash(timeout 120 cargo build:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

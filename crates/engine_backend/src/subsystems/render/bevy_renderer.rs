@@ -84,6 +84,8 @@ struct MainCamera;
 pub struct SharedGpuTextures {
     /// The two shared GPU texture handles (Bevy side)
     pub textures: Arc<[Handle<Image>; 2]>,
+    /// Native GPU handles for GPUI (DirectX/Metal/Vulkan pointers)
+    pub native_handles: Arc<Mutex<Option<[crate::subsystems::render::NativeTextureHandle; 2]>>>,
     /// Which texture Bevy is currently rendering to (0 or 1)
     pub write_index: Arc<AtomicUsize>,
     /// Which texture GPUI should display (0 or 1)
