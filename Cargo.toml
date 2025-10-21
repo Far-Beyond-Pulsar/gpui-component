@@ -15,10 +15,10 @@ resolver = "2"
 debug = true
 
 [workspace.dependencies]
-gpui = { path = "../zed/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
-gpui_macros = { path = "../zed/crates/gpui_macros" }
-reqwest_client = { path = "../zed/crates/reqwest_client" }
-sum_tree = { path = "../zed/crates/sum_tree" }
+gpui = { git = "https://github.com/tristanpoland/zed", features = ["runtime_shaders", "macos-blade"] }
+gpui_macros = { git = "https://github.com/tristanpoland/zed" }
+reqwest_client = { git = "https://github.com/tristanpoland/zed" }
+sum_tree = { git = "https://github.com/tristanpoland/zed" }
 gpui-component = { path = "crates/ui" }
 gpui-component-macros = { path = "crates/macros" }
 pulsar_std = { path = "crates/pulsar_std" }
