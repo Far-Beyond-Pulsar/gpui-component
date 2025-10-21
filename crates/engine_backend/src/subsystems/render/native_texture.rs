@@ -94,10 +94,9 @@ impl NativeTextureHandle {
                                 println!("[NATIVE-TEXTURE] ✅ Created DX12 shared handle: 0x{:X}", handle_value);
                                 return Some(NativeTextureHandle::D3D11(handle_value));
                             }
-                            Err(e) => {
-                                // Expected error for wgpu-created textures
-                                println!("[NATIVE-TEXTURE] ⚠️ CreateSharedHandle failed: {:?}", e);
-                                println!("[NATIVE-TEXTURE] ℹ️ This is expected for wgpu textures without ALLOW_SIMULTANEOUS_ACCESS");
+                            Err(_e) => {
+                                // Expected error for wgpu-created textures without ALLOW_SIMULTANEOUS_ACCESS
+                                // Silently fall through to return None
                             }
                         }
                     }

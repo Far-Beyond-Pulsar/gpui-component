@@ -292,6 +292,10 @@ impl BevyRenderer {
             // Insert SharedTexturesResource in RenderWorld too
             render_app.insert_resource(SharedTexturesResource(shared_textures_clone));
             
+            // ZERO-COPY: Create DXGI shared textures at render world startup
+            #[cfg(target_os = "windows")]
+            render_app.add_systems(Startup, initialize_shared_textures);
+            
             // ZERO-COPY: Extract native GPU handles from wgpu textures
             // Run in Render schedule AFTER textures are prepared, not during Extract
             render_app.add_systems(
@@ -421,20 +425,12 @@ fn setup_scene(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
     shared_textures: Res<SharedTexturesResource>,
-    render_device: Res<RenderDevice>,
 ) {
     println!("[BEVY-RENDERER] 🎬 setup_scene called - creating render textures");
     
     // Create render target textures
-    #[cfg(target_os = "windows")]
-    let (texture_0, texture_1) = unsafe {
-        create_shared_render_textures(&render_device, &mut images)
-    };
-    
-    #[cfg(not(target_os = "windows"))]
-    let (texture_0, texture_1) = {
-        (images.add(create_render_texture()), images.add(create_render_texture()))
-    };
+    let texture_0 = images.add(create_render_texture());
+    let texture_1 = images.add(create_render_texture());
 
     println!("[BEVY-RENDERER] 📦 Created {} render textures", 2);
     
@@ -807,4 +803,82 @@ fn swap_render_textures(
             textures.frame_number.fetch_add(1, Ordering::Release);
         }
     }
+}
+
+/// Initialize DXGI shared textures in the render world (Windows only)
+/// This runs once at startup in the render world where RenderDevice is available
+#[cfg(target_os = "windows")]
+fn initialize_shared_textures(
+    render_device: Res<RenderDevice>,
+) {
+    use crate::subsystems::render::DxgiSharedTexture;
+    use wgpu_hal::api::Dx12;
+    use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
+
+    println!("[BEVY-RENDERER] 🔧 Initializing DXGI shared textures in render world...");
+
+    // Get DX12 device from wgpu
+    let hal_device_ref = unsafe { render_device.wgpu_device().as_hal::<Dx12>() };
+    
+    let d3d12_device = match hal_device_ref {
+        Some(device) => device.raw_device().clone(),
+        None => {
+            println!("[BEVY-RENDERER] ❌ Failed to get DX12 device - DXGI shared textures disabled");
+            return;
+        }
+    };
+
+    println!("[BEVY-RENDERER] ✅ Got DX12 device for shared texture creation");
+
+    // Create 2 shared textures with ALLOW_SIMULTANEOUS_ACCESS flag
+    println!("[BEVY-RENDERER] 📝 Creating DXGI shared texture 0...");
+    let shared_tex_0 = match unsafe { DxgiSharedTexture::create(
+        &d3d12_device,
+        RENDER_WIDTH,
+        RENDER_HEIGHT,
+        DXGI_FORMAT_B8G8R8A8_UNORM,
+    ) } {
+        Ok(tex) => {
+            println!("[BEVY-RENDERER] ✅ Successfully created shared texture 0");
+            tex
+        }
+        Err(e) => {
+            println!("[BEVY-RENDERER] ❌ Failed to create shared texture 0: {}", e);
+            return;
+        }
+    };
+
+    println!("[BEVY-RENDERER] 📝 Creating DXGI shared texture 1...");
+    let shared_tex_1 = match unsafe { DxgiSharedTexture::create(
+        &d3d12_device,
+        RENDER_WIDTH,
+        RENDER_HEIGHT,
+        DXGI_FORMAT_B8G8R8A8_UNORM,
+    ) } {
+        Ok(tex) => {
+            println!("[BEVY-RENDERER] ✅ Successfully created shared texture 1");
+            tex
+        }
+        Err(e) => {
+            println!("[BEVY-RENDERER] ❌ Failed to create shared texture 1: {}", e);
+            return;
+        }
+    };
+
+    let handle_0 = shared_tex_0.handle_value();
+    let handle_1 = shared_tex_1.handle_value();
+
+    println!("[BEVY-RENDERER] ✅ Created DXGI shared textures");
+    println!("[BEVY-RENDERER] 📍 Shared Handle 0: 0x{:X}", handle_0);
+    println!("[BEVY-RENDERER] 📍 Shared Handle 1: 0x{:X}", handle_1);
+
+    // Store the DXGI shared handles globally for extraction
+    super::native_texture::store_shared_handles(vec![handle_0, handle_1]);
+
+    println!("[BEVY-RENDERER] ✅ Shared textures ready - DX12 and DX11 can access same VRAM!");
+    println!("[BEVY-RENDERER] 🎯 TRUE ZERO-COPY rendering enabled");
+
+    // Keep the shared textures alive (they're in Arc, will be cleaned up with the renderer)
+    std::mem::forget(shared_tex_0);
+    std::mem::forget(shared_tex_1);
 }
