@@ -1,14 +1,15 @@
 use std::rc::Rc;
 
 use gpui::{
-    actions, div, prelude::FluentBuilder as _, px, Action, AnyElement, App, AppContext, ClickEvent,
-    Context, Corner, Entity, FocusHandle, InteractiveElement as _, IntoElement, MouseButton,
-    ParentElement as _, Render, SharedString, Styled as _, Subscription, Window,
+    actions, div, prelude::FluentBuilder as _, px, AnyElement, App, AppContext, ClickEvent,
+    Context, Corner, Entity, FocusHandle, InteractiveElement as _, IntoElement, Menu, MenuItem,
+    MouseButton, ParentElement as _, Render, SharedString, Styled as _, Subscription, Window,
 };
 use gpui_component::{
     badge::Badge,
     button::{Button, ButtonVariants as _},
-    h_flex, locale,
+    locale,
+    menu::AppMenuBar,
     popup_menu::PopupMenuExt as _,
     scroll::ScrollbarShow,
     set_locale, ActiveTheme as _, ContextModal as _, IconName, PixelsExt, Sizable as _, Theme,
@@ -91,9 +92,139 @@ actions!(
     ]
 );
 
+/// Initialize the app menus
+pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
+    cx.set_menus(vec![
+        Menu {
+            name: title.into(),
+            items: vec![MenuItem::action("About", AboutApp)],
+        },
+        Menu {
+            name: "File".into(),
+            items: vec![
+                MenuItem::action("New File", NewFile),
+                MenuItem::action("New Project", NewProject),
+                MenuItem::separator(),
+                MenuItem::action("Open File", OpenFile),
+                MenuItem::action("Open Folder", OpenFolder),
+                MenuItem::action("Open Recent", OpenRecent),
+                MenuItem::separator(),
+                MenuItem::action("Save", SaveFile),
+                MenuItem::action("Save As...", SaveAs),
+                MenuItem::action("Save All", SaveAll),
+                MenuItem::separator(),
+                MenuItem::action("Close File", CloseFile),
+                MenuItem::action("Close Folder", CloseFolder),
+                MenuItem::action("Close All", CloseAll),
+            ],
+        },
+        Menu {
+            name: "Edit".into(),
+            items: vec![
+                MenuItem::action("Undo", Undo),
+                MenuItem::action("Redo", Redo),
+                MenuItem::separator(),
+                MenuItem::action("Cut", Cut),
+                MenuItem::action("Copy", Copy),
+                MenuItem::action("Paste", Paste),
+                MenuItem::separator(),
+                MenuItem::action("Select All", SelectAll),
+                MenuItem::separator(),
+                MenuItem::action("Find", Find),
+                MenuItem::action("Find & Replace", FindReplace),
+                MenuItem::action("Find in Files", FindInFiles),
+            ],
+        },
+        Menu {
+            name: "Selection".into(),
+            items: vec![
+                MenuItem::action("Select Line", SelectLine),
+                MenuItem::action("Select Word", SelectWord),
+                MenuItem::separator(),
+                MenuItem::action("Expand Selection", ExpandSelection),
+                MenuItem::action("Shrink Selection", ShrinkSelection),
+                MenuItem::separator(),
+                MenuItem::action("Add Cursor Above", AddCursorAbove),
+                MenuItem::action("Add Cursor Below", AddCursorBelow),
+            ],
+        },
+        Menu {
+            name: "Build".into(),
+            items: vec![
+                MenuItem::action("Build", Build),
+                MenuItem::action("Rebuild", Rebuild),
+                MenuItem::action("Clean", Clean),
+                MenuItem::separator(),
+                MenuItem::action("Build & Run", BuildAndRun),
+                MenuItem::separator(),
+                MenuItem::action("Run Tests", RunTests),
+            ],
+        },
+        Menu {
+            name: "View".into(),
+            items: vec![
+                MenuItem::action("Toggle Explorer", ToggleExplorer),
+                MenuItem::action("Toggle Terminal", ToggleTerminal),
+                MenuItem::action("Toggle Output", ToggleOutput),
+                MenuItem::action("Toggle Problems", ToggleProblems),
+                MenuItem::separator(),
+                MenuItem::action("Zoom In", ZoomIn),
+                MenuItem::action("Zoom Out", ZoomOut),
+                MenuItem::action("Reset Zoom", ResetZoom),
+                MenuItem::separator(),
+                MenuItem::action("Toggle Fullscreen", ToggleFullscreen),
+            ],
+        },
+        Menu {
+            name: "Go".into(),
+            items: vec![
+                MenuItem::action("Go to File", GoToFile),
+                MenuItem::action("Go to Line", GoToLine),
+                MenuItem::action("Go to Symbol", GoToSymbol),
+                MenuItem::separator(),
+                MenuItem::action("Go to Definition", GoToDefinition),
+                MenuItem::action("Go to References", GoToReferences),
+                MenuItem::separator(),
+                MenuItem::action("Go Back", GoBack),
+                MenuItem::action("Go Forward", GoForward),
+            ],
+        },
+        Menu {
+            name: "Run".into(),
+            items: vec![
+                MenuItem::action("Run Project", RunProject),
+                MenuItem::action("Debug Project", DebugProject),
+                MenuItem::action("Run without Debugging", RunWithoutDebugging),
+                MenuItem::separator(),
+                MenuItem::action("Stop Debugging", StopDebugging),
+                MenuItem::action("Restart Debugging", RestartDebugging),
+            ],
+        },
+        Menu {
+            name: "Terminal".into(),
+            items: vec![
+                MenuItem::action("New Terminal", NewTerminal),
+                MenuItem::action("Split Terminal", SplitTerminal),
+                MenuItem::separator(),
+                MenuItem::action("Clear Terminal", ClearTerminal),
+            ],
+        },
+        Menu {
+            name: "Help".into(),
+            items: vec![
+                MenuItem::action("Show Commands", ShowCommands),
+                MenuItem::separator(),
+                MenuItem::action("Documentation", OpenDocumentation),
+                MenuItem::action("Report Issue", ReportIssue),
+                MenuItem::separator(),
+                MenuItem::action("About", AboutApp),
+            ],
+        },
+    ]);
+}
+
 pub struct AppTitleBar {
-    title: SharedString,
-    main_menu: Entity<MainMenu>,
+    app_menu_bar: Entity<AppMenuBar>,
     locale_selector: Entity<LocaleSelector>,
     font_size_selector: Entity<FontSizeSelector>,
     theme_switcher: Entity<ThemeSwitcher>,
@@ -107,14 +238,15 @@ impl AppTitleBar {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let main_menu = cx.new(|cx| MainMenu::new(window, cx));
+        init_app_menus(title, cx);
+
+        let app_menu_bar = AppMenuBar::new(window, cx);
         let locale_selector = cx.new(|cx| LocaleSelector::new(window, cx));
         let font_size_selector = cx.new(|cx| FontSizeSelector::new(window, cx));
         let theme_switcher = cx.new(|cx| ThemeSwitcher::new(cx));
 
         Self {
-            title: title.into(),
-            main_menu,
+            app_menu_bar,
             locale_selector,
             font_size_selector,
             theme_switcher,
@@ -148,14 +280,8 @@ impl Render for AppTitleBar {
         let notifications_count = window.notifications(cx).len();
 
         TitleBar::new()
-            // left side with title and main menu
-            .child(
-                h_flex()
-                    .items_center()
-                    .gap_4()
-                    .child(self.title.clone())
-                    .child(self.main_menu.clone()),
-            )
+            // left side with app menu bar
+            .child(div().flex().items_center().child(self.app_menu_bar.clone()))
             .child(
                 div()
                     .flex()
@@ -201,237 +327,6 @@ impl Render for AppTitleBar {
                             ),
                         ),
                     ),
-            )
-    }
-}
-
-struct MainMenu {
-    focus_handle: FocusHandle,
-}
-
-impl MainMenu {
-    pub fn new(_: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self {
-            focus_handle: cx.focus_handle(),
-        }
-    }
-
-    fn on_menu_action(&mut self, action: &dyn Action, _: &mut Window, cx: &mut Context<Self>) {
-        // Handle menu actions here
-        cx.notify();
-    }
-}
-
-impl Render for MainMenu {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        h_flex()
-            .items_center()
-            .gap_0()
-            .track_focus(&self.focus_handle)
-            .on_action(cx.listener(|this, action: &NewFile, window, cx| {
-                this.on_menu_action(action, window, cx);
-            }))
-            .on_action(cx.listener(|this, action: &OpenFile, window, cx| {
-                this.on_menu_action(action, window, cx);
-            }))
-            .on_action(cx.listener(|this, action: &SaveFile, window, cx| {
-                this.on_menu_action(action, window, cx);
-            }))
-            .on_action(cx.listener(|this, action: &Copy, window, cx| {
-                this.on_menu_action(action, window, cx);
-            }))
-            .on_action(cx.listener(|this, action: &Paste, window, cx| {
-                this.on_menu_action(action, window, cx);
-            }))
-            .on_action(cx.listener(|this, action: &Cut, window, cx| {
-                this.on_menu_action(action, window, cx);
-            }))
-            .on_action(cx.listener(|this, action: &Find, window, cx| {
-                this.on_menu_action(action, window, cx);
-            }))
-            .on_action(cx.listener(|this, action: &Build, window, cx| {
-                this.on_menu_action(action, window, cx);
-            }))
-            .on_action(cx.listener(|this, action: &RunProject, window, cx| {
-                this.on_menu_action(action, window, cx);
-            }))
-            // File Menu
-            .child(
-                Button::new("file-menu")
-                    .label("File")
-                    .ghost()
-                    .small()
-                    .popup_menu(|this, window, cx| {
-                        this.menu_with_icon("New File", IconName::PagePlus, Box::new(NewFile))
-                            .menu_with_icon(
-                                "New Project",
-                                IconName::FolderPlus,
-                                Box::new(NewProject),
-                            )
-                            .separator()
-                            .menu_with_icon("Open File", IconName::FolderOpen, Box::new(OpenFile))
-                            .menu_with_icon(
-                                "Open Folder",
-                                IconName::FolderOpen,
-                                Box::new(OpenFolder),
-                            )
-                            .submenu("Open Recent", window, cx, |menu, _, _| {
-                                menu.menu("project1.rs", Box::new(OpenRecent))
-                                    .menu("project2.rs", Box::new(OpenRecent))
-                                    .separator()
-                                    .menu("Clear Recent", Box::new(OpenRecent))
-                            })
-                            .separator()
-                            .menu_with_icon("Save", IconName::FloppyDisk, Box::new(SaveFile))
-                            .menu("Save As...", Box::new(SaveAs))
-                            .menu("Save All", Box::new(SaveAll))
-                            .separator()
-                            .menu("Close File", Box::new(CloseFile))
-                            .menu("Close Folder", Box::new(CloseFolder))
-                            .menu("Close All", Box::new(CloseAll))
-                    }),
-            )
-            // Edit Menu
-            .child(
-                Button::new("edit-menu")
-                    .label("Edit")
-                    .ghost()
-                    .small()
-                    .popup_menu(|this, window, cx| {
-                        this.menu("Undo", Box::new(Undo))
-                            .menu("Redo", Box::new(Redo))
-                            .separator()
-                            .menu_with_icon("Cut", IconName::Scissor, Box::new(Cut))
-                            .menu_with_icon("Copy", IconName::Copy, Box::new(Copy))
-                            .menu_with_icon("Paste", IconName::PasteClipboard, Box::new(Paste))
-                            .separator()
-                            .menu("Select All", Box::new(SelectAll))
-                            .separator()
-                            .menu_with_icon("Find", IconName::Search, Box::new(Find))
-                            .menu("Find & Replace", Box::new(FindReplace))
-                            .menu("Find in Files", Box::new(FindInFiles))
-                    }),
-            )
-            // Selection Menu
-            .child(
-                Button::new("selection-menu")
-                    .label("Selection")
-                    .ghost()
-                    .small()
-                    .popup_menu(|this, window, cx| {
-                        this.menu("Select Line", Box::new(SelectLine))
-                            .menu("Select Word", Box::new(SelectWord))
-                            .separator()
-                            .menu("Expand Selection", Box::new(ExpandSelection))
-                            .menu("Shrink Selection", Box::new(ShrinkSelection))
-                            .separator()
-                            .menu("Add Cursor Above", Box::new(AddCursorAbove))
-                            .menu("Add Cursor Below", Box::new(AddCursorBelow))
-                    }),
-            )
-            // Build Menu
-            .child(
-                Button::new("build-menu")
-                    .label("Build")
-                    .ghost()
-                    .small()
-                    .popup_menu(|this, window, cx| {
-                        this.menu_with_icon("Build", IconName::Tools, Box::new(Build))
-                            .menu("Rebuild", Box::new(Rebuild))
-                            .menu("Clean", Box::new(Clean))
-                            .separator()
-                            .menu("Build & Run", Box::new(BuildAndRun))
-                            .separator()
-                            .menu("Run Tests", Box::new(RunTests))
-                    }),
-            )
-            // View Menu
-            .child(
-                Button::new("view-menu")
-                    .label("View")
-                    .ghost()
-                    .small()
-                    .popup_menu(|this, window, cx| {
-                        this.menu_with_check("Explorer", true, Box::new(ToggleExplorer))
-                            .menu_with_check("Terminal", true, Box::new(ToggleTerminal))
-                            .menu_with_check("Output", false, Box::new(ToggleOutput))
-                            .menu_with_check("Problems", false, Box::new(ToggleProblems))
-                            .separator()
-                            .menu("Zoom In", Box::new(ZoomIn))
-                            .menu("Zoom Out", Box::new(ZoomOut))
-                            .menu("Reset Zoom", Box::new(ResetZoom))
-                            .separator()
-                            .menu("Toggle Fullscreen", Box::new(ToggleFullscreen))
-                    }),
-            )
-            // Go Menu
-            .child(
-                Button::new("go-menu")
-                    .label("Go")
-                    .ghost()
-                    .small()
-                    .popup_menu(|this, window, cx| {
-                        this.menu("Go to File", Box::new(GoToFile))
-                            .menu("Go to Line", Box::new(GoToLine))
-                            .menu("Go to Symbol", Box::new(GoToSymbol))
-                            .separator()
-                            .menu("Go to Definition", Box::new(GoToDefinition))
-                            .menu("Go to References", Box::new(GoToReferences))
-                            .separator()
-                            .menu("Go Back", Box::new(GoBack))
-                            .menu("Go Forward", Box::new(GoForward))
-                    }),
-            )
-            // Run Menu
-            .child(
-                Button::new("run-menu")
-                    .label("Run")
-                    .ghost()
-                    .small()
-                    .popup_menu(|this, window, cx| {
-                        this.menu_with_icon("Run Project", IconName::Play, Box::new(RunProject))
-                            .menu_with_icon("Debug Project", IconName::Bug, Box::new(DebugProject))
-                            .menu("Run without Debugging", Box::new(RunWithoutDebugging))
-                            .separator()
-                            .menu("Stop Debugging", Box::new(StopDebugging))
-                            .menu("Restart Debugging", Box::new(RestartDebugging))
-                    }),
-            )
-            // Terminal Menu
-            .child(
-                Button::new("terminal-menu")
-                    .label("Terminal")
-                    .ghost()
-                    .small()
-                    .popup_menu(|this, window, cx| {
-                        this.menu_with_icon(
-                            "New Terminal",
-                            IconName::SquareTerminal,
-                            Box::new(NewTerminal),
-                        )
-                        .menu("Split Terminal", Box::new(SplitTerminal))
-                        .separator()
-                        .menu("Clear Terminal", Box::new(ClearTerminal))
-                    }),
-            )
-            // Help Menu
-            .child(
-                Button::new("help-menu")
-                    .label("Help")
-                    .ghost()
-                    .small()
-                    .popup_menu(|this, window, cx| {
-                        this.menu("Show Commands", Box::new(ShowCommands))
-                            .separator()
-                            .link_with_icon("Documentation", IconName::BookOpen, "https://docs.rs")
-                            .link_with_icon(
-                                "Report Issue",
-                                IconName::GitHub,
-                                "https://github.com/issues",
-                            )
-                            .separator()
-                            .menu_with_icon("About", IconName::InfoCircle, Box::new(AboutApp))
-                    }),
             )
     }
 }
