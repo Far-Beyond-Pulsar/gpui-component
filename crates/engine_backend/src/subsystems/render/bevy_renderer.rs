@@ -31,6 +31,7 @@ use std::{
     },
     thread,
     time::{Duration, Instant},
+    io::Write,
 };
 use super::Framebuffer;
 
@@ -204,32 +205,56 @@ impl BevyRenderer {
         shutdown: Arc<AtomicBool>,
         last_frame_time: Arc<Mutex<Instant>>,
     ) {
-        println!("[BevyRenderer] 🎮 Starting Bevy render thread");
+        println!("========================================");
+        println!("[BEVY-RENDERER] 🎮🎮🎮 BEVY THREAD STARTING! 🎮🎮🎮");
+        println!("[BEVY-RENDERER] Thread ID: {:?}", std::thread::current().id());
+        println!("[BEVY-RENDERER] Render size: {}x{}", width, height);
+        println!("========================================");
 
+        println!("[BEVY-RENDERER] Step 1: Creating App...");
         let mut app = App::new();
-
-        app.add_plugins(DefaultPlugins.build().disable::<WindowPlugin>())
-            .add_plugins(RenderPlugin::default())
-            .add_plugins(PbrPlugin::default())
-            .insert_resource(ClearColor(Color::srgb(0.2, 0.2, 0.3)))
+        println!("[BEVY-RENDERER] Step 2: App created successfully");
+        
+        println!("[BEVY-RENDERER] Step 3: Adding DefaultPlugins (without Window)...");
+        app.add_plugins(DefaultPlugins.build().disable::<WindowPlugin>());
+        println!("[BEVY-RENDERER] Step 4: DefaultPlugins added");
+        
+        println!("[BEVY-RENDERER] Step 5: Adding RenderPlugin...");
+        app.add_plugins(RenderPlugin::default());
+        println!("[BEVY-RENDERER] Step 6: RenderPlugin added");
+        
+        println!("[BEVY-RENDERER] Step 7: Adding PbrPlugin...");
+        app.add_plugins(PbrPlugin::default());
+        println!("[BEVY-RENDERER] Step 8: PbrPlugin added");
+        
+        println!("[BEVY-RENDERER] Step 9: Adding resources and systems...");
+        app.insert_resource(ClearColor(Color::srgb(0.2, 0.2, 0.3)))
             .insert_resource(camera_input.lock().unwrap().clone())
             .insert_resource(RenderStats::default())
             .insert_resource(ShutdownSignal(shutdown))
             .insert_resource(SharedTexturesResource(shared_textures))
-            // Setup scene
             .add_systems(Startup, setup_scene)
             .add_systems(Update, update_camera_from_input)
             .add_systems(Update, animate_ball)
             .add_systems(Update, check_shutdown)
-            .add_systems(Update, update_camera_render_target)  // Update camera target each frame
+            .add_systems(Update, update_camera_render_target)
             .add_systems(Last, swap_render_textures);
+        println!("[BEVY-RENDERER] Step 10: Resources and systems added");
 
-        // Add render graph system to extract native handles
+        println!("[BEVY-RENDERER] Step 11: Adding render extraction system...");
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
+            println!("[BEVY-RENDERER] ✅ RenderApp found!");
             render_app.add_systems(ExtractSchedule, extract_native_texture_handles);
+            println!("[BEVY-RENDERER] ✅ Extract system added");
+        } else {
+            println!("[BEVY-RENDERER] ❌ WARNING: No RenderApp found!");
         }
 
+        println!("[BEVY-RENDERER] Step 12: Starting Bevy event loop...");
+        std::io::stdout().flush().ok();
         app.run();
+        
+        println!("[BEVY-RENDERER] ⛔ Bevy event loop exited");
     }
 
     /// Render a frame (GPUI calls this)
@@ -274,6 +299,9 @@ impl BevyRenderer {
     /// Get the native GPU texture handle for the current display frame
     /// This is what GPUI uses for IMMEDIATE MODE rendering - just a raw pointer!
     pub fn get_current_native_handle(&self) -> Option<crate::subsystems::render::NativeTextureHandle> {
+        static CALL_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let count = CALL_COUNT.fetch_add(1, Ordering::Relaxed);
+        
         let textures = self.shared_textures.lock().ok()?;
         let textures = textures.as_ref()?;
 
@@ -285,7 +313,11 @@ impl BevyRenderer {
         let handles = handles_lock.as_ref()?;
 
         let handle = handles[read_idx];
-        println!("[BEVY-RENDERER] 📤 Providing native handle for index {}: {:?}", read_idx, handle);
+        
+        if count % 120 == 0 {  // Log every 120 calls
+            println!("[BEVY-RENDERER] 📤 Call #{}: Providing native handle for index {}: {:?}", count, read_idx, handle);
+        }
+        
         Some(handle)
     }
 
@@ -509,11 +541,18 @@ fn extract_native_texture_handles(
     images: Res<RenderAssets<GpuImage>>,
     render_device: Res<RenderDevice>,
 ) {
-    println!("[BEVY-RENDERER] 🔍 Extracting native texture handles...");
+    static EXTRACT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let count = EXTRACT_COUNT.fetch_add(1, Ordering::Relaxed);
+    
+    if count % 60 == 0 {  // Log every 60 extracts
+        println!("[BEVY-RENDERER] 🔍 Extract #{}: Extracting native texture handles...", count);
+    }
     
     if let Ok(textures_lock) = shared_textures.0.lock() {
         if let Some(ref textures) = *textures_lock {
-            println!("[BEVY-RENDERER] 📦 Found {} textures to extract", textures.textures.len());
+            if count % 60 == 0 {
+                println!("[BEVY-RENDERER] 📦 Found {} textures to extract", textures.textures.len());
+            }
             
             // Extract native handles from both textures
             #[cfg(target_os = "windows")]
@@ -534,23 +573,25 @@ fn extract_native_texture_handles(
                 crate::subsystems::render::NativeTextureHandle::Vulkan(0),
             ];
 
+            let mut extracted_count = 0;
             for (i, handle) in textures.textures.iter().enumerate() {
-                println!("[BEVY-RENDERER] 🔎 Checking texture {}", i);
                 if let Some(gpu_image) = images.get(handle) {
-                    println!("[BEVY-RENDERER] ✅ Got GpuImage for texture {}", i);
                     // Extract native DirectX/Metal/Vulkan handle from wgpu texture
                     unsafe {
                         if let Some(native_handle) = crate::subsystems::render::NativeTextureHandle::from_wgpu_texture(
                             &gpu_image.texture,
                             &render_device,
                         ) {
-                            println!("[BEVY-RENDERER] 🎉 Successfully extracted native handle {}: {:?}", i, native_handle);
+                            if count % 60 == 0 {
+                                println!("[BEVY-RENDERER] 🎉 Successfully extracted native handle {}: {:?}", i, native_handle);
+                            }
                             native_handles[i] = native_handle;
-                        } else {
+                            extracted_count += 1;
+                        } else if count % 60 == 0 {
                             println!("[BEVY-RENDERER] ❌ Failed to extract native handle {}", i);
                         }
                     }
-                } else {
+                } else if count % 60 == 0 {
                     println!("[BEVY-RENDERER] ❌ No GpuImage for texture {}", i);
                 }
             }
@@ -558,12 +599,14 @@ fn extract_native_texture_handles(
             // Store native handles for GPUI to access
             if let Ok(mut handles_lock) = textures.native_handles.lock() {
                 *handles_lock = Some(native_handles);
-                println!("[BEVY-RENDERER] 💾 Stored native handles for GPUI");
+                if count % 60 == 0 {
+                    println!("[BEVY-RENDERER] 💾 Stored {} native handles for GPUI", extracted_count);
+                }
             }
-        } else {
+        } else if count % 60 == 0 {
             println!("[BEVY-RENDERER] ⚠️ No shared textures found");
         }
-    } else {
+    } else if count % 60 == 0 {
         println!("[BEVY-RENDERER] ❌ Failed to lock shared textures");
     }
 }
