@@ -16,7 +16,7 @@ path = "src/main.rs"
 horizon.workspace = true
 anyhow.workspace = true
 gpui.workspace = true
-gpui-component = { workspace = true, features = ["tree-sitter-languages"] }
+gpui-component = { workspace = true, features = ["tree-sitter-languages", "gpu_canvas_builtin"] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 schemars = "1.0"
