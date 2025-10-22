@@ -105,10 +105,31 @@ struct SharedTexturesResource(Arc<Mutex<Option<SharedGpuTextures>>>);
 #[derive(Resource, Clone)]
 struct ShutdownFlag(Arc<AtomicBool>);
 
+/// Metrics tracking resource - shared between Bevy and the main thread
+#[derive(Resource, Clone)]
+struct MetricsResource {
+    pub frames_rendered: Arc<AtomicU64>,
+    pub last_frame_time: Arc<Mutex<std::time::Instant>>,
+    pub fps: Arc<Mutex<f32>>,
+    pub frame_time_ms: Arc<Mutex<f32>>,
+}
+
+impl Default for MetricsResource {
+    fn default() -> Self {
+        Self {
+            frames_rendered: Arc::new(AtomicU64::new(0)),
+            last_frame_time: Arc::new(Mutex::new(std::time::Instant::now())),
+            fps: Arc::new(Mutex::new(0.0)),
+            frame_time_ms: Arc::new(Mutex::new(0.0)),
+        }
+    }
+}
+
 /// Renderer state
 pub struct BevyRenderer {
     pub shared_textures: Arc<Mutex<Option<SharedGpuTextures>>>,
     pub camera_input: Arc<Mutex<CameraInput>>,
+    pub metrics: Arc<MetricsResource>,
     shutdown: Arc<AtomicBool>,
     _render_thread: Option<std::thread::JoinHandle<()>>,
 }
@@ -117,10 +138,12 @@ impl BevyRenderer {
     pub async fn new(_width: u32, _height: u32) -> Self {
         let shared_textures = Arc::new(Mutex::new(None));
         let camera_input = Arc::new(Mutex::new(CameraInput::new()));
+        let metrics = Arc::new(MetricsResource::default());
         let shutdown = Arc::new(AtomicBool::new(false));
 
         let shared_textures_clone = shared_textures.clone();
         let camera_input_clone = camera_input.clone();
+        let metrics_clone = metrics.clone();
         let shutdown_clone = shutdown.clone();
 
         let render_thread = std::thread::Builder::new()
@@ -131,6 +154,7 @@ impl BevyRenderer {
                     RENDER_HEIGHT,
                     shared_textures_clone,
                     camera_input_clone,
+                    metrics_clone,
                     shutdown_clone,
                 );
             })
@@ -141,6 +165,7 @@ impl BevyRenderer {
         Self {
             shared_textures,
             camera_input,
+            metrics,
             shutdown,
             _render_thread: Some(render_thread),
         }
@@ -151,6 +176,7 @@ impl BevyRenderer {
         height: u32,
         shared_textures: Arc<Mutex<Option<SharedGpuTextures>>>,
         camera_input: Arc<Mutex<CameraInput>>,
+        metrics: Arc<MetricsResource>,
         shutdown: Arc<AtomicBool>,
     ) {
         println!("[BEVY] 🚀 Starting headless renderer {}x{}", width, height);
@@ -196,6 +222,7 @@ impl BevyRenderer {
         app.insert_resource(ClearColor(Color::srgb(0.1, 0.2, 0.3)))
             .insert_resource(camera_input.lock().unwrap().clone())
             .insert_resource(SharedTexturesResource(shared_textures.clone()))
+            .insert_resource(metrics.as_ref().clone())
             .insert_resource(ShutdownFlag(shutdown.clone()));
         
         // Insert shutdown resource
@@ -204,6 +231,7 @@ impl BevyRenderer {
         app.add_systems(Startup, (create_shared_textures_startup, setup_scene).chain())
             .add_systems(Update, check_shutdown)
             .add_systems(Update, camera_movement_system) // Unreal-style camera controls
+            .add_systems(Update, update_metrics_system) // Track FPS and frame times
             .add_systems(Update, debug_rendering_system); // Add debug system
 
         // Render world systems
@@ -274,18 +302,36 @@ impl BevyRenderer {
     }
 
     pub fn get_metrics(&self) -> RenderMetrics {
-        // Simple metrics - could be enhanced with actual FPS tracking
+        // Get actual metrics from the tracking resource
+        let frames_rendered = self.metrics.frames_rendered.load(Ordering::Relaxed);
+        
+        let bevy_fps = self.metrics.fps.lock().ok()
+            .map(|f| *f)
+            .unwrap_or(0.0);
+            
+        let frame_time_ms = self.metrics.frame_time_ms.lock().ok()
+            .map(|f| *f)
+            .unwrap_or(0.0);
+        
+        // Calculate pipeline time from frame time
+        let pipeline_time_us = frame_time_ms * 1000.0;
+        
+        // Estimate GPU and CPU times (rough estimates based on frame time)
+        // GPU typically takes ~60-70% of frame time, CPU ~30-40%
+        let gpu_time_us = pipeline_time_us * 0.65;
+        let cpu_time_us = pipeline_time_us * 0.35;
+        
         RenderMetrics {
-            fps: 60.0,
-            frame_time_ms: 16.6,
-            draw_calls: 10,
-            memory_usage_mb: 256.0,
-            vertices_drawn: 10000,
-            frames_rendered: 1000,
-            bevy_fps: 60.0,
-            pipeline_time_us: 100.0,
-            gpu_time_us: 500.0,
-            cpu_time_us: 300.0,
+            fps: bevy_fps,
+            frame_time_ms,
+            draw_calls: 15,  // TODO: Get actual draw call count from render stats
+            memory_usage_mb: 128.0,  // TODO: Get actual memory usage from GPU
+            vertices_drawn: 24576,  // TODO: Get actual vertex count from render stats
+            frames_rendered,
+            bevy_fps,
+            pipeline_time_us,
+            gpu_time_us,
+            cpu_time_us,
         }
     }
 
@@ -390,13 +436,49 @@ fn camera_movement_system(
     if camera_input.orbit_mode {
         // Calculate camera position relative to focus point
         let offset = transform.translation - camera_input.focus_point;
-        let distance = offset.length();
+        let _distance = offset.length();
         
         // Rotate offset around focus point
         if camera_input.mouse_delta_x.abs() > 0.001 || camera_input.mouse_delta_y.abs() > 0.001 {
             // This would require converting to spherical coordinates and back
             // For now, keeping it simple with FPS rotation
         }
+    }
+}
+
+/// Update performance metrics system
+/// Tracks FPS, frame time, and frame count
+fn update_metrics_system(
+    _time: Res<Time>,
+    metrics: ResMut<MetricsResource>,
+) {
+    // Increment frame count
+    let _frame_count = metrics.frames_rendered.fetch_add(1, Ordering::Relaxed);
+    
+    // Calculate FPS and frame time every frame
+    if let Ok(mut last_frame_time) = metrics.last_frame_time.lock() {
+        let now = std::time::Instant::now();
+        let frame_duration = now.duration_since(*last_frame_time);
+        let frame_time_ms = frame_duration.as_secs_f32() * 1000.0;
+        
+        // Update frame time
+        if let Ok(mut stored_frame_time) = metrics.frame_time_ms.lock() {
+            *stored_frame_time = frame_time_ms;
+        }
+        
+        // Calculate FPS (1 / frame_time in seconds)
+        let fps = if frame_time_ms > 0.0 {
+            1000.0 / frame_time_ms
+        } else {
+            0.0
+        };
+        
+        if let Ok(mut stored_fps) = metrics.fps.lock() {
+            // Smooth FPS with exponential moving average
+            *stored_fps = (*stored_fps * 0.9) + (fps * 0.1);
+        }
+        
+        *last_frame_time = now;
     }
 }
 
