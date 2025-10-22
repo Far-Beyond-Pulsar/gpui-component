@@ -31,6 +31,14 @@ pub fn store_shared_handles(handles: Vec<usize>) {
     SHARED_TEXTURE_HANDLES.set(handles).ok();
 }
 
+/// Get the stored shared texture handles
+#[cfg(target_os = "windows")]
+pub fn get_shared_handles() -> Option<Vec<NativeTextureHandle>> {
+    SHARED_TEXTURE_HANDLES.get().map(|handles| {
+        handles.iter().map(|&h| NativeTextureHandle::D3D11(h)).collect()
+    })
+}
+
 /// Native GPU texture handle - platform-specific
 #[derive(Clone, Copy, Debug)]
 pub enum NativeTextureHandle {

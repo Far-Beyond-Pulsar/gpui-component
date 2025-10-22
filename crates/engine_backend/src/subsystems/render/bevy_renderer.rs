@@ -199,9 +199,10 @@ impl BevyRenderer {
         
         // Insert shutdown resource
         
-        // Main world systems
-        app.add_systems(Startup, setup_scene)
-            .add_systems(Update, check_shutdown);
+        // Main world systems - create textures FIRST, then setup scene
+        app.add_systems(Startup, (create_shared_textures_startup, setup_scene).chain())
+            .add_systems(Update, check_shutdown)
+            .add_systems(Update, debug_rendering_system); // Add debug system
 
         // Render world systems
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
@@ -209,17 +210,20 @@ impl BevyRenderer {
             
             #[cfg(target_os = "windows")]
             {
-                // Run shared texture creation ONCE on startup
+                // Run shared texture creation ONCE on startup in the Render schedule
+                // This runs BEFORE extraction, so the GpuImages are ready when camera extracts
                 render_app.add_systems(
-                    bevy::render::ExtractSchedule,
-                    create_shared_textures.run_if(|| {
-                        static ONCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-                        !ONCE.swap(true, std::sync::atomic::Ordering::Relaxed)
-                    }),
+                    Render,
+                    create_shared_textures
+                        .run_if(|| {
+                            static ONCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                            !ONCE.swap(true, std::sync::atomic::Ordering::Relaxed)
+                        })
+                        .before(bevy::render::RenderSystems::Render),
                 );
             }
 
-            // Extract native handles every frame
+            // Extract native handles every frame (for debug/monitoring)
             render_app.add_systems(
                 Render,
                 extract_native_handles.in_set(bevy::render::RenderSystems::Render)
@@ -237,29 +241,20 @@ impl BevyRenderer {
     }
 
     pub fn get_shared_texture_handles(&self) -> Option<Vec<usize>> {
-        if let Ok(lock) = self.shared_textures.lock() {
-            if let Some(ref textures) = *lock {
-                if let Ok(handles_lock) = textures.native_handles.lock() {
-                    if let Some(ref handles) = *handles_lock {
-                        return Some(handles.iter().map(|h| {
-                            match h {
-                                crate::subsystems::render::NativeTextureHandle::D3D11(ptr) => *ptr as usize,
-                                _ => 0,
-                            }
-                        }).collect());
-                    }
+        // Read from global storage where Bevy stores the handles
+        super::native_texture::get_shared_handles().map(|handles| {
+            handles.iter().map(|h| {
+                match h {
+                    crate::subsystems::render::NativeTextureHandle::D3D11(ptr) => *ptr,
+                    _ => 0,
                 }
-            }
-        }
-        None
+            }).collect()
+        })
     }
 
     pub fn get_read_index(&self) -> usize {
-        if let Ok(lock) = self.shared_textures.lock() {
-            if let Some(ref textures) = *lock {
-                return textures.read_index.load(Ordering::Acquire);
-            }
-        }
+        // Always use buffer 0 - we're using single-buffered rendering for now
+        // TODO: Implement proper double-buffering with camera swapping
         0
     }
 
@@ -310,24 +305,134 @@ impl Drop for BevyRenderer {
     }
 }
 
-/// Setup 3D scene
+/// Setup 3D scene - runs AFTER DXGI textures are created
 fn setup_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut images: ResMut<Assets<Image>>,
     shared_textures: Res<SharedTexturesResource>,
 ) {
     println!("[BEVY] 🎬 Setting up scene...");
 
-    // Create render target images with proper data buffer
-    // Bevy requires the data field to be properly sized for the texture
+    // Get the render target handles that were created by create_shared_textures
+    let render_target_0 = match shared_textures.0.lock().ok().and_then(|l| l.as_ref().map(|t| t.textures[0].clone())) {
+        Some(handle) => {
+            println!("[BEVY] ✅ Got render target handle: {:?}", handle);
+            println!("[BEVY] 📍 Camera will render to asset ID: {:?}", handle.id());
+            handle
+        },
+        None => {
+            println!("[BEVY] ❌ No render targets available");
+            return;
+        }
+    };
+
+    // Camera rendering to shared DXGI texture with BRIGHT GREEN clear color for visibility
+    println!("[BEVY] 📹 Creating camera targeting shared texture");
+    println!("[BEVY] 🎯 Camera will render to buffer 0 (handle: {:?})", render_target_0.id());
+    commands.spawn((
+        Camera3d::default(),
+        Camera {
+            target: bevy::camera::RenderTarget::Image(render_target_0.into()),
+            clear_color: bevy::prelude::ClearColorConfig::Custom(Color::srgb(0.0, 1.0, 0.0)), // BRIGHT GREEN for debugging
+            ..default()
+        },
+        Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+        MainCamera,
+    ));
+    println!("[BEVY] ✅ Camera spawned - rendering to buffer 0");
+
+    // Scene objects
+    println!("[BEVY] 🎨 Spawning scene objects...");
+    commands.spawn((
+        Mesh3d(meshes.add(Plane3d::default().mesh().size(10.0, 10.0))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.3, 0.5, 0.3),
+            ..default()
+        })),
+        Transform::from_xyz(0.0, 0.0, 0.0),
+    ));
+    println!("[BEVY] ✅ Plane spawned");
+
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.8, 0.7, 0.6),
+            ..default()
+        })),
+        Transform::from_xyz(0.0, 0.5, 0.0),
+    ));
+    println!("[BEVY] ✅ Cube spawned");
+
+    commands.spawn((
+        Mesh3d(meshes.add(Sphere::new(0.5))), // Bigger sphere for visibility
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(1.0, 0.0, 0.0), // BRIGHT RED
+            emissive: LinearRgba::rgb(1.0, 0.0, 0.0),
+            ..default()
+        })),
+        Transform::from_xyz(0.0, 2.0, 0.0),
+    ));
+    println!("[BEVY] ✅ Sphere spawned");
+
+    commands.spawn((
+        DirectionalLight {
+            illuminance: 10000.0,
+            shadows_enabled: true,
+            ..default()
+        },
+        Transform::from_xyz(4.0, 8.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
+    println!("[BEVY] ✅ Light spawned");
+
+    println!("[BEVY] ✅ Scene ready - should see GREEN background with objects!");
+}
+
+// Debug system to track rendering
+fn debug_rendering_system(
+    query: Query<&Camera, With<MainCamera>>,
+    mut counter: Local<u32>,
+) {
+    *counter += 1;
+    if *counter % 120 == 0 {
+        for camera in query.iter() {
+            println!("[BEVY] 🎥 Frame {} - Camera active, target: {:?}", *counter, camera.target);
+        }
+    }
+}
+
+
+/// Create DXGI shared textures BEFORE scene setup
+/// This must run first so the Images exist when the camera is created
+#[cfg(target_os = "windows")]
+fn create_shared_textures_startup(
+    shared_textures: Res<SharedTexturesResource>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
+
+    println!("[BEVY] 🔧 Creating DXGI shared textures...");
+
+    // Check if already created
+    if let Ok(lock) = shared_textures.0.lock() {
+        if let Some(ref textures) = *lock {
+            if let Ok(native_lock) = textures.native_handles.lock() {
+                if native_lock.is_some() {
+                    println!("[BEVY] ⚠️ Textures already created");
+                    return;
+                }
+            }
+        }
+    }
+
+    // Get D3D12 device - we need wgpu device for this
+    // For now, create placeholder Images that will be replaced in render world
     let bytes_per_pixel = 4; // BGRA8
     let texture_size = (RENDER_WIDTH * RENDER_HEIGHT * bytes_per_pixel) as usize;
     
     let mut image_0 = Image {
         texture_descriptor: bevy::render::render_resource::TextureDescriptor {
-            label: Some("Render Target 0"),
+            label: Some("DXGI Shared Render Target 0"),
             size: bevy::render::render_resource::Extent3d {
                 width: RENDER_WIDTH,
                 height: RENDER_HEIGHT,
@@ -347,7 +452,7 @@ fn setup_scene(
 
     let mut image_1 = Image {
         texture_descriptor: bevy::render::render_resource::TextureDescriptor {
-            label: Some("Render Target 1"),
+            label: Some("DXGI Shared Render Target 1"),
             size: bevy::render::render_resource::Extent3d {
                 width: RENDER_WIDTH,
                 height: RENDER_HEIGHT,
@@ -365,7 +470,7 @@ fn setup_scene(
     image_1.data = Some(vec![0u8; texture_size]); // Allocate proper buffer
     let render_target_1 = images.add(image_1);
 
-    // Store handles
+    // Store handles - these will be replaced with DXGI-backed GpuImages in render world
     if let Ok(mut lock) = shared_textures.0.lock() {
         *lock = Some(SharedGpuTextures {
             textures: Arc::new([render_target_0.clone(), render_target_1.clone()]),
@@ -378,60 +483,11 @@ fn setup_scene(
         });
     }
 
-    // Camera rendering to first texture
-    commands.spawn((
-        Camera3d::default(),
-        Camera {
-            target: bevy::camera::RenderTarget::Image(render_target_0.into()),
-            clear_color: bevy::prelude::ClearColorConfig::Custom(Color::srgb(0.1, 0.2, 0.3)),
-            ..default()
-        },
-        Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
-        MainCamera,
-    ));
-
-    // Scene objects
-    commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(10.0, 10.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.3, 0.5, 0.3),
-            ..default()
-        })),
-        Transform::from_xyz(0.0, 0.0, 0.0),
-    ));
-
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.8, 0.7, 0.6),
-            ..default()
-        })),
-        Transform::from_xyz(0.0, 0.5, 0.0),
-    ));
-
-    commands.spawn((
-        Mesh3d(meshes.add(Sphere::new(0.3))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(1.0, 0.2, 0.2),
-            emissive: LinearRgba::rgb(1.0, 0.2, 0.2),
-            ..default()
-        })),
-        Transform::from_xyz(0.0, 2.0, 0.0),
-    ));
-
-    commands.spawn((
-        DirectionalLight {
-            illuminance: 10000.0,
-            shadows_enabled: true,
-            ..default()
-        },
-        Transform::from_xyz(4.0, 8.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y),
-    ));
-
-    println!("[BEVY] ✅ Scene ready");
+    println!("[BEVY] ✅ Placeholder render target Images created");
 }
 
 /// Create DXGI shared textures and inject them into Bevy's render pipeline
+/// This replaces the GPU backing texture of the render targets with DXGI shared textures
 #[cfg(target_os = "windows")]
 fn create_shared_textures(
     shared_textures: Res<SharedTexturesResource>,
@@ -441,15 +497,27 @@ fn create_shared_textures(
     use wgpu_hal::api::Dx12;
     use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
 
-    println!("[BEVY] 🔧 Creating DXGI shared textures...");
+    println!("[BEVY] 🔧 Replacing render targets with DXGI shared textures...");
 
     let texture_handles = match shared_textures.0.lock().ok().and_then(|l| l.as_ref().map(|t| t.textures.clone())) {
         Some(handles) => handles,
         None => {
-            println!("[BEVY] ❌ No texture handles");
+            println!("[BEVY] ❌ No texture handles available");
             return;
         }
     };
+    
+    // Check if we already have DXGI textures created
+    if let Ok(lock) = shared_textures.0.lock() {
+        if let Some(ref textures) = *lock {
+            if let Ok(native_lock) = textures.native_handles.lock() {
+                if native_lock.is_some() {
+                    // Already created, don't recreate
+                    return;
+                }
+            }
+        }
+    }
 
     // Get D3D12 device from wgpu
     let d3d12_device = unsafe {
@@ -571,6 +639,8 @@ fn create_shared_textures(
         };
 
         // CRITICAL: Inject our textures into Bevy's render assets
+        println!("[BEVY] 📍 Injecting DXGI texture into asset ID 0: {:?}", texture_handles[0].id());
+        println!("[BEVY] 📍 Injecting DXGI texture into asset ID 1: {:?}", texture_handles[1].id());
         gpu_images.insert(&texture_handles[0], gpu_img_0);
         gpu_images.insert(&texture_handles[1], gpu_img_1);
 
