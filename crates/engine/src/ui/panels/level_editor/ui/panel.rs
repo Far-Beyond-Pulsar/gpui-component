@@ -171,61 +171,6 @@ impl LevelEditorPanel {
         }
     }
 
-    /// TRUE ZERO-COPY immediate-mode thread - NO BUFFERS, NO COPIES!
-    /// Bevy renders to shared GPU textures independently
-    /// We just grab the native handle and pass it to the viewport!
-    fn render_thread_gpu_direct(
-        gpu_engine: Arc<Mutex<GpuRenderer>>,
-        viewport_handle_storage: Arc<Mutex<Option<gpui_component::gpu_viewport::NativeTextureHandle>>>,
-        render_enabled: Arc<std::sync::atomic::AtomicBool>,
-        game_thread: Arc<GameThread>,
-        _frame_sender: Sender<Arc<Vec<u8>>>,
-    ) {
-        let target_fps = 60; // UI update rate
-        let frame_time = Duration::from_millis(1000 / target_fps);
-        let mut frame_count = 0u64;
-
-        println!("[RENDER-THREAD-GPU] 🔥 Starting TRUE ZERO-COPY immediate-mode loop!");
-        println!("[RENDER-THREAD-GPU] 🚀 NO buffers, NO copies - pure pointer sharing!");
-
-        while render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
-            let frame_start = std::time::Instant::now();
-
-            // Sync game objects to renderer
-            if let Ok(game_state) = game_thread.get_state().lock() {
-                let objects = game_state.objects.clone();
-                if let Ok(mut engine) = gpu_engine.try_lock() {
-                    if let Some(ref mut bevy_renderer) = engine.bevy_renderer {
-                        bevy_renderer.update_game_objects(objects);
-                    }
-                }
-            }
-
-            // Sync buffer index from Bevy to viewport
-            if let Ok(engine_guard) = gpu_engine.try_lock() {
-                if let Some(ref bevy_renderer) = engine_guard.bevy_renderer {
-                    if let Some(read_idx) = bevy_renderer.get_read_index() {
-                        viewport_state.write().set_active_buffer(read_idx);
-                    }
-                }
-            }
-
-            frame_count += 1;
-
-            if frame_count % 60 == 1 {
-                println!("[UI-SYNC] 🔄 Updated viewport handle (frame {})", frame_count);
-            }
-
-            // Simple fixed framerate for UI updates
-            let elapsed = frame_start.elapsed();
-            if elapsed < frame_time {
-                thread::sleep(frame_time - elapsed);
-            }
-        }
-
-        println!("[RENDER-THREAD-GPU] 🛑 Immediate-mode loop exited");
-    }
-
     pub fn toggle_rendering(&mut self) {
         let current = self.render_enabled.load(std::sync::atomic::Ordering::Relaxed);
         self.render_enabled.store(!current, std::sync::atomic::Ordering::Relaxed);
@@ -427,9 +372,14 @@ impl EventEmitter<PanelEvent> for LevelEditorPanel {}
 
 impl Render for LevelEditorPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // IMMEDIATE MODE: No frame processing needed!
-        // The render thread updates the viewport's native texture handle directly
-        // GPUI displays it immediately - NO buffers, NO copies!
+        // Sync viewport buffer index with Bevy's read index each frame
+        if let Ok(engine_guard) = self.gpu_engine.try_lock() {
+            if let Some(ref bevy_renderer) = engine_guard.bevy_renderer {
+                if let Some(read_idx) = bevy_renderer.get_read_index() {
+                    self.viewport_state.write().set_active_buffer(read_idx);
+                }
+            }
+        }
 
         v_flex()
             .size_full()
