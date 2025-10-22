@@ -248,7 +248,6 @@ impl BevyRenderer {
             handles.iter().map(|h| {
                 match h {
                     crate::subsystems::render::NativeTextureHandle::D3D11(ptr) => *ptr,
-                    _ => 0,
                 }
             }).collect()
         })
@@ -442,87 +441,116 @@ fn setup_scene(
     // Scene objects - SUPER BRIGHT AND OBVIOUS
     println!("[BEVY] 🎨 Spawning HIGH-VISIBILITY scene objects...");
     
-    // Bright magenta/purple ground plane
+    // Bright grey ground plane (concrete-like)
     commands.spawn((
         Mesh3d(meshes.add(Plane3d::default().mesh().size(20.0, 20.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(1.0, 0.0, 1.0), // BRIGHT MAGENTA
-            unlit: true, // Make it fully bright
+            base_color: Color::srgb(0.7, 0.7, 0.7),
+            metallic: 0.0,
+            perceptual_roughness: 0.8,
+            reflectance: 0.1,
             ..default()
         })),
         Transform::from_xyz(0.0, 0.0, 0.0),
     ));
-    println!("[BEVY] ✅ MAGENTA plane spawned");
+    println!("[BEVY] ✅ Ground plane spawned");
 
-    // Giant YELLOW cube
+    // Red metallic cube (left)
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(2.0, 2.0, 2.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(1.0, 1.0, 0.0), // BRIGHT YELLOW
-            unlit: true,
+            base_color: Color::srgb(0.9, 0.2, 0.2),
+            metallic: 0.8,
+            perceptual_roughness: 0.3,
+            reflectance: 0.5,
             ..default()
         })),
         Transform::from_xyz(-2.0, 1.0, 0.0),
     ));
-    println!("[BEVY] ✅ YELLOW cube spawned");
+    println!("[BEVY] ✅ Red metallic cube spawned");
 
-    // Giant CYAN sphere
+    // Blue metallic sphere (right)
     commands.spawn((
         Mesh3d(meshes.add(Sphere::new(1.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.0, 1.0, 1.0), // BRIGHT CYAN
-            unlit: true,
+            base_color: Color::srgb(0.2, 0.5, 0.9),
+            metallic: 0.9,
+            perceptual_roughness: 0.1,
+            reflectance: 0.9,
             ..default()
         })),
         Transform::from_xyz(2.0, 1.0, 0.0),
     ));
-    println!("[BEVY] ✅ CYAN sphere spawned");
+    println!("[BEVY] ✅ Blue metallic sphere spawned");
 
-    // Giant RED sphere at top
+    // Gold metallic sphere (top)
     commands.spawn((
         Mesh3d(meshes.add(Sphere::new(1.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(1.0, 0.0, 0.0), // BRIGHT RED
-            emissive: LinearRgba::rgb(1.0, 0.0, 0.0),
-            unlit: true,
+            base_color: Color::srgb(1.0, 0.843, 0.0),
+            metallic: 0.95,
+            perceptual_roughness: 0.2,
+            reflectance: 0.8,
             ..default()
         })),
         Transform::from_xyz(0.0, 3.0, 0.0),
     ));
-    println!("[BEVY] ✅ RED sphere spawned");
+    println!("[BEVY] ✅ Gold metallic sphere spawned");
 
-    // Giant GREEN sphere
+    // Green metallic sphere (front)
     commands.spawn((
         Mesh3d(meshes.add(Sphere::new(1.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.0, 1.0, 0.0), // BRIGHT GREEN
-            emissive: LinearRgba::rgb(0.0, 1.0, 0.0),
-            unlit: true,
+            base_color: Color::srgb(0.2, 0.9, 0.3),
+            metallic: 0.6,
+            perceptual_roughness: 0.4,
+            reflectance: 0.5,
             ..default()
         })),
         Transform::from_xyz(0.0, 1.0, 2.0),
     ));
-    println!("[BEVY] ✅ GREEN sphere spawned");
+    println!("[BEVY] ✅ Green metallic sphere spawned");
 
-    // Super bright directional light
+    // Primary directional light (sun)
     commands.spawn((
         DirectionalLight {
-            illuminance: 50000.0,
+            color: Color::WHITE,
+            illuminance: 25000.0, // Bright sunlight
             shadows_enabled: false,
             ..default()
         },
-        Transform::from_xyz(4.0, 10.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(4.0, 8.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
-    println!("[BEVY] ✅ Light spawned");
+    
+    // Fill light (softer, from opposite side)
+    commands.spawn((
+        DirectionalLight {
+            color: Color::srgb(0.9, 0.95, 1.0), // Slightly blue fill
+            illuminance: 8000.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(-4.0, 6.0, -4.0).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
+    
+    // Ambient light for overall scene brightness
+    commands.insert_resource(AmbientLight {
+        color: Color::WHITE,
+        brightness: 500.0, // Subtle ambient
+        affects_lightmapped_meshes: true,
+    });
+    
+    println!("[BEVY] ✅ PBR lighting enabled with 2 directional lights + ambient");
 
     println!("[BEVY] ✅ Scene ready!");
     println!("[BEVY] 🎨 You should see:");
-    println!("[BEVY] 🔵 CYAN/BLUE background");
-    println!("[BEVY] 🟣 MAGENTA ground plane");
-    println!("[BEVY] 🟡 YELLOW cube (left)");
-    println!("[BEVY] 🔵 CYAN sphere (right)");
-    println!("[BEVY] 🔴 RED sphere (top)");
-    println!("[BEVY] 🟢 GREEN sphere (front)");
+    println!("[BEVY] 🔵 Dark grey-blue background");
+    println!("[BEVY] ⬜ Light grey ground plane");
+    println!("[BEVY] 🔴 Red metallic cube (left)");
+    println!("[BEVY] 🔵 Blue metallic sphere (right)");
+    println!("[BEVY] 🟡 Gold metallic sphere (top)");
+    println!("[BEVY] 🟢 Green metallic sphere (front)");
+    println!("[BEVY] 💡 PBR lighting with 2-point lighting + ambient");
 }
 
 // Debug system to track rendering
