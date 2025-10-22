@@ -92,6 +92,22 @@ impl LevelEditorPanel {
 
         println!("[LEVEL-EDITOR] ✅ GPU viewport created (1600x900) - ZERO CPU COPIES!");
         
+        // Initialize the DX11 shared texture manager
+        // This allows us to open DX12 shared handles in DX11!
+        #[cfg(target_os = "windows")]
+        unsafe {
+            println!("[LEVEL-EDITOR] 🔧 Initializing DX11 SharedTextureManager...");
+            match gpui_component::dx11_shared_opener::init_from_gpui_window() {
+                Ok(()) => {
+                    println!("[LEVEL-EDITOR] ✅ SharedTextureManager initialized - ready for zero-copy rendering!");
+                }
+                Err(e) => {
+                    eprintln!("[LEVEL-EDITOR] ⚠️ Failed to initialize SharedTextureManager: {}", e);
+                    eprintln!("[LEVEL-EDITOR] ⚠️ Will fall back to regular rendering");
+                }
+            }
+        }
+        
         // Create GPU render engine with matching resolution
         let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new(1600, 900)));
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));

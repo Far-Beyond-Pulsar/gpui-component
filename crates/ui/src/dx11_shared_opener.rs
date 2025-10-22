@@ -19,11 +19,6 @@ pub mod windows_impl {
     use windows::core::Interface;
     use std::collections::HashMap;
 
-    // Import feature level constants
-    use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_11_0;
-    use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_11_1;
-    use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_UNKNOWN;
-
     /// Manages opened shared textures and their SRVs
     /// This keeps the D3D11 textures and SRVs alive for the lifetime of the viewport
     #[derive(Debug)]
@@ -193,14 +188,18 @@ pub unsafe fn init_from_gpui_window() -> anyhow::Result<()> {
     let mut device: Option<ID3D11Device> = None;
     let mut _device_context: Option<ID3D11DeviceContext> = None;
     
+    // Use the actual enum values instead of constants
+    use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL;
     let feature_levels = [
-        D3D_FEATURE_LEVEL_11_1,
-        D3D_FEATURE_LEVEL_11_0,
+        D3D_FEATURE_LEVEL(0xb100), // D3D_FEATURE_LEVEL_11_1
+        D3D_FEATURE_LEVEL(0xb000), // D3D_FEATURE_LEVEL_11_0
     ];
+    
+    use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE;
     
     D3D11CreateDevice(
         &adapter,
-        D3D_DRIVER_TYPE_UNKNOWN,
+        D3D_DRIVER_TYPE(0), // D3D_DRIVER_TYPE_UNKNOWN
         None,
         D3D11_CREATE_DEVICE_BGRA_SUPPORT,
         Some(&feature_levels),
