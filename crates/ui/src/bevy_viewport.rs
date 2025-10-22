@@ -276,7 +276,7 @@ impl Render for BevyViewport {
             .flex()
             .items_center()
             .justify_center()
-            .bg(rgb(0x1e1e1e))
+            .bg(rgb(0xFF0000)) // BRIGHT RED so we can see if Bevy content is covering it
             .child(
                 if let Some(ref source) = state.canvas_source {
                     // Render the GPU canvas with zero-copy shared textures
