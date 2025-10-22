@@ -13,7 +13,7 @@ pub mod windows_impl {
         Dxgi::Common::*,
     };
     use windows::Win32::Foundation::HANDLE;
-    use windows::core::Interface;
+    use windows::core::PCWSTR;
 
     /// Information about a DXGI shared texture
     pub struct DxgiSharedTexture {
@@ -39,8 +39,8 @@ pub mod windows_impl {
                 Type: D3D12_HEAP_TYPE_DEFAULT,
                 CPUPageProperty: D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
                 MemoryPoolPreference: D3D12_MEMORY_POOL_UNKNOWN,
-                CreationNodeMask: 0,
-                VisibleNodeMask: 0,
+                CreationNodeMask: 1, // FIX: Must be 1 for single-GPU systems
+                VisibleNodeMask: 1,  // FIX: Must be 1 for single-GPU systems
             };
 
             // Resource description with SIMULTANEOUS ACCESS flag
@@ -74,13 +74,30 @@ pub mod windows_impl {
 
             let resource = resource.context("Resource was None after creation")?;
 
+            println!("[DXGI-SHARED] 📝 D3D12 resource created successfully, now creating shared handle...");
+
             // Create a shared NT handle for this resource
-            let shared_handle = device.CreateSharedHandle(
+            // Windows ACCESS_MASK constants:
+            // GENERIC_READ = 0x80000000, GENERIC_WRITE = 0x40000000, SYNCHRONIZE = 0x00100000
+            const GENERIC_ALL: u32 = 0x10000000;
+            
+            let shared_handle = match device.CreateSharedHandle(
                 &resource,
-                None, // Default security
-                0x80000000 | 0x40000000 | 0x00100000, // GENERIC_READ | GENERIC_WRITE | SYNCHRONIZE
-                None, // Unnamed
-            ).context("Failed to create shared handle")?;
+                None, // Default security attributes  
+                GENERIC_ALL,
+                PCWSTR::null(), // Unnamed handle
+            ) {
+                Ok(handle) => {
+                    println!("[DXGI-SHARED] ✅ CreateSharedHandle succeeded: 0x{:X}", handle.0 as usize);
+                    handle
+                }
+                Err(e) => {
+                    println!("[DXGI-SHARED] ❌ CreateSharedHandle failed!");
+                    println!("[DXGI-SHARED] 🔍 HRESULT code: 0x{:08X}", e.code().0);
+                    println!("[DXGI-SHARED] 📋 Error details: {:?}", e);
+                    return Err(e).context("Failed to create shared handle");
+                }
+            };
 
             println!("[DXGI-SHARED] ✅ Created shared texture {}x{} with handle: 0x{:X}", 
                 width, height, shared_handle.0 as usize);

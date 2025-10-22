@@ -4,13 +4,15 @@
 /// Just displays whatever native GPU texture handle you point it at.
 ///
 /// Architecture:
-/// 1. Bevy renders to shared textures in its own thread
-/// 2. Bevy exposes native DirectX/Metal/Vulkan handles via get_native_texture_handle()
-/// 3. Viewport grabs the handle each frame and passes it to GPUI's immediate renderer
-/// 4. GPUI displays the texture directly - NO COPIES!
+/// 1. Bevy renders to DX12 shared textures in its own thread
+/// 2. Bevy exposes NT HANDLEs (shared handles) from DX12
+/// 3. Viewport opens these handles in DX11 and creates SRVs
+/// 4. GPUI displays the SRV directly - NO COPIES!
 
 use gpui::*;
 use std::sync::{Arc, Mutex};
+#[cfg(target_os = "windows")]
+use crate::dx11_shared_opener;
 
 /// Native GPU texture handle - platform specific
 #[derive(Clone, Copy, Debug)]
@@ -207,24 +209,38 @@ unsafe fn paint_immediate_d3d11_texture(
     bounds: Bounds<ScaledPixels>,
     handle_storage: Arc<Mutex<Option<NativeTextureHandle>>>
 ) {
-    // Get the current texture handle from shared storage
-    let texture_handle = if let Ok(guard) = handle_storage.lock() {
-        if let Some(NativeTextureHandle::D3D11(ptr)) = *guard {
-            println!("[GPU-VIEWPORT] 🎨 Got D3D11 handle: 0x{:X}", ptr);
-            ptr as *mut std::ffi::c_void
+    // Get the NT handle from Bevy (DX12 shared handle)
+    let nt_handle = if let Ok(guard) = handle_storage.lock() {
+        if let Some(NativeTextureHandle::D3D11(handle)) = *guard {
+            if handle == 0 {
+                println!("[GPU-VIEWPORT] ⚠️ Got null NT handle, skipping render");
+                return;
+            }
+            println!("[GPU-VIEWPORT] 📥 Got NT handle from DX12: 0x{:X}", handle);
+            handle
         } else {
             println!("[GPU-VIEWPORT] ⚠️ No texture handle set yet");
-            return; // No texture set yet
+            return;
         }
     } else {
         println!("[GPU-VIEWPORT] ❌ Failed to lock handle storage");
-        return; // Lock failed
+        return;
     };
 
-    // Call the immediate-mode renderer through Window
-    // This happens during paint phase - the DirectX renderer executes it immediately
-    // bounds is already in ScaledPixels, but the Window API expects Pixels
-    // The Window method will rescale it internally, so we convert back to logical pixels
+    // Step 1: Open the DX12 shared handle in DX11 and create an SRV
+    // This is the CRITICAL step - we can't pass NT handles to GPUI directly!
+    let srv_ptr = match dx11_shared_opener::open_shared_handle_for_gpui(nt_handle, 1600, 900) {
+        Ok(ptr) => {
+            println!("[GPU-VIEWPORT] ✅ Opened shared handle and created SRV: {:p}", ptr);
+            ptr
+        }
+        Err(e) => {
+            eprintln!("[GPU-VIEWPORT] ❌ Failed to open shared handle: {}", e);
+            return;
+        }
+    };
+
+    // Step 2: Pass the SRV (not the NT handle!) to GPUI
     let scale_factor = window.scale_factor();
     let pixel_bounds = Bounds {
         origin: point(
@@ -237,14 +253,14 @@ unsafe fn paint_immediate_d3d11_texture(
         ),
     };
     
-    println!("[GPU-VIEWPORT] 🖼️ Drawing at bounds: {:?}", pixel_bounds);
+    println!("[GPU-VIEWPORT] 🖼️ Drawing SRV at bounds: {:?}", pixel_bounds);
     
-    // SAFETY: We're passing a valid D3D11 texture handle that came from Bevy's renderer
-    // The handle is valid for this frame and we're calling during the paint phase
-    if let Err(e) = window.draw_raw_texture_immediate(texture_handle, pixel_bounds) {
+    // SAFETY: We're passing a valid ID3D11ShaderResourceView* that we just created
+    // The SRV is kept alive by the SharedTextureManager
+    if let Err(e) = window.draw_raw_texture_immediate(srv_ptr, pixel_bounds) {
         eprintln!("[GPU-VIEWPORT] ❌ Failed to draw texture: {}", e);
     } else {
-        println!("[GPU-VIEWPORT] ✅ Successfully drew texture");
+        println!("[GPU-VIEWPORT] ✅ Successfully drew texture via SRV");
     }
 }
 
