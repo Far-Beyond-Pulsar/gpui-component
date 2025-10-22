@@ -271,8 +271,7 @@ impl Render for BevyViewport {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read();
         
-        // Return a div that is EXPLICITLY set to allow pointer events!
-        // This is the key - the GPU canvas must not block input events
+        // Return a div that does NOT block mouse events - they bubble up to parent!
         div()
             .size_full()
             .flex()
@@ -280,10 +279,9 @@ impl Render for BevyViewport {
             .justify_center()
             .bg(rgb(0x1a1a1a)) // Dark background so any gaps are visible
             .track_focus(&self.focus_handle)
-            // Make this element explicitly focusable for input events
+            // Make this element explicitly focusable for keyboard input
             .id("bevy_viewport")
-            // CRITICAL: This div holds the GPU canvas and ALLOWS events to pass through to parent!
-            // We don't add ANY mouse event handlers here - they go on the PARENT in viewport.rs
+            // NO mouse event handlers here - let them pass through to parent div in viewport.rs!
             .child(
                 if let Some(ref source) = state.canvas_source {
                     // Render the GPU canvas with zero-copy shared textures

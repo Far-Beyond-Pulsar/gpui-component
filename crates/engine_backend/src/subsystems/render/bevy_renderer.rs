@@ -3,6 +3,7 @@
 
 use bevy::{
     prelude::*,
+    core_pipeline::tonemapping::Tonemapping,
     render::{
         render_asset::RenderAssets,
         renderer::RenderDevice,
@@ -422,20 +423,21 @@ fn setup_scene(
         }
     };
 
-    // Camera rendering to shared DXGI texture with CYAN clear color for visibility
+    // Camera rendering to shared DXGI texture with TONEMAPPING DISABLED
     println!("[BEVY] 📹 Creating camera targeting shared texture");
     println!("[BEVY] 🎯 Camera will render to buffer 0 (handle: {:?})", render_target_0.id());
     commands.spawn((
         Camera3d::default(),
         Camera {
             target: bevy::camera::RenderTarget::Image(render_target_0.into()),
-            clear_color: bevy::prelude::ClearColorConfig::Custom(Color::srgb(0.0, 0.5, 0.8)), // CYAN BLUE background
+            clear_color: bevy::prelude::ClearColorConfig::Custom(Color::srgb(0.2, 0.2, 0.3)), // Dark blue-grey background
             ..default()
         },
         Transform::from_xyz(-3.0, 3.0, 6.0).looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y),
+        Tonemapping::None, // CRITICAL: Disable tonemapping for proper color reproduction
         MainCamera,
     ));
-    println!("[BEVY] ✅ Camera spawned - rendering to buffer 0");
+    println!("[BEVY] ✅ Camera spawned with tonemapping DISABLED - rendering to buffer 0");
 
     // Scene objects - SUPER BRIGHT AND OBVIOUS
     println!("[BEVY] 🎨 Spawning HIGH-VISIBILITY scene objects...");
