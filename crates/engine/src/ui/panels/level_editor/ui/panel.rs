@@ -120,14 +120,31 @@ impl LevelEditorPanel {
                                 viewport_state_for_init.write().initialize_shared_textures(handle0, handle1, 1600, 900);
                                 println!("[LEVEL-EDITOR] 🎉 Viewport initialized with shared textures!");
                                 
+                                // Notify the viewport element to refresh
                                 let _ = cx.update(|cx| {
                                     viewport_entity_for_init.update(cx, |_viewport, cx| {
                                         cx.notify();
-                                        println!("[LEVEL-EDITOR] � Notified GPUI to refresh viewport UI");
+                                        println!("[LEVEL-EDITOR] ✅ Notified GPUI to refresh viewport UI");
                                     })
                                 });
 
-
+                                // Start a background task that continuously refreshes the viewport
+                                // This ensures GPUI renders new frames as Bevy produces them
+                                let viewport_for_refresh = viewport_entity_for_init.clone();
+                                cx.spawn(|mut cx| async move {
+                                    loop {
+                                        // Wait ~16ms (60 FPS max refresh rate for UI)
+                                        cx.background_executor().timer(Duration::from_millis(16)).await;
+                                        
+                                        // Notify the viewport to refresh
+                                        let _ = cx.update(|cx| {
+                                            viewport_for_refresh.update(cx, |_viewport, cx| {
+                                                cx.notify();
+                                            })
+                                        });
+                                    }
+                                }).detach();
+                                
                                 return; // Success!
                             }
                             
@@ -156,6 +173,7 @@ impl LevelEditorPanel {
         game_thread.start();
         println!("[LEVEL-EDITOR] ✅ Game thread started successfully!");
 
+        
         println!("[LEVEL-EDITOR] Modular level editor initialized");
 
         Self {
@@ -503,3 +521,4 @@ impl Render for LevelEditorPanel {
             )
     }
 }
+

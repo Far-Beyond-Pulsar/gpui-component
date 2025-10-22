@@ -268,15 +268,22 @@ impl Focusable for BevyViewport {
 impl EventEmitter<DismissEvent> for BevyViewport {}
 
 impl Render for BevyViewport {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read();
         
+        // Return a div that is EXPLICITLY set to allow pointer events!
+        // This is the key - the GPU canvas must not block input events
         div()
             .size_full()
             .flex()
             .items_center()
             .justify_center()
-            .bg(rgb(0xFF0000)) // BRIGHT RED so we can see if Bevy content is covering it
+            .bg(rgb(0x1a1a1a)) // Dark background so any gaps are visible
+            .track_focus(&self.focus_handle)
+            // Make this element explicitly focusable for input events
+            .id("bevy_viewport")
+            // CRITICAL: This div holds the GPU canvas and ALLOWS events to pass through to parent!
+            // We don't add ANY mouse event handlers here - they go on the PARENT in viewport.rs
             .child(
                 if let Some(ref source) = state.canvas_source {
                     // Render the GPU canvas with zero-copy shared textures
