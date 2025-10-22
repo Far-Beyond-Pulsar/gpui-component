@@ -204,11 +204,8 @@ impl LevelEditorPanel {
             // Sync buffer index from Bevy to viewport
             if let Ok(engine_guard) = gpu_engine.try_lock() {
                 if let Some(ref bevy_renderer) = engine_guard.bevy_renderer {
-                    if let Ok(textures_lock) = bevy_renderer.shared_textures.try_lock() {
-                        if let Some(ref textures) = *textures_lock {
-                            let read_idx = textures.read_index.load(std::sync::atomic::Ordering::Acquire);
-                            viewport_state.write().set_active_buffer(read_idx);
-                        }
+                    if let Some(read_idx) = bevy_renderer.get_read_index() {
+                        viewport_state.write().set_active_buffer(read_idx);
                     }
                 }
             }
