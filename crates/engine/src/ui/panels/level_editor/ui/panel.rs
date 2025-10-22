@@ -7,12 +7,13 @@ use gpui_component::{
     ActiveTheme as _,
     StyledExt,
 };
-// NEW: True zero-copy GPU viewport using ExternalTexture - NO CPU COPIES!
-use gpui_component::gpu_viewport::{GpuViewport, create_gpu_viewport};
+// Zero-copy Bevy viewport for 3D rendering
+use gpui_component::bevy_viewport::{BevyViewport, BevyViewportState};
 
 use crate::settings::EngineSettings;
-use crate::ui::rainbow_engine_final::{RainbowRenderEngine, RainbowPattern};
-use crate::ui::wgpu_3d_renderer::Wgpu3DRenderer;
+// DEPRECATED: Old software renderers - replaced by Bevy
+// use crate::ui::rainbow_engine_final::{RainbowRenderEngine, RainbowPattern};
+// use crate::ui::wgpu_3d_renderer::Wgpu3DRenderer;
 use crate::ui::gpu_renderer::GpuRenderer;
 use crate::ui::shared::StatusBar;
 use engine_backend::{GameThread, GameState};
@@ -50,18 +51,14 @@ pub struct LevelEditorPanel {
     horizontal_resizable_state: Entity<ResizableState>,
     vertical_resizable_state: Entity<ResizableState>,
 
-    // NEW: True zero-copy GPU viewport - NO CPU COPIES!
-    viewport: Entity<GpuViewport>,
+    // Zero-copy Bevy viewport for 3D rendering
+    viewport: Entity<BevyViewport>,
+    viewport_state: Arc<parking_lot::RwLock<BevyViewportState>>,
     gpu_engine: Arc<Mutex<GpuRenderer>>, // Full GPU renderer from backend
-    current_pattern: RainbowPattern,
-    render_speed: f32,
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
     
     // Game thread for object movement and game logic
     game_thread: Arc<GameThread>,
-    
-    // Channel for receiving rendered frames from render thread
-    frame_receiver: Receiver<Arc<Vec<u8>>>,
 }
 
 impl LevelEditorPanel {
@@ -69,8 +66,8 @@ impl LevelEditorPanel {
         let horizontal_resizable_state = ResizableState::new(cx);
         let vertical_resizable_state = ResizableState::new(cx);
 
-        println!("[LEVEL-EDITOR] 🚀 Initializing TRUE ZERO-COPY GPU viewport");
-        println!("[LEVEL-EDITOR] 🔥 Direct GPU rendering - NO CPU COPIES - NO ALLOCATIONS!");
+        println!("[LEVEL-EDITOR] 🚀 Initializing Bevy-powered viewport");
+        println!("[LEVEL-EDITOR] 🔥 Zero-copy GPU texture sharing!");
 
         // Load engine settings for frame pacing configuration
         let settings = EngineSettings::default_path()
@@ -81,32 +78,11 @@ impl LevelEditorPanel {
         println!("[LEVEL-EDITOR] 🎯 Frame pacing configured: {} FPS",
             if max_viewport_fps == 0 { "Unlimited".to_string() } else { max_viewport_fps.to_string() });
 
-        // NEW: Create GPU viewport with ExternalTexture system
-        // TRUE ZERO-COPY: Bevy writes directly to GPU-visible memory!
-        let viewport = create_gpu_viewport(
-            1600,
-            900,
-            window,
-            cx
-        );
+        // Create Bevy viewport with zero-copy shared textures
+        let viewport = cx.new(|cx| BevyViewport::new(1600, 900, cx));
+        let viewport_state = viewport.read(cx).shared_state();
 
-        println!("[LEVEL-EDITOR] ✅ GPU viewport created (1600x900) - ZERO CPU COPIES!");
-        
-        // Initialize the DX11 shared texture manager
-        // This allows us to open DX12 shared handles in DX11!
-        #[cfg(target_os = "windows")]
-        unsafe {
-            println!("[LEVEL-EDITOR] 🔧 Initializing DX11 SharedTextureManager...");
-            match gpui_component::dx11_shared_opener::init_from_gpui_window() {
-                Ok(()) => {
-                    println!("[LEVEL-EDITOR] ✅ SharedTextureManager initialized - ready for zero-copy rendering!");
-                }
-                Err(e) => {
-                    eprintln!("[LEVEL-EDITOR] ⚠️ Failed to initialize SharedTextureManager: {}", e);
-                    eprintln!("[LEVEL-EDITOR] ⚠️ Will fall back to regular rendering");
-                }
-            }
-        }
+        println!("[LEVEL-EDITOR] ✅ Bevy viewport created (1600x900)");
         
         // Create GPU render engine with matching resolution
         let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new(1600, 900)));
@@ -114,34 +90,65 @@ impl LevelEditorPanel {
         
         println!("[LEVEL-EDITOR] ✅ GPU renderer initialized");
 
+        // Wait a moment for Bevy to create shared textures, then initialize viewport
+        let viewport_state_for_init = viewport_state.clone();
+        let gpu_engine_for_init = gpu_engine.clone();
+        std::thread::spawn(move || {
+            // Try multiple times with increasing delays for Bevy to initialize
+            for attempt in 1..=10 {
+                std::thread::sleep(Duration::from_millis(200 * attempt));
+                
+                println!("[LEVEL-EDITOR] 🔄 Attempt {} to initialize viewport with Bevy shared textures...", attempt);
+                
+                // Get native handles from Bevy renderer
+                if let Ok(engine) = gpu_engine_for_init.lock() {
+                    if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                        // Get both handles from Bevy's double buffer
+                        if let Some((handle0_native, handle1_native)) = bevy_renderer.get_shared_texture_handles() {
+                            println!("[LEVEL-EDITOR] ✅ Got shared texture handles from Bevy on attempt {}", attempt);
+                            
+                            #[cfg(target_os = "windows")]
+                            {
+                                // Extract the NT handle values from the NativeTextureHandle enum
+                                let handle0 = match handle0_native {
+                                    engine_backend::subsystems::render::NativeTextureHandle::D3D11(ptr) => ptr as isize,
+                                    _ => { println!("[LEVEL-EDITOR] ⚠️  Unexpected handle0 type"); return; }
+                                };
+                                let handle1 = match handle1_native {
+                                    engine_backend::subsystems::render::NativeTextureHandle::D3D11(ptr) => ptr as isize,
+                                    _ => { println!("[LEVEL-EDITOR] ⚠️  Unexpected handle1 type"); return; }
+                                };
+                                
+                                println!("[LEVEL-EDITOR] 📍 Initializing viewport with handles: 0x{:X}, 0x{:X}", handle0, handle1);
+                                viewport_state_for_init.write().initialize_shared_textures(handle0, handle1, 1600, 900);
+                                println!("[LEVEL-EDITOR] 🎉 Viewport initialized with shared textures!");
+                                return; // Success!
+                            }
+                            
+                            #[cfg(not(target_os = "windows"))]
+                            {
+                                println!("[LEVEL-EDITOR] ⚠️  Non-Windows platform not yet supported");
+                                return;
+                            }
+                        } else {
+                            println!("[LEVEL-EDITOR] ⚠️  Attempt {}: Shared texture handles not ready yet", attempt);
+                        }
+                    } else {
+                        println!("[LEVEL-EDITOR] ⚠️  Attempt {}: Bevy renderer not available yet", attempt);
+                    }
+                } else {
+                    println!("[LEVEL-EDITOR] ⚠️  Attempt {}: Could not lock GPU engine", attempt);
+                }
+            }
+            
+            println!("[LEVEL-EDITOR] ❌ Failed to initialize viewport after 10 attempts");
+        });
+
         // Create and start game thread for object movement
         println!("[LEVEL-EDITOR] 🎮 Creating game thread with target 240 TPS...");
         let game_thread = Arc::new(GameThread::new(240.0));
         game_thread.start();
         println!("[LEVEL-EDITOR] ✅ Game thread started successfully!");
-
-        // Create channel for frame data (render thread -> UI thread)
-        let (frame_sender, frame_receiver) = channel();
-
-        // Get shared handle storage from viewport for background thread access
-        let viewport_handle_storage = viewport.read(cx).get_shared_handle_storage();
-
-        // Spawn GPU direct render thread - TRUE ZERO-COPY!
-        let gpu_clone = gpu_engine.clone();
-        let enabled_clone = render_enabled.clone();
-        let game_thread_clone = game_thread.clone();
-
-        thread::spawn(move || {
-            Self::render_thread_gpu_direct(
-                gpu_clone,
-                viewport_handle_storage,
-                enabled_clone,
-                game_thread_clone,
-                frame_sender,
-            );
-        });
-
-        println!("[LEVEL-EDITOR] 🔥 GPU direct render thread spawned!");
 
         println!("[LEVEL-EDITOR] Modular level editor initialized");
 
@@ -157,12 +164,10 @@ impl LevelEditorPanel {
             horizontal_resizable_state,
             vertical_resizable_state,
             viewport,
+            viewport_state,
             gpu_engine,
-            current_pattern: RainbowPattern::Waves,
-            render_speed: 2.0,
             render_enabled,
             game_thread,
-            frame_receiver,
         }
     }
 
@@ -205,15 +210,25 @@ impl LevelEditorPanel {
                     let ui_handle = match native_handle {
                         #[cfg(target_os = "windows")]
                         engine_backend::subsystems::render::NativeTextureHandle::D3D11(ptr) => {
-                            gpui_component::gpu_viewport::NativeTextureHandle::D3D11(ptr)
+                            gpui_component::gpu_viewport::NativeTextureHandle::Windows {
+                                nt_handle: ptr as isize,
+                                width: 1600,
+                                height: 900,
+                            }
                         }
                         #[cfg(target_os = "macos")]
                         engine_backend::subsystems::render::NativeTextureHandle::Metal(ptr) => {
-                            gpui_component::gpu_viewport::NativeTextureHandle::Metal(ptr)
+                            gpui_component::gpu_viewport::NativeTextureHandle::Metal {
+                                io_surface: ptr,
+                            }
                         }
                         #[cfg(target_os = "linux")]
                         engine_backend::subsystems::render::NativeTextureHandle::Vulkan(img) => {
-                            gpui_component::gpu_viewport::NativeTextureHandle::Vulkan(img)
+                            gpui_component::gpu_viewport::NativeTextureHandle::Vulkan {
+                                dma_buf_fd: img,
+                                width: 1600,
+                                height: 900,
+                            }
                         }
                     };
 
@@ -248,11 +263,6 @@ impl LevelEditorPanel {
     pub fn toggle_rendering(&mut self) {
         let current = self.render_enabled.load(std::sync::atomic::Ordering::Relaxed);
         self.render_enabled.store(!current, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    pub fn set_rainbow_pattern(&mut self, pattern: RainbowPattern) {
-        self.current_pattern = pattern;
-        // GPU renderer doesn't use patterns
     }
 
     fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -543,7 +553,6 @@ impl Render for LevelEditorPanel {
                                                     self.fps_graph_is_line.clone(),
                                                     &self.gpu_engine,
                                                     &self.game_thread,
-                                                    self.current_pattern,
                                                     cx
                                                 )
                                             )

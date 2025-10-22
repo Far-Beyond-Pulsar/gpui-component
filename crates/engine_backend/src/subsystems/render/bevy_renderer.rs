@@ -10,8 +10,6 @@
 use bevy::{
     camera::RenderTarget,
     prelude::*,
-    pbr::PbrPlugin,
-    core_pipeline::tonemapping::Tonemapping,
     render::{
         render_asset::RenderAssets,
         render_resource::{
@@ -20,9 +18,8 @@ use bevy::{
         renderer::RenderDevice,
         texture::GpuImage,
         RenderPlugin,
-        RenderApp, ExtractSchedule, Render,
+        RenderApp, Render,
     },
-    window::WindowPlugin,
 };
 use std::{
     sync::{
@@ -107,6 +104,21 @@ pub struct SharedGpuTextures {
     /// Texture dimensions
     pub width: u32,
     pub height: u32,
+}
+
+impl SharedGpuTextures {
+    /// Swap read and write indices for double-buffering
+    pub fn swap(&self) {
+        let current_write = self.write_index.load(Ordering::Acquire);
+        let current_read = self.read_index.load(Ordering::Acquire);
+        
+        // Swap: write becomes read, read becomes write
+        self.write_index.store(current_read, Ordering::Release);
+        self.read_index.store(current_write, Ordering::Release);
+        
+        // Increment frame number
+        self.frame_number.fetch_add(1, Ordering::Release);
+    }
 }
 
 /// Performance metrics
@@ -385,6 +397,34 @@ impl BevyRenderer {
         }
         
         Some(handle)
+    }
+
+    /// Get both shared texture handles for double-buffered viewport initialization
+    /// Returns (handle0, handle1) which can be used to create GpuCanvasSource
+    pub fn get_shared_texture_handles(&self) -> Option<(crate::subsystems::render::NativeTextureHandle, crate::subsystems::render::NativeTextureHandle)> {
+        let textures = self.shared_textures.lock().ok()?;
+        let textures = textures.as_ref()?;
+
+        let handles_lock = textures.native_handles.lock().ok()?;
+        let handles = handles_lock.as_ref()?;
+
+        Some((handles[0], handles[1]))
+    }
+
+    /// Get the current read index for double-buffered rendering
+    pub fn get_read_index(&self) -> Option<usize> {
+        let textures = self.shared_textures.lock().ok()?;
+        let textures = textures.as_ref()?;
+        Some(textures.read_index.load(Ordering::Acquire))
+    }
+
+    /// Swap the render buffers (call this after rendering a frame)
+    pub fn swap_buffers(&self) {
+        if let Ok(textures) = self.shared_textures.lock() {
+            if let Some(textures) = textures.as_ref() {
+                textures.swap();
+            }
+        }
     }
 
     /// Update camera input from GPUI

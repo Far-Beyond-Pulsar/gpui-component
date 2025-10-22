@@ -5,8 +5,8 @@ use gpui_component::{
     chart::{LineChart, BarChart, AreaChart},
     PixelsExt,
 };
-// NEW: True zero-copy GPU viewport using ExternalTexture
-use gpui_component::gpu_viewport::GpuViewport;
+// Zero-copy Bevy viewport for 3D rendering
+use gpui_component::bevy_viewport::{BevyViewport, BevyViewportState};
 
 use super::state::{CameraMode, LevelEditorState};
 use super::actions::*;
@@ -134,7 +134,7 @@ enum GraphType {
 /// Studio-quality navigation: FPS mode, Pan, Orbit, Zoom
 /// Direct GPU rendering - NO CPU COPIES!
 pub struct ViewportPanel {
-    viewport: Entity<GpuViewport>,
+    viewport: Entity<BevyViewport>,
     viewport_controls: ViewportControls,
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
     // FPS tracking for rolling graph - using RefCell for interior mutability
@@ -179,7 +179,7 @@ pub struct ViewportPanel {
 }
 
 impl ViewportPanel {
-    pub fn new<V>(viewport: Entity<GpuViewport>, render_enabled: Arc<std::sync::atomic::AtomicBool>, cx: &mut Context<V>) -> Self
+    pub fn new<V>(viewport: Entity<BevyViewport>, render_enabled: Arc<std::sync::atomic::AtomicBool>, cx: &mut Context<V>) -> Self
     where
         V: 'static,
     {
@@ -224,7 +224,6 @@ impl ViewportPanel {
         fps_graph_state: Rc<RefCell<bool>>,  // Shared state for the Switch
         gpu_engine: &Arc<Mutex<crate::ui::gpu_renderer::GpuRenderer>>,
         game_thread: &Arc<GameThread>,
-        current_pattern: crate::ui::rainbow_engine_final::RainbowPattern,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
@@ -471,7 +470,7 @@ impl ViewportPanel {
                     .bottom_4()
                     .right_4()
                     .w(px(360.0)) // Expanded width for graph
-                    .child(self.render_performance_overlay(state, fps_graph_state, gpu_engine, game_thread, current_pattern, cx))
+                    .child(self.render_performance_overlay(state, fps_graph_state, gpu_engine, game_thread, cx))
             );
         }
 
@@ -670,7 +669,6 @@ impl ViewportPanel {
         fps_graph_state: Rc<RefCell<bool>>,
         gpu_engine: &Arc<Mutex<crate::ui::gpu_renderer::GpuRenderer>>,
         game_thread: &Arc<GameThread>,
-        current_pattern: crate::ui::rainbow_engine_final::RainbowPattern,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where

@@ -6,6 +6,8 @@
 //! build high-performance games with ease.
 
 pub mod subsystems;
+pub mod gpu_interop;
+
 pub use tokio;
 pub use subsystems::physics::PhysicsEngine;
 pub use subsystems::game::{GameThread, GameState, GameObject};

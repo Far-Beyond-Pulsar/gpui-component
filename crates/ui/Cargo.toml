@@ -14,6 +14,7 @@ doctest = false
 [features]
 decimal = ["dep:rust_decimal"]
 inspector = ["gpui/inspector"]
+gpu_canvas_builtin = []  # Feature flag for gpu_canvas support in GPUI
 # For syntax highlighting in Markdown and CodeEditor.
 tree-sitter-languages = [
     "dep:tree-sitter-bash",
