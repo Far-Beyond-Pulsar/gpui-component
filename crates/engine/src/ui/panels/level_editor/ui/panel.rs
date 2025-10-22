@@ -128,22 +128,10 @@ impl LevelEditorPanel {
                                     })
                                 });
 
-                                // Start a background task that continuously refreshes the viewport
-                                // This ensures GPUI renders new frames as Bevy produces them
-                                let viewport_for_refresh = viewport_entity_for_init.clone();
-                                cx.spawn(|mut cx| async move {
-                                    loop {
-                                        // Wait ~16ms (60 FPS max refresh rate for UI)
-                                        cx.background_executor().timer(Duration::from_millis(16)).await;
-                                        
-                                        // Notify the viewport to refresh
-                                        let _ = cx.update(|cx| {
-                                            viewport_for_refresh.update(cx, |_viewport, cx| {
-                                                cx.notify();
-                                            })
-                                        });
-                                    }
-                                }).detach();
+                                // Successfully initialized! The viewport will automatically refresh
+                                // when Bevy renders new frames - we check in the render() method
+                                println!("[LEVEL-EDITOR] 🎉 Viewport initialized with shared textures!");
+                                println!("[LEVEL-EDITOR] ✅ Notified GPUI to refresh viewport UI");
                                 
                                 return; // Success!
                             }
@@ -404,6 +392,10 @@ impl Render for LevelEditorPanel {
                 state.set_active_buffer(read_idx);
             }
         }
+        
+        // Request another frame to keep viewport updating continuously
+        // This creates a render loop that refreshes as Bevy produces new frames
+        cx.notify();
 
         v_flex()
             .size_full()
