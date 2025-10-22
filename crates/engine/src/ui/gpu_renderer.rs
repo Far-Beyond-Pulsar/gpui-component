@@ -236,6 +236,13 @@ impl GpuRenderer {
         }
     }
 
+    /// Update camera input for Unreal-style controls
+    pub fn update_camera_input(&mut self, input: engine_backend::subsystems::render::CameraInput) {
+        if let Some(ref mut renderer) = self.bevy_renderer {
+            renderer.update_camera_input(input);
+        }
+    }
+
     pub fn resize(&mut self, display_width: u32, display_height: u32) {
         if self.display_width != display_width || self.display_height != display_height {
             self.render_width = display_width;

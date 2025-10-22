@@ -202,6 +202,7 @@ impl BevyRenderer {
         // Main world systems - create textures FIRST, then setup scene
         app.add_systems(Startup, (create_shared_textures_startup, setup_scene).chain())
             .add_systems(Update, check_shutdown)
+            .add_systems(Update, camera_movement_system) // Unreal-style camera controls
             .add_systems(Update, debug_rendering_system); // Add debug system
 
         // Render world systems
@@ -302,6 +303,100 @@ impl BevyRenderer {
 impl Drop for BevyRenderer {
     fn drop(&mut self) {
         self.shutdown();
+    }
+}
+
+/// Unreal Engine-style camera movement system
+/// Supports:
+/// - WASD + QE for movement (with Shift for boost)
+/// - Right mouse + drag for FPS rotation
+/// - Middle mouse + drag for panning
+/// - Mouse wheel for zoom (or move speed adjustment with right mouse held)
+fn camera_movement_system(
+    time: Res<Time>,
+    mut camera_input: ResMut<CameraInput>,
+    mut query: Query<&mut Transform, With<MainCamera>>,
+) {
+    let Ok(mut transform) = query.single_mut() else {
+        return;
+    };
+
+    let delta_time = time.delta_secs();
+    
+    // Calculate effective move speed (with boost)
+    let effective_speed = if camera_input.boost {
+        camera_input.move_speed * 3.0
+    } else {
+        camera_input.move_speed
+    };
+    
+    // === FPS-STYLE MOVEMENT (Right mouse + WASD) ===
+    // Forward/backward movement (local Z axis)
+    if camera_input.forward.abs() > 0.001 {
+        let forward = transform.forward();
+        transform.translation += forward.as_vec3() * camera_input.forward * effective_speed * delta_time;
+    }
+    
+    // Left/right strafe (local X axis)
+    if camera_input.right.abs() > 0.001 {
+        let right = transform.right();
+        transform.translation += right.as_vec3() * camera_input.right * effective_speed * delta_time;
+    }
+    
+    // Up/down movement (world Y axis)
+    if camera_input.up.abs() > 0.001 {
+        transform.translation.y += camera_input.up * effective_speed * delta_time;
+    }
+    
+    // === ROTATION (Right mouse + drag) ===
+    if camera_input.mouse_delta_x.abs() > 0.001 || camera_input.mouse_delta_y.abs() > 0.001 {
+        // Yaw (rotate around world Y axis)
+        let yaw_delta = -camera_input.mouse_delta_x * camera_input.look_sensitivity * delta_time;
+        transform.rotate_y(yaw_delta);
+        
+        // Pitch (rotate around local X axis)
+        let pitch_delta = -camera_input.mouse_delta_y * camera_input.look_sensitivity * delta_time;
+        transform.rotate_local_x(pitch_delta);
+        
+        // Clear mouse deltas after use
+        camera_input.mouse_delta_x = 0.0;
+        camera_input.mouse_delta_y = 0.0;
+    }
+    
+    // === PANNING (Middle mouse + drag) ===
+    if camera_input.pan_delta_x.abs() > 0.001 || camera_input.pan_delta_y.abs() > 0.001 {
+        // Pan along camera's local axes
+        let right = transform.right();
+        let up = transform.up();
+        
+        transform.translation -= right.as_vec3() * camera_input.pan_delta_x * camera_input.pan_speed;
+        transform.translation += up.as_vec3() * camera_input.pan_delta_y * camera_input.pan_speed;
+        
+        // Clear pan deltas after use
+        camera_input.pan_delta_x = 0.0;
+        camera_input.pan_delta_y = 0.0;
+    }
+    
+    // === ZOOM (Mouse wheel) ===
+    if camera_input.zoom_delta.abs() > 0.001 {
+        let forward = transform.forward();
+        transform.translation += forward.as_vec3() * camera_input.zoom_delta * camera_input.zoom_speed * delta_time;
+        
+        // Clear zoom delta after use
+        camera_input.zoom_delta = 0.0;
+    }
+    
+    // === ORBIT MODE (Alt + Left mouse - future enhancement) ===
+    if camera_input.orbit_mode {
+        // Calculate camera position relative to focus point
+        let offset = transform.translation - camera_input.focus_point;
+        let distance = offset.length();
+        
+        // Rotate offset around focus point
+        if camera_input.mouse_delta_x.abs() > 0.001 || camera_input.mouse_delta_y.abs() > 0.001 {
+            // This would require converting to spherical coordinates and back
+            // For now, keeping it simple with FPS rotation
+        }
     }
 }
 
