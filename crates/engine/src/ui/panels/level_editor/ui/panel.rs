@@ -376,7 +376,8 @@ impl Render for LevelEditorPanel {
         if let Ok(engine_guard) = self.gpu_engine.try_lock() {
             if let Some(ref bevy_renderer) = engine_guard.bevy_renderer {
                 if let Some(read_idx) = bevy_renderer.get_read_index() {
-                    self.viewport_state.write().set_active_buffer(read_idx);
+                    let mut state = self.viewport_state.write();
+                    state.set_active_buffer(read_idx);
                 }
             }
         }

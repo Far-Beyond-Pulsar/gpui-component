@@ -79,6 +79,11 @@ mod gpu_canvas_compat {
             self.active_buffer
                 .fetch_xor(1, std::sync::atomic::Ordering::Release);
         }
+        
+        /// Set the active buffer index directly (0 or 1).
+        pub fn set_active_buffer(&self, index: usize) {
+            self.active_buffer.store(index % 2, std::sync::atomic::Ordering::Release);
+        }
     }
 }
 
@@ -188,6 +193,13 @@ impl BevyViewportState {
     /// Get the canvas source for rendering
     pub fn canvas_source(&self) -> Option<&GpuCanvasSource> {
         self.canvas_source.as_ref()
+    }
+    
+    /// Set which buffer index to read from (0 or 1)
+    pub fn set_active_buffer(&mut self, index: usize) {
+        if let Some(ref source) = self.canvas_source {
+            source.set_active_buffer(index);
+        }
     }
 
     /// Resize the viewport
