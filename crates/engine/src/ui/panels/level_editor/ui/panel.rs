@@ -201,47 +201,16 @@ impl LevelEditorPanel {
                 }
             }
 
-            // Get the native texture handle from Bevy and update viewport storage
-            // NO allocations - just writing a pointer!
+            // Sync buffer index from Bevy to viewport
             if let Ok(engine_guard) = gpu_engine.try_lock() {
-                if let Some(native_handle) = engine_guard.get_native_texture_handle() {
-                    println!("[LEVEL-EDITOR] 📥 Got native handle from Bevy: {:?}", native_handle);
-                    // Convert to UI handle type
-                    let ui_handle = match native_handle {
-                        #[cfg(target_os = "windows")]
-                        engine_backend::subsystems::render::NativeTextureHandle::D3D11(ptr) => {
-                            gpui_component::gpu_viewport::NativeTextureHandle::Windows {
-                                nt_handle: ptr as isize,
-                                width: 1600,
-                                height: 900,
-                            }
+                if let Some(ref bevy_renderer) = engine_guard.bevy_renderer {
+                    if let Ok(textures_lock) = bevy_renderer.shared_textures.try_lock() {
+                        if let Some(ref textures) = *textures_lock {
+                            let read_idx = textures.read_index.load(std::sync::atomic::Ordering::Acquire);
+                            viewport_state.write().set_active_buffer(read_idx);
                         }
-                        #[cfg(target_os = "macos")]
-                        engine_backend::subsystems::render::NativeTextureHandle::Metal(ptr) => {
-                            gpui_component::gpu_viewport::NativeTextureHandle::Metal {
-                                io_surface: ptr,
-                            }
-                        }
-                        #[cfg(target_os = "linux")]
-                        engine_backend::subsystems::render::NativeTextureHandle::Vulkan(img) => {
-                            gpui_component::gpu_viewport::NativeTextureHandle::Vulkan {
-                                dma_buf_fd: img,
-                                width: 1600,
-                                height: 900,
-                            }
-                        }
-                    };
-
-                    // Update the shared handle storage - viewport reads this when painting!
-                    if let Ok(mut handle_storage) = viewport_handle_storage.lock() {
-                        *handle_storage = Some(ui_handle);
-                        println!("[LEVEL-EDITOR] 💾 Stored handle in viewport storage");
                     }
-                } else {
-                    println!("[LEVEL-EDITOR] ⚠️ No native handle available from Bevy yet");
                 }
-            } else {
-                println!("[LEVEL-EDITOR] ⚠️ Could not lock GPU engine");
             }
 
             frame_count += 1;
