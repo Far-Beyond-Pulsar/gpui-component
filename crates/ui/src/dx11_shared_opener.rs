@@ -58,15 +58,39 @@ pub mod windows_impl {
             // Step 1: Open the shared resource in DX11
             // Convert usize to HANDLE (raw pointer)
             let handle = HANDLE(nt_handle as *mut std::ffi::c_void);
-            let mut texture: Option<ID3D11Texture2D> = None;
+            
+            // We need ID3D11Device1::OpenSharedResource1 for NT handles!
+            // First, try to cast device to ID3D11Device1
+            let device1: ID3D11Device1 = match self.device.cast() {
+                Ok(dev) => {
+                    println!("[DX11-OPENER] ✅ Successfully cast to ID3D11Device1");
+                    dev
+                }
+                Err(e) => {
+                    eprintln!("[DX11-OPENER] ❌ Failed to cast to ID3D11Device1: {:?}", e);
+                    eprintln!("[DX11-OPENER] Device doesn't support D3D11.1!");
+                    return Err(anyhow::anyhow!("Device doesn't support ID3D11Device1"));
+                }
+            };
 
-            // OpenSharedResource (not OpenSharedResource1 in windows 0.58)
-            self.device.OpenSharedResource(
-                handle,
-                &mut texture,
-            ).context("Failed to open shared resource in DX11")?;
-
-            let texture = texture.context("Texture was None after OpenSharedResource1")?;
+            // OpenSharedResource1: Takes HANDLE, returns Result<T> where T is inferred
+            // API: pub unsafe fn OpenSharedResource1<P0, T>(&self, hresource: P0) -> windows_core::Result<T>
+            let texture: ID3D11Texture2D = match device1.OpenSharedResource1(handle) {
+                Ok(tex) => {
+                    println!("[DX11-OPENER] ✅ OpenSharedResource1 succeeded!");
+                    tex
+                }
+                Err(e) => {
+                    eprintln!("[DX11-OPENER] ❌ OpenSharedResource1 FAILED!");
+                    eprintln!("[DX11-OPENER] 🔍 HRESULT: 0x{:08X}", e.code().0);
+                    eprintln!("[DX11-OPENER] 📋 Error: {:?}", e);
+                    eprintln!("[DX11-OPENER] 💡 Common causes:");
+                    eprintln!("[DX11-OPENER]    - Different GPU adapters (DX12 vs DX11)");
+                    eprintln!("[DX11-OPENER]    - Handle already closed/invalid");
+                    eprintln!("[DX11-OPENER]    - Missing D3D11_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS");
+                    return Err(e).context("Failed to open shared resource with OpenSharedResource1");
+                }
+            };
             println!("[DX11-OPENER] ✅ Opened D3D11 texture from shared handle");
 
             // Step 2: Create Shader Resource View
