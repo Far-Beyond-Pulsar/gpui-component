@@ -212,7 +212,7 @@ impl GpuRenderer {
     /// Get pipeline time in microseconds
     pub fn get_pipeline_time_us(&self) -> u64 {
         if let Some(ref renderer) = self.bevy_renderer {
-            renderer.get_metrics().pipeline_time_us
+            renderer.get_metrics().pipeline_time_us as u64
         } else {
             0
         }
@@ -221,7 +221,7 @@ impl GpuRenderer {
     /// Get GPU time in microseconds
     pub fn get_gpu_time_us(&self) -> u64 {
         if let Some(ref renderer) = self.bevy_renderer {
-            renderer.get_metrics().gpu_time_us
+            renderer.get_metrics().gpu_time_us as u64
         } else {
             0
         }
@@ -230,7 +230,7 @@ impl GpuRenderer {
     /// Get CPU time in microseconds
     pub fn get_cpu_time_us(&self) -> u64 {
         if let Some(ref renderer) = self.bevy_renderer {
-            renderer.get_metrics().cpu_time_us
+            renderer.get_metrics().cpu_time_us as u64
         } else {
             0
         }

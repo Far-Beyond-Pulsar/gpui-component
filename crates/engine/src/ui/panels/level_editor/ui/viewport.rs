@@ -801,7 +801,7 @@ impl ViewportPanel {
         
         memory_history.push_back(MemoryDataPoint {
             index: *memory_counter,
-            memory_mb,
+            memory_mb: memory_mb as f64,
         });
         *memory_counter += 1;
         

@@ -104,21 +104,17 @@ impl LevelEditorPanel {
                 if let Ok(engine) = gpu_engine_for_init.lock() {
                     if let Some(ref bevy_renderer) = engine.bevy_renderer {
                         // Get both handles from Bevy's double buffer
-                        if let Some((handle0_native, handle1_native)) = bevy_renderer.get_shared_texture_handles() {
+                        if let Some(handles) = bevy_renderer.get_shared_texture_handles() {
+                            if handles.len() < 2 {
+                                println!("[LEVEL-EDITOR] ⚠️  Not enough handles");
+                                return;
+                            }
+                            let handle0 = handles[0] as isize;
+                            let handle1 = handles[1] as isize;
                             println!("[LEVEL-EDITOR] ✅ Got shared texture handles from Bevy on attempt {}", attempt);
                             
                             #[cfg(target_os = "windows")]
                             {
-                                // Extract the NT handle values from the NativeTextureHandle enum
-                                let handle0 = match handle0_native {
-                                    engine_backend::subsystems::render::NativeTextureHandle::D3D11(ptr) => ptr as isize,
-                                    _ => { println!("[LEVEL-EDITOR] ⚠️  Unexpected handle0 type"); return; }
-                                };
-                                let handle1 = match handle1_native {
-                                    engine_backend::subsystems::render::NativeTextureHandle::D3D11(ptr) => ptr as isize,
-                                    _ => { println!("[LEVEL-EDITOR] ⚠️  Unexpected handle1 type"); return; }
-                                };
-                                
                                 println!("[LEVEL-EDITOR] 📍 Initializing viewport with handles: 0x{:X}, 0x{:X}", handle0, handle1);
                                 viewport_state_for_init.write().initialize_shared_textures(handle0, handle1, 1600, 900);
                                 println!("[LEVEL-EDITOR] 🎉 Viewport initialized with shared textures!");
@@ -375,10 +371,9 @@ impl Render for LevelEditorPanel {
         // Sync viewport buffer index with Bevy's read index each frame
         if let Ok(engine_guard) = self.gpu_engine.try_lock() {
             if let Some(ref bevy_renderer) = engine_guard.bevy_renderer {
-                if let Some(read_idx) = bevy_renderer.get_read_index() {
-                    let mut state = self.viewport_state.write();
-                    state.set_active_buffer(read_idx);
-                }
+                let read_idx = bevy_renderer.get_read_index();
+                let mut state = self.viewport_state.write();
+                state.set_active_buffer(read_idx);
             }
         }
 
