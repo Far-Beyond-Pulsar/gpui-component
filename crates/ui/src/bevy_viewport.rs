@@ -83,7 +83,7 @@ mod gpu_canvas_compat {
 }
 
 #[cfg(feature = "gpu_canvas_builtin")]
-pub use gpui::{GpuCanvasSource, GpuTextureHandle, gpu_canvas};
+pub use gpui::{GpuCanvasSource, GpuTextureHandle, gpu_canvas as gpu_canvas_element};
 
 #[cfg(not(feature = "gpu_canvas_builtin"))]
 pub use gpu_canvas_compat::{GpuCanvasSource, GpuTextureHandle};
@@ -266,45 +266,26 @@ impl Render for BevyViewport {
             .justify_center()
             .bg(rgb(0x1e1e1e))
             .child(
-                // For now, show a message that GPU canvas isn't available in this GPUI version
-                // The shared textures are initialized and Bevy is rendering, but we need GPUI
-                // to support gpu_canvas to display them
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        div()
-                            .text_color(rgb(0xcccccc))
-                            .text_size(px(16.0))
-                            .child(if state.canvas_source.is_some() {
-                                "✅ Bevy renderer initialized with shared textures"
-                            } else {
-                                "Initializing Bevy renderer..."
-                            })
-                    )
-                    .when(state.canvas_source.is_some(), |this| {
-                        this.child(
-                            div()
-                                .text_color(rgb(0x888888))
-                                .text_size(px(12.0))
-                                .child(format!("{}x{} - Zero-copy GPU textures ready", state.width, state.height))
-                        )
+                if let Some(ref source) = state.canvas_source {
+                    // Render the GPU canvas with zero-copy shared textures
+                    gpu_canvas_element(source.clone())
+                        .w_full()
+                        .h_full()
+                        .into_any_element()
+                } else {
+                    // Still initializing
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_center()
                         .child(
                             div()
-                                .text_color(rgb(0x888888))
-                                .text_size(px(12.0))
-                                .child("⚠️  GPUI gpu_canvas support required for display")
+                                .text_color(rgb(0xcccccc))
+                                .text_size(px(16.0))
+                                .child("Initializing Bevy renderer...")
                         )
-                        .child(
-                            div()
-                                .text_color(rgb(0x666666))
-                                .text_size(px(11.0))
-                                .child("Bevy is rendering in the background at 120 FPS")
-                        )
-                    })
+                        .into_any_element()
+                }
             )
     }
 }
