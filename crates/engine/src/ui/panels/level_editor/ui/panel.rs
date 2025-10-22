@@ -92,11 +92,12 @@ impl LevelEditorPanel {
 
         // Wait a moment for Bevy to create shared textures, then initialize viewport
         let viewport_state_for_init = viewport_state.clone();
+        let viewport_entity_for_init = viewport.clone();
         let gpu_engine_for_init = gpu_engine.clone();
-        std::thread::spawn(move || {
+        cx.spawn(async move |_this, mut cx| {
             // Try multiple times with increasing delays for Bevy to initialize
             for attempt in 1..=10 {
-                std::thread::sleep(Duration::from_millis(200 * attempt));
+                cx.background_executor().timer(Duration::from_millis(200 * attempt)).await;
                 
                 println!("[LEVEL-EDITOR] 🔄 Attempt {} to initialize viewport with Bevy shared textures...", attempt);
                 
@@ -118,6 +119,15 @@ impl LevelEditorPanel {
                                 println!("[LEVEL-EDITOR] 📍 Initializing viewport with handles: 0x{:X}, 0x{:X}", handle0, handle1);
                                 viewport_state_for_init.write().initialize_shared_textures(handle0, handle1, 1600, 900);
                                 println!("[LEVEL-EDITOR] 🎉 Viewport initialized with shared textures!");
+                                
+                                let _ = cx.update(|cx| {
+                                    viewport_entity_for_init.update(cx, |_viewport, cx| {
+                                        cx.notify();
+                                        println!("[LEVEL-EDITOR] � Notified GPUI to refresh viewport UI");
+                                    })
+                                });
+
+
                                 return; // Success!
                             }
                             
@@ -138,7 +148,7 @@ impl LevelEditorPanel {
             }
             
             println!("[LEVEL-EDITOR] ❌ Failed to initialize viewport after 10 attempts");
-        });
+        }).detach();
 
         // Create and start game thread for object movement
         println!("[LEVEL-EDITOR] 🎮 Creating game thread with target 240 TPS...");

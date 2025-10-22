@@ -208,11 +208,18 @@ impl BevyRenderer {
             render_app.insert_resource(SharedTexturesResource(shared_textures.clone()));
             
             #[cfg(target_os = "windows")]
-            render_app.add_systems(
-                Render,
-                create_shared_textures.in_set(bevy::render::RenderSystems::Prepare),
-            );
+            {
+                // Run shared texture creation ONCE on startup
+                render_app.add_systems(
+                    bevy::render::ExtractSchedule,
+                    create_shared_textures.run_if(|| {
+                        static ONCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                        !ONCE.swap(true, std::sync::atomic::Ordering::Relaxed)
+                    }),
+                );
+            }
 
+            // Extract native handles every frame
             render_app.add_systems(
                 Render,
                 extract_native_handles.in_set(bevy::render::RenderSystems::Render)
