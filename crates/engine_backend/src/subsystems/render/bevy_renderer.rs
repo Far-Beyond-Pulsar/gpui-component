@@ -327,65 +327,105 @@ fn setup_scene(
         }
     };
 
-    // Camera rendering to shared DXGI texture with BRIGHT GREEN clear color for visibility
+    // Camera rendering to shared DXGI texture with CYAN clear color for visibility
     println!("[BEVY] 📹 Creating camera targeting shared texture");
     println!("[BEVY] 🎯 Camera will render to buffer 0 (handle: {:?})", render_target_0.id());
     commands.spawn((
         Camera3d::default(),
         Camera {
             target: bevy::camera::RenderTarget::Image(render_target_0.into()),
-            clear_color: bevy::prelude::ClearColorConfig::Custom(Color::srgb(0.0, 1.0, 0.0)), // BRIGHT GREEN for debugging
+            clear_color: bevy::prelude::ClearColorConfig::Custom(Color::srgb(0.0, 0.5, 0.8)), // CYAN BLUE background
             ..default()
         },
-        Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(-3.0, 3.0, 6.0).looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y),
         MainCamera,
     ));
     println!("[BEVY] ✅ Camera spawned - rendering to buffer 0");
 
-    // Scene objects
-    println!("[BEVY] 🎨 Spawning scene objects...");
+    // Scene objects - SUPER BRIGHT AND OBVIOUS
+    println!("[BEVY] 🎨 Spawning HIGH-VISIBILITY scene objects...");
+    
+    // Bright magenta/purple ground plane
     commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(10.0, 10.0))),
+        Mesh3d(meshes.add(Plane3d::default().mesh().size(20.0, 20.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.3, 0.5, 0.3),
+            base_color: Color::srgb(1.0, 0.0, 1.0), // BRIGHT MAGENTA
+            unlit: true, // Make it fully bright
             ..default()
         })),
         Transform::from_xyz(0.0, 0.0, 0.0),
     ));
-    println!("[BEVY] ✅ Plane spawned");
+    println!("[BEVY] ✅ MAGENTA plane spawned");
 
+    // Giant YELLOW cube
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+        Mesh3d(meshes.add(Cuboid::new(2.0, 2.0, 2.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.8, 0.7, 0.6),
+            base_color: Color::srgb(1.0, 1.0, 0.0), // BRIGHT YELLOW
+            unlit: true,
             ..default()
         })),
-        Transform::from_xyz(0.0, 0.5, 0.0),
+        Transform::from_xyz(-2.0, 1.0, 0.0),
     ));
-    println!("[BEVY] ✅ Cube spawned");
+    println!("[BEVY] ✅ YELLOW cube spawned");
 
+    // Giant CYAN sphere
     commands.spawn((
-        Mesh3d(meshes.add(Sphere::new(0.5))), // Bigger sphere for visibility
+        Mesh3d(meshes.add(Sphere::new(1.0))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.0, 1.0, 1.0), // BRIGHT CYAN
+            unlit: true,
+            ..default()
+        })),
+        Transform::from_xyz(2.0, 1.0, 0.0),
+    ));
+    println!("[BEVY] ✅ CYAN sphere spawned");
+
+    // Giant RED sphere at top
+    commands.spawn((
+        Mesh3d(meshes.add(Sphere::new(1.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: Color::srgb(1.0, 0.0, 0.0), // BRIGHT RED
             emissive: LinearRgba::rgb(1.0, 0.0, 0.0),
+            unlit: true,
             ..default()
         })),
-        Transform::from_xyz(0.0, 2.0, 0.0),
+        Transform::from_xyz(0.0, 3.0, 0.0),
     ));
-    println!("[BEVY] ✅ Sphere spawned");
+    println!("[BEVY] ✅ RED sphere spawned");
 
+    // Giant GREEN sphere
+    commands.spawn((
+        Mesh3d(meshes.add(Sphere::new(1.0))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.0, 1.0, 0.0), // BRIGHT GREEN
+            emissive: LinearRgba::rgb(0.0, 1.0, 0.0),
+            unlit: true,
+            ..default()
+        })),
+        Transform::from_xyz(0.0, 1.0, 2.0),
+    ));
+    println!("[BEVY] ✅ GREEN sphere spawned");
+
+    // Super bright directional light
     commands.spawn((
         DirectionalLight {
-            illuminance: 10000.0,
-            shadows_enabled: true,
+            illuminance: 50000.0,
+            shadows_enabled: false,
             ..default()
         },
-        Transform::from_xyz(4.0, 8.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(4.0, 10.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
     println!("[BEVY] ✅ Light spawned");
 
-    println!("[BEVY] ✅ Scene ready - should see GREEN background with objects!");
+    println!("[BEVY] ✅ Scene ready!");
+    println!("[BEVY] 🎨 You should see:");
+    println!("[BEVY] 🔵 CYAN/BLUE background");
+    println!("[BEVY] 🟣 MAGENTA ground plane");
+    println!("[BEVY] 🟡 YELLOW cube (left)");
+    println!("[BEVY] 🔵 CYAN sphere (right)");
+    println!("[BEVY] 🔴 RED sphere (top)");
+    println!("[BEVY] 🟢 GREEN sphere (front)");
 }
 
 // Debug system to track rendering
