@@ -9,8 +9,6 @@ use bevy::{
         renderer::{RenderDevice, RenderQueue},
         texture::GpuImage,
         RenderPlugin, RenderApp, Render,
-        render_graph::{RenderGraph, RenderLabel, Node as RenderNode, NodeRunError, RenderGraphContext},
-        renderer::RenderContext,
     },
 };
 use wgpu_profiler::{GpuProfiler, GpuProfilerSettings};
@@ -20,7 +18,6 @@ use std::{
         Arc, Mutex,
     },
     time::Duration,
-    collections::HashMap,
 };
 
 #[cfg(target_os = "windows")]
@@ -169,7 +166,7 @@ impl Default for MetricsResource {
     }
 }
 
-/// GPU Profiler Resource - stores detailed render pipeline timing
+/// GPU Profiler Resource - stores detailed render pipeline timing (shared with main thread)
 #[derive(Resource, Clone)]
 struct GpuProfilerResource {
     pub data: Arc<Mutex<GpuProfilerData>>,
@@ -181,6 +178,12 @@ impl Default for GpuProfilerResource {
             data: Arc::new(Mutex::new(GpuProfilerData::default())),
         }
     }
+}
+
+/// Render world resource that holds the actual wgpu-profiler instance
+#[derive(Resource)]
+struct WgpuProfilerResource {
+    pub profiler: GpuProfiler,
 }
 
 /// Renderer state
@@ -318,6 +321,31 @@ impl BevyRenderer {
         // Render world systems
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app.insert_resource(SharedTexturesResource(shared_textures.clone()));
+            
+            // Initialize wgpu-profiler in render world
+            render_app.add_systems(
+                Render,
+                initialize_wgpu_profiler
+                    .run_if(|| {
+                        static ONCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                        !ONCE.swap(true, std::sync::atomic::Ordering::Relaxed)
+                    })
+                    .before(bevy::render::RenderSystems::Render),
+            );
+            
+            // Begin profiling frame
+            render_app.add_systems(
+                Render,
+                begin_profiler_frame
+                    .before(bevy::render::RenderSystems::Render)
+            );
+            
+            // End profiling frame and extract data
+            render_app.add_systems(
+                Render,
+                end_profiler_frame
+                    .after(bevy::render::RenderSystems::Render)
+            );
             
             #[cfg(target_os = "windows")]
             {
@@ -633,16 +661,10 @@ fn update_metrics_system(
     }
 }
 
-/// Update GPU Profiler system - render pipeline timing like Unreal's "stat gpu"
+/// Update GPU Profiler system - estimates render pipeline timing like Unreal's "stat gpu"
 /// 
-/// ⚠️ TODO: Currently uses estimates based on frame time and scene complexity.
-/// To get REAL GPU timestamps, we need to integrate one of:
-/// 1. wgpu-profiler crate with custom Bevy render nodes
-/// 2. Direct wgpu::QuerySet for timestamp queries
-/// 3. PIX/RenderDoc integration for DX12/Vulkan GPU timestamps
-/// 
-/// The estimates are based on typical render pipeline phase distribution
-/// but will not reflect actual GPU bottlenecks accurately.
+/// Currently uses estimates based on frame time and scene complexity.
+/// TODO: Integrate wgpu-profiler with custom Bevy render nodes for REAL GPU timestamps
 fn update_gpu_profiler_system(
     time: Res<Time>,
     profiler: Res<GpuProfilerResource>,
@@ -651,7 +673,7 @@ fn update_gpu_profiler_system(
     lights: Query<&PointLight>,
     cameras: Query<&Camera>,
 ) {
-    // Get frame time in milliseconds
+    // Use estimates based on frame time and scene complexity
     let frame_time_ms = time.delta_secs() * 1000.0;
     
     // Scene complexity factors
@@ -661,7 +683,6 @@ fn update_gpu_profiler_system(
     let camera_count = cameras.iter().count();
     
     // Estimate pipeline phase distribution based on typical 3D rendering
-    // These are rough estimates - real GPU profiling would use timestamp queries
     
     // Shadow pass: ~20-30% of frame time (increases with light count)
     let shadow_weight = 0.20 + (light_count as f32 * 0.05).min(0.15);
@@ -712,6 +733,30 @@ fn update_gpu_profiler_system(
         data.ui_pass_pct = calc_pct(ui_ms);
         data.total_gpu_ms = total_gpu_ms;
     }
+}
+
+/// Initialize wgpu-profiler in the render world (runs once on startup)
+/// TODO: Full wgpu-profiler integration requires custom render nodes to pass CommandEncoder
+/// For now, using estimate-based profiling in the main world
+fn initialize_wgpu_profiler(
+    device: Res<RenderDevice>,
+    queue: Res<RenderQueue>,
+    mut commands: Commands,
+) {
+    println!("[BEVY-PROFILER] 🔧 wgpu-profiler integration requires custom render nodes");
+    println!("[BEVY-PROFILER] ℹ️  Using estimate-based profiling for now");
+    // TODO: Integrate wgpu-profiler properly with Bevy's render graph
+    // This requires creating custom render nodes that have access to CommandEncoder
+}
+
+/// Begin profiler frame (placeholder)
+fn begin_profiler_frame() {
+    // Placeholder - will be used when wgpu-profiler is fully integrated
+}
+
+/// End profiler frame (placeholder)
+fn end_profiler_frame() {
+    // Placeholder - will be used when wgpu-profiler is fully integrated
 }
 
 /// Setup 3D scene - runs AFTER DXGI textures are created
