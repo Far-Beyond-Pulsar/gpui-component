@@ -10,7 +10,7 @@ use bevy::{
         renderer::{RenderDevice, RenderQueue},
         diagnostic::RenderDiagnosticsPlugin,
         texture::GpuImage,
-        RenderPlugin, RenderApp,
+        RenderPlugin, RenderApp, Render,
     },
 };
 use std::{
@@ -307,8 +307,8 @@ impl BevyRenderer {
             .insert_resource(GpuProfilerResource { data: gpu_profiler.clone() }) // GPU profiler data
             .insert_resource(ShutdownFlag(shutdown.clone()))
             .insert_resource(GameThreadResource(game_thread_state))
-            .add_plugins(FrameTimeDiagnosticsPlugin) // Bevy frame time diagnostics
-            .add_plugins(RenderDiagnosticsPlugin); // Bevy GPU render diagnostics
+            .add_plugins(FrameTimeDiagnosticsPlugin::default()) // Bevy frame time diagnostics
+            .add_plugins(RenderDiagnosticsPlugin::default()); // Bevy GPU render diagnostics
         
         // Insert shutdown resource
         
@@ -650,61 +650,87 @@ fn update_gpu_profiler_system(
     diagnostics: Res<DiagnosticsStore>,
     profiler: Res<GpuProfilerResource>,
 ) {
+    use bevy::diagnostic::DiagnosticPath;
+    
+    // Debug: Print all available diagnostic paths (only once per second)
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static LAST_DEBUG_PRINT: AtomicU64 = AtomicU64::new(0);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    
+    if now > LAST_DEBUG_PRINT.load(Ordering::Relaxed) {
+        LAST_DEBUG_PRINT.store(now, Ordering::Relaxed);
+        println!("[GPU-PROFILER] Available diagnostic paths:");
+        for diagnostic in diagnostics.iter() {
+            println!("  - {} = {:?}", diagnostic.path(), diagnostic.smoothed());
+        }
+    }
+    
+    // Helper to get GPU timing from diagnostic path
+    let get_gpu_timing = |path_str: &str| -> f32 {
+        let path = DiagnosticPath::from_components(path_str.split('/'));
+        diagnostics
+            .get(&path)
+            .and_then(|d| d.smoothed())
+            .unwrap_or(0.0) as f32
+    };
+    
+    // Helper to get CPU timing from diagnostic path
+    let get_cpu_timing = |path_str: &str| -> f32 {
+        let path = DiagnosticPath::from_components(path_str.split('/'));
+        diagnostics
+            .get(&path)
+            .and_then(|d| d.smoothed())
+            .unwrap_or(0.0) as f32
+    };
+    
     // Get frame time as baseline
     let frame_time_ms = diagnostics
         .get(&FrameTimeDiagnosticsPlugin::FRAME_TIME)
         .and_then(|d| d.smoothed())
-        .unwrap_or(16.67) as f32; // Default to 60fps if no data
+        .unwrap_or(16.67) as f32;
     
-    // Extract REAL GPU timing data from Bevy's RenderDiagnosticsPlugin
-    // These diagnostics track actual render pass timings via tracing spans
+    // Extract REAL GPU timings from Bevy's RenderDiagnosticsPlugin
+    // These are measured using GPU timestamp queries, not estimates
+    // Paths follow format: "render/{pass_name}/elapsed_gpu" (in milliseconds)
     
-    // Helper to extract diagnostic value in milliseconds
-    let get_span_ms = |path: &str| -> f32 {
-        diagnostics
-            .get(&bevy::utils::intern::Interned::new(bevy::diagnostic::DiagnosticPath::from(path)))
-            .and_then(|d| d.average())
-            .unwrap_or(0.0) as f32
-    };
+    // Core render passes
+    let shadow_ms = get_gpu_timing("render/shadow_pass/elapsed_gpu");
+    let opaque_ms = get_gpu_timing("render/main_opaque_pass/elapsed_gpu") 
+        + get_gpu_timing("render/opaque_pass/elapsed_gpu");
+    let alpha_mask_ms = get_gpu_timing("render/alpha_mask_pass/elapsed_gpu");
+    let transparent_ms = get_gpu_timing("render/main_transparent_pass/elapsed_gpu")
+        + get_gpu_timing("render/transparent_pass/elapsed_gpu");
     
-    // Extract real render pass timings from Bevy diagnostics
-    // These correspond to actual GPU render graph nodes
-    let shadow_ms = get_span_ms("render/shadow_pass");
-    let opaque_ms = get_span_ms("render/main_opaque_pass_3d");
-    let alpha_mask_ms = get_span_ms("render/main_alpha_mask_pass_3d");
-    let transparent_ms = get_span_ms("render/main_transparent_pass_3d");
-    let lighting_ms = get_span_ms("render/lighting");
-    let post_ms = get_span_ms("render/post_processing");
-    let ui_ms = get_span_ms("render/ui_pass");
+    // Lighting and post-processing
+    let lighting_ms = get_gpu_timing("render/lighting/elapsed_gpu")
+        + get_gpu_timing("render/pbr_lighting/elapsed_gpu");
+    let post_ms = get_gpu_timing("render/post_processing/elapsed_gpu")
+        + get_gpu_timing("render/tonemapping/elapsed_gpu")
+        + get_gpu_timing("render/fxaa/elapsed_gpu")
+        + get_gpu_timing("render/bloom/elapsed_gpu");
     
-    // If no diagnostics are available yet, fall back to estimates
-    let (shadow_ms, opaque_ms, alpha_mask_ms, transparent_ms, lighting_ms, post_ms, ui_ms) = 
-        if shadow_ms == 0.0 && opaque_ms == 0.0 {
-            // Use reasonable estimates until diagnostics warm up
-            (
-                frame_time_ms * 0.25,
-                frame_time_ms * 0.30,
-                frame_time_ms * 0.07,
-                frame_time_ms * 0.10,
-                frame_time_ms * 0.15,
-                frame_time_ms * 0.08,
-                frame_time_ms * 0.05,
-            )
-        } else {
-            (shadow_ms, opaque_ms, alpha_mask_ms, transparent_ms, lighting_ms, post_ms, ui_ms)
-        };
+    // UI rendering
+    let ui_ms = get_gpu_timing("render/ui_pass/elapsed_gpu");
     
-    let total_gpu_ms = shadow_ms + opaque_ms + alpha_mask_ms + transparent_ms + lighting_ms + post_ms + ui_ms;
+    // Calculate total GPU time from all measured passes
+    let total_gpu_ms = shadow_ms + opaque_ms + alpha_mask_ms + transparent_ms 
+        + lighting_ms + post_ms + ui_ms;
+    
+    // Use total_gpu_ms if available, otherwise fall back to frame_time_ms
+    let baseline_ms = if total_gpu_ms > 0.1 { total_gpu_ms } else { frame_time_ms };
     
     let calc_pct = |ms: f32| {
-        if frame_time_ms > 0.0 {
-            (ms / frame_time_ms * 100.0).max(0.0).min(100.0)
+        if baseline_ms > 0.0 {
+            (ms / baseline_ms * 100.0).max(0.0).min(100.0)
         } else {
             0.0
         }
     };
     
-    // Update profiler data with REAL measurements
+    // Update profiler data with REAL GPU timings from hardware queries
     if let Ok(mut data) = profiler.data.lock() {
         data.total_frame_ms = frame_time_ms;
         data.shadow_pass_ms = shadow_ms;

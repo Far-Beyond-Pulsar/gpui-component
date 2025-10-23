@@ -504,6 +504,9 @@ impl ViewportPanel {
         // Clone the viewport_hovered flag for mouse down detection
         let viewport_mouse_down = self.viewport_hovered.clone();
         
+        // Clone for scroll wheel handler
+        let input_state_scroll = self.input_state.clone();
+        
         let mut viewport_div = div()
             .flex() // Enable flexbox
             .flex_col() // Column direction
@@ -536,12 +539,8 @@ impl ViewportPanel {
                     .on_scroll_wheel(move |event: &gpui::ScrollWheelEvent, _phase, _cx| {
                         let scroll_delta: f32 = event.delta.pixel_delta(px(1.0)).y.into();
                         
-                        // Pure atomic operations - no RefCell!
-                        if mouse_right_scroll.load(Ordering::Relaxed) {
-                            input_state_scroll.adjust_move_speed(scroll_delta * 0.1);
-                        } else {
-                            input_state_scroll.set_zoom_delta(scroll_delta * 0.5);
-                        }
+                        // Always zoom - simpler behavior
+                        input_state_scroll.set_zoom_delta(scroll_delta * 0.5);
                     })
                     .child(self.viewport.clone())
             )
@@ -811,7 +810,22 @@ impl ViewportPanel {
 
         let theme = cx.theme();
         
-        v_flex()
+        // Build pass stat elements up front to avoid closure borrow issues
+        let pass_stats = if let Some(ref data) = gpu_data {
+            vec![
+                Self::render_pass_stat_elem("Shadow Pass", data.shadow_pass_ms, data.shadow_pass_pct, theme.chart_1, cx),
+                Self::render_pass_stat_elem("Opaque Pass", data.opaque_pass_ms, data.opaque_pass_pct, theme.chart_2, cx),
+                Self::render_pass_stat_elem("Alpha Mask", data.alpha_mask_pass_ms, data.alpha_mask_pass_pct, theme.chart_3, cx),
+                Self::render_pass_stat_elem("Transparent", data.transparent_pass_ms, data.transparent_pass_pct, theme.chart_4, cx),
+                Self::render_pass_stat_elem("Lighting", data.lighting_ms, data.lighting_pct, theme.chart_5, cx),
+                Self::render_pass_stat_elem("Post Process", data.post_processing_ms, data.post_processing_pct, theme.warning, cx),
+                Self::render_pass_stat_elem("UI Pass", data.ui_pass_ms, data.ui_pass_pct, theme.success, cx),
+            ]
+        } else {
+            vec![]
+        };
+        
+        let mut result = v_flex()
             .gap_1()
             .p_2()
             .w_full()
@@ -862,58 +876,57 @@ impl ViewportPanel {
                     .w_full()
                     .h(px(1.0))
                     .bg(theme.border)
-            )
-            // Individual pass timings
-            .when(gpu_data.is_some(), |this| {
-                let data = gpu_data.as_ref().unwrap();
-                this
-                    .child(self.render_pass_stat("Shadow Pass", data.shadow_pass_ms, data.shadow_pass_pct, theme.chart_1, cx))
-                    .child(self.render_pass_stat("Opaque Pass", data.opaque_pass_ms, data.opaque_pass_pct, theme.chart_2, cx))
-                    .child(self.render_pass_stat("Alpha Mask", data.alpha_mask_pass_ms, data.alpha_mask_pass_pct, theme.chart_3, cx))
-                    .child(self.render_pass_stat("Transparent", data.transparent_pass_ms, data.transparent_pass_pct, theme.chart_4, cx))
-                    .child(self.render_pass_stat("Lighting", data.lighting_ms, data.lighting_pct, theme.chart_5, cx))
-                    .child(self.render_pass_stat("Post Process", data.post_processing_ms, data.post_processing_pct, theme.warning, cx))
-                    .child(self.render_pass_stat("UI Pass", data.ui_pass_ms, data.ui_pass_pct, theme.success, cx))
-                    .child(
-                        div()
-                            .w_full()
-                            .h(px(1.0))
-                            .bg(theme.border)
-                            .mt_1()
-                    )
-                    .child(
-                        h_flex()
-                            .w_full()
-                            .items_center()
-                            .justify_between()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .font_semibold()
-                                    .text_color(theme.foreground)
-                                    .child("Total GPU:")
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .font_semibold()
-                                    .text_color(if data.total_gpu_ms < 8.0 {
-                                        theme.success
-                                    } else if data.total_gpu_ms < 16.0 {
-                                        theme.warning
-                                    } else {
-                                        theme.danger
-                                    })
-                                    .child(format!("{:.2}ms", data.total_gpu_ms))
-                            )
-                    )
-            })
+            );
+        
+        // Add individual pass timings
+        for stat in pass_stats {
+            result = result.child(stat);
+        }
+        
+        // Add separator and total
+        if let Some(ref data) = gpu_data {
+            result = result
+                .child(
+                    div()
+                        .w_full()
+                        .h(px(1.0))
+                        .bg(theme.border)
+                        .mt_1()
+                )
+                .child(
+                    h_flex()
+                        .w_full()
+                        .items_center()
+                        .justify_between()
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_semibold()
+                                .text_color(theme.foreground)
+                                .child("Total GPU:")
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_semibold()
+                                .text_color(if data.total_gpu_ms < 8.0 {
+                                    theme.success
+                                } else if data.total_gpu_ms < 16.0 {
+                                    theme.warning
+                                } else {
+                                    theme.danger
+                                })
+                                .child(format!("{:.2}ms", data.total_gpu_ms))
+                        )
+                );
+        }
+        
+        result
     }
 
     /// Render a single GPU pass stat line with timing and percentage
-    fn render_pass_stat<V: 'static>(
-        &self,
-        name: &str,
+    fn render_pass_stat_elem<V: 'static>(
+        name: &'static str,
         time_ms: f32,
         percent: f32,
         color: Hsla,
