@@ -443,14 +443,32 @@ impl ViewportPanel {
                     })
                     .on_mouse_down(
                         gpui::MouseButton::Middle,
-                        move |_event: &MouseDownEvent, _phase, _cx| {
+                        move |event: &MouseDownEvent, _phase, cx| {
+                            // Initialize last mouse position with current position to prevent jump
+                            let x_f32: f32 = event.position.x.into();
+                            let y_f32: f32 = event.position.y.into();
+                            mouse_middle_down_last_x.store((x_f32 * 1000.0) as i32, Ordering::Relaxed);
+                            mouse_middle_down_last_y.store((y_f32 * 1000.0) as i32, Ordering::Relaxed);
+                            
+                            // Set captured flag
                             mouse_middle_down.store(true, Ordering::Relaxed);
+                            
+                            // Hide cursor during panning
+                            cx.hide_cursor();
                         },
                     )
                     .on_mouse_up(
                         gpui::MouseButton::Middle,
-                        move |_event: &MouseUpEvent, _phase, _cx| {
+                        move |_event: &MouseUpEvent, _phase, cx| {
+                            // Clear captured flag
                             mouse_middle_up.store(false, Ordering::Relaxed);
+                            
+                            // Reset last mouse position to prevent jump on next drag
+                            mouse_middle_up_last_x.store(0, Ordering::Relaxed);
+                            mouse_middle_up_last_y.store(0, Ordering::Relaxed);
+                            
+                            // Show cursor again
+                            cx.show_cursor();
                         },
                     )
                     .child(self.viewport.clone())
