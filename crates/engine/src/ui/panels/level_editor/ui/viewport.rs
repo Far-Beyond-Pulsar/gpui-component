@@ -13,10 +13,13 @@ use super::actions::*;
 use crate::ui::shared::ViewportControls;
 use engine_backend::GameThread;
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
 use std::collections::VecDeque;
 use std::cell::RefCell;
 use std::rc::Rc;
+
+// Raw input polling for viewport controls
+use device_query::{DeviceQuery, DeviceState, Keycode, MouseState};
 
 // Windows API for cursor management
 #[cfg(target_os = "windows")]
@@ -304,15 +307,102 @@ impl ViewportPanel {
             
             let input_state_for_thread = self.input_state.clone();
             let gpu_engine_for_thread = gpu_engine.clone();
+            let mouse_right_captured = self.mouse_right_captured.clone();
+            let mouse_middle_captured = self.mouse_middle_captured.clone();
+            let locked_cursor_x = self.locked_cursor_x.clone();
+            let locked_cursor_y = self.locked_cursor_y.clone();
+            let focus_handle = self.focus_handle.clone();
             
             std::thread::spawn(move || {
-                println!("[INPUT-THREAD] �� Dedicated input processing thread started");
+                println!("[INPUT-THREAD] 🚀 Dedicated RAW INPUT processing thread started");
+                let device_state = DeviceState::new();
+                let mut last_mouse_pos: Option<(i32, i32)> = None;
+                let mut right_was_pressed = false;
+                let mut middle_was_pressed = false;
+                
                 loop {
                     // Mark when we start processing input
                     let input_start = std::time::Instant::now();
                     
                     // Sleep for ~8ms (~120Hz processing rate)
                     std::thread::sleep(std::time::Duration::from_millis(8));
+                    
+                    // Poll raw mouse state
+                    let mouse: MouseState = device_state.get_mouse();
+                    let right_pressed = mouse.button_pressed[3]; // Right button
+                    let middle_pressed = mouse.button_pressed[2]; // Middle button
+                    
+                    // Detect right button press/release
+                    if right_pressed && !right_was_pressed {
+                        // Right button just pressed - capture and lock cursor
+                        mouse_right_captured.store(true, Ordering::Relaxed);
+                        let (x, y) = get_cursor_position();
+                        locked_cursor_x.store(x, Ordering::Relaxed);
+                        locked_cursor_y.store(y, Ordering::Relaxed);
+                        last_mouse_pos = Some((x, y));
+                        hide_cursor();
+                        println!("[INPUT-THREAD] Right button pressed, locked cursor at ({}, {})", x, y);
+                    } else if !right_pressed && right_was_pressed {
+                        // Right button just released
+                        mouse_right_captured.store(false, Ordering::Relaxed);
+                        let lock_x = locked_cursor_x.load(Ordering::Relaxed);
+                        let lock_y = locked_cursor_y.load(Ordering::Relaxed);
+                        lock_cursor_position(lock_x, lock_y);
+                        show_cursor();
+                        last_mouse_pos = None;
+                        println!("[INPUT-THREAD] Right button released");
+                    }
+                    
+                    // Detect middle button press/release
+                    if middle_pressed && !middle_was_pressed {
+                        // Middle button just pressed - capture and lock cursor
+                        mouse_middle_captured.store(true, Ordering::Relaxed);
+                        let (x, y) = get_cursor_position();
+                        locked_cursor_x.store(x, Ordering::Relaxed);
+                        locked_cursor_y.store(y, Ordering::Relaxed);
+                        last_mouse_pos = Some((x, y));
+                        hide_cursor();
+                    } else if !middle_pressed && middle_was_pressed {
+                        // Middle button just released
+                        mouse_middle_captured.store(false, Ordering::Relaxed);
+                        let lock_x = locked_cursor_x.load(Ordering::Relaxed);
+                        let lock_y = locked_cursor_y.load(Ordering::Relaxed);
+                        lock_cursor_position(lock_x, lock_y);
+                        show_cursor();
+                        last_mouse_pos = None;
+                    }
+                    
+                    right_was_pressed = right_pressed;
+                    middle_was_pressed = middle_pressed;
+                    
+                    // If button is held, calculate mouse delta and reset cursor
+                    if right_pressed || middle_pressed {
+                        let (current_x, current_y) = get_cursor_position();
+                        
+                        if let Some((last_x, last_y)) = last_mouse_pos {
+                            let dx = current_x - last_x;
+                            let dy = current_y - last_y;
+                            
+                            if dx != 0 || dy != 0 {
+                                // Store deltas in atomics
+                                if right_pressed {
+                                    input_state_for_thread.mouse_delta_x.fetch_add((dx as f32 * 1000.0) as i32, Ordering::Relaxed);
+                                    input_state_for_thread.mouse_delta_y.fetch_add((dy as f32 * 1000.0) as i32, Ordering::Relaxed);
+                                }
+                                if middle_pressed {
+                                    input_state_for_thread.pan_delta_x.fetch_add((dx as f32 * 1000.0) as i32, Ordering::Relaxed);
+                                    input_state_for_thread.pan_delta_y.fetch_add((dy as f32 * 1000.0) as i32, Ordering::Relaxed);
+                                }
+                                
+                                // Reset cursor to locked position for infinite movement
+                                let lock_x = locked_cursor_x.load(Ordering::Relaxed);
+                                let lock_y = locked_cursor_y.load(Ordering::Relaxed);
+                                lock_cursor_position(lock_x, lock_y);
+                                // Keep last_mouse_pos at the locked position
+                                last_mouse_pos = Some((lock_x, lock_y));
+                            }
+                        }
+                    }
                     
                     // Try to acquire GPU engine lock without blocking
                     if let Ok(engine) = gpu_engine_for_thread.try_lock() {
@@ -435,7 +525,7 @@ impl ViewportPanel {
                 }
             })
             .child(
-                // Main viewport - should grow to fill space and handle mouse events
+                // Main viewport - mouse input is handled by input thread, keyboard handled here
                 div()
                     .flex() // Enable flex
                     .flex_1() // Grow to fill available space
@@ -447,89 +537,6 @@ impl ViewportPanel {
                                 event.position.x.as_f32(), event.position.y.as_f32());
                         },
                     )
-                    .on_mouse_down(
-                        gpui::MouseButton::Right,
-                        move |event: &MouseDownEvent, _phase, _cx| {
-                            // Initialize last mouse position with current position to prevent jump
-                            let x_f32: f32 = event.position.x.into();
-                            let y_f32: f32 = event.position.y.into();
-                            last_mouse_x_down.store((x_f32 * 1000.0) as i32, Ordering::Relaxed);
-                            last_mouse_y_down.store((y_f32 * 1000.0) as i32, Ordering::Relaxed);
-                            
-                            // Get screen cursor position and store it for locking
-                            let (screen_x, screen_y) = get_cursor_position();
-                            locked_cursor_x_down.store(screen_x, Ordering::Relaxed);
-                            locked_cursor_y_down.store(screen_y, Ordering::Relaxed);
-                            
-                            // Set captured flag
-                            mouse_right_down.store(true, Ordering::Relaxed);
-                            
-                            // Hide cursor during camera rotation
-                            hide_cursor();
-                        },
-                    )
-                    .on_mouse_up(
-                        gpui::MouseButton::Right,
-                        move |_event: &MouseUpEvent, _phase, _cx| {
-                            // Clear captured flag
-                            mouse_right_up.store(false, Ordering::Relaxed);
-                            
-                            // Reset last mouse position to prevent jump on next drag
-                            last_mouse_x_up.store(0, Ordering::Relaxed);
-                            last_mouse_y_up.store(0, Ordering::Relaxed);
-                            
-                            // Restore cursor to locked position before showing it
-                            let lock_x = locked_cursor_x_up.load(Ordering::Relaxed);
-                            let lock_y = locked_cursor_y_up.load(Ordering::Relaxed);
-                            lock_cursor_position(lock_x, lock_y);
-                            
-                            // Show cursor again
-                            show_cursor();
-                        },
-                    )
-                    .on_mouse_move(move |event: &MouseMoveEvent, _phase, _cx| {
-                        // NO BORROWS! Pure atomic operations
-                        let current_pos = event.position;
-                        
-                        let is_right_captured = mouse_right_move.load(Ordering::Relaxed);
-                        let is_middle_captured = mouse_middle_move.load(Ordering::Relaxed);
-                        
-                        if is_right_captured || is_middle_captured {
-                            // Store position as atomics (x and y as i32 * 1000)
-                            let x_f32: f32 = current_pos.x.into();
-                            let y_f32: f32 = current_pos.y.into();
-                            let x_atomic = (x_f32 * 1000.0) as i32;
-                            let y_atomic = (y_f32 * 1000.0) as i32;
-                            
-                            // Get last position from atomics
-                            let last_x = last_mouse_x.swap(x_atomic, Ordering::Relaxed);
-                            let last_y = last_mouse_y.swap(y_atomic, Ordering::Relaxed);
-                            
-                            if last_x != 0 || last_y != 0 {
-                                let dx = (x_atomic - last_x) as f32 / 1000.0;
-                                let dy = (y_atomic - last_y) as f32 / 1000.0;
-                                
-                                // Update input state atomically
-                                if is_right_captured && (dx.abs() > 0.01 || dy.abs() > 0.01) {
-                                    input_state_mouse.set_mouse_delta(dx, dy);
-                                    
-                                    // Lock cursor back to original position for infinite mouse movement
-                                    let lock_x = locked_cursor_x_move.load(Ordering::Relaxed);
-                                    let lock_y = locked_cursor_y_move.load(Ordering::Relaxed);
-                                    lock_cursor_position(lock_x, lock_y);
-                                }
-                                
-                                if is_middle_captured && (dx.abs() > 0.01 || dy.abs() > 0.01) {
-                                    input_state_mouse.set_pan_delta(dx, dy);
-                                    
-                                    // Lock cursor back to original position for infinite mouse movement
-                                    let lock_x = locked_cursor_x_middle_move.load(Ordering::Relaxed);
-                                    let lock_y = locked_cursor_y_middle_move.load(Ordering::Relaxed);
-                                    lock_cursor_position(lock_x, lock_y);
-                                }
-                            }
-                        }
-                    })
                     .on_scroll_wheel(move |event: &gpui::ScrollWheelEvent, _phase, _cx| {
                         let scroll_delta: f32 = event.delta.pixel_delta(px(1.0)).y.into();
                         
@@ -540,46 +547,6 @@ impl ViewportPanel {
                             input_state_scroll.set_zoom_delta(scroll_delta * 0.5);
                         }
                     })
-                    .on_mouse_down(
-                        gpui::MouseButton::Middle,
-                        move |event: &MouseDownEvent, _phase, _cx| {
-                            // Initialize last mouse position with current position to prevent jump
-                            let x_f32: f32 = event.position.x.into();
-                            let y_f32: f32 = event.position.y.into();
-                            mouse_middle_down_last_x.store((x_f32 * 1000.0) as i32, Ordering::Relaxed);
-                            mouse_middle_down_last_y.store((y_f32 * 1000.0) as i32, Ordering::Relaxed);
-                            
-                            // Get screen cursor position and store it for locking
-                            let (screen_x, screen_y) = get_cursor_position();
-                            locked_cursor_x_middle_down.store(screen_x, Ordering::Relaxed);
-                            locked_cursor_y_middle_down.store(screen_y, Ordering::Relaxed);
-                            
-                            // Set captured flag
-                            mouse_middle_down.store(true, Ordering::Relaxed);
-                            
-                            // Hide cursor during panning
-                            hide_cursor();
-                        },
-                    )
-                    .on_mouse_up(
-                        gpui::MouseButton::Middle,
-                        move |_event: &MouseUpEvent, _phase, _cx| {
-                            // Clear captured flag
-                            mouse_middle_up.store(false, Ordering::Relaxed);
-                            
-                            // Reset last mouse position to prevent jump on next drag
-                            mouse_middle_up_last_x.store(0, Ordering::Relaxed);
-                            mouse_middle_up_last_y.store(0, Ordering::Relaxed);
-                            
-                            // Restore cursor to locked position before showing it
-                            let lock_x = locked_cursor_x_middle_up.load(Ordering::Relaxed);
-                            let lock_y = locked_cursor_y_middle_up.load(Ordering::Relaxed);
-                            lock_cursor_position(lock_x, lock_y);
-                            
-                            // Show cursor again
-                            show_cursor();
-                        },
-                    )
                     .child(self.viewport.clone())
             )
             .when(state.show_viewport_controls, |viewport_div| {
