@@ -318,7 +318,8 @@ impl ViewportPanel {
                 let device_state = DeviceState::new();
                 let mut last_mouse_pos: Option<(i32, i32)> = None;
                 let mut right_was_pressed = false;
-                let mut middle_was_pressed = false;
+                let mut is_rotating = false; // Track if we're in rotation mode (Shift + Right)
+                let mut is_panning = false;  // Track if we're in pan mode (Right without Shift)
                 
                 loop {
                     // Mark when we start processing input
@@ -327,44 +328,51 @@ impl ViewportPanel {
                     // Sleep for ~8ms (~120Hz processing rate)
                     std::thread::sleep(std::time::Duration::from_millis(8));
                     
-                    // Poll raw mouse state
+                    // Poll raw mouse and keyboard state
                     let mouse: MouseState = device_state.get_mouse();
+                    let keys: Vec<Keycode> = device_state.get_keys();
                     let right_pressed = mouse.button_pressed[3]; // Right button
-                    let middle_pressed = mouse.button_pressed[2]; // Middle button
+                    let shift_pressed = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
                     
-                    // Detect right button press/release
+                    // NEW BINDINGS:
+                    // Right click alone = Pan (old middle mouse behavior)
+                    // Shift + Right click = Rotate camera (old right click behavior)
+                    
+                    // Detect right button press/release and handle based on Shift state
                     if right_pressed && !right_was_pressed {
-                        // Right button just pressed - capture and lock cursor
-                        mouse_right_captured.store(true, Ordering::Relaxed);
+                        // Right button just pressed
                         let (x, y) = get_cursor_position();
                         locked_cursor_x.store(x, Ordering::Relaxed);
                         locked_cursor_y.store(y, Ordering::Relaxed);
                         last_mouse_pos = Some((x, y));
+                        
+                        if shift_pressed {
+                            // Shift + Right = Rotation
+                            is_rotating = true;
+                            is_panning = false;
+                            mouse_right_captured.store(true, Ordering::Relaxed);
+                            println!("[INPUT-THREAD] Shift+Right pressed - ROTATION mode, locked cursor at ({}, {})", x, y);
+                        } else {
+                            // Right alone = Panning
+                            is_panning = true;
+                            is_rotating = false;
+                            mouse_middle_captured.store(true, Ordering::Relaxed);
+                            println!("[INPUT-THREAD] Right pressed - PAN mode, locked cursor at ({}, {})", x, y);
+                        }
                         hide_cursor();
-                        println!("[INPUT-THREAD] Right button pressed, locked cursor at ({}, {})", x, y);
                     } else if !right_pressed && right_was_pressed {
                         // Right button just released
-                        mouse_right_captured.store(false, Ordering::Relaxed);
-                        let lock_x = locked_cursor_x.load(Ordering::Relaxed);
-                        let lock_y = locked_cursor_y.load(Ordering::Relaxed);
-                        lock_cursor_position(lock_x, lock_y);
-                        show_cursor();
-                        last_mouse_pos = None;
-                        println!("[INPUT-THREAD] Right button released");
-                    }
-                    
-                    // Detect middle button press/release
-                    if middle_pressed && !middle_was_pressed {
-                        // Middle button just pressed - capture and lock cursor
-                        mouse_middle_captured.store(true, Ordering::Relaxed);
-                        let (x, y) = get_cursor_position();
-                        locked_cursor_x.store(x, Ordering::Relaxed);
-                        locked_cursor_y.store(y, Ordering::Relaxed);
-                        last_mouse_pos = Some((x, y));
-                        hide_cursor();
-                    } else if !middle_pressed && middle_was_pressed {
-                        // Middle button just released
-                        mouse_middle_captured.store(false, Ordering::Relaxed);
+                        if is_rotating {
+                            mouse_right_captured.store(false, Ordering::Relaxed);
+                            is_rotating = false;
+                            println!("[INPUT-THREAD] Rotation released");
+                        }
+                        if is_panning {
+                            mouse_middle_captured.store(false, Ordering::Relaxed);
+                            is_panning = false;
+                            println!("[INPUT-THREAD] Pan released");
+                        }
+                        
                         let lock_x = locked_cursor_x.load(Ordering::Relaxed);
                         let lock_y = locked_cursor_y.load(Ordering::Relaxed);
                         lock_cursor_position(lock_x, lock_y);
@@ -373,10 +381,9 @@ impl ViewportPanel {
                     }
                     
                     right_was_pressed = right_pressed;
-                    middle_was_pressed = middle_pressed;
                     
                     // If button is held, calculate mouse delta and reset cursor
-                    if right_pressed || middle_pressed {
+                    if right_pressed {
                         let (current_x, current_y) = get_cursor_position();
                         
                         if let Some((last_x, last_y)) = last_mouse_pos {
@@ -384,12 +391,14 @@ impl ViewportPanel {
                             let dy = current_y - last_y;
                             
                             if dx != 0 || dy != 0 {
-                                // Store deltas in atomics
-                                if right_pressed {
+                                // Store deltas in atomics based on mode
+                                if is_rotating {
+                                    // Shift + Right = Rotation (old right click behavior)
                                     input_state_for_thread.mouse_delta_x.fetch_add((dx as f32 * 1000.0) as i32, Ordering::Relaxed);
                                     input_state_for_thread.mouse_delta_y.fetch_add((dy as f32 * 1000.0) as i32, Ordering::Relaxed);
                                 }
-                                if middle_pressed {
+                                if is_panning {
+                                    // Right alone = Panning (old middle click behavior)
                                     input_state_for_thread.pan_delta_x.fetch_add((dx as f32 * 1000.0) as i32, Ordering::Relaxed);
                                     input_state_for_thread.pan_delta_y.fetch_add((dy as f32 * 1000.0) as i32, Ordering::Relaxed);
                                 }
