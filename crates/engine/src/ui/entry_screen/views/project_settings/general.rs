@@ -45,7 +45,8 @@ pub fn render_general_tab(settings: &ProjectSettings, cx: &mut Context<EntryScre
                                 .on_click({
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
-                                        let _ = open::that(&path);
+                                        use crate::ui::entry_screen::integration_launcher;
+                                        let _ = integration_launcher::launch_file_manager(&path);
                                     }
                                 })
                         )
@@ -58,24 +59,8 @@ pub fn render_general_tab(settings: &ProjectSettings, cx: &mut Context<EntryScre
                                 .on_click({
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
-                                        #[cfg(windows)]
-                                        {
-                                            let _ = std::process::Command::new("cmd")
-                                                .args(&["/c", "start", "cmd", "/k", "cd", path.to_str().unwrap_or("")])
-                                                .spawn();
-                                        }
-                                        #[cfg(target_os = "macos")]
-                                        {
-                                            let _ = std::process::Command::new("open")
-                                                .args(&["-a", "Terminal", path.to_str().unwrap_or("")])
-                                                .spawn();
-                                        }
-                                        #[cfg(target_os = "linux")]
-                                        {
-                                            let _ = std::process::Command::new("gnome-terminal")
-                                                .args(&["--working-directory", path.to_str().unwrap_or("")])
-                                                .spawn();
-                                        }
+                                        use crate::ui::entry_screen::integration_launcher;
+                                        let _ = integration_launcher::launch_terminal("default", &path);
                                     }
                                 })
                         )

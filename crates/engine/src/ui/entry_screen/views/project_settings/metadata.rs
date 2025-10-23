@@ -246,7 +246,21 @@ pub fn render_metadata_tab(settings: &ProjectSettings, cx: &mut Context<EntryScr
                                 .on_click({
                                     let path = config_path.clone();
                                     move |_, _, _| {
-                                        let _ = open::that(&path);
+                                        // Try to open with system default editor
+                                        #[cfg(windows)]
+                                        {
+                                            use std::os::windows::process::CommandExt;
+                                            const DETACHED_PROCESS: u32 = 0x00000008;
+                                            const CREATE_NO_WINDOW: u32 = 0x08000000;
+                                            let _ = std::process::Command::new("cmd")
+                                                .args(&["/c", "start", "", path.to_str().unwrap_or("")])
+                                                .creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW)
+                                                .spawn();
+                                        }
+                                        #[cfg(not(windows))]
+                                        {
+                                            let _ = open::that(&path);
+                                        }
                                     }
                                 })
                         )

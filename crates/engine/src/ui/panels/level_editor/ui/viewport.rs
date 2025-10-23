@@ -36,6 +36,10 @@ struct InputState {
     
     // Move speed adjustment
     move_speed: Arc<AtomicI32>, // * 100 for precision
+    
+    // Input latency tracking (measured on input thread)
+    // Stores microseconds since last input was received, as i64
+    input_latency_us: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl InputState {
@@ -51,6 +55,7 @@ impl InputState {
             pan_delta_y: Arc::new(AtomicI32::new(0)),
             zoom_delta: Arc::new(AtomicI32::new(0)),
             move_speed: Arc::new(AtomicI32::new(1000)), // 10.0 * 100
+            input_latency_us: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         }
     }
     
@@ -133,6 +138,7 @@ enum GraphType {
 /// Viewport Panel - TRUE ZERO-COPY GPU 3D rendering viewport with PRO camera controls
 /// Studio-quality navigation: FPS mode, Pan, Orbit, Zoom
 /// Direct GPU rendering - NO CPU COPIES!
+/// Input is processed on a dedicated input thread with latency tracking
 pub struct ViewportPanel {
     viewport: Entity<BevyViewport>,
     viewport_controls: ViewportControls,
@@ -155,10 +161,9 @@ pub struct ViewportPanel {
     // Vertices tracking
     vertices_history: RefCell<VecDeque<VerticesDataPoint>>,
     vertices_counter: RefCell<usize>,
-    // Input latency tracking
+    // Input latency tracking (measured on input thread)
     input_latency_history: RefCell<VecDeque<InputLatencyDataPoint>>,
     input_latency_counter: RefCell<usize>,
-    last_input_time: RefCell<Option<std::time::Instant>>,
     // UI refresh consistency tracking (tracks FPS variance over time)
     ui_consistency_history: RefCell<VecDeque<UiConsistencyDataPoint>>,
     ui_consistency_counter: RefCell<usize>,
@@ -203,7 +208,6 @@ impl ViewportPanel {
             vertices_counter: RefCell::new(0),
             input_latency_history: RefCell::new(VecDeque::with_capacity(120)),
             input_latency_counter: RefCell::new(0),
-            last_input_time: RefCell::new(None),
             ui_consistency_history: RefCell::new(VecDeque::with_capacity(120)),
             ui_consistency_counter: RefCell::new(0),
             input_state,
@@ -239,6 +243,9 @@ impl ViewportPanel {
             std::thread::spawn(move || {
                 println!("[INPUT-THREAD] �� Dedicated input processing thread started");
                 loop {
+                    // Mark when we start processing input
+                    let input_start = std::time::Instant::now();
+                    
                     // Sleep for ~8ms (~120Hz processing rate)
                     std::thread::sleep(std::time::Duration::from_millis(8));
                     
@@ -252,30 +259,31 @@ impl ViewportPanel {
                                 input.up = input_state_for_thread.up.load(Ordering::Relaxed) as f32;
                                 input.boost = input_state_for_thread.boost.load(Ordering::Relaxed);
                                 
-                                // Read and convert mouse deltas
+                                // Read and CLEAR mouse deltas (always swap to 0, even if they're 0)
                                 let mouse_x = input_state_for_thread.mouse_delta_x.swap(0, Ordering::Relaxed);
                                 let mouse_y = input_state_for_thread.mouse_delta_y.swap(0, Ordering::Relaxed);
-                                if mouse_x != 0 || mouse_y != 0 {
-                                    input.mouse_delta_x = mouse_x as f32 / 1000.0;
-                                    input.mouse_delta_y = mouse_y as f32 / 1000.0;
-                                }
+                                // Set to the CameraInput (including 0 to clear previous frame's deltas)
+                                input.mouse_delta_x = mouse_x as f32 / 1000.0;
+                                input.mouse_delta_y = mouse_y as f32 / 1000.0;
                                 
-                                // Read pan deltas
+                                // Read and CLEAR pan deltas (always swap to 0, even if they're 0)
                                 let pan_x = input_state_for_thread.pan_delta_x.swap(0, Ordering::Relaxed);
                                 let pan_y = input_state_for_thread.pan_delta_y.swap(0, Ordering::Relaxed);
-                                if pan_x != 0 || pan_y != 0 {
-                                    input.pan_delta_x = pan_x as f32 / 1000.0;
-                                    input.pan_delta_y = pan_y as f32 / 1000.0;
-                                }
+                                // Set to the CameraInput (including 0 to clear previous frame's deltas)
+                                input.pan_delta_x = pan_x as f32 / 1000.0;
+                                input.pan_delta_y = pan_y as f32 / 1000.0;
                                 
-                                // Read zoom delta
+                                // Read and CLEAR zoom delta (always swap to 0, even if it's 0)
                                 let zoom = input_state_for_thread.zoom_delta.swap(0, Ordering::Relaxed);
-                                if zoom != 0 {
-                                    input.zoom_delta = zoom as f32 / 1000.0;
-                                }
+                                // Set to the CameraInput (including 0 to clear previous frame's delta)
+                                input.zoom_delta = zoom as f32 / 1000.0;
                                 
                                 // Update move speed
                                 input.move_speed = input_state_for_thread.move_speed.load(Ordering::Relaxed) as f32 / 100.0;
+                                
+                                // Calculate and store input latency (time from input start to GPU update)
+                                let input_latency = input_start.elapsed().as_micros() as u64;
+                                input_state_for_thread.input_latency_us.store(input_latency, Ordering::Relaxed);
                             }
                         }
                     }
@@ -315,6 +323,7 @@ impl ViewportPanel {
             .rounded(cx.theme().radius)
             .track_focus(&self.focus_handle)
             .on_key_down(move |event: &gpui::KeyDownEvent, _phase, _cx| {
+                // GPUI automatically filters key events to focused elements via track_focus
                 // ULTRA FAST PATH: Update atomics directly, no allocations, no hashing, no RefCell!
                 let key = &event.keystroke.key;
                 match key.as_ref() {
@@ -322,25 +331,19 @@ impl ViewportPanel {
                     "s" | "S" => input_state_key_down.forward.store(-1, Ordering::Relaxed),
                     "d" | "D" => input_state_key_down.right.store(1, Ordering::Relaxed),
                     "a" | "A" => input_state_key_down.right.store(-1, Ordering::Relaxed),
-                    "space" | " " => input_state_key_down.up.store(1, Ordering::Relaxed),
-                    "shift" => {
-                        input_state_key_down.up.store(-1, Ordering::Relaxed);
-                        input_state_key_down.boost.store(true, Ordering::Relaxed);
-                    }
+                    "e" | "E" | "space" | " " => input_state_key_down.up.store(1, Ordering::Relaxed), // Up: E or Space
+                    "q" | "Q" | "shift" => input_state_key_down.up.store(-1, Ordering::Relaxed), // Down: Q or Shift
                     _ => return, // Ignore all other keys instantly
                 }
             })
             .on_key_up(move |event: &gpui::KeyUpEvent, _phase, _cx| {
+                // GPUI automatically filters key events to focused elements via track_focus
                 // ULTRA FAST PATH: Update atomics directly, no allocations, no hashing, no RefCell!
                 let key = &event.keystroke.key;
                 match key.as_ref() {
                     "w" | "W" | "s" | "S" => input_state_key_up.forward.store(0, Ordering::Relaxed),
                     "d" | "D" | "a" | "A" => input_state_key_up.right.store(0, Ordering::Relaxed),
-                    "space" | " " => input_state_key_up.up.store(0, Ordering::Relaxed),
-                    "shift" => {
-                        input_state_key_up.up.store(0, Ordering::Relaxed);
-                        input_state_key_up.boost.store(false, Ordering::Relaxed);
-                    }
+                    "e" | "E" | "q" | "Q" | "space" | " " | "shift" => input_state_key_up.up.store(0, Ordering::Relaxed),
                     _ => return, // Ignore all other keys instantly
                 }
             })
@@ -849,12 +852,8 @@ impl ViewportPanel {
         drop(vertices_history);
         drop(vertices_counter);
 
-        // Track input latency (time between input and frame render)
-        let input_latency_ms = if let Some(last_input) = *self.last_input_time.borrow() {
-            last_input.elapsed().as_micros() as f64 / 1000.0
-        } else {
-            0.0
-        };
+        // Track input latency from the input thread (measured in microseconds, stored atomically)
+        let input_latency_ms = self.input_state.input_latency_us.load(Ordering::Relaxed) as f64 / 1000.0;
 
         let mut input_latency_history = self.input_latency_history.borrow_mut();
         let mut input_latency_counter = self.input_latency_counter.borrow_mut();
@@ -1292,7 +1291,7 @@ impl ViewportPanel {
                                                 div()
                                                     .text_xs()
                                                     .text_color(cx.theme().muted_foreground)
-                                                    .child("Input Lag:")
+                                                    .child("Input Thread:")
                                             )
                                             .child(
                                                 div()
@@ -1550,7 +1549,7 @@ impl ViewportPanel {
                         )
                 )
             })
-            // INPUT LATENCY GRAPH - Critical for responsive controls!
+            // INPUT LATENCY GRAPH - Critical for responsive controls! (Measured on input thread)
             .when(!input_latency_data.is_empty(), |this| {
                 this.child(
                     v_flex()
@@ -1561,7 +1560,7 @@ impl ViewportPanel {
                                 .text_xs()
                                 .font_semibold()
                                 .text_color(cx.theme().foreground)
-                                .child("⚡ Input Latency (ms) - Lower is better")
+                                .child("⚡ Input Thread Latency (ms) - Time to send input to GPU")
                         )
                         .child(
                             div()

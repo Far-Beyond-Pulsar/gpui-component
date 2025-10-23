@@ -87,7 +87,8 @@ pub fn render_git_ci_tab(settings: &ProjectSettings, cx: &mut Context<EntryScree
                             move |_, _, _| {
                                 let workflows_dir = path.join(".github").join("workflows");
                                 let _ = std::fs::create_dir_all(&workflows_dir);
-                                let _ = open::that(&workflows_dir);
+                                use crate::ui::entry_screen::integration_launcher;
+                                let _ = integration_launcher::launch_file_manager(&workflows_dir);
                             }
                         })
                 )

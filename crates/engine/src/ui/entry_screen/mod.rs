@@ -1,5 +1,6 @@
 mod types;
 mod git_operations;
+mod integration_launcher;
 pub mod views;
 
 use types::{EntryScreenView, Template, CloneProgress, SharedCloneProgress, GitFetchStatus, ProjectWithGitStatus, get_default_templates};
@@ -377,10 +378,29 @@ impl EntryScreen {
     }
     
     pub(crate) fn open_project_settings(&mut self, project_path: PathBuf, project_name: String, cx: &mut Context<Self>) {
-        let mut settings = views::ProjectSettings::new(project_path, project_name);
-        settings.load_all_data();
+        // Create settings with empty data first (instant UI)
+        let settings = views::ProjectSettings::new(project_path.clone(), project_name);
         self.project_settings = Some(settings);
         cx.notify();
+        
+        // Load all data asynchronously in background
+        cx.spawn(async move |this, mut cx| {
+            // Run all data loading in a background thread
+            let loaded_settings = std::thread::spawn(move || {
+                views::ProjectSettings::load_all_data_async(project_path)
+            })
+            .join()
+            .ok();
+            
+            if let Some(settings) = loaded_settings {
+                let _ = cx.update(|cx| {
+                    let _ = this.update(cx, |screen, cx| {
+                        screen.project_settings = Some(settings);
+                        cx.notify();
+                    });
+                });
+            }
+        }).detach();
     }
     
     pub(crate) fn close_project_settings(&mut self, cx: &mut Context<Self>) {
@@ -396,9 +416,32 @@ impl EntryScreen {
     }
     
     pub(crate) fn refresh_project_settings(&mut self, cx: &mut Context<Self>) {
-        if let Some(settings) = &mut self.project_settings {
-            settings.load_all_data();
-            cx.notify();
+        if let Some(settings) = &self.project_settings {
+            let project_path = settings.project_path.clone();
+            
+            // Load all data asynchronously in background
+            cx.spawn(async move |this, mut cx| {
+                // Run all data loading in a background thread
+                let loaded_settings = std::thread::spawn(move || {
+                    views::ProjectSettings::load_all_data_async(project_path)
+                })
+                .join()
+                .ok();
+                
+                if let Some(new_settings) = loaded_settings {
+                    let _ = cx.update(|cx| {
+                        let _ = this.update(cx, |screen, cx| {
+                            if let Some(ref mut settings) = screen.project_settings {
+                                // Preserve active tab
+                                let active_tab = settings.active_tab.clone();
+                                *settings = new_settings;
+                                settings.active_tab = active_tab;
+                            }
+                            cx.notify();
+                        });
+                    });
+                }
+            }).detach();
         }
     }
     

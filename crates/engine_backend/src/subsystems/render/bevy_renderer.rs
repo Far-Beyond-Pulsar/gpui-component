@@ -113,6 +113,10 @@ struct ShutdownFlag(Arc<AtomicBool>);
 #[derive(Resource, Clone)]
 struct GameThreadResource(Option<Arc<Mutex<crate::subsystems::game::GameState>>>);
 
+/// Resource containing the shared camera input from the input thread
+#[derive(Resource, Clone)]
+struct CameraInputResource(Arc<Mutex<CameraInput>>);
+
 /// Metrics tracking resource - shared between Bevy and the main thread
 #[derive(Resource, Clone)]
 struct MetricsResource {
@@ -246,6 +250,7 @@ impl BevyRenderer {
         // Resources
         app.insert_resource(ClearColor(Color::srgb(0.1, 0.2, 0.3)))
             .insert_resource(camera_input.lock().unwrap().clone())
+            .insert_resource(CameraInputResource(camera_input.clone())) // Shared input from input thread
             .insert_resource(SharedTexturesResource(shared_textures.clone()))
             .insert_resource(metrics.as_ref().clone())
             .insert_resource(ShutdownFlag(shutdown.clone()))
@@ -256,6 +261,7 @@ impl BevyRenderer {
         // Main world systems - create textures FIRST, then setup scene
         app.add_systems(Startup, (create_shared_textures_startup, setup_scene).chain())
             .add_systems(Update, check_shutdown)
+            .add_systems(Update, sync_camera_input_system) // NEW: Sync input thread camera input to Bevy ECS
             .add_systems(Update, camera_movement_system) // Unreal-style camera controls
             .add_systems(Update, sync_game_objects_system) // NEW: Sync game thread to Bevy
             .add_systems(Update, update_metrics_system) // Track FPS and frame times
@@ -385,6 +391,30 @@ impl Drop for BevyRenderer {
     fn drop(&mut self) {
         self.shutdown();
     }
+}
+
+/// Sync camera input from the input thread to the Bevy ECS resource
+/// This system reads from the shared Arc<Mutex<CameraInput>> that the input thread updates
+/// and copies it to the Bevy ECS CameraInput resource that camera_movement_system uses
+fn sync_camera_input_system(
+    camera_input_resource: Res<CameraInputResource>,
+    mut camera_input: ResMut<CameraInput>,
+) {
+    // Try to lock the shared camera input without blocking
+    if let Ok(mut shared_input) = camera_input_resource.0.try_lock() {
+        // Copy the input from the input thread to the Bevy ECS resource
+        *camera_input = shared_input.clone();
+        
+        // IMPORTANT: Clear the delta values in the shared input after copying
+        // so they don't get re-applied on the next frame
+        // The input thread will set new deltas if there's actual mouse movement
+        shared_input.mouse_delta_x = 0.0;
+        shared_input.mouse_delta_y = 0.0;
+        shared_input.pan_delta_x = 0.0;
+        shared_input.pan_delta_y = 0.0;
+        shared_input.zoom_delta = 0.0;
+    }
+    // If lock fails, skip this frame - no blocking!
 }
 
 /// Unreal Engine-style camera movement system

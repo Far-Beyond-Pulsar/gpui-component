@@ -66,10 +66,8 @@ pub fn render_git_info_tab(settings: &ProjectSettings, cx: &mut Context<EntryScr
                                 .on_click({
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
-                                        let _ = std::process::Command::new("git")
-                                            .args(&["gui"])
-                                            .current_dir(&path)
-                                            .spawn();
+                                        use crate::ui::entry_screen::integration_launcher;
+                                        let _ = integration_launcher::launch_git_tool("git", &path);
                                     }
                                 })
                         )
@@ -86,10 +84,9 @@ pub fn render_git_info_tab(settings: &ProjectSettings, cx: &mut Context<EntryScr
                                 .on_click({
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
-                                        let _ = std::process::Command::new("git")
-                                            .args(&["log", "--oneline", "--graph", "--decorate", "--all"])
-                                            .current_dir(&path)
-                                            .spawn();
+                                        use crate::ui::entry_screen::integration_launcher;
+                                        // Use preferred git tool or default to "git"
+                                        let _ = integration_launcher::launch_git_tool("git", &path);
                                     }
                                 })
                         )
