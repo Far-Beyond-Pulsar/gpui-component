@@ -20,7 +20,9 @@ use std::rc::Rc;
 
 // Windows API for cursor management
 #[cfg(target_os = "windows")]
-use winapi::um::winuser::{ShowCursor, SetCursor};
+use winapi::um::winuser::{ShowCursor, SetCursorPos, GetCursorPos};
+#[cfg(target_os = "windows")]
+use winapi::shared::windef::POINT;
 
 /// Helper function to hide the Windows cursor
 #[cfg(target_os = "windows")]
@@ -38,6 +40,24 @@ fn show_cursor() {
     }
 }
 
+/// Lock cursor to specific screen position (for camera rotation without cursor drift)
+#[cfg(target_os = "windows")]
+fn lock_cursor_position(x: i32, y: i32) {
+    unsafe {
+        SetCursorPos(x, y);
+    }
+}
+
+/// Get current cursor position
+#[cfg(target_os = "windows")]
+fn get_cursor_position() -> (i32, i32) {
+    unsafe {
+        let mut point = POINT { x: 0, y: 0 };
+        GetCursorPos(&mut point);
+        (point.x, point.y)
+    }
+}
+
 #[cfg(not(target_os = "windows"))]
 fn hide_cursor() {
     // Placeholder for other platforms
@@ -46,6 +66,16 @@ fn hide_cursor() {
 #[cfg(not(target_os = "windows"))]
 fn show_cursor() {
     // Placeholder for other platforms
+}
+
+#[cfg(not(target_os = "windows"))]
+fn lock_cursor_position(_x: i32, _y: i32) {
+    // Placeholder for other platforms
+}
+
+#[cfg(not(target_os = "windows"))]
+fn get_cursor_position() -> (i32, i32) {
+    (0, 0) // Placeholder for other platforms
 }
 
 /// Lock-free input state using atomics - no mutex contention!
@@ -206,6 +236,9 @@ pub struct ViewportPanel {
     last_mouse_y: Arc<AtomicI32>,
     mouse_right_captured: Arc<AtomicBool>,
     mouse_middle_captured: Arc<AtomicBool>,
+    // Locked cursor position for infinite mouse movement during drag
+    locked_cursor_x: Arc<AtomicI32>,
+    locked_cursor_y: Arc<AtomicI32>,
     // Keyboard state for WASD + modifiers - NOT NEEDED ANYMORE, using atomics directly!
     keys_pressed: Rc<RefCell<std::collections::HashSet<String>>>,
     alt_pressed: Rc<RefCell<bool>>,
@@ -246,6 +279,8 @@ impl ViewportPanel {
             last_mouse_y: Arc::new(AtomicI32::new(0)),
             mouse_right_captured: Arc::new(AtomicBool::new(false)),
             mouse_middle_captured: Arc::new(AtomicBool::new(false)),
+            locked_cursor_x: Arc::new(AtomicI32::new(0)),
+            locked_cursor_y: Arc::new(AtomicI32::new(0)),
             keys_pressed: Rc::new(RefCell::new(std::collections::HashSet::new())),
             alt_pressed: Rc::new(RefCell::new(false)),
             focus_handle: cx.focus_handle(),
@@ -349,6 +384,20 @@ impl ViewportPanel {
         let mouse_middle_up_last_x = self.last_mouse_x.clone();
         let mouse_middle_up_last_y = self.last_mouse_y.clone();
         
+        // Clone locked cursor position atomics
+        let locked_cursor_x_down = self.locked_cursor_x.clone();
+        let locked_cursor_y_down = self.locked_cursor_y.clone();
+        let locked_cursor_x_up = self.locked_cursor_x.clone();
+        let locked_cursor_y_up = self.locked_cursor_y.clone();
+        let locked_cursor_x_move = self.locked_cursor_x.clone();
+        let locked_cursor_y_move = self.locked_cursor_y.clone();
+        let locked_cursor_x_middle_down = self.locked_cursor_x.clone();
+        let locked_cursor_y_middle_down = self.locked_cursor_y.clone();
+        let locked_cursor_x_middle_up = self.locked_cursor_x.clone();
+        let locked_cursor_y_middle_up = self.locked_cursor_y.clone();
+        let locked_cursor_x_middle_move = self.locked_cursor_x.clone();
+        let locked_cursor_y_middle_move = self.locked_cursor_y.clone();
+        
         let mut viewport_div = div()
             .flex() // Enable flexbox
             .flex_col() // Column direction
@@ -407,6 +456,11 @@ impl ViewportPanel {
                             last_mouse_x_down.store((x_f32 * 1000.0) as i32, Ordering::Relaxed);
                             last_mouse_y_down.store((y_f32 * 1000.0) as i32, Ordering::Relaxed);
                             
+                            // Get screen cursor position and store it for locking
+                            let (screen_x, screen_y) = get_cursor_position();
+                            locked_cursor_x_down.store(screen_x, Ordering::Relaxed);
+                            locked_cursor_y_down.store(screen_y, Ordering::Relaxed);
+                            
                             // Set captured flag
                             mouse_right_down.store(true, Ordering::Relaxed);
                             
@@ -423,6 +477,11 @@ impl ViewportPanel {
                             // Reset last mouse position to prevent jump on next drag
                             last_mouse_x_up.store(0, Ordering::Relaxed);
                             last_mouse_y_up.store(0, Ordering::Relaxed);
+                            
+                            // Restore cursor to locked position before showing it
+                            let lock_x = locked_cursor_x_up.load(Ordering::Relaxed);
+                            let lock_y = locked_cursor_y_up.load(Ordering::Relaxed);
+                            lock_cursor_position(lock_x, lock_y);
                             
                             // Show cursor again
                             show_cursor();
@@ -453,10 +512,20 @@ impl ViewportPanel {
                                 // Update input state atomically
                                 if is_right_captured && (dx.abs() > 0.01 || dy.abs() > 0.01) {
                                     input_state_mouse.set_mouse_delta(dx, dy);
+                                    
+                                    // Lock cursor back to original position for infinite mouse movement
+                                    let lock_x = locked_cursor_x_move.load(Ordering::Relaxed);
+                                    let lock_y = locked_cursor_y_move.load(Ordering::Relaxed);
+                                    lock_cursor_position(lock_x, lock_y);
                                 }
                                 
                                 if is_middle_captured && (dx.abs() > 0.01 || dy.abs() > 0.01) {
                                     input_state_mouse.set_pan_delta(dx, dy);
+                                    
+                                    // Lock cursor back to original position for infinite mouse movement
+                                    let lock_x = locked_cursor_x_middle_move.load(Ordering::Relaxed);
+                                    let lock_y = locked_cursor_y_middle_move.load(Ordering::Relaxed);
+                                    lock_cursor_position(lock_x, lock_y);
                                 }
                             }
                         }
@@ -480,6 +549,11 @@ impl ViewportPanel {
                             mouse_middle_down_last_x.store((x_f32 * 1000.0) as i32, Ordering::Relaxed);
                             mouse_middle_down_last_y.store((y_f32 * 1000.0) as i32, Ordering::Relaxed);
                             
+                            // Get screen cursor position and store it for locking
+                            let (screen_x, screen_y) = get_cursor_position();
+                            locked_cursor_x_middle_down.store(screen_x, Ordering::Relaxed);
+                            locked_cursor_y_middle_down.store(screen_y, Ordering::Relaxed);
+                            
                             // Set captured flag
                             mouse_middle_down.store(true, Ordering::Relaxed);
                             
@@ -496,6 +570,11 @@ impl ViewportPanel {
                             // Reset last mouse position to prevent jump on next drag
                             mouse_middle_up_last_x.store(0, Ordering::Relaxed);
                             mouse_middle_up_last_y.store(0, Ordering::Relaxed);
+                            
+                            // Restore cursor to locked position before showing it
+                            let lock_x = locked_cursor_x_middle_up.load(Ordering::Relaxed);
+                            let lock_y = locked_cursor_y_middle_up.load(Ordering::Relaxed);
+                            lock_cursor_position(lock_x, lock_y);
                             
                             // Show cursor again
                             show_cursor();
