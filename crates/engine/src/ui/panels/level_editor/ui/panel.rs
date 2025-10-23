@@ -84,11 +84,19 @@ impl LevelEditorPanel {
 
         println!("[LEVEL-EDITOR] ✅ Bevy viewport created (1600x900)");
         
-        // Create GPU render engine with matching resolution
-        let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new(1600, 900)));
+        // Create and start game thread for object movement FIRST
+        println!("[LEVEL-EDITOR] 🎮 Creating game thread with target 240 TPS...");
+        let game_thread = Arc::new(GameThread::new(240.0));
+        let game_state = game_thread.get_state();
+        game_thread.start();
+        println!("[LEVEL-EDITOR] ✅ Game thread started successfully!");
+        
+        // Create GPU render engine with matching resolution and game thread link
+        println!("[LEVEL-EDITOR] 🎨 Creating GPU renderer linked to game thread...");
+        let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new_with_game_thread(1600, 900, Some(game_state))));
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
         
-        println!("[LEVEL-EDITOR] ✅ GPU renderer initialized");
+        println!("[LEVEL-EDITOR] ✅ GPU renderer initialized with game thread sync");
 
         // Wait a moment for Bevy to create shared textures, then initialize viewport
         let viewport_state_for_init = viewport_state.clone();
@@ -154,12 +162,6 @@ impl LevelEditorPanel {
             
             println!("[LEVEL-EDITOR] ❌ Failed to initialize viewport after 10 attempts");
         }).detach();
-
-        // Create and start game thread for object movement
-        println!("[LEVEL-EDITOR] 🎮 Creating game thread with target 240 TPS...");
-        let game_thread = Arc::new(GameThread::new(240.0));
-        game_thread.start();
-        println!("[LEVEL-EDITOR] ✅ Game thread started successfully!");
 
         
         println!("[LEVEL-EDITOR] Modular level editor initialized");
@@ -383,7 +385,7 @@ impl Focusable for LevelEditorPanel {
 impl EventEmitter<PanelEvent> for LevelEditorPanel {}
 
 impl Render for LevelEditorPanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Sync viewport buffer index with Bevy's read index each frame
         if let Ok(engine_guard) = self.gpu_engine.try_lock() {
             if let Some(ref bevy_renderer) = engine_guard.bevy_renderer {
@@ -392,10 +394,10 @@ impl Render for LevelEditorPanel {
                 state.set_active_buffer(read_idx);
             }
         }
-        
-        // Request another frame to keep viewport updating continuously
-        // This creates a render loop that refreshes as Bevy produces new frames
-        cx.notify();
+
+        // Request continuous animation frames to keep viewport and stats updating
+        // This creates a render loop synchronized with the display refresh rate
+        window.request_animation_frame();
 
         v_flex()
             .size_full()

@@ -48,6 +48,14 @@ pub struct GpuRenderer {
 
 impl GpuRenderer {
     pub fn new(display_width: u32, display_height: u32) -> Self {
+        Self::new_with_game_thread(display_width, display_height, None)
+    }
+
+    pub fn new_with_game_thread(
+        display_width: u32, 
+        display_height: u32,
+        game_thread_state: Option<Arc<Mutex<engine_backend::subsystems::game::GameState>>>,
+    ) -> Self {
         let width = display_width;
         let height = display_height;
         
@@ -55,11 +63,12 @@ impl GpuRenderer {
         println!("[GPU-RENDERER] Format: BGRA8UnormSrgb (Bevy pipeline compatible)");
         
         let runtime = get_runtime();
-        let bevy_renderer = runtime.block_on(async {
+        let game_state_for_bevy = game_thread_state.clone();
+        let bevy_renderer = runtime.block_on(async move {
             println!("[GPU-RENDERER] Creating optimized renderer asynchronously...");
             match tokio::time::timeout(
                 tokio::time::Duration::from_secs(10),
-                BevyRenderer::new(width, height)
+                BevyRenderer::new_with_game_thread(width, height, game_state_for_bevy)
             ).await {
                 Ok(renderer) => {
                     println!("[GPU-RENDERER] ✅ Optimized renderer created successfully!");

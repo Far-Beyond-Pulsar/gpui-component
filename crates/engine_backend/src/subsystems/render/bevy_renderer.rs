@@ -13,7 +13,7 @@ use bevy::{
 };
 use std::{
     sync::{
-        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering},
         Arc, Mutex,
     },
     time::Duration,
@@ -87,6 +87,10 @@ impl CameraInput {
 #[derive(Component)]
 struct MainCamera;
 
+/// Marker component linking a Bevy entity to a game thread object
+#[derive(Component)]
+struct GameObjectId(u64);
+
 /// Shared textures - double buffered for zero-copy rendering
 #[derive(Clone)]
 pub struct SharedGpuTextures {
@@ -105,6 +109,10 @@ struct SharedTexturesResource(Arc<Mutex<Option<SharedGpuTextures>>>);
 #[derive(Resource, Clone)]
 struct ShutdownFlag(Arc<AtomicBool>);
 
+/// Resource containing reference to the game thread for syncing object positions
+#[derive(Resource, Clone)]
+struct GameThreadResource(Option<Arc<Mutex<crate::subsystems::game::GameState>>>);
+
 /// Metrics tracking resource - shared between Bevy and the main thread
 #[derive(Resource, Clone)]
 struct MetricsResource {
@@ -112,6 +120,9 @@ struct MetricsResource {
     pub last_frame_time: Arc<Mutex<std::time::Instant>>,
     pub fps: Arc<Mutex<f32>>,
     pub frame_time_ms: Arc<Mutex<f32>>,
+    pub draw_calls: Arc<AtomicU32>,
+    pub vertices_drawn: Arc<AtomicU64>,
+    pub memory_usage_mb: Arc<Mutex<f32>>,
 }
 
 impl Default for MetricsResource {
@@ -121,6 +132,9 @@ impl Default for MetricsResource {
             last_frame_time: Arc::new(Mutex::new(std::time::Instant::now())),
             fps: Arc::new(Mutex::new(0.0)),
             frame_time_ms: Arc::new(Mutex::new(0.0)),
+            draw_calls: Arc::new(AtomicU32::new(0)),
+            vertices_drawn: Arc::new(AtomicU64::new(0)),
+            memory_usage_mb: Arc::new(Mutex::new(0.0)),
         }
     }
 }
@@ -135,7 +149,15 @@ pub struct BevyRenderer {
 }
 
 impl BevyRenderer {
-    pub async fn new(_width: u32, _height: u32) -> Self {
+    pub async fn new(width: u32, height: u32) -> Self {
+        Self::new_with_game_thread(width, height, None).await
+    }
+
+    pub async fn new_with_game_thread(
+        _width: u32, 
+        _height: u32,
+        game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
+    ) -> Self {
         let shared_textures = Arc::new(Mutex::new(None));
         let camera_input = Arc::new(Mutex::new(CameraInput::new()));
         let metrics = Arc::new(MetricsResource::default());
@@ -145,6 +167,7 @@ impl BevyRenderer {
         let camera_input_clone = camera_input.clone();
         let metrics_clone = metrics.clone();
         let shutdown_clone = shutdown.clone();
+        let game_thread_clone = game_thread_state.clone();
 
         let render_thread = std::thread::Builder::new()
             .name("bevy-render".to_string())
@@ -156,6 +179,7 @@ impl BevyRenderer {
                     camera_input_clone,
                     metrics_clone,
                     shutdown_clone,
+                    game_thread_clone,
                 );
             })
             .expect("Failed to spawn Bevy render thread");
@@ -178,6 +202,7 @@ impl BevyRenderer {
         camera_input: Arc<Mutex<CameraInput>>,
         metrics: Arc<MetricsResource>,
         shutdown: Arc<AtomicBool>,
+        game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
     ) {
         println!("[BEVY] 🚀 Starting headless renderer {}x{}", width, height);
 
@@ -223,7 +248,8 @@ impl BevyRenderer {
             .insert_resource(camera_input.lock().unwrap().clone())
             .insert_resource(SharedTexturesResource(shared_textures.clone()))
             .insert_resource(metrics.as_ref().clone())
-            .insert_resource(ShutdownFlag(shutdown.clone()));
+            .insert_resource(ShutdownFlag(shutdown.clone()))
+            .insert_resource(GameThreadResource(game_thread_state));
         
         // Insert shutdown resource
         
@@ -231,6 +257,7 @@ impl BevyRenderer {
         app.add_systems(Startup, (create_shared_textures_startup, setup_scene).chain())
             .add_systems(Update, check_shutdown)
             .add_systems(Update, camera_movement_system) // Unreal-style camera controls
+            .add_systems(Update, sync_game_objects_system) // NEW: Sync game thread to Bevy
             .add_systems(Update, update_metrics_system) // Track FPS and frame times
             .add_systems(Update, debug_rendering_system); // Add debug system
 
@@ -304,29 +331,37 @@ impl BevyRenderer {
     pub fn get_metrics(&self) -> RenderMetrics {
         // Get actual metrics from the tracking resource
         let frames_rendered = self.metrics.frames_rendered.load(Ordering::Relaxed);
-        
+
         let bevy_fps = self.metrics.fps.lock().ok()
             .map(|f| *f)
             .unwrap_or(0.0);
-            
+
         let frame_time_ms = self.metrics.frame_time_ms.lock().ok()
             .map(|f| *f)
             .unwrap_or(0.0);
-        
+
         // Calculate pipeline time from frame time
         let pipeline_time_us = frame_time_ms * 1000.0;
-        
+
         // Estimate GPU and CPU times (rough estimates based on frame time)
         // GPU typically takes ~60-70% of frame time, CPU ~30-40%
         let gpu_time_us = pipeline_time_us * 0.65;
         let cpu_time_us = pipeline_time_us * 0.35;
-        
+
+        // Calculate dynamic render stats based on scene complexity
+        // These are estimates until we can hook into Bevy's actual render stats
+        let draw_calls = self.metrics.draw_calls.load(Ordering::Relaxed);
+        let vertices_drawn = self.metrics.vertices_drawn.load(Ordering::Relaxed);
+        let memory_usage_mb = self.metrics.memory_usage_mb.lock().ok()
+            .map(|m| *m)
+            .unwrap_or(0.0);
+
         RenderMetrics {
             fps: bevy_fps,
             frame_time_ms,
-            draw_calls: 15,  // TODO: Get actual draw call count from render stats
-            memory_usage_mb: 128.0,  // TODO: Get actual memory usage from GPU
-            vertices_drawn: 24576,  // TODO: Get actual vertex count from render stats
+            draw_calls,
+            memory_usage_mb,
+            vertices_drawn,
             frames_rendered,
             bevy_fps,
             pipeline_time_us,
@@ -450,35 +485,68 @@ fn camera_movement_system(
 /// Tracks FPS, frame time, and frame count
 fn update_metrics_system(
     _time: Res<Time>,
-    metrics: ResMut<MetricsResource>,
+    mut metrics: ResMut<MetricsResource>,
+    meshes: Res<Assets<Mesh>>,
+    materials: Res<Assets<StandardMaterial>>,
+    cameras: Query<&Camera>,
 ) {
     // Increment frame count
     let _frame_count = metrics.frames_rendered.fetch_add(1, Ordering::Relaxed);
-    
+
     // Calculate FPS and frame time every frame
     if let Ok(mut last_frame_time) = metrics.last_frame_time.lock() {
         let now = std::time::Instant::now();
         let frame_duration = now.duration_since(*last_frame_time);
         let frame_time_ms = frame_duration.as_secs_f32() * 1000.0;
-        
+
         // Update frame time
         if let Ok(mut stored_frame_time) = metrics.frame_time_ms.lock() {
             *stored_frame_time = frame_time_ms;
         }
-        
+
         // Calculate FPS (1 / frame_time in seconds)
         let fps = if frame_time_ms > 0.0 {
             1000.0 / frame_time_ms
         } else {
             0.0
         };
-        
+
         if let Ok(mut stored_fps) = metrics.fps.lock() {
             // Smooth FPS with exponential moving average
             *stored_fps = (*stored_fps * 0.9) + (fps * 0.1);
         }
-        
+
         *last_frame_time = now;
+    }
+
+    // Calculate draw calls estimate based on active cameras and scene complexity
+    // Each camera typically has multiple render passes
+    let num_cameras = cameras.iter().count();
+    let num_meshes = meshes.len();
+    let num_materials = materials.len();
+    
+    // Estimate: cameras * (base passes + mesh instances + material batches)
+    // Base passes: shadow + main + post-processing ~= 3
+    let estimated_draw_calls = (num_cameras * 3) + num_meshes.min(100) + num_materials.min(50);
+    metrics.draw_calls.store(estimated_draw_calls as u32, Ordering::Relaxed);
+
+    // Calculate vertices estimate based on meshes
+    let mut total_vertices = 0u64;
+    for mesh in meshes.iter() {
+        // count_vertices() returns usize, not Option<usize>
+        let vertex_count = mesh.1.count_vertices();
+        total_vertices += vertex_count as u64;
+    }
+    metrics.vertices_drawn.store(total_vertices, Ordering::Relaxed);
+
+    // Estimate memory usage (very rough)
+    // Textures + meshes + materials + buffers
+    let mesh_memory_mb = (total_vertices * 32) as f32 / (1024.0 * 1024.0); // ~32 bytes per vertex
+    let material_memory_mb = (num_materials * 1024) as f32 / (1024.0 * 1024.0); // ~1KB per material
+    let total_memory_mb = mesh_memory_mb + material_memory_mb + 64.0; // +64MB base overhead
+    
+    if let Ok(mut memory) = metrics.memory_usage_mb.lock() {
+        *memory = total_memory_mb;
     }
 }
 
@@ -537,7 +605,7 @@ fn setup_scene(
     ));
     println!("[BEVY] ✅ Ground plane spawned");
 
-    // Red metallic cube (left)
+    // Red metallic cube (left) - GAME OBJECT 1
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(2.0, 2.0, 2.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
@@ -548,10 +616,11 @@ fn setup_scene(
             ..default()
         })),
         Transform::from_xyz(-2.0, 1.0, 0.0),
+        GameObjectId(1), // Link to game thread object ID 1
     ));
-    println!("[BEVY] ✅ Red metallic cube spawned");
+    println!("[BEVY] ✅ Red metallic cube spawned (Game Object #1)");
 
-    // Blue metallic sphere (right)
+    // Blue metallic sphere (right) - GAME OBJECT 2
     commands.spawn((
         Mesh3d(meshes.add(Sphere::new(1.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
@@ -562,10 +631,11 @@ fn setup_scene(
             ..default()
         })),
         Transform::from_xyz(2.0, 1.0, 0.0),
+        GameObjectId(2), // Link to game thread object ID 2
     ));
-    println!("[BEVY] ✅ Blue metallic sphere spawned");
+    println!("[BEVY] ✅ Blue metallic sphere spawned (Game Object #2)");
 
-    // Gold metallic sphere (top)
+    // Gold metallic sphere (top) - GAME OBJECT 3
     commands.spawn((
         Mesh3d(meshes.add(Sphere::new(1.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
@@ -576,10 +646,11 @@ fn setup_scene(
             ..default()
         })),
         Transform::from_xyz(0.0, 3.0, 0.0),
+        GameObjectId(3), // Link to game thread object ID 3
     ));
-    println!("[BEVY] ✅ Gold metallic sphere spawned");
+    println!("[BEVY] ✅ Gold metallic sphere spawned (Game Object #3)");
 
-    // Green metallic sphere (front)
+    // Green metallic sphere (front) - GAME OBJECT 4
     commands.spawn((
         Mesh3d(meshes.add(Sphere::new(1.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
@@ -590,8 +661,9 @@ fn setup_scene(
             ..default()
         })),
         Transform::from_xyz(0.0, 1.0, 2.0),
+        GameObjectId(4), // Link to game thread object ID 4
     ));
-    println!("[BEVY] ✅ Green metallic sphere spawned");
+    println!("[BEVY] ✅ Green metallic sphere spawned (Game Object #4)");
 
     // Primary directional light (sun)
     commands.spawn((
@@ -920,6 +992,50 @@ fn extract_native_handles(
 
     // TODO: Extract actual GPU texture handles from GpuImage if needed
     // For now, DXGI handles are already stored globally in create_shared_textures
+}
+
+/// Sync game thread object positions/rotations to Bevy entities
+/// This system reads from the game thread state and updates matching Bevy transforms
+fn sync_game_objects_system(
+    game_thread: Res<GameThreadResource>,
+    mut query: Query<(&GameObjectId, &mut Transform)>,
+) {
+    // Get game state if available
+    let Some(ref game_state_arc) = game_thread.0 else {
+        return; // No game thread connected
+    };
+
+    // Try to lock game state (non-blocking)
+    let Ok(game_state) = game_state_arc.try_lock() else {
+        return; // Game thread busy, skip this frame
+    };
+
+    // Update all entities that have a GameObjectId
+    for (game_obj_id, mut transform) in query.iter_mut() {
+        if let Some(game_obj) = game_state.get_object(game_obj_id.0) {
+            // Sync position
+            transform.translation = Vec3::new(
+                game_obj.position[0],
+                game_obj.position[1],
+                game_obj.position[2],
+            );
+
+            // Sync rotation (convert degrees to radians)
+            transform.rotation = Quat::from_euler(
+                EulerRot::XYZ,
+                game_obj.rotation[0].to_radians(),
+                game_obj.rotation[1].to_radians(),
+                game_obj.rotation[2].to_radians(),
+            );
+
+            // Sync scale
+            transform.scale = Vec3::new(
+                game_obj.scale[0],
+                game_obj.scale[1],
+                game_obj.scale[2],
+            );
+        }
+    }
 }
 
 fn check_shutdown(shutdown: Res<ShutdownFlag>, mut exit: MessageWriter<AppExit>) {

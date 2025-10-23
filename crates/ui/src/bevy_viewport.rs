@@ -181,7 +181,11 @@ impl Focusable for BevyViewport {
 impl EventEmitter<DismissEvent> for BevyViewport {}
 
 impl Render for BevyViewport {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Request continuous animation frames for live Bevy rendering updates
+        // This creates a smooth render loop at the display's refresh rate
+        window.request_animation_frame();
+        
         let state = self.state.read();
         
         // Return a div that does NOT block mouse events - they bubble up to parent!
