@@ -23,25 +23,28 @@ use device_query::{DeviceQuery, DeviceState, Keycode, MouseState};
 
 // Windows API for cursor management
 #[cfg(target_os = "windows")]
-use winapi::um::winuser::{ShowCursor, SetCursorPos, GetCursorPos};
+use winapi::um::winuser::{ShowCursor, SetCursorPos, GetCursorPos, SetCursor};
 #[cfg(target_os = "windows")]
 use winapi::shared::windef::POINT;
+#[cfg(target_os = "windows")]
+use std::ptr;
 
 /// Helper function to hide the Windows cursor
 #[cfg(target_os = "windows")]
 fn hide_cursor() {
     unsafe {
-        // ShowCursor uses a display counter - call it until cursor is hidden
-        while ShowCursor(0) >= 0 {}
+        // Set cursor to NULL to hide it completely
+        SetCursor(ptr::null_mut());
     }
 }
 
-/// Helper function to show the Windows cursor
+/// Helper function to show the Windows cursor  
 #[cfg(target_os = "windows")]
 fn show_cursor() {
     unsafe {
-        // ShowCursor uses a display counter - call it until cursor is shown
-        while ShowCursor(1) < 0 {}
+        // Load the standard arrow cursor
+        let cursor = winapi::um::winuser::LoadCursorW(ptr::null_mut(), winapi::um::winuser::IDC_ARROW);
+        SetCursor(cursor);
     }
 }
 
@@ -333,7 +336,14 @@ impl ViewportPanel {
                     // Poll raw mouse and keyboard state
                     let mouse: MouseState = device_state.get_mouse();
                     let keys: Vec<Keycode> = device_state.get_keys();
-                    let right_pressed = mouse.button_pressed[1]; // Right button (index 1, not 3!)
+                    
+                    // Debug: Print all button states when any button is pressed
+                    let any_button = mouse.button_pressed.iter().any(|&b| b);
+                    if any_button {
+                        println!("[INPUT-THREAD] Button states: {:?}", mouse.button_pressed);
+                    }
+                    
+                    let right_pressed = mouse.button_pressed[1]; // Right button (index 1)
                     let shift_pressed = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
                     
                     // NEW BINDINGS:
@@ -343,6 +353,7 @@ impl ViewportPanel {
                     // Detect right button press/release and handle based on Shift state
                     if right_pressed && !right_was_pressed {
                         // Right button just pressed
+                        println!("[INPUT-THREAD] ========== RIGHT BUTTON DETECTED ==========");
                         let (x, y) = get_cursor_position();
                         locked_cursor_x.store(x, Ordering::Relaxed);
                         locked_cursor_y.store(y, Ordering::Relaxed);
@@ -361,9 +372,12 @@ impl ViewportPanel {
                             mouse_right_captured.store(true, Ordering::Relaxed);
                             println!("[INPUT-THREAD] Right pressed - ROTATION mode, locked cursor at ({}, {})", x, y);
                         }
+                        println!("[INPUT-THREAD] Calling hide_cursor()...");
                         hide_cursor();
+                        println!("[INPUT-THREAD] hide_cursor() completed");
                     } else if !right_pressed && right_was_pressed {
                         // Right button just released
+                        println!("[INPUT-THREAD] ========== RIGHT BUTTON RELEASED ==========");
                         if is_rotating {
                             mouse_right_captured.store(false, Ordering::Relaxed);
                             is_rotating = false;
@@ -378,7 +392,9 @@ impl ViewportPanel {
                         let lock_x = locked_cursor_x.load(Ordering::Relaxed);
                         let lock_y = locked_cursor_y.load(Ordering::Relaxed);
                         lock_cursor_position(lock_x, lock_y);
+                        println!("[INPUT-THREAD] Calling show_cursor()...");
                         show_cursor();
+                        println!("[INPUT-THREAD] show_cursor() completed");
                         last_mouse_pos = None;
                     }
                     

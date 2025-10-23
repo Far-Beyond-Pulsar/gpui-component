@@ -89,7 +89,6 @@ impl PhysicsEngine {
             );
 
             let ball_body = &self.rigid_body_set[ball_body_handle];
-            println!("Ball altitude: {}", ball_body.translation().y);
 
             tokio::time::sleep(std::time::Duration::from_millis(8)).await; // Approx ~60 FPS
         }
