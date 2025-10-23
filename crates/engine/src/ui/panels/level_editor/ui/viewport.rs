@@ -300,7 +300,11 @@ impl ViewportPanel {
         
         // Clone atomics for mouse tracking - NO RefCell!
         let last_mouse_x = self.last_mouse_x.clone();
+        let last_mouse_x_down = self.last_mouse_x.clone();
+        let last_mouse_x_up = self.last_mouse_x.clone();
         let last_mouse_y = self.last_mouse_y.clone();
+        let last_mouse_y_down = self.last_mouse_y.clone();
+        let last_mouse_y_up = self.last_mouse_y.clone();
         
         let mouse_right_down = self.mouse_right_captured.clone();
         let mouse_right_move = self.mouse_right_captured.clone();
@@ -310,6 +314,10 @@ impl ViewportPanel {
         let mouse_middle_down = self.mouse_middle_captured.clone();
         let mouse_middle_move = self.mouse_middle_captured.clone();
         let mouse_middle_up = self.mouse_middle_captured.clone();
+        let mouse_middle_down_last_x = self.last_mouse_x.clone();
+        let mouse_middle_down_last_y = self.last_mouse_y.clone();
+        let mouse_middle_up_last_x = self.last_mouse_x.clone();
+        let mouse_middle_up_last_y = self.last_mouse_y.clone();
         
         let mut viewport_div = div()
             .flex() // Enable flexbox
@@ -362,16 +370,32 @@ impl ViewportPanel {
                     )
                     .on_mouse_down(
                         gpui::MouseButton::Right,
-                        move |_event: &MouseDownEvent, _phase, _cx| {
-                            // Just set atomic flag - no RefCell!
+                        move |event: &MouseDownEvent, _phase, cx| {
+                            // Initialize last mouse position with current position to prevent jump
+                            let x_f32: f32 = event.position.x.into();
+                            let y_f32: f32 = event.position.y.into();
+                            last_mouse_x_down.store((x_f32 * 1000.0) as i32, Ordering::Relaxed);
+                            last_mouse_y_down.store((y_f32 * 1000.0) as i32, Ordering::Relaxed);
+                            
+                            // Set captured flag
                             mouse_right_down.store(true, Ordering::Relaxed);
+                            
+                            // Hide cursor during camera rotation
+                            cx.hide_cursor();
                         },
                     )
                     .on_mouse_up(
                         gpui::MouseButton::Right,
-                        move |_event: &MouseUpEvent, _phase, _cx| {
-                            // Just clear atomic flag - no RefCell!
+                        move |_event: &MouseUpEvent, _phase, cx| {
+                            // Clear captured flag
                             mouse_right_up.store(false, Ordering::Relaxed);
+                            
+                            // Reset last mouse position to prevent jump on next drag
+                            last_mouse_x_up.store(0, Ordering::Relaxed);
+                            last_mouse_y_up.store(0, Ordering::Relaxed);
+                            
+                            // Show cursor again
+                            cx.show_cursor();
                         },
                     )
                     .on_mouse_move(move |event: &MouseMoveEvent, _phase, _cx| {
