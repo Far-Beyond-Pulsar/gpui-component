@@ -343,20 +343,21 @@ impl ViewportPanel {
                     // Sleep for ~8ms (~120Hz processing rate)
                     std::thread::sleep(std::time::Duration::from_millis(8));
                     
-                    // Poll mouse and keyboard state ALWAYS (no focus check needed)
+                    // Poll mouse state ALWAYS
                     let mouse: MouseState = device_state.get_mouse();
-                    let keys: Vec<Keycode> = device_state.get_keys();
                     let right_pressed = mouse.button_pressed[1]; // Right button
-                    let shift_pressed = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
                     
-                    // SIMPLE RULE: Input only works while mouse button is HELD
+                    // SIMPLE RULE: Input ONLY works while mouse button is HELD
                     // Right click alone = Rotate camera (standard FPS controls)
                     // Shift + Right click = Pan camera (modifier for alternate mode)
                     
                     // Check if right button state changed
                     if right_pressed && !right_was_pressed {
-                        // Right button just pressed
-                        println!("[INPUT-THREAD] ========== RIGHT BUTTON PRESSED (viewport focused) ==========");
+                        // Right button just pressed - poll keyboard to check shift
+                        let keys: Vec<Keycode> = device_state.get_keys();
+                        let shift_pressed = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
+                        
+                        println!("[INPUT-THREAD] ========== RIGHT BUTTON PRESSED ==========");
                         let (x, y) = get_cursor_position();
                         locked_cursor_x.store(x, Ordering::Relaxed);
                         locked_cursor_y.store(y, Ordering::Relaxed);
@@ -367,44 +368,60 @@ impl ViewportPanel {
                             is_panning = true;
                             is_rotating = false;
                             mouse_middle_captured.store(true, Ordering::Relaxed);
-                            println!("[INPUT-THREAD] Shift+Right pressed - PAN mode, locked cursor at ({}, {})", x, y);
+                            println!("[INPUT-THREAD] Shift+Right pressed - PAN mode");
                         } else {
                             // Right alone = Rotation (standard behavior)
                             is_rotating = true;
                             is_panning = false;
                             mouse_right_captured.store(true, Ordering::Relaxed);
-                            println!("[INPUT-THREAD] Right pressed - ROTATION mode, locked cursor at ({}, {})", x, y);
+                            println!("[INPUT-THREAD] Right pressed - ROTATION mode");
                         }
-                        println!("[INPUT-THREAD] Calling hide_cursor()...");
                         hide_cursor();
-                        println!("[INPUT-THREAD] hide_cursor() completed");
                         right_was_pressed = true;
                     } else if !right_pressed && right_was_pressed {
-                        // Right button just released
+                        // Right button just released - STOP ALL INPUT
                         println!("[INPUT-THREAD] ========== RIGHT BUTTON RELEASED ==========");
                         if is_rotating {
                             mouse_right_captured.store(false, Ordering::Relaxed);
                             is_rotating = false;
-                            println!("[INPUT-THREAD] Rotation released");
                         }
                         if is_panning {
                             mouse_middle_captured.store(false, Ordering::Relaxed);
                             is_panning = false;
-                            println!("[INPUT-THREAD] Pan released");
                         }
+                        
+                        // Clear all input atomics
+                        input_state_for_thread.forward.store(0, Ordering::Relaxed);
+                        input_state_for_thread.right.store(0, Ordering::Relaxed);
+                        input_state_for_thread.up.store(0, Ordering::Relaxed);
                         
                         let lock_x = locked_cursor_x.load(Ordering::Relaxed);
                         let lock_y = locked_cursor_y.load(Ordering::Relaxed);
                         lock_cursor_position(lock_x, lock_y);
-                        println!("[INPUT-THREAD] Calling show_cursor()...");
                         show_cursor();
-                        println!("[INPUT-THREAD] show_cursor() completed");
                         last_mouse_pos = None;
                         right_was_pressed = false;
                     }
                     
-                    // If button is held, calculate mouse delta and reset cursor
+                    // ONLY process input while button is HELD
                     if is_rotating || is_panning {
+                        // Poll keyboard for WASD ONLY while button held
+                        let keys: Vec<Keycode> = device_state.get_keys();
+                        
+                        // Update WASD input
+                        let forward = if keys.contains(&Keycode::W) { 1 } else if keys.contains(&Keycode::S) { -1 } else { 0 };
+                        let right = if keys.contains(&Keycode::D) { 1 } else if keys.contains(&Keycode::A) { -1 } else { 0 };
+                        let up = if keys.contains(&Keycode::E) || keys.contains(&Keycode::Space) { 1 } 
+                                else if keys.contains(&Keycode::Q) || keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift) { -1 } 
+                                else { 0 };
+                        let boost = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
+                        
+                        input_state_for_thread.forward.store(forward, Ordering::Relaxed);
+                        input_state_for_thread.right.store(right, Ordering::Relaxed);
+                        input_state_for_thread.up.store(up, Ordering::Relaxed);
+                        input_state_for_thread.boost.store(boost, Ordering::Relaxed);
+                        
+                        // Calculate mouse delta and reset cursor
                         let (current_x, current_y) = get_cursor_position();
                         
                         if let Some((last_x, last_y)) = last_mouse_pos {
@@ -528,36 +545,7 @@ impl ViewportPanel {
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
-            .track_focus(&self.focus_handle) // Need focus for WASD keys
-            .on_key_down(move |event: &gpui::KeyDownEvent, _phase, _cx| {
-                // GPUI automatically filters key events to focused elements via track_focus
-                let key = &event.keystroke.key;
-                
-                // ESC handled - GPUI will blur automatically when user clicks elsewhere
-                // No manual blur needed as focus system handles it
-                
-                // ULTRA FAST PATH: Update atomics directly, no allocations, no hashing, no RefCell!
-                match key.as_ref() {
-                    "w" | "W" => input_state_key_down.forward.store(1, Ordering::Relaxed),
-                    "s" | "S" => input_state_key_down.forward.store(-1, Ordering::Relaxed),
-                    "d" | "D" => input_state_key_down.right.store(1, Ordering::Relaxed),
-                    "a" | "A" => input_state_key_down.right.store(-1, Ordering::Relaxed),
-                    "e" | "E" | "space" | " " => input_state_key_down.up.store(1, Ordering::Relaxed), // Up: E or Space
-                    "q" | "Q" | "shift" => input_state_key_down.up.store(-1, Ordering::Relaxed), // Down: Q or Shift
-                    _ => return, // Ignore all other keys instantly
-                }
-            })
-            .on_key_up(move |event: &gpui::KeyUpEvent, _phase, _cx| {
-                // GPUI automatically filters key events to focused elements via track_focus
-                // ULTRA FAST PATH: Update atomics directly, no allocations, no hashing, no RefCell!
-                let key = &event.keystroke.key;
-                match key.as_ref() {
-                    "w" | "W" | "s" | "S" => input_state_key_up.forward.store(0, Ordering::Relaxed),
-                    "d" | "D" | "a" | "A" => input_state_key_up.right.store(0, Ordering::Relaxed),
-                    "e" | "E" | "q" | "Q" | "space" | " " | "shift" => input_state_key_up.up.store(0, Ordering::Relaxed),
-                    _ => return, // Ignore all other keys instantly
-                }
-            })
+            // NO GPUI key handlers - input thread handles ALL input when mouse held
             .child(
                 // Main viewport - input thread handles ALL mouse/keyboard when focused
                 div()
