@@ -37,7 +37,7 @@ bevy = { version = "0.17.2", default-features = false, features = [
 wgpu = "26"
 wgpu-hal = "26"
 wgpu-types = "26"
-wgpu-profiler = "0.18"  # Real GPU profiling with timestamp queries
+wgpu-profiler = "0.19"
 image = "0.25"
 bytemuck = { version = "1.14", features = ["derive"] }
 crossbeam-channel = "0.5"

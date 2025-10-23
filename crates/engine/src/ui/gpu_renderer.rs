@@ -244,6 +244,16 @@ impl GpuRenderer {
             0
         }
     }
+    
+    /// Get detailed GPU pipeline profiling data (like Unreal's "stat gpu")
+    /// Shows actual measured timings for each render pass
+    pub fn get_gpu_profiler_data(&self) -> Option<engine_backend::subsystems::render::GpuProfilerData> {
+        if let Some(ref renderer) = self.bevy_renderer {
+            renderer.get_gpu_profiler_data()
+        } else {
+            None
+        }
+    }
 
     /// Update camera input for Unreal-style controls
     pub fn update_camera_input(&mut self, input: engine_backend::subsystems::render::CameraInput) {

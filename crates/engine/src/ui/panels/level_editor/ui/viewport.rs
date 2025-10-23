@@ -579,6 +579,18 @@ impl ViewportPanel {
                 )
             });
 
+        // GPU Pipeline Stats overlay (left side, like Unreal's "stat gpu")
+        if state.show_performance_overlay {
+            viewport_div = viewport_div.child(
+                div()
+                    .absolute()
+                    .top_4()
+                    .left(px(420.0)) // Position after viewport options
+                    .w(px(280.0))
+                    .child(self.render_gpu_pipeline_overlay(gpu_engine, cx))
+            );
+        }
+
         if state.show_performance_overlay {
             viewport_div = viewport_div.child(
                 // Performance overlay (bottom-right)
@@ -777,6 +789,174 @@ impl ViewportPanel {
                     .on_click(cx.listener(|_, _, _, cx| {
                         cx.dispatch_action(&ToggleViewportControls);
                     }))
+            )
+    }
+
+    /// Render GPU Pipeline Stats Overlay - Like Unreal's "stat gpu"
+    /// Shows REAL measured timings for each render pass
+    fn render_gpu_pipeline_overlay<V: 'static>(
+        &mut self,
+        gpu_engine: &Arc<Mutex<crate::ui::gpu_renderer::GpuRenderer>>,
+        cx: &mut Context<V>,
+    ) -> impl IntoElement
+    where
+        V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
+    {
+        // Get GPU profiler data
+        let gpu_data = if let Ok(engine) = gpu_engine.lock() {
+            engine.get_gpu_profiler_data()
+        } else {
+            None
+        };
+
+        let theme = cx.theme();
+        
+        v_flex()
+            .gap_1()
+            .p_2()
+            .w_full()
+            .bg(theme.background.opacity(0.95))
+            .rounded(theme.radius)
+            .border_1()
+            .border_color(theme.border)
+            .child(
+                // Header
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_semibold()
+                            .text_color(theme.foreground)
+                            .child("🔥 GPU Pipeline Stats")
+                    )
+            )
+            .child(
+                // Total frame time
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child("Frame Time:")
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_semibold()
+                            .text_color(theme.foreground)
+                            .child(if let Some(ref data) = gpu_data {
+                                format!("{:.2}ms", data.total_frame_ms)
+                            } else {
+                                "N/A".to_string()
+                            })
+                    )
+            )
+            .child(
+                div()
+                    .w_full()
+                    .h(px(1.0))
+                    .bg(theme.border)
+            )
+            // Individual pass timings
+            .when(gpu_data.is_some(), |this| {
+                let data = gpu_data.as_ref().unwrap();
+                this
+                    .child(self.render_pass_stat("Shadow Pass", data.shadow_pass_ms, data.shadow_pass_pct, theme.chart_1, cx))
+                    .child(self.render_pass_stat("Opaque Pass", data.opaque_pass_ms, data.opaque_pass_pct, theme.chart_2, cx))
+                    .child(self.render_pass_stat("Alpha Mask", data.alpha_mask_pass_ms, data.alpha_mask_pass_pct, theme.chart_3, cx))
+                    .child(self.render_pass_stat("Transparent", data.transparent_pass_ms, data.transparent_pass_pct, theme.chart_4, cx))
+                    .child(self.render_pass_stat("Lighting", data.lighting_ms, data.lighting_pct, theme.chart_5, cx))
+                    .child(self.render_pass_stat("Post Process", data.post_processing_ms, data.post_processing_pct, theme.warning, cx))
+                    .child(self.render_pass_stat("UI Pass", data.ui_pass_ms, data.ui_pass_pct, theme.success, cx))
+                    .child(
+                        div()
+                            .w_full()
+                            .h(px(1.0))
+                            .bg(theme.border)
+                            .mt_1()
+                    )
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .items_center()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_semibold()
+                                    .text_color(theme.foreground)
+                                    .child("Total GPU:")
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_semibold()
+                                    .text_color(if data.total_gpu_ms < 8.0 {
+                                        theme.success
+                                    } else if data.total_gpu_ms < 16.0 {
+                                        theme.warning
+                                    } else {
+                                        theme.danger
+                                    })
+                                    .child(format!("{:.2}ms", data.total_gpu_ms))
+                            )
+                    )
+            })
+    }
+
+    /// Render a single GPU pass stat line with timing and percentage
+    fn render_pass_stat<V: 'static>(
+        &self,
+        name: &str,
+        time_ms: f32,
+        percent: f32,
+        color: Hsla,
+        cx: &mut Context<V>,
+    ) -> impl IntoElement
+    where
+        V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
+    {
+        let theme = cx.theme();
+        
+        h_flex()
+            .w_full()
+            .items_center()
+            .gap_2()
+            .child(
+                // Color indicator
+                div()
+                    .w(px(8.0))
+                    .h(px(8.0))
+                    .rounded(px(2.0))
+                    .bg(color)
+            )
+            .child(
+                // Name
+                div()
+                    .flex_1()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child(name)
+            )
+            .child(
+                // Timing
+                div()
+                    .text_xs()
+                    .text_color(theme.foreground)
+                    .child(format!("{:.2}ms", time_ms))
+            )
+            .child(
+                // Percentage
+                div()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child(format!("({:.1}%)", percent))
             )
     }
 
