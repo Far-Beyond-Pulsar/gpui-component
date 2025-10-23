@@ -541,7 +541,8 @@ impl ViewportPanel {
         let locked_cursor_y_middle_up = self.locked_cursor_y.clone();
         let locked_cursor_x_middle_move = self.locked_cursor_x.clone();
         let locked_cursor_y_middle_move = self.locked_cursor_y.clone();
-        // Clone viewport hovered flag - not needed since focus events handle it
+        // Clone focus handle for the mouse down handler
+        let focus_handle_click = self.focus_handle.clone();
         
         let mut viewport_div = div()
             .flex() // Enable flexbox
@@ -554,6 +555,10 @@ impl ViewportPanel {
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
             .track_focus(&self.focus_handle)
+            .on_mouse_down(gpui::MouseButton::Left, move |_, window, _| {
+                // Focus the viewport when clicked (using GPUI's focus system)
+                focus_handle_click.focus(window);
+            })
             .on_key_down(move |event: &gpui::KeyDownEvent, _phase, _cx| {
                 // GPUI automatically filters key events to focused elements via track_focus
                 let key = &event.keystroke.key;
