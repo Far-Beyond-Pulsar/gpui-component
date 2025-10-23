@@ -500,47 +500,7 @@ impl ViewportPanel {
                 }
             });
         }
-        
-        // Clone input state for closures (lock-free!)
-        let input_state_key_down = self.input_state.clone();
-        let input_state_key_up = self.input_state.clone();
-        let input_state_mouse = self.input_state.clone();
-        let input_state_scroll = self.input_state.clone();
-        
-        // Clone atomics for mouse tracking - NO RefCell!
-        let last_mouse_x = self.last_mouse_x.clone();
-        let last_mouse_x_down = self.last_mouse_x.clone();
-        let last_mouse_x_up = self.last_mouse_x.clone();
-        let last_mouse_y = self.last_mouse_y.clone();
-        let last_mouse_y_down = self.last_mouse_y.clone();
-        let last_mouse_y_up = self.last_mouse_y.clone();
-        
-        let mouse_right_down = self.mouse_right_captured.clone();
-        let mouse_right_move = self.mouse_right_captured.clone();
-        let mouse_right_up = self.mouse_right_captured.clone();
-        let mouse_right_scroll = self.mouse_right_captured.clone();
-        
-        let mouse_middle_down = self.mouse_middle_captured.clone();
-        let mouse_middle_move = self.mouse_middle_captured.clone();
-        let mouse_middle_up = self.mouse_middle_captured.clone();
-        let mouse_middle_down_last_x = self.last_mouse_x.clone();
-        let mouse_middle_down_last_y = self.last_mouse_y.clone();
-        let mouse_middle_up_last_x = self.last_mouse_x.clone();
-        let mouse_middle_up_last_y = self.last_mouse_y.clone();
-        
-        // Clone locked cursor position atomics
-        let locked_cursor_x_down = self.locked_cursor_x.clone();
-        let locked_cursor_y_down = self.locked_cursor_y.clone();
-        let locked_cursor_x_up = self.locked_cursor_x.clone();
-        let locked_cursor_y_up = self.locked_cursor_y.clone();
-        let locked_cursor_x_move = self.locked_cursor_x.clone();
-        let locked_cursor_y_move = self.locked_cursor_y.clone();
-        let locked_cursor_x_middle_down = self.locked_cursor_x.clone();
-        let locked_cursor_y_middle_down = self.locked_cursor_y.clone();
-        let locked_cursor_x_middle_up = self.locked_cursor_x.clone();
-        let locked_cursor_y_middle_up = self.locked_cursor_y.clone();
-        let locked_cursor_x_middle_move = self.locked_cursor_x.clone();
-        let locked_cursor_y_middle_move = self.locked_cursor_y.clone();
+
         // Clone the viewport_hovered flag for mouse down detection
         let viewport_mouse_down = self.viewport_hovered.clone();
         
