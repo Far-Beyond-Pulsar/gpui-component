@@ -31,7 +31,8 @@ use winapi::shared::windef::POINT;
 #[cfg(target_os = "windows")]
 fn hide_cursor() {
     unsafe {
-        ShowCursor(0); // 0 = hide
+        // ShowCursor uses a display counter - call it until cursor is hidden
+        while ShowCursor(0) >= 0 {}
     }
 }
 
@@ -39,7 +40,8 @@ fn hide_cursor() {
 #[cfg(target_os = "windows")]
 fn show_cursor() {
     unsafe {
-        ShowCursor(1); // 1 = show
+        // ShowCursor uses a display counter - call it until cursor is shown
+        while ShowCursor(1) < 0 {}
     }
 }
 
