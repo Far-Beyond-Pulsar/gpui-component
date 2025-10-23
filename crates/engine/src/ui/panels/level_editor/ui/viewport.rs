@@ -326,10 +326,11 @@ impl ViewportPanel {
             let mouse_middle_captured = self.mouse_middle_captured.clone();
             let locked_cursor_x = self.locked_cursor_x.clone();
             let locked_cursor_y = self.locked_cursor_y.clone();
+            let viewport_clicked = self.viewport_hovered.clone(); // Tracks if right-click was ON viewport
             
             std::thread::spawn(move || {
                 println!("[INPUT-THREAD] 🚀 Dedicated RAW INPUT processing thread started");
-                println!("[INPUT-THREAD] Input active ONLY while mouse button held");
+                println!("[INPUT-THREAD] Input active ONLY when right-click starts ON viewport");
                 let device_state = DeviceState::new();
                 let mut last_mouse_pos: Option<(i32, i32)> = None;
                 let mut right_was_pressed = false;
@@ -347,13 +348,16 @@ impl ViewportPanel {
                     let mouse: MouseState = device_state.get_mouse();
                     let right_pressed = mouse.button_pressed[1]; // Right button
                     
-                    // SIMPLE RULE: Input ONLY works while mouse button is HELD
+                    // Check if GPUI signaled that right-click happened ON viewport
+                    let clicked_on_viewport = viewport_clicked.load(Ordering::Relaxed);
+                    
+                    // CRITICAL: Only start processing if click originated ON viewport
                     // Right click alone = Rotate camera (standard FPS controls)
                     // Shift + Right click = Pan camera (modifier for alternate mode)
                     
                     // Check if right button state changed
-                    if right_pressed && !right_was_pressed {
-                        // Right button just pressed - poll keyboard to check shift
+                    if right_pressed && !right_was_pressed && clicked_on_viewport {
+                        // Right button just pressed AND was on viewport - poll keyboard to check shift
                         let keys: Vec<Keycode> = device_state.get_keys();
                         let shift_pressed = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
                         
@@ -389,6 +393,9 @@ impl ViewportPanel {
                             mouse_middle_captured.store(false, Ordering::Relaxed);
                             is_panning = false;
                         }
+                        
+                        // Clear the viewport clicked flag
+                        viewport_clicked.store(false, Ordering::Relaxed);
                         
                         // Clear all input atomics
                         input_state_for_thread.forward.store(0, Ordering::Relaxed);
@@ -534,6 +541,8 @@ impl ViewportPanel {
         let locked_cursor_y_middle_up = self.locked_cursor_y.clone();
         let locked_cursor_x_middle_move = self.locked_cursor_x.clone();
         let locked_cursor_y_middle_move = self.locked_cursor_y.clone();
+        // Clone the viewport_hovered flag for mouse down detection
+        let viewport_mouse_down = self.viewport_hovered.clone();
         
         let mut viewport_div = div()
             .flex() // Enable flexbox
@@ -546,6 +555,11 @@ impl ViewportPanel {
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
             // NO GPUI key handlers - input thread handles ALL input when mouse held
+            .on_mouse_down(gpui::MouseButton::Left, move |_, _, _| {
+                // Right-click on viewport - enable input thread
+                viewport_mouse_down.store(true, Ordering::Relaxed);
+                println!("[VIEWPORT] Right-click ON viewport - input enabled");
+            })
             .child(
                 // Main viewport - input thread handles ALL mouse/keyboard when focused
                 div()
