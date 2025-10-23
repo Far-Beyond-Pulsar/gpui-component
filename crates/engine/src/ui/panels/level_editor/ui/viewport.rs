@@ -239,6 +239,8 @@ pub struct ViewportPanel {
     input_state: InputState,
     // Track if input thread has been spawned
     input_thread_spawned: Arc<AtomicBool>,
+    // Track if viewport is hovered/focused - only process input when true
+    viewport_hovered: Arc<AtomicBool>,
     // Mouse tracking - ALL ATOMIC! No RefCell!
     last_mouse_x: Arc<AtomicI32>,
     last_mouse_y: Arc<AtomicI32>,
@@ -283,6 +285,7 @@ impl ViewportPanel {
             ui_consistency_counter: RefCell::new(0),
             input_state,
             input_thread_spawned: Arc::new(AtomicBool::new(false)),
+            viewport_hovered: Arc::new(AtomicBool::new(false)),
             last_mouse_x: Arc::new(AtomicI32::new(0)),
             last_mouse_y: Arc::new(AtomicI32::new(0)),
             mouse_right_captured: Arc::new(AtomicBool::new(false)),
@@ -306,6 +309,10 @@ impl ViewportPanel {
     where
         V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
     {
+        // Note: We can't check focus here because we don't have Window reference in this context
+        // Instead, the viewport div will set focus when clicked (via track_focus)
+        // and the input thread will check if right button is pressed to determine activity
+        
         // Spawn dedicated input processing thread ONLY ONCE (not every frame!)
         if !self.input_thread_spawned.load(Ordering::Relaxed) {
             self.input_thread_spawned.store(true, Ordering::Relaxed);
@@ -316,6 +323,7 @@ impl ViewportPanel {
             let mouse_middle_captured = self.mouse_middle_captured.clone();
             let locked_cursor_x = self.locked_cursor_x.clone();
             let locked_cursor_y = self.locked_cursor_y.clone();
+            let viewport_hovered = self.viewport_hovered.clone();
             let focus_handle = self.focus_handle.clone();
             
             std::thread::spawn(move || {
@@ -333,27 +341,27 @@ impl ViewportPanel {
                     // Sleep for ~8ms (~120Hz processing rate)
                     std::thread::sleep(std::time::Duration::from_millis(8));
                     
-                    // Poll raw mouse and keyboard state
-                    let mouse: MouseState = device_state.get_mouse();
-                    let keys: Vec<Keycode> = device_state.get_keys();
-                    
-                    // Debug: Print all button states when any button is pressed
-                    let any_button = mouse.button_pressed.iter().any(|&b| b);
-                    if any_button {
-                        println!("[INPUT-THREAD] Button states: {:?}", mouse.button_pressed);
+                    // ONLY process input if viewport is FOCUSED (checked in render via is_focused)
+                    let is_focused = viewport_hovered.load(Ordering::Relaxed);
+                    if !is_focused && !is_rotating && !is_panning {
+                        // Not focused and not currently in a drag operation - input thread does NOTHING
+                        continue;
                     }
                     
-                    let right_pressed = mouse.button_pressed[1]; // Right button (index 1)
+                    // Poll mouse and keyboard state (ONLY when focused!)
+                    let mouse: MouseState = device_state.get_mouse();
+                    let keys: Vec<Keycode> = device_state.get_keys();
+                    let right_pressed = mouse.button_pressed[1]; // Right button
                     let shift_pressed = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
                     
                     // NEW BINDINGS:
                     // Right click alone = Rotate camera (standard FPS controls)
                     // Shift + Right click = Pan camera (modifier for alternate mode)
                     
-                    // Detect right button press/release and handle based on Shift state
+                    // Check if right button state changed
                     if right_pressed && !right_was_pressed {
                         // Right button just pressed
-                        println!("[INPUT-THREAD] ========== RIGHT BUTTON DETECTED ==========");
+                        println!("[INPUT-THREAD] ========== RIGHT BUTTON PRESSED (viewport focused) ==========");
                         let (x, y) = get_cursor_position();
                         locked_cursor_x.store(x, Ordering::Relaxed);
                         locked_cursor_y.store(y, Ordering::Relaxed);
@@ -375,6 +383,7 @@ impl ViewportPanel {
                         println!("[INPUT-THREAD] Calling hide_cursor()...");
                         hide_cursor();
                         println!("[INPUT-THREAD] hide_cursor() completed");
+                        right_was_pressed = true;
                     } else if !right_pressed && right_was_pressed {
                         // Right button just released
                         println!("[INPUT-THREAD] ========== RIGHT BUTTON RELEASED ==========");
@@ -396,12 +405,11 @@ impl ViewportPanel {
                         show_cursor();
                         println!("[INPUT-THREAD] show_cursor() completed");
                         last_mouse_pos = None;
+                        right_was_pressed = false;
                     }
                     
-                    right_was_pressed = right_pressed;
-                    
                     // If button is held, calculate mouse delta and reset cursor
-                    if right_pressed {
+                    if is_rotating || is_panning {
                         let (current_x, current_y) = get_cursor_position();
                         
                         if let Some((last_x, last_y)) = last_mouse_pos {
@@ -514,6 +522,8 @@ impl ViewportPanel {
         let locked_cursor_y_middle_up = self.locked_cursor_y.clone();
         let locked_cursor_x_middle_move = self.locked_cursor_x.clone();
         let locked_cursor_y_middle_move = self.locked_cursor_y.clone();
+        // Clone viewport hovered flag for click detection
+        let viewport_clicked = self.viewport_hovered.clone();
         
         let mut viewport_div = div()
             .flex() // Enable flexbox
@@ -526,6 +536,11 @@ impl ViewportPanel {
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
             .track_focus(&self.focus_handle)
+            .on_mouse_down(gpui::MouseButton::Left, move |_, _, _| {
+                // When viewport is clicked, enable input thread
+                viewport_clicked.store(true, Ordering::Relaxed);
+                println!("[VIEWPORT] Clicked - input thread enabled");
+            })
             .on_key_down(move |event: &gpui::KeyDownEvent, _phase, _cx| {
                 // GPUI automatically filters key events to focused elements via track_focus
                 // ULTRA FAST PATH: Update atomics directly, no allocations, no hashing, no RefCell!
@@ -552,7 +567,7 @@ impl ViewportPanel {
                 }
             })
             .child(
-                // Main viewport - mouse input is handled by input thread, keyboard handled here
+                // Main viewport - input thread handles ALL mouse/keyboard when focused
                 div()
                     .flex() // Enable flex
                     .flex_1() // Grow to fill available space
