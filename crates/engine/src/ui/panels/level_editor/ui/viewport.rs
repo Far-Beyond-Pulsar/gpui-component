@@ -18,6 +18,36 @@ use std::collections::VecDeque;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+// Windows API for cursor management
+#[cfg(target_os = "windows")]
+use winapi::um::winuser::{ShowCursor, SetCursor};
+
+/// Helper function to hide the Windows cursor
+#[cfg(target_os = "windows")]
+fn hide_cursor() {
+    unsafe {
+        ShowCursor(0); // 0 = hide
+    }
+}
+
+/// Helper function to show the Windows cursor
+#[cfg(target_os = "windows")]
+fn show_cursor() {
+    unsafe {
+        ShowCursor(1); // 1 = show
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn hide_cursor() {
+    // Placeholder for other platforms
+}
+
+#[cfg(not(target_os = "windows"))]
+fn show_cursor() {
+    // Placeholder for other platforms
+}
+
 /// Lock-free input state using atomics - no mutex contention!
 #[derive(Clone)]
 struct InputState {
@@ -380,7 +410,8 @@ impl ViewportPanel {
                             // Set captured flag
                             mouse_right_down.store(true, Ordering::Relaxed);
                             
-                            // TODO: Hide cursor during camera rotation (GPUI cursor management)
+                            // Hide cursor during camera rotation
+                            hide_cursor();
                         },
                     )
                     .on_mouse_up(
@@ -393,7 +424,8 @@ impl ViewportPanel {
                             last_mouse_x_up.store(0, Ordering::Relaxed);
                             last_mouse_y_up.store(0, Ordering::Relaxed);
                             
-                            // TODO: Show cursor again (GPUI cursor management)
+                            // Show cursor again
+                            show_cursor();
                         },
                     )
                     .on_mouse_move(move |event: &MouseMoveEvent, _phase, _cx| {
@@ -451,7 +483,8 @@ impl ViewportPanel {
                             // Set captured flag
                             mouse_middle_down.store(true, Ordering::Relaxed);
                             
-                            // TODO: Hide cursor during panning (GPUI cursor management)
+                            // Hide cursor during panning
+                            hide_cursor();
                         },
                     )
                     .on_mouse_up(
@@ -464,7 +497,8 @@ impl ViewportPanel {
                             mouse_middle_up_last_x.store(0, Ordering::Relaxed);
                             mouse_middle_up_last_y.store(0, Ordering::Relaxed);
                             
-                            // TODO: Show cursor again (GPUI cursor management)
+                            // Show cursor again
+                            show_cursor();
                         },
                     )
                     .child(self.viewport.clone())
