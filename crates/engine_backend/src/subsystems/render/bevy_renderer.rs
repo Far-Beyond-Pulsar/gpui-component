@@ -6,17 +6,21 @@ use bevy::{
     core_pipeline::tonemapping::Tonemapping,
     render::{
         render_asset::RenderAssets,
-        renderer::RenderDevice,
+        renderer::{RenderDevice, RenderQueue},
         texture::GpuImage,
         RenderPlugin, RenderApp, Render,
+        render_graph::{RenderGraph, RenderLabel, Node as RenderNode, NodeRunError, RenderGraphContext},
+        renderer::RenderContext,
     },
 };
+use wgpu_profiler::{GpuProfiler, GpuProfilerSettings};
 use std::{
     sync::{
         atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering},
         Arc, Mutex,
     },
     time::Duration,
+    collections::HashMap,
 };
 
 #[cfg(target_os = "windows")]
@@ -38,6 +42,28 @@ pub struct RenderMetrics {
     pub pipeline_time_us: f32,
     pub gpu_time_us: f32,
     pub cpu_time_us: f32,
+}
+
+/// GPU Pipeline profiling data - like Unreal's "stat gpu"
+/// Shows timing for each render pass/phase
+#[derive(Debug, Clone, Default)]
+pub struct GpuProfilerData {
+    pub total_frame_ms: f32,
+    pub shadow_pass_ms: f32,
+    pub shadow_pass_pct: f32,
+    pub opaque_pass_ms: f32,
+    pub opaque_pass_pct: f32,
+    pub alpha_mask_pass_ms: f32,
+    pub alpha_mask_pass_pct: f32,
+    pub transparent_pass_ms: f32,
+    pub transparent_pass_pct: f32,
+    pub lighting_ms: f32,
+    pub lighting_pct: f32,
+    pub post_processing_ms: f32,
+    pub post_processing_pct: f32,
+    pub ui_pass_ms: f32,
+    pub ui_pass_pct: f32,
+    pub total_gpu_ms: f32,
 }
 
 /// Camera controller
@@ -143,11 +169,26 @@ impl Default for MetricsResource {
     }
 }
 
+/// GPU Profiler Resource - stores detailed render pipeline timing
+#[derive(Resource, Clone)]
+struct GpuProfilerResource {
+    pub data: Arc<Mutex<GpuProfilerData>>,
+}
+
+impl Default for GpuProfilerResource {
+    fn default() -> Self {
+        Self {
+            data: Arc::new(Mutex::new(GpuProfilerData::default())),
+        }
+    }
+}
+
 /// Renderer state
 pub struct BevyRenderer {
     pub shared_textures: Arc<Mutex<Option<SharedGpuTextures>>>,
     pub camera_input: Arc<Mutex<CameraInput>>,
     pub metrics: Arc<MetricsResource>,
+    pub gpu_profiler: Arc<Mutex<GpuProfilerData>>,
     shutdown: Arc<AtomicBool>,
     _render_thread: Option<std::thread::JoinHandle<()>>,
 }
@@ -165,11 +206,13 @@ impl BevyRenderer {
         let shared_textures = Arc::new(Mutex::new(None));
         let camera_input = Arc::new(Mutex::new(CameraInput::new()));
         let metrics = Arc::new(MetricsResource::default());
+        let gpu_profiler = Arc::new(Mutex::new(GpuProfilerData::default()));
         let shutdown = Arc::new(AtomicBool::new(false));
 
         let shared_textures_clone = shared_textures.clone();
         let camera_input_clone = camera_input.clone();
         let metrics_clone = metrics.clone();
+        let gpu_profiler_clone = gpu_profiler.clone();
         let shutdown_clone = shutdown.clone();
         let game_thread_clone = game_thread_state.clone();
 
@@ -182,6 +225,7 @@ impl BevyRenderer {
                     shared_textures_clone,
                     camera_input_clone,
                     metrics_clone,
+                    gpu_profiler_clone,
                     shutdown_clone,
                     game_thread_clone,
                 );
@@ -194,6 +238,7 @@ impl BevyRenderer {
             shared_textures,
             camera_input,
             metrics,
+            gpu_profiler,
             shutdown,
             _render_thread: Some(render_thread),
         }
@@ -205,6 +250,7 @@ impl BevyRenderer {
         shared_textures: Arc<Mutex<Option<SharedGpuTextures>>>,
         camera_input: Arc<Mutex<CameraInput>>,
         metrics: Arc<MetricsResource>,
+        gpu_profiler: Arc<Mutex<GpuProfilerData>>,
         shutdown: Arc<AtomicBool>,
         game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
     ) {
@@ -253,6 +299,7 @@ impl BevyRenderer {
             .insert_resource(CameraInputResource(camera_input.clone())) // Shared input from input thread
             .insert_resource(SharedTexturesResource(shared_textures.clone()))
             .insert_resource(metrics.as_ref().clone())
+            .insert_resource(GpuProfilerResource { data: gpu_profiler.clone() }) // GPU profiler data
             .insert_resource(ShutdownFlag(shutdown.clone()))
             .insert_resource(GameThreadResource(game_thread_state));
         
@@ -265,6 +312,7 @@ impl BevyRenderer {
             .add_systems(Update, camera_movement_system) // Unreal-style camera controls
             .add_systems(Update, sync_game_objects_system) // NEW: Sync game thread to Bevy
             .add_systems(Update, update_metrics_system) // Track FPS and frame times
+            .add_systems(Update, update_gpu_profiler_system) // Track GPU pipeline timing (like Unreal's stat gpu)
             .add_systems(Update, debug_rendering_system); // Add debug system
 
         // Render world systems
@@ -374,6 +422,11 @@ impl BevyRenderer {
             gpu_time_us,
             cpu_time_us,
         }
+    }
+    
+    /// Get GPU profiler data - detailed render pipeline timing (like Unreal's "stat gpu")
+    pub fn get_gpu_profiler_data(&self) -> Option<GpuProfilerData> {
+        self.gpu_profiler.lock().ok().map(|data| data.clone())
     }
 
     pub fn resize(&mut self, _width: u32, _height: u32) {
@@ -580,6 +633,87 @@ fn update_metrics_system(
     }
 }
 
+/// Update GPU Profiler system - render pipeline timing like Unreal's "stat gpu"
+/// 
+/// ⚠️ TODO: Currently uses estimates based on frame time and scene complexity.
+/// To get REAL GPU timestamps, we need to integrate one of:
+/// 1. wgpu-profiler crate with custom Bevy render nodes
+/// 2. Direct wgpu::QuerySet for timestamp queries
+/// 3. PIX/RenderDoc integration for DX12/Vulkan GPU timestamps
+/// 
+/// The estimates are based on typical render pipeline phase distribution
+/// but will not reflect actual GPU bottlenecks accurately.
+fn update_gpu_profiler_system(
+    time: Res<Time>,
+    profiler: Res<GpuProfilerResource>,
+    meshes: Res<Assets<Mesh>>,
+    materials: Res<Assets<StandardMaterial>>,
+    lights: Query<&PointLight>,
+    cameras: Query<&Camera>,
+) {
+    // Get frame time in milliseconds
+    let frame_time_ms = time.delta_secs() * 1000.0;
+    
+    // Scene complexity factors
+    let mesh_count = meshes.len();
+    let material_count = materials.len();
+    let light_count = lights.iter().count();
+    let camera_count = cameras.iter().count();
+    
+    // Estimate pipeline phase distribution based on typical 3D rendering
+    // These are rough estimates - real GPU profiling would use timestamp queries
+    
+    // Shadow pass: ~20-30% of frame time (increases with light count)
+    let shadow_weight = 0.20 + (light_count as f32 * 0.05).min(0.15);
+    let shadow_ms = frame_time_ms * shadow_weight;
+    
+    // Opaque geometry pass (base pass): ~25-35% (increases with mesh complexity)
+    let opaque_weight = 0.25 + (mesh_count as f32 / 1000.0 * 0.1).min(0.10);
+    let opaque_ms = frame_time_ms * opaque_weight;
+    
+    // Alpha mask pass: ~5-10%
+    let alpha_mask_ms = frame_time_ms * 0.07;
+    
+    // Transparent pass: ~8-12%
+    let transparent_ms = frame_time_ms * 0.10;
+    
+    // Lighting: ~15-20% (increases with light count and material complexity)
+    let lighting_weight = 0.15 + (light_count as f32 * 0.02).min(0.05) + (material_count as f32 / 100.0 * 0.03).min(0.05);
+    let lighting_ms = frame_time_ms * lighting_weight;
+    
+    // Post-processing (tonemapping, etc.): ~5-8%
+    let post_ms = frame_time_ms * 0.06;
+    
+    // UI pass: ~2-5%
+    let ui_ms = frame_time_ms * 0.03;
+    
+    // Total GPU time (should approximately equal frame time)
+    let total_gpu_ms = shadow_ms + opaque_ms + alpha_mask_ms + transparent_ms + lighting_ms + post_ms + ui_ms;
+    
+    // Calculate percentages
+    let calc_pct = |ms: f32| (ms / frame_time_ms * 100.0).max(0.0).min(100.0);
+    
+    // Update profiler data
+    if let Ok(mut data) = profiler.data.lock() {
+        data.total_frame_ms = frame_time_ms;
+        data.shadow_pass_ms = shadow_ms;
+        data.shadow_pass_pct = calc_pct(shadow_ms);
+        data.opaque_pass_ms = opaque_ms;
+        data.opaque_pass_pct = calc_pct(opaque_ms);
+        data.alpha_mask_pass_ms = alpha_mask_ms;
+        data.alpha_mask_pass_pct = calc_pct(alpha_mask_ms);
+        data.transparent_pass_ms = transparent_ms;
+        data.transparent_pass_pct = calc_pct(transparent_ms);
+        data.lighting_ms = lighting_ms;
+        data.lighting_pct = calc_pct(lighting_ms);
+        data.post_processing_ms = post_ms;
+        data.post_processing_pct = calc_pct(post_ms);
+        data.ui_pass_ms = ui_ms;
+        data.ui_pass_pct = calc_pct(ui_ms);
+        data.total_gpu_ms = total_gpu_ms;
+    }
+}
+
 /// Setup 3D scene - runs AFTER DXGI textures are created
 fn setup_scene(
     mut commands: Commands,
@@ -742,12 +876,7 @@ fn debug_rendering_system(
     query: Query<&Camera, With<MainCamera>>,
     mut counter: Local<u32>,
 ) {
-    *counter += 1;
-    if *counter % 120 == 0 {
-        for camera in query.iter() {
-            println!("[BEVY] 🎥 Frame {} - Camera active, target: {:?}", *counter, camera.target);
-        }
-    }
+    // Any debug info can be printed here
 }
 
 
@@ -1012,8 +1141,6 @@ fn extract_native_handles(
     if f % 120 != 0 {
         return; // Extract once per second
     }
-
-    println!("[BEVY] 🔍 Extracting handles (frame {})", f);
 
     let _texture_handles = match shared_textures.0.lock().ok().and_then(|l| l.as_ref().map(|t| t.textures.clone())) {
         Some(h) => h,

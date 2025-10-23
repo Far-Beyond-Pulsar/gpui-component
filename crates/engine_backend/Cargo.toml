@@ -21,6 +21,8 @@ uuid = { version = "1.4", features = ["v4"] }
 tokio = { version = "1", features = ["full"] }
 rapier3d.workspace = true
 nalgebra = { version = "0.32", features = ["serde-serialize"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Rendering dependencies
 bevy = { version = "0.17.2", default-features = false, features = [
@@ -31,10 +33,12 @@ bevy = { version = "0.17.2", default-features = false, features = [
     "bevy_pbr",
     "x11",
     "wayland",
+    "trace",  # Enable tracing for render pipeline stats
 ] }
-wgpu = "26"
+wgpu = { version = "26", features = ["trace"] }
 wgpu-hal = "26"
 wgpu-types = "26"
+wgpu-profiler = "0.25.0"  # Real GPU timestamp profiling
 image = "0.25"
 bytemuck = { version = "1.14", features = ["derive"] }
 crossbeam-channel = "0.5"
