@@ -331,7 +331,7 @@ impl ViewportPanel {
                     // Poll raw mouse and keyboard state
                     let mouse: MouseState = device_state.get_mouse();
                     let keys: Vec<Keycode> = device_state.get_keys();
-                    let right_pressed = mouse.button_pressed[3]; // Right button
+                    let right_pressed = mouse.button_pressed[1]; // Right button (index 1, not 3!)
                     let shift_pressed = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
                     
                     // NEW BINDINGS:
