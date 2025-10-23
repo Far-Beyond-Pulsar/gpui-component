@@ -335,8 +335,8 @@ impl ViewportPanel {
                     let shift_pressed = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
                     
                     // NEW BINDINGS:
-                    // Right click alone = Pan (old middle mouse behavior)
-                    // Shift + Right click = Rotate camera (old right click behavior)
+                    // Right click alone = Rotate camera (standard FPS controls)
+                    // Shift + Right click = Pan camera (modifier for alternate mode)
                     
                     // Detect right button press/release and handle based on Shift state
                     if right_pressed && !right_was_pressed {
@@ -347,17 +347,17 @@ impl ViewportPanel {
                         last_mouse_pos = Some((x, y));
                         
                         if shift_pressed {
-                            // Shift + Right = Rotation
-                            is_rotating = true;
-                            is_panning = false;
-                            mouse_right_captured.store(true, Ordering::Relaxed);
-                            println!("[INPUT-THREAD] Shift+Right pressed - ROTATION mode, locked cursor at ({}, {})", x, y);
-                        } else {
-                            // Right alone = Panning
+                            // Shift + Right = Panning
                             is_panning = true;
                             is_rotating = false;
                             mouse_middle_captured.store(true, Ordering::Relaxed);
-                            println!("[INPUT-THREAD] Right pressed - PAN mode, locked cursor at ({}, {})", x, y);
+                            println!("[INPUT-THREAD] Shift+Right pressed - PAN mode, locked cursor at ({}, {})", x, y);
+                        } else {
+                            // Right alone = Rotation (standard behavior)
+                            is_rotating = true;
+                            is_panning = false;
+                            mouse_right_captured.store(true, Ordering::Relaxed);
+                            println!("[INPUT-THREAD] Right pressed - ROTATION mode, locked cursor at ({}, {})", x, y);
                         }
                         hide_cursor();
                     } else if !right_pressed && right_was_pressed {
@@ -393,12 +393,12 @@ impl ViewportPanel {
                             if dx != 0 || dy != 0 {
                                 // Store deltas in atomics based on mode
                                 if is_rotating {
-                                    // Shift + Right = Rotation (old right click behavior)
+                                    // Right alone = Rotation (standard FPS camera)
                                     input_state_for_thread.mouse_delta_x.fetch_add((dx as f32 * 1000.0) as i32, Ordering::Relaxed);
                                     input_state_for_thread.mouse_delta_y.fetch_add((dy as f32 * 1000.0) as i32, Ordering::Relaxed);
                                 }
                                 if is_panning {
-                                    // Right alone = Panning (old middle click behavior)
+                                    // Shift + Right = Panning
                                     input_state_for_thread.pan_delta_x.fetch_add((dx as f32 * 1000.0) as i32, Ordering::Relaxed);
                                     input_state_for_thread.pan_delta_y.fetch_add((dy as f32 * 1000.0) as i32, Ordering::Relaxed);
                                 }
