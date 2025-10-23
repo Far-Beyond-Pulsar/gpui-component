@@ -254,14 +254,32 @@ pub struct ViewportPanel {
     alt_pressed: Rc<RefCell<bool>>,
     // Focus handle for input
     focus_handle: FocusHandle,
+    // Focus subscriptions to track focus/blur events
+    _focus_subscriptions: Vec<Subscription>,
 }
 
 impl ViewportPanel {
-    pub fn new<V>(viewport: Entity<BevyViewport>, render_enabled: Arc<std::sync::atomic::AtomicBool>, cx: &mut Context<V>) -> Self
+    pub fn new<V>(viewport: Entity<BevyViewport>, render_enabled: Arc<std::sync::atomic::AtomicBool>, window: &mut Window, cx: &mut Context<V>) -> Self
     where
         V: 'static,
     {
         let input_state = InputState::new();
+        let focus_handle = cx.focus_handle();
+        let viewport_hovered = Arc::new(AtomicBool::new(false));
+        
+        // Subscribe to focus events to properly track when viewport is focused
+        let viewport_hovered_focus = viewport_hovered.clone();
+        let viewport_hovered_blur = viewport_hovered.clone();
+        let _focus_subscriptions = vec![
+            cx.on_focus(&focus_handle, window, move |_, _, _| {
+                viewport_hovered_focus.store(true, Ordering::Relaxed);
+                println!("[VIEWPORT] Focused - input thread enabled");
+            }),
+            cx.on_blur(&focus_handle, window, move |_, _, _| {
+                viewport_hovered_blur.store(false, Ordering::Relaxed);
+                println!("[VIEWPORT] Blurred - input thread disabled");
+            }),
+        ];
         
         Self {
             viewport,
@@ -285,7 +303,7 @@ impl ViewportPanel {
             ui_consistency_counter: RefCell::new(0),
             input_state,
             input_thread_spawned: Arc::new(AtomicBool::new(false)),
-            viewport_hovered: Arc::new(AtomicBool::new(false)),
+            viewport_hovered,
             last_mouse_x: Arc::new(AtomicI32::new(0)),
             last_mouse_y: Arc::new(AtomicI32::new(0)),
             mouse_right_captured: Arc::new(AtomicBool::new(false)),
@@ -294,7 +312,8 @@ impl ViewportPanel {
             locked_cursor_y: Arc::new(AtomicI32::new(0)),
             keys_pressed: Rc::new(RefCell::new(std::collections::HashSet::new())),
             alt_pressed: Rc::new(RefCell::new(false)),
-            focus_handle: cx.focus_handle(),
+            focus_handle,
+            _focus_subscriptions,
         }
     }
 
@@ -522,8 +541,7 @@ impl ViewportPanel {
         let locked_cursor_y_middle_up = self.locked_cursor_y.clone();
         let locked_cursor_x_middle_move = self.locked_cursor_x.clone();
         let locked_cursor_y_middle_move = self.locked_cursor_y.clone();
-        // Clone viewport hovered flag for click detection
-        let viewport_clicked = self.viewport_hovered.clone();
+        // Clone viewport hovered flag - not needed since focus events handle it
         
         let mut viewport_div = div()
             .flex() // Enable flexbox
@@ -536,15 +554,14 @@ impl ViewportPanel {
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
             .track_focus(&self.focus_handle)
-            .on_mouse_down(gpui::MouseButton::Left, move |_, _, _| {
-                // When viewport is clicked, enable input thread
-                viewport_clicked.store(true, Ordering::Relaxed);
-                println!("[VIEWPORT] Clicked - input thread enabled");
-            })
             .on_key_down(move |event: &gpui::KeyDownEvent, _phase, _cx| {
                 // GPUI automatically filters key events to focused elements via track_focus
-                // ULTRA FAST PATH: Update atomics directly, no allocations, no hashing, no RefCell!
                 let key = &event.keystroke.key;
+                
+                // ESC handled - GPUI will blur automatically when user clicks elsewhere
+                // No manual blur needed as focus system handles it
+                
+                // ULTRA FAST PATH: Update atomics directly, no allocations, no hashing, no RefCell!
                 match key.as_ref() {
                     "w" | "W" => input_state_key_down.forward.store(1, Ordering::Relaxed),
                     "s" | "S" => input_state_key_down.forward.store(-1, Ordering::Relaxed),

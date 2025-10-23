@@ -188,7 +188,7 @@ impl BevyRenderer {
             })
             .expect("Failed to spawn Bevy render thread");
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        // tokio::time::sleep(Duration::from_millis(500)).await;
 
         Self {
             shared_textures,
@@ -242,7 +242,7 @@ impl BevyRenderer {
         );
 
         app.add_plugins(bevy::app::ScheduleRunnerPlugin::run_loop(
-            Duration::from_secs_f64(1.0 / 120.0),
+            Duration::from_secs_f64(1.0 / 1000.0),
         ));
 
         println!("[BEVY] ✅ Plugins configured");

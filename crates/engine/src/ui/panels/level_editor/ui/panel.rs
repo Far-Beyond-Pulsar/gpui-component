@@ -173,7 +173,7 @@ impl LevelEditorPanel {
             scene_browser: SceneBrowser::new(),
             hierarchy: HierarchyPanel::new(),
             properties: PropertiesPanel::new(),
-            viewport_panel: ViewportPanel::new(viewport.clone(), render_enabled.clone(), cx),
+            viewport_panel: ViewportPanel::new(viewport.clone(), render_enabled.clone(), window, cx),
             toolbar: ToolbarPanel::new(),
             horizontal_resizable_state,
             vertical_resizable_state,
