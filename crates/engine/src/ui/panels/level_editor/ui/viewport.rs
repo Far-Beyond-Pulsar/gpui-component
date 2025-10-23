@@ -370,7 +370,7 @@ impl ViewportPanel {
                     )
                     .on_mouse_down(
                         gpui::MouseButton::Right,
-                        move |event: &MouseDownEvent, _phase, cx| {
+                        move |event: &MouseDownEvent, _phase, _cx| {
                             // Initialize last mouse position with current position to prevent jump
                             let x_f32: f32 = event.position.x.into();
                             let y_f32: f32 = event.position.y.into();
@@ -380,13 +380,12 @@ impl ViewportPanel {
                             // Set captured flag
                             mouse_right_down.store(true, Ordering::Relaxed);
                             
-                            // Hide cursor during camera rotation
-                            cx.hide_cursor();
+                            // TODO: Hide cursor during camera rotation (GPUI cursor management)
                         },
                     )
                     .on_mouse_up(
                         gpui::MouseButton::Right,
-                        move |_event: &MouseUpEvent, _phase, cx| {
+                        move |_event: &MouseUpEvent, _phase, _cx| {
                             // Clear captured flag
                             mouse_right_up.store(false, Ordering::Relaxed);
                             
@@ -394,8 +393,7 @@ impl ViewportPanel {
                             last_mouse_x_up.store(0, Ordering::Relaxed);
                             last_mouse_y_up.store(0, Ordering::Relaxed);
                             
-                            // Show cursor again
-                            cx.show_cursor();
+                            // TODO: Show cursor again (GPUI cursor management)
                         },
                     )
                     .on_mouse_move(move |event: &MouseMoveEvent, _phase, _cx| {
@@ -443,7 +441,7 @@ impl ViewportPanel {
                     })
                     .on_mouse_down(
                         gpui::MouseButton::Middle,
-                        move |event: &MouseDownEvent, _phase, cx| {
+                        move |event: &MouseDownEvent, _phase, _cx| {
                             // Initialize last mouse position with current position to prevent jump
                             let x_f32: f32 = event.position.x.into();
                             let y_f32: f32 = event.position.y.into();
@@ -453,13 +451,12 @@ impl ViewportPanel {
                             // Set captured flag
                             mouse_middle_down.store(true, Ordering::Relaxed);
                             
-                            // Hide cursor during panning
-                            cx.hide_cursor();
+                            // TODO: Hide cursor during panning (GPUI cursor management)
                         },
                     )
                     .on_mouse_up(
                         gpui::MouseButton::Middle,
-                        move |_event: &MouseUpEvent, _phase, cx| {
+                        move |_event: &MouseUpEvent, _phase, _cx| {
                             // Clear captured flag
                             mouse_middle_up.store(false, Ordering::Relaxed);
                             
@@ -467,8 +464,7 @@ impl ViewportPanel {
                             mouse_middle_up_last_x.store(0, Ordering::Relaxed);
                             mouse_middle_up_last_y.store(0, Ordering::Relaxed);
                             
-                            // Show cursor again
-                            cx.show_cursor();
+                            // TODO: Show cursor again (GPUI cursor management)
                         },
                     )
                     .child(self.viewport.clone())
