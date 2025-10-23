@@ -242,7 +242,7 @@ impl BevyRenderer {
         );
 
         app.add_plugins(bevy::app::ScheduleRunnerPlugin::run_loop(
-            Duration::from_secs_f64(1.0 / 1000.0),
+            Duration::from_secs_f64(1.0 / 3000.0),
         ));
 
         println!("[BEVY] ✅ Plugins configured");
