@@ -1,8 +1,8 @@
 # Pulsar_engine
 =======
 
-WIP
-Comtribution encouraged
+## You probably can't make a game in this yet!!
+WIP, Comtribution encouraged
 
 <img width="2515" height="1362" alt="image" src="https://github.com/user-attachments/assets/2baf8876-07ff-4de0-95ab-840c56ed8679" />
 <img width="2515" height="1362" alt="image" src="https://github.com/user-attachments/assets/cc584017-a4c4-4f16-bfa8-8ffc23a8370d" />
