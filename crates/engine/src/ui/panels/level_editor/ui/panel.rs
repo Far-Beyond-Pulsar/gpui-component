@@ -7,12 +7,13 @@ use gpui_component::{
     ActiveTheme as _,
     StyledExt,
 };
-// NEW: True zero-copy GPU viewport using ExternalTexture - NO CPU COPIES!
-use gpui_component::gpu_viewport::{GpuViewport, create_gpu_viewport};
+// Zero-copy Bevy viewport for 3D rendering
+use gpui_component::bevy_viewport::{BevyViewport, BevyViewportState};
 
 use crate::settings::EngineSettings;
-use crate::ui::rainbow_engine_final::{RainbowRenderEngine, RainbowPattern};
-use crate::ui::wgpu_3d_renderer::Wgpu3DRenderer;
+// DEPRECATED: Old software renderers - replaced by Bevy
+// use crate::ui::rainbow_engine_final::{RainbowRenderEngine, RainbowPattern};
+// use crate::ui::wgpu_3d_renderer::Wgpu3DRenderer;
 use crate::ui::gpu_renderer::GpuRenderer;
 use crate::ui::shared::StatusBar;
 use engine_backend::{GameThread, GameState};
@@ -50,18 +51,14 @@ pub struct LevelEditorPanel {
     horizontal_resizable_state: Entity<ResizableState>,
     vertical_resizable_state: Entity<ResizableState>,
 
-    // NEW: True zero-copy GPU viewport - NO CPU COPIES!
-    viewport: Entity<GpuViewport>,
+    // Zero-copy Bevy viewport for 3D rendering
+    viewport: Entity<BevyViewport>,
+    viewport_state: Arc<parking_lot::RwLock<BevyViewportState>>,
     gpu_engine: Arc<Mutex<GpuRenderer>>, // Full GPU renderer from backend
-    current_pattern: RainbowPattern,
-    render_speed: f32,
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
     
     // Game thread for object movement and game logic
     game_thread: Arc<GameThread>,
-    
-    // Channel for receiving rendered frames from render thread
-    frame_receiver: Receiver<Arc<Vec<u8>>>,
 }
 
 impl LevelEditorPanel {
@@ -69,8 +66,8 @@ impl LevelEditorPanel {
         let horizontal_resizable_state = ResizableState::new(cx);
         let vertical_resizable_state = ResizableState::new(cx);
 
-        println!("[LEVEL-EDITOR] 🚀 Initializing TRUE ZERO-COPY GPU viewport");
-        println!("[LEVEL-EDITOR] 🔥 Direct GPU rendering - NO CPU COPIES - NO ALLOCATIONS!");
+        println!("[LEVEL-EDITOR] 🚀 Initializing Bevy-powered viewport");
+        println!("[LEVEL-EDITOR] 🔥 Zero-copy GPU texture sharing!");
 
         // Load engine settings for frame pacing configuration
         let settings = EngineSettings::default_path()
@@ -81,50 +78,92 @@ impl LevelEditorPanel {
         println!("[LEVEL-EDITOR] 🎯 Frame pacing configured: {} FPS",
             if max_viewport_fps == 0 { "Unlimited".to_string() } else { max_viewport_fps.to_string() });
 
-        // NEW: Create GPU viewport with ExternalTexture system
-        // TRUE ZERO-COPY: Bevy writes directly to GPU-visible memory!
-        let viewport = create_gpu_viewport(
-            1600,
-            900,
-            window,
-            cx
-        );
+        // Create Bevy viewport with zero-copy shared textures
+        let viewport = cx.new(|cx| BevyViewport::new(1600, 900, cx));
+        let viewport_state = viewport.read(cx).shared_state();
 
-        println!("[LEVEL-EDITOR] ✅ GPU viewport created (1600x900) - ZERO CPU COPIES!");
+        println!("[LEVEL-EDITOR] ✅ Bevy viewport created (1600x900)");
         
-        // Create GPU render engine with matching resolution
-        let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new(1600, 900)));
-        let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
-        
-        println!("[LEVEL-EDITOR] ✅ GPU renderer initialized");
-
-        // Create and start game thread for object movement
+        // Create and start game thread for object movement FIRST
         println!("[LEVEL-EDITOR] 🎮 Creating game thread with target 240 TPS...");
         let game_thread = Arc::new(GameThread::new(240.0));
+        let game_state = game_thread.get_state();
         game_thread.start();
         println!("[LEVEL-EDITOR] ✅ Game thread started successfully!");
+        
+        // Create GPU render engine with matching resolution and game thread link
+        println!("[LEVEL-EDITOR] 🎨 Creating GPU renderer linked to game thread...");
+        let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new_with_game_thread(1600, 900, Some(game_state))));
+        let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        
+        println!("[LEVEL-EDITOR] ✅ GPU renderer initialized with game thread sync");
 
-        // Create channel for frame data (render thread -> UI thread)
-        let (frame_sender, frame_receiver) = channel();
+        // Wait a moment for Bevy to create shared textures, then initialize viewport
+        let viewport_state_for_init = viewport_state.clone();
+        let viewport_entity_for_init = viewport.clone();
+        let gpu_engine_for_init = gpu_engine.clone();
+        cx.spawn(async move |_this, mut cx| {
+            // Try multiple times with increasing delays for Bevy to initialize
+            for attempt in 1..=10 {
+                cx.background_executor().timer(Duration::from_millis(200 * attempt)).await;
+                
+                println!("[LEVEL-EDITOR] 🔄 Attempt {} to initialize viewport with Bevy shared textures...", attempt);
+                
+                // Get native handles from Bevy renderer
+                if let Ok(engine) = gpu_engine_for_init.lock() {
+                    if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                        // Get both handles from Bevy's double buffer
+                        if let Some(handles) = bevy_renderer.get_shared_texture_handles() {
+                            if handles.len() < 2 {
+                                println!("[LEVEL-EDITOR] ⚠️  Not enough handles");
+                                return;
+                            }
+                            let handle0 = handles[0] as isize;
+                            let handle1 = handles[1] as isize;
+                            println!("[LEVEL-EDITOR] ✅ Got shared texture handles from Bevy on attempt {}", attempt);
+                            
+                            #[cfg(target_os = "windows")]
+                            {
+                                println!("[LEVEL-EDITOR] 📍 Initializing viewport with handles: 0x{:X}, 0x{:X}", handle0, handle1);
+                                viewport_state_for_init.write().initialize_shared_textures(handle0, handle1, 1600, 900);
+                                println!("[LEVEL-EDITOR] 🎉 Viewport initialized with shared textures!");
+                                
+                                // Notify the viewport element to refresh
+                                let _ = cx.update(|cx| {
+                                    viewport_entity_for_init.update(cx, |_viewport, cx| {
+                                        cx.notify();
+                                        println!("[LEVEL-EDITOR] ✅ Notified GPUI to refresh viewport UI");
+                                    })
+                                });
 
-        // Spawn GPU direct render thread - TRUE ZERO-COPY!
-        let gpu_clone = gpu_engine.clone();
-        let enabled_clone = render_enabled.clone();
-        let game_thread_clone = game_thread.clone();
-        let viewport_clone = viewport.clone();
+                                // Successfully initialized! The viewport will automatically refresh
+                                // when Bevy renders new frames - we check in the render() method
+                                println!("[LEVEL-EDITOR] 🎉 Viewport initialized with shared textures!");
+                                println!("[LEVEL-EDITOR] ✅ Notified GPUI to refresh viewport UI");
+                                
+                                return; // Success!
+                            }
+                            
+                            #[cfg(not(target_os = "windows"))]
+                            {
+                                println!("[LEVEL-EDITOR] ⚠️  Non-Windows platform not yet supported");
+                                return;
+                            }
+                        } else {
+                            println!("[LEVEL-EDITOR] ⚠️  Attempt {}: Shared texture handles not ready yet", attempt);
+                        }
+                    } else {
+                        println!("[LEVEL-EDITOR] ⚠️  Attempt {}: Bevy renderer not available yet", attempt);
+                    }
+                } else {
+                    println!("[LEVEL-EDITOR] ⚠️  Attempt {}: Could not lock GPU engine", attempt);
+                }
+            }
+            
+            println!("[LEVEL-EDITOR] ❌ Failed to initialize viewport after 10 attempts");
+        }).detach();
 
-        thread::spawn(move || {
-            Self::render_thread_gpu_direct(
-                gpu_clone,
-                viewport_clone,
-                enabled_clone,
-                game_thread_clone,
-                frame_sender,
-            );
-        });
-
-        println!("[LEVEL-EDITOR] 🔥 GPU direct render thread spawned!");
-
+        
         println!("[LEVEL-EDITOR] Modular level editor initialized");
 
         Self {
@@ -134,110 +173,21 @@ impl LevelEditorPanel {
             scene_browser: SceneBrowser::new(),
             hierarchy: HierarchyPanel::new(),
             properties: PropertiesPanel::new(),
-            viewport_panel: ViewportPanel::new(viewport.clone(), render_enabled.clone(), cx),
+            viewport_panel: ViewportPanel::new(viewport.clone(), render_enabled.clone(), window, cx),
             toolbar: ToolbarPanel::new(),
             horizontal_resizable_state,
             vertical_resizable_state,
             viewport,
+            viewport_state,
             gpu_engine,
-            current_pattern: RainbowPattern::Waves,
-            render_speed: 2.0,
             render_enabled,
             game_thread,
-            frame_receiver,
         }
-    }
-
-    /// TRUE ZERO-COPY GPU render thread - Writes directly to GPU-visible memory!
-    /// NO CPU COPIES - NO ALLOCATIONS - MAXIMUM PERFORMANCE!
-    fn render_thread_gpu_direct(
-        gpu_engine: Arc<Mutex<GpuRenderer>>,
-        _viewport: Entity<GpuViewport>,
-        render_enabled: Arc<std::sync::atomic::AtomicBool>,
-        game_thread: Arc<GameThread>,
-        frame_sender: Sender<Arc<Vec<u8>>>,
-    ) {
-        let base_frame_time = Duration::from_millis(8);
-        let mut adaptive_frame_time = base_frame_time;
-        let mut frame_count = 0u64;
-        let mut consecutive_fast_frames = 0u32;
-        let max_cpu_usage = 85;
-
-        // Pre-allocate GPU buffer once (reuse for efficiency)
-        let buffer_size = (1600 * 900 * 4) as usize;
-        let mut gpu_buffer = vec![0u8; buffer_size];
-
-        println!("[RENDER-THREAD-GPU] 🔥 Starting TRUE ZERO-COPY render loop!");
-        println!("[RENDER-THREAD-GPU] 💎 Pre-allocated buffer: {} MB", buffer_size as f64 / 1_048_576.0);
-        println!("[RENDER-THREAD-GPU] 🚀 Frames sent to UI thread for GPU upload!");
-
-        while render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
-            let frame_start = std::time::Instant::now();
-
-            // Sync game objects to renderer before rendering
-            if let Ok(game_state) = game_thread.get_state().lock() {
-                let objects = game_state.objects.clone();
-                if let Ok(mut engine) = gpu_engine.try_lock() {
-                    if let Some(ref mut bevy_renderer) = engine.bevy_renderer {
-                        bevy_renderer.update_game_objects(objects);
-                    }
-                }
-            }
-
-            // Render to buffer
-            let render_successful = if let Ok(mut engine_guard) = gpu_engine.try_lock() {
-                engine_guard.render_to_buffer(&mut gpu_buffer);
-                true
-            } else {
-                false
-            };
-
-            if render_successful {
-                frame_count += 1;
-
-                // Send frame to UI thread (Arc for zero-copy sharing)
-                let frame_data = Arc::new(gpu_buffer.clone());
-                let _ = frame_sender.send(frame_data);
-
-                if frame_count % 120 == 1 {
-                    println!("[RENDER-THREAD-GPU] 🔥 {} frames rendered!", frame_count);
-                }
-            } else if frame_count % 120 == 1 {
-                println!("[RENDER-THREAD-GPU] ⚠️  Frame {} render failed", frame_count);
-            }
-
-            let frame_time = frame_start.elapsed();
-
-            if frame_time < adaptive_frame_time.mul_f32(0.5) {
-                consecutive_fast_frames += 1;
-                if consecutive_fast_frames > 10 {
-                    adaptive_frame_time = adaptive_frame_time.mul_f32(1.1).min(Duration::from_millis(16));
-                    consecutive_fast_frames = 0;
-                }
-            } else {
-                consecutive_fast_frames = 0;
-                adaptive_frame_time = adaptive_frame_time.mul_f32(0.99).max(base_frame_time);
-            }
-
-            let target_cpu_usage = max_cpu_usage as f32 / 100.0;
-            let work_time = frame_time.as_secs_f32();
-            let total_frame_time = work_time / target_cpu_usage;
-            let sleep_time = Duration::from_secs_f32(total_frame_time - work_time).max(Duration::from_millis(1));
-
-            thread::sleep(sleep_time);
-        }
-
-        println!("[RENDER-THREAD-GPU] 🛑 GPU direct render loop exited");
     }
 
     pub fn toggle_rendering(&mut self) {
         let current = self.render_enabled.load(std::sync::atomic::Ordering::Relaxed);
         self.render_enabled.store(!current, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    pub fn set_rainbow_pattern(&mut self, pattern: RainbowPattern) {
-        self.current_pattern = pattern;
-        // GPU renderer doesn't use patterns
     }
 
     fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -436,35 +386,19 @@ impl EventEmitter<PanelEvent> for LevelEditorPanel {}
 
 impl Render for LevelEditorPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Process any pending frames from the render thread
-        // This is TRUE ZERO-COPY: we write directly to GPU-mapped memory!
-        #[cfg(target_os = "windows")]
-        {
-            if let Some(texture_id) = self.viewport.read(cx).texture_id() {
-                // Drain all pending frames (keep only the latest)
-                let mut latest_frame: Option<Arc<Vec<u8>>> = None;
-                while let Ok(frame) = self.frame_receiver.try_recv() {
-                    latest_frame = Some(frame);
-                }
-                
-                // Update external texture with latest frame
-                if let Some(frame_data) = latest_frame {
-                    let result = window.update_external_texture(texture_id, |buffer| {
-                        // TRUE ZERO-COPY: Write directly to GPU-mapped memory!
-                        let copy_len = frame_data.len().min(buffer.len());
-                        buffer[..copy_len].copy_from_slice(&frame_data[..copy_len]);
-                    });
-                    
-                    if let Err(e) = result {
-                        eprintln!("[LEVEL-EDITOR] ❌ Failed to update texture: {}", e);
-                    }
-                    
-                    // Request next frame
-                    cx.notify();
-                }
+        // Sync viewport buffer index with Bevy's read index each frame
+        if let Ok(engine_guard) = self.gpu_engine.try_lock() {
+            if let Some(ref bevy_renderer) = engine_guard.bevy_renderer {
+                let read_idx = bevy_renderer.get_read_index();
+                let mut state = self.viewport_state.write();
+                state.set_active_buffer(read_idx);
             }
         }
-        
+
+        // Request continuous animation frames to keep viewport and stats updating
+        // This creates a render loop synchronized with the display refresh rate
+        window.request_animation_frame();
+
         v_flex()
             .size_full()
             .bg(cx.theme().background)
@@ -553,7 +487,6 @@ impl Render for LevelEditorPanel {
                                                     self.fps_graph_is_line.clone(),
                                                     &self.gpu_engine,
                                                     &self.game_thread,
-                                                    self.current_pattern,
                                                     cx
                                                 )
                                             )
@@ -582,3 +515,4 @@ impl Render for LevelEditorPanel {
             )
     }
 }
+

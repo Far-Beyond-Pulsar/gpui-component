@@ -12,4 +12,9 @@ pub use recent_projects::render_recent_projects;
 pub use templates::render_templates;
 pub use new_project::render_new_project;
 pub use clone_git::render_clone_git;
-pub use project_settings::{render_project_settings, ProjectSettings, ProjectSettingsTab};
+pub use project_settings::{
+    render_project_settings, 
+    ProjectSettings, 
+    ProjectSettingsTab,
+    types::{format_size, load_project_tool_preferences},
+};

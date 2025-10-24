@@ -112,6 +112,9 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
         let git_status = screen.git_fetch_statuses.lock().get(&proj_path).cloned()
             .unwrap_or(GitFetchStatus::NotStarted);
         
+        // Load tool preferences for this project
+        let (preferred_editor, preferred_git_tool) = crate::ui::entry_screen::views::load_project_tool_preferences(&std::path::PathBuf::from(&proj_path));
+        
         let card = v_flex()
             .id(SharedString::from(format!("project-{}", proj_path)))
             .w(px(320.))
@@ -198,6 +201,41 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                     .child(
                         h_flex()
                             .gap_1()
+                            // Add integration buttons if defaults are set
+                            .when_some(preferred_editor.clone(), |this, editor: String| {
+                                this.child(
+                                    Button::new(SharedString::from(format!("open-editor-{}", proj_path)))
+                                        .icon(IconName::Code)
+                                        .tooltip(format!("Open in {}", get_tool_display_name(&editor)))
+                                        .with_variant(gpui_component::button::ButtonVariant::Ghost)
+                                        .on_click({
+                                            let cmd = editor.clone();
+                                            let path = std::path::PathBuf::from(proj_path.clone());
+                                            move |_, _, _| {
+                                                use crate::ui::entry_screen::integration_launcher;
+                                                let _ = integration_launcher::launch_editor(&cmd, &path);
+                                            }
+                                        })
+                                )
+                            })
+                            .when(is_git, |this| {
+                                this.when_some(preferred_git_tool.clone(), |this2, git_tool: String| {
+                                    this2.child(
+                                        Button::new(SharedString::from(format!("open-git-{}", proj_path)))
+                                            .icon(IconName::GitHub)
+                                            .tooltip(format!("Open in {}", get_tool_display_name(&git_tool)))
+                                            .with_variant(gpui_component::button::ButtonVariant::Ghost)
+                                            .on_click({
+                                                let cmd = git_tool.clone();
+                                                let path = std::path::PathBuf::from(proj_path.clone());
+                                                move |_, _, _| {
+                                                    use crate::ui::entry_screen::integration_launcher;
+                                                    let _ = integration_launcher::launch_git_tool(&cmd, &path);
+                                                }
+                                            })
+                                    )
+                                })
+                            })
                             .when(is_git, |this| {
                                 match &git_status {
                                     GitFetchStatus::UpdatesAvailable(count) => {
@@ -236,9 +274,10 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                                     .tooltip("Open in file manager")
                                     .with_variant(gpui_component::button::ButtonVariant::Ghost)
                                     .on_click({
-                                        let path = proj_path.clone();
+                                        let path = std::path::PathBuf::from(proj_path.clone());
                                         move |_, _, _| {
-                                            let _ = open::that(&path);
+                                            use crate::ui::entry_screen::integration_launcher;
+                                            let _ = integration_launcher::launch_file_manager(&path);
                                         }
                                     })
                             )
@@ -272,4 +311,25 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
     }
     
     container
+}
+
+fn get_tool_display_name(command: &str) -> String {
+    match command {
+        "code" => "VS Code".to_string(),
+        "devenv" => "Visual Studio".to_string(),
+        "subl" => "Sublime Text".to_string(),
+        "vim" => "Vim".to_string(),
+        "nvim" => "Neovim".to_string(),
+        "emacs" => "Emacs".to_string(),
+        "idea" => "IntelliJ IDEA".to_string(),
+        "clion" => "CLion".to_string(),
+        "notepad++" => "Notepad++".to_string(),
+        "git" => "Git GUI".to_string(),
+        "github" => "GitHub Desktop".to_string(),
+        "gitkraken" => "GitKraken".to_string(),
+        "sourcetree" => "SourceTree".to_string(),
+        "git-cola" => "Git Cola".to_string(),
+        "lazygit" => "Lazygit".to_string(),
+        _ => command.to_string(),
+    }
 }

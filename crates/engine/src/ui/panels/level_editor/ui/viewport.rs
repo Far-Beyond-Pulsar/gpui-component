@@ -5,18 +5,86 @@ use gpui_component::{
     chart::{LineChart, BarChart, AreaChart},
     PixelsExt,
 };
-// NEW: True zero-copy GPU viewport using ExternalTexture
-use gpui_component::gpu_viewport::GpuViewport;
+// Zero-copy Bevy viewport for 3D rendering
+use gpui_component::bevy_viewport::{BevyViewport, BevyViewportState};
 
 use super::state::{CameraMode, LevelEditorState};
 use super::actions::*;
 use crate::ui::shared::ViewportControls;
 use engine_backend::GameThread;
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
 use std::collections::VecDeque;
 use std::cell::RefCell;
 use std::rc::Rc;
+
+// Raw input polling for viewport controls
+use device_query::{DeviceQuery, DeviceState, Keycode, MouseState};
+
+// Windows API for cursor management
+#[cfg(target_os = "windows")]
+use winapi::um::winuser::{ShowCursor, SetCursorPos, GetCursorPos, SetCursor};
+#[cfg(target_os = "windows")]
+use winapi::shared::windef::POINT;
+#[cfg(target_os = "windows")]
+use std::ptr;
+
+/// Helper function to hide the Windows cursor
+#[cfg(target_os = "windows")]
+fn hide_cursor() {
+    unsafe {
+        // Set cursor to NULL to hide it completely
+        SetCursor(ptr::null_mut());
+    }
+}
+
+/// Helper function to show the Windows cursor  
+#[cfg(target_os = "windows")]
+fn show_cursor() {
+    unsafe {
+        // Load the standard arrow cursor
+        let cursor = winapi::um::winuser::LoadCursorW(ptr::null_mut(), winapi::um::winuser::IDC_ARROW);
+        SetCursor(cursor);
+    }
+}
+
+/// Lock cursor to specific screen position (for camera rotation without cursor drift)
+#[cfg(target_os = "windows")]
+fn lock_cursor_position(x: i32, y: i32) {
+    unsafe {
+        SetCursorPos(x, y);
+    }
+}
+
+/// Get current cursor position
+#[cfg(target_os = "windows")]
+fn get_cursor_position() -> (i32, i32) {
+    unsafe {
+        let mut point = POINT { x: 0, y: 0 };
+        GetCursorPos(&mut point);
+        (point.x, point.y)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn hide_cursor() {
+    // Placeholder for other platforms
+}
+
+#[cfg(not(target_os = "windows"))]
+fn show_cursor() {
+    // Placeholder for other platforms
+}
+
+#[cfg(not(target_os = "windows"))]
+fn lock_cursor_position(_x: i32, _y: i32) {
+    // Placeholder for other platforms
+}
+
+#[cfg(not(target_os = "windows"))]
+fn get_cursor_position() -> (i32, i32) {
+    (0, 0) // Placeholder for other platforms
+}
 
 /// Lock-free input state using atomics - no mutex contention!
 #[derive(Clone)]
@@ -36,6 +104,10 @@ struct InputState {
     
     // Move speed adjustment
     move_speed: Arc<AtomicI32>, // * 100 for precision
+    
+    // Input latency tracking (measured on input thread)
+    // Stores microseconds since last input was received, as i64
+    input_latency_us: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl InputState {
@@ -51,6 +123,7 @@ impl InputState {
             pan_delta_y: Arc::new(AtomicI32::new(0)),
             zoom_delta: Arc::new(AtomicI32::new(0)),
             move_speed: Arc::new(AtomicI32::new(1000)), // 10.0 * 100
+            input_latency_us: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         }
     }
     
@@ -133,8 +206,9 @@ enum GraphType {
 /// Viewport Panel - TRUE ZERO-COPY GPU 3D rendering viewport with PRO camera controls
 /// Studio-quality navigation: FPS mode, Pan, Orbit, Zoom
 /// Direct GPU rendering - NO CPU COPIES!
+/// Input is processed on a dedicated input thread with latency tracking
 pub struct ViewportPanel {
-    viewport: Entity<GpuViewport>,
+    viewport: Entity<BevyViewport>,
     viewport_controls: ViewportControls,
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
     // FPS tracking for rolling graph - using RefCell for interior mutability
@@ -155,10 +229,9 @@ pub struct ViewportPanel {
     // Vertices tracking
     vertices_history: RefCell<VecDeque<VerticesDataPoint>>,
     vertices_counter: RefCell<usize>,
-    // Input latency tracking
+    // Input latency tracking (measured on input thread)
     input_latency_history: RefCell<VecDeque<InputLatencyDataPoint>>,
     input_latency_counter: RefCell<usize>,
-    last_input_time: RefCell<Option<std::time::Instant>>,
     // UI refresh consistency tracking (tracks FPS variance over time)
     ui_consistency_history: RefCell<VecDeque<UiConsistencyDataPoint>>,
     ui_consistency_counter: RefCell<usize>,
@@ -166,11 +239,16 @@ pub struct ViewportPanel {
     input_state: InputState,
     // Track if input thread has been spawned
     input_thread_spawned: Arc<AtomicBool>,
+    // Track if viewport is hovered/focused - only process input when true
+    viewport_hovered: Arc<AtomicBool>,
     // Mouse tracking - ALL ATOMIC! No RefCell!
     last_mouse_x: Arc<AtomicI32>,
     last_mouse_y: Arc<AtomicI32>,
     mouse_right_captured: Arc<AtomicBool>,
     mouse_middle_captured: Arc<AtomicBool>,
+    // Locked cursor position for infinite mouse movement during drag
+    locked_cursor_x: Arc<AtomicI32>,
+    locked_cursor_y: Arc<AtomicI32>,
     // Keyboard state for WASD + modifiers - NOT NEEDED ANYMORE, using atomics directly!
     keys_pressed: Rc<RefCell<std::collections::HashSet<String>>>,
     alt_pressed: Rc<RefCell<bool>>,
@@ -179,11 +257,14 @@ pub struct ViewportPanel {
 }
 
 impl ViewportPanel {
-    pub fn new<V>(viewport: Entity<GpuViewport>, render_enabled: Arc<std::sync::atomic::AtomicBool>, cx: &mut Context<V>) -> Self
+    pub fn new<V>(viewport: Entity<BevyViewport>, render_enabled: Arc<std::sync::atomic::AtomicBool>, window: &mut Window, cx: &mut Context<V>) -> Self
     where
         V: 'static,
     {
         let input_state = InputState::new();
+        let focus_handle = cx.focus_handle();
+        
+        // No focus subscriptions needed - we track button state directly in input thread
         
         Self {
             viewport,
@@ -203,18 +284,20 @@ impl ViewportPanel {
             vertices_counter: RefCell::new(0),
             input_latency_history: RefCell::new(VecDeque::with_capacity(120)),
             input_latency_counter: RefCell::new(0),
-            last_input_time: RefCell::new(None),
             ui_consistency_history: RefCell::new(VecDeque::with_capacity(120)),
             ui_consistency_counter: RefCell::new(0),
             input_state,
             input_thread_spawned: Arc::new(AtomicBool::new(false)),
+            viewport_hovered: Arc::new(AtomicBool::new(false)),
             last_mouse_x: Arc::new(AtomicI32::new(0)),
             last_mouse_y: Arc::new(AtomicI32::new(0)),
             mouse_right_captured: Arc::new(AtomicBool::new(false)),
             mouse_middle_captured: Arc::new(AtomicBool::new(false)),
+            locked_cursor_x: Arc::new(AtomicI32::new(0)),
+            locked_cursor_y: Arc::new(AtomicI32::new(0)),
             keys_pressed: Rc::new(RefCell::new(std::collections::HashSet::new())),
             alt_pressed: Rc::new(RefCell::new(false)),
-            focus_handle: cx.focus_handle(),
+            focus_handle,
         }
     }
 
@@ -224,24 +307,152 @@ impl ViewportPanel {
         fps_graph_state: Rc<RefCell<bool>>,  // Shared state for the Switch
         gpu_engine: &Arc<Mutex<crate::ui::gpu_renderer::GpuRenderer>>,
         game_thread: &Arc<GameThread>,
-        current_pattern: crate::ui::rainbow_engine_final::RainbowPattern,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
         V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
     {
+        // Note: We can't check focus here because we don't have Window reference in this context
+        // Instead, the viewport div will set focus when clicked (via track_focus)
+        // and the input thread will check if right button is pressed to determine activity
+        
         // Spawn dedicated input processing thread ONLY ONCE (not every frame!)
         if !self.input_thread_spawned.load(Ordering::Relaxed) {
             self.input_thread_spawned.store(true, Ordering::Relaxed);
             
             let input_state_for_thread = self.input_state.clone();
             let gpu_engine_for_thread = gpu_engine.clone();
+            let mouse_right_captured = self.mouse_right_captured.clone();
+            let mouse_middle_captured = self.mouse_middle_captured.clone();
+            let locked_cursor_x = self.locked_cursor_x.clone();
+            let locked_cursor_y = self.locked_cursor_y.clone();
+            let viewport_clicked = self.viewport_hovered.clone(); // Tracks if right-click was ON viewport
             
             std::thread::spawn(move || {
-                println!("[INPUT-THREAD] �� Dedicated input processing thread started");
+                println!("[INPUT-THREAD] 🚀 Dedicated RAW INPUT processing thread started");
+                println!("[INPUT-THREAD] Input active ONLY when right-click starts ON viewport");
+                let device_state = DeviceState::new();
+                let mut last_mouse_pos: Option<(i32, i32)> = None;
+                let mut right_was_pressed = false;
+                let mut is_rotating = false; // Track if we're in rotation mode (Right without Shift)
+                let mut is_panning = false;  // Track if we're in pan mode (Shift + Right)
+                
                 loop {
+                    // Mark when we start processing input
+                    let input_start = std::time::Instant::now();
+                    
                     // Sleep for ~8ms (~120Hz processing rate)
                     std::thread::sleep(std::time::Duration::from_millis(8));
+                    
+                    // Poll mouse state ALWAYS
+                    let mouse: MouseState = device_state.get_mouse();
+                    let right_pressed = mouse.button_pressed[1]; // Right button
+                    
+                    // Check if GPUI signaled that right-click happened ON viewport
+                    let clicked_on_viewport = viewport_clicked.load(Ordering::Relaxed);
+                    
+                    // CRITICAL: Only start processing if click originated ON viewport
+                    // Right click alone = Rotate camera (standard FPS controls)
+                    // Shift + Right click = Pan camera (modifier for alternate mode)
+                    
+                    // Check if right button state changed
+                    if right_pressed && !right_was_pressed && clicked_on_viewport {
+                        // Right button just pressed AND was on viewport - poll keyboard to check shift
+                        let keys: Vec<Keycode> = device_state.get_keys();
+                        let shift_pressed = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
+                        
+                        let (x, y) = get_cursor_position();
+                        locked_cursor_x.store(x, Ordering::Relaxed);
+                        locked_cursor_y.store(y, Ordering::Relaxed);
+                        last_mouse_pos = Some((x, y));
+                        
+                        if shift_pressed {
+                            // Shift + Right = Panning
+                            is_panning = true;
+                            is_rotating = false;
+                            mouse_middle_captured.store(true, Ordering::Relaxed);
+                        } else {
+                            // Right alone = Rotation (standard behavior)
+                            is_rotating = true;
+                            is_panning = false;
+                            mouse_right_captured.store(true, Ordering::Relaxed);
+                        }
+                        hide_cursor();
+                        right_was_pressed = true;
+                    } else if !right_pressed && right_was_pressed {
+                        // Right button just released - STOP ALL INPUT
+                        if is_rotating {
+                            mouse_right_captured.store(false, Ordering::Relaxed);
+                            is_rotating = false;
+                        }
+                        if is_panning {
+                            mouse_middle_captured.store(false, Ordering::Relaxed);
+                            is_panning = false;
+                        }
+                        
+                        // Clear the viewport clicked flag
+                        viewport_clicked.store(false, Ordering::Relaxed);
+                        
+                        // Clear all input atomics
+                        input_state_for_thread.forward.store(0, Ordering::Relaxed);
+                        input_state_for_thread.right.store(0, Ordering::Relaxed);
+                        input_state_for_thread.up.store(0, Ordering::Relaxed);
+                        
+                        let lock_x = locked_cursor_x.load(Ordering::Relaxed);
+                        let lock_y = locked_cursor_y.load(Ordering::Relaxed);
+                        lock_cursor_position(lock_x, lock_y);
+                        show_cursor();
+                        last_mouse_pos = None;
+                        right_was_pressed = false;
+                    }
+                    
+                    // ONLY process input while button is HELD
+                    if is_rotating || is_panning {
+                        // Poll keyboard for WASD ONLY while button held
+                        let keys: Vec<Keycode> = device_state.get_keys();
+                        
+                        // Update WASD input
+                        let forward = if keys.contains(&Keycode::W) { 1 } else if keys.contains(&Keycode::S) { -1 } else { 0 };
+                        let right = if keys.contains(&Keycode::D) { 1 } else if keys.contains(&Keycode::A) { -1 } else { 0 };
+                        let up = if keys.contains(&Keycode::E) || keys.contains(&Keycode::Space) { 1 } 
+                                else if keys.contains(&Keycode::Q) || keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift) { -1 } 
+                                else { 0 };
+                        let boost = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
+                        
+                        input_state_for_thread.forward.store(forward, Ordering::Relaxed);
+                        input_state_for_thread.right.store(right, Ordering::Relaxed);
+                        input_state_for_thread.up.store(up, Ordering::Relaxed);
+                        input_state_for_thread.boost.store(boost, Ordering::Relaxed);
+                        
+                        // Calculate mouse delta and reset cursor
+                        let (current_x, current_y) = get_cursor_position();
+                        
+                        if let Some((last_x, last_y)) = last_mouse_pos {
+                            let dx = current_x - last_x;
+                            let dy = current_y - last_y;
+                            
+                            if dx != 0 || dy != 0 {
+                                // Store deltas in atomics based on mode
+                                if is_rotating {
+                                    // Right alone = Rotation (standard FPS camera)
+                                    input_state_for_thread.mouse_delta_x.fetch_add((dx as f32 * 1000.0) as i32, Ordering::Relaxed);
+                                    input_state_for_thread.mouse_delta_y.fetch_add((dy as f32 * 1000.0) as i32, Ordering::Relaxed);
+                                }
+                                if is_panning {
+                                    // Shift + Right = Panning
+                                    input_state_for_thread.pan_delta_x.fetch_add((dx as f32 * 1000.0) as i32, Ordering::Relaxed);
+                                    input_state_for_thread.pan_delta_y.fetch_add((dy as f32 * 1000.0) as i32, Ordering::Relaxed);
+                                }
+                                
+                                // Reset cursor to locked position for infinite movement
+                                let lock_x = locked_cursor_x.load(Ordering::Relaxed);
+                                let lock_y = locked_cursor_y.load(Ordering::Relaxed);
+                                lock_cursor_position(lock_x, lock_y);
+                                // Keep last_mouse_pos at the locked position
+                                last_mouse_pos = Some((lock_x, lock_y));
+                            }
+                        }
+                    }
                     
                     // Try to acquire GPU engine lock without blocking
                     if let Ok(engine) = gpu_engine_for_thread.try_lock() {
@@ -253,30 +464,31 @@ impl ViewportPanel {
                                 input.up = input_state_for_thread.up.load(Ordering::Relaxed) as f32;
                                 input.boost = input_state_for_thread.boost.load(Ordering::Relaxed);
                                 
-                                // Read and convert mouse deltas
+                                // Read and CLEAR mouse deltas (always swap to 0, even if they're 0)
                                 let mouse_x = input_state_for_thread.mouse_delta_x.swap(0, Ordering::Relaxed);
                                 let mouse_y = input_state_for_thread.mouse_delta_y.swap(0, Ordering::Relaxed);
-                                if mouse_x != 0 || mouse_y != 0 {
-                                    input.mouse_delta_x = mouse_x as f32 / 1000.0;
-                                    input.mouse_delta_y = mouse_y as f32 / 1000.0;
-                                }
+                                // Set to the CameraInput (including 0 to clear previous frame's deltas)
+                                input.mouse_delta_x = mouse_x as f32 / 1000.0;
+                                input.mouse_delta_y = mouse_y as f32 / 1000.0;
                                 
-                                // Read pan deltas
+                                // Read and CLEAR pan deltas (always swap to 0, even if they're 0)
                                 let pan_x = input_state_for_thread.pan_delta_x.swap(0, Ordering::Relaxed);
                                 let pan_y = input_state_for_thread.pan_delta_y.swap(0, Ordering::Relaxed);
-                                if pan_x != 0 || pan_y != 0 {
-                                    input.pan_delta_x = pan_x as f32 / 1000.0;
-                                    input.pan_delta_y = pan_y as f32 / 1000.0;
-                                }
+                                // Set to the CameraInput (including 0 to clear previous frame's deltas)
+                                input.pan_delta_x = pan_x as f32 / 1000.0;
+                                input.pan_delta_y = pan_y as f32 / 1000.0;
                                 
-                                // Read zoom delta
+                                // Read and CLEAR zoom delta (always swap to 0, even if it's 0)
                                 let zoom = input_state_for_thread.zoom_delta.swap(0, Ordering::Relaxed);
-                                if zoom != 0 {
-                                    input.zoom_delta = zoom as f32 / 1000.0;
-                                }
+                                // Set to the CameraInput (including 0 to clear previous frame's delta)
+                                input.zoom_delta = zoom as f32 / 1000.0;
                                 
                                 // Update move speed
                                 input.move_speed = input_state_for_thread.move_speed.load(Ordering::Relaxed) as f32 / 100.0;
+                                
+                                // Calculate and store input latency (time from input start to GPU update)
+                                let input_latency = input_start.elapsed().as_micros() as u64;
+                                input_state_for_thread.input_latency_us.store(input_latency, Ordering::Relaxed);
                             }
                         }
                     }
@@ -284,25 +496,12 @@ impl ViewportPanel {
                 }
             });
         }
+
+        // Clone the viewport_hovered flag for mouse down detection
+        let viewport_mouse_down = self.viewport_hovered.clone();
         
-        // Clone input state for closures (lock-free!)
-        let input_state_key_down = self.input_state.clone();
-        let input_state_key_up = self.input_state.clone();
-        let input_state_mouse = self.input_state.clone();
+        // Clone for scroll wheel handler
         let input_state_scroll = self.input_state.clone();
-        
-        // Clone atomics for mouse tracking - NO RefCell!
-        let last_mouse_x = self.last_mouse_x.clone();
-        let last_mouse_y = self.last_mouse_y.clone();
-        
-        let mouse_right_down = self.mouse_right_captured.clone();
-        let mouse_right_move = self.mouse_right_captured.clone();
-        let mouse_right_up = self.mouse_right_captured.clone();
-        let mouse_right_scroll = self.mouse_right_captured.clone();
-        
-        let mouse_middle_down = self.mouse_middle_captured.clone();
-        let mouse_middle_move = self.mouse_middle_captured.clone();
-        let mouse_middle_up = self.mouse_middle_captured.clone();
         
         let mut viewport_div = div()
             .flex() // Enable flexbox
@@ -314,119 +513,23 @@ impl ViewportPanel {
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
-            .track_focus(&self.focus_handle)
-            .on_key_down(move |event: &gpui::KeyDownEvent, _phase, _cx| {
-                // ULTRA FAST PATH: Update atomics directly, no allocations, no hashing, no RefCell!
-                let key = &event.keystroke.key;
-                match key.as_ref() {
-                    "w" | "W" => input_state_key_down.forward.store(1, Ordering::Relaxed),
-                    "s" | "S" => input_state_key_down.forward.store(-1, Ordering::Relaxed),
-                    "d" | "D" => input_state_key_down.right.store(1, Ordering::Relaxed),
-                    "a" | "A" => input_state_key_down.right.store(-1, Ordering::Relaxed),
-                    "space" | " " => input_state_key_down.up.store(1, Ordering::Relaxed),
-                    "shift" => {
-                        input_state_key_down.up.store(-1, Ordering::Relaxed);
-                        input_state_key_down.boost.store(true, Ordering::Relaxed);
-                    }
-                    _ => return, // Ignore all other keys instantly
-                }
-            })
-            .on_key_up(move |event: &gpui::KeyUpEvent, _phase, _cx| {
-                // ULTRA FAST PATH: Update atomics directly, no allocations, no hashing, no RefCell!
-                let key = &event.keystroke.key;
-                match key.as_ref() {
-                    "w" | "W" | "s" | "S" => input_state_key_up.forward.store(0, Ordering::Relaxed),
-                    "d" | "D" | "a" | "A" => input_state_key_up.right.store(0, Ordering::Relaxed),
-                    "space" | " " => input_state_key_up.up.store(0, Ordering::Relaxed),
-                    "shift" => {
-                        input_state_key_up.up.store(0, Ordering::Relaxed);
-                        input_state_key_up.boost.store(false, Ordering::Relaxed);
-                    }
-                    _ => return, // Ignore all other keys instantly
-                }
+            // NO GPUI key handlers - input thread handles ALL input when mouse held
+            .on_mouse_down(gpui::MouseButton::Left, move |_, _, _| {
+                // Right-click on viewport - enable input thread
+                viewport_mouse_down.store(true, Ordering::Relaxed);
             })
             .child(
-                // Main viewport - should grow to fill space and handle mouse events
+                // Main viewport - input thread handles ALL mouse/keyboard when focused
                 div()
                     .flex() // Enable flex
                     .flex_1() // Grow to fill available space
                     .size_full() // Take full size
-                    .on_mouse_down(
-                        gpui::MouseButton::Left,
-                        move |event: &MouseDownEvent, _phase, _cx| {
-                            println!("[VIEWPORT-INNER] ⬅️ LEFT CLICK at position: x={:.2}, y={:.2}", 
-                                event.position.x.as_f32(), event.position.y.as_f32());
-                        },
-                    )
-                    .on_mouse_down(
-                        gpui::MouseButton::Right,
-                        move |_event: &MouseDownEvent, _phase, _cx| {
-                            // Just set atomic flag - no RefCell!
-                            mouse_right_down.store(true, Ordering::Relaxed);
-                        },
-                    )
-                    .on_mouse_up(
-                        gpui::MouseButton::Right,
-                        move |_event: &MouseUpEvent, _phase, _cx| {
-                            // Just clear atomic flag - no RefCell!
-                            mouse_right_up.store(false, Ordering::Relaxed);
-                        },
-                    )
-                    .on_mouse_move(move |event: &MouseMoveEvent, _phase, _cx| {
-                        // NO BORROWS! Pure atomic operations
-                        let current_pos = event.position;
-                        
-                        let is_right_captured = mouse_right_move.load(Ordering::Relaxed);
-                        let is_middle_captured = mouse_middle_move.load(Ordering::Relaxed);
-                        
-                        if is_right_captured || is_middle_captured {
-                            // Store position as atomics (x and y as i32 * 1000)
-                            let x_f32: f32 = current_pos.x.into();
-                            let y_f32: f32 = current_pos.y.into();
-                            let x_atomic = (x_f32 * 1000.0) as i32;
-                            let y_atomic = (y_f32 * 1000.0) as i32;
-                            
-                            // Get last position from atomics
-                            let last_x = last_mouse_x.swap(x_atomic, Ordering::Relaxed);
-                            let last_y = last_mouse_y.swap(y_atomic, Ordering::Relaxed);
-                            
-                            if last_x != 0 || last_y != 0 {
-                                let dx = (x_atomic - last_x) as f32 / 1000.0;
-                                let dy = (y_atomic - last_y) as f32 / 1000.0;
-                                
-                                // Update input state atomically
-                                if is_right_captured && (dx.abs() > 0.01 || dy.abs() > 0.01) {
-                                    input_state_mouse.set_mouse_delta(dx, dy);
-                                }
-                                
-                                if is_middle_captured && (dx.abs() > 0.01 || dy.abs() > 0.01) {
-                                    input_state_mouse.set_pan_delta(dx, dy);
-                                }
-                            }
-                        }
-                    })
                     .on_scroll_wheel(move |event: &gpui::ScrollWheelEvent, _phase, _cx| {
                         let scroll_delta: f32 = event.delta.pixel_delta(px(1.0)).y.into();
                         
-                        // Pure atomic operations - no RefCell!
-                        if mouse_right_scroll.load(Ordering::Relaxed) {
-                            input_state_scroll.adjust_move_speed(scroll_delta * 0.1);
-                        } else {
-                            input_state_scroll.set_zoom_delta(scroll_delta * 0.5);
-                        }
+                        // Always zoom - simpler behavior
+                        input_state_scroll.set_zoom_delta(scroll_delta * 0.5);
                     })
-                    .on_mouse_down(
-                        gpui::MouseButton::Middle,
-                        move |_event: &MouseDownEvent, _phase, _cx| {
-                            mouse_middle_down.store(true, Ordering::Relaxed);
-                        },
-                    )
-                    .on_mouse_up(
-                        gpui::MouseButton::Middle,
-                        move |_event: &MouseUpEvent, _phase, _cx| {
-                            mouse_middle_up.store(false, Ordering::Relaxed);
-                        },
-                    )
                     .child(self.viewport.clone())
             )
             .when(state.show_viewport_controls, |viewport_div| {
@@ -463,6 +566,18 @@ impl ViewportPanel {
                 )
             });
 
+        // GPU Pipeline Stats overlay (left side, like Unreal's "stat gpu")
+        if state.show_performance_overlay {
+            viewport_div = viewport_div.child(
+                div()
+                    .absolute()
+                    .top_4()
+                    .left(px(420.0)) // Position after viewport options
+                    .w(px(340.0))
+                    .child(self.render_gpu_pipeline_overlay(gpu_engine, cx))
+            );
+        }
+
         if state.show_performance_overlay {
             viewport_div = viewport_div.child(
                 // Performance overlay (bottom-right)
@@ -471,7 +586,7 @@ impl ViewportPanel {
                     .bottom_4()
                     .right_4()
                     .w(px(360.0)) // Expanded width for graph
-                    .child(self.render_performance_overlay(state, fps_graph_state, gpu_engine, game_thread, current_pattern, cx))
+                    .child(self.render_performance_overlay(state, fps_graph_state, gpu_engine, game_thread, cx))
             );
         }
 
@@ -664,13 +779,208 @@ impl ViewportPanel {
             )
     }
 
+    /// Render GPU Pipeline Stats Overlay - Like Unreal's "stat gpu"
+    /// Shows REAL measured timings for each render pass
+    fn render_gpu_pipeline_overlay<V: 'static>(
+        &mut self,
+        gpu_engine: &Arc<Mutex<crate::ui::gpu_renderer::GpuRenderer>>,
+        cx: &mut Context<V>,
+    ) -> impl IntoElement
+    where
+        V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
+    {
+        // Get GPU profiler data
+        let gpu_data = if let Ok(engine) = gpu_engine.lock() {
+            engine.get_gpu_profiler_data()
+        } else {
+            None
+        };
+
+        // Get theme data and clone colors to avoid borrowing issues
+        let (background, radius, border, foreground, chart_1, chart_2, chart_3, chart_4, chart_5, warning, success) = {
+            let theme = cx.theme();
+            (theme.background, theme.radius, theme.border, theme.foreground, theme.chart_1, theme.chart_2, theme.chart_3, theme.chart_4, theme.chart_5, theme.warning, theme.success)
+        };
+
+        // Collect pass data from dynamic render metrics
+        let pass_data = if let Some(ref data) = gpu_data {
+            // Filter out non-render metrics (fps, frame_time, frame_count)
+            let mut render_passes: Vec<_> = data.render_metrics.iter()
+                .filter(|metric| metric.path.starts_with("render/") && metric.value_ms > 0.0)
+                .collect();
+            
+            // Sort by value descending to show most expensive passes first
+            render_passes.sort_by(|a, b| b.value_ms.partial_cmp(&a.value_ms).unwrap_or(std::cmp::Ordering::Equal));
+            
+            // Create pass data with cycling colors
+            let colors = [chart_1, chart_2, chart_3, chart_4, chart_5, warning, success];
+            render_passes.into_iter()
+                .take(15) // Limit to 15 most expensive passes to avoid UI overflow
+                .enumerate()
+                .map(|(i, metric)| {
+                    let color = colors[i % colors.len()];
+                    (metric.name.clone(), metric.value_ms, metric.percentage, color)
+                })
+                .collect()
+        } else {
+            vec![]
+        };
+        
+        let mut result = v_flex()
+            .gap_1()
+            .p_2()
+            .w_full()
+            .bg(background.opacity(0.95))
+            .rounded(radius)
+            .border_1()
+            .border_color(border)
+            .child(
+                // Header
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_semibold()
+                            .text_color(foreground)
+                            .child("🔥 GPU Pipeline Stats")
+                    )
+            )
+            .child(
+                // Total frame time
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Frame Time:")
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_semibold()
+                            .text_color(foreground)
+                            .child(if let Some(ref data) = gpu_data {
+                                format!("{:.2}ms ({:.0} FPS)", data.total_frame_ms, data.fps)
+                            } else {
+                                "N/A".to_string()
+                            })
+                    )
+            )
+            .child(
+                div()
+                    .w_full()
+                    .h(px(1.0))
+                    .bg(border)
+            );
+        
+        // Add individual pass timings - create elements one by one to avoid borrow checker issues
+        for (name, time_ms, percent, color) in pass_data {
+            let elem = Self::render_pass_stat_elem(name, time_ms, percent, color, cx);
+            result = result.child(elem);
+        }
+        
+        // Add separator and total
+        if let Some(ref data) = gpu_data {
+            result = result
+                .child(
+                    div()
+                        .w_full()
+                        .h(px(1.0))
+                        .bg(border)
+                        .mt_1()
+                )
+                .child(
+                    h_flex()
+                        .w_full()
+                        .items_center()
+                        .justify_between()
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_semibold()
+                                .text_color(foreground)
+                                .child("Total GPU:")
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_semibold()
+                                .text_color(if data.total_gpu_ms < 8.0 {
+                                    success
+                                } else if data.total_gpu_ms < 16.0 {
+                                    warning
+                                } else {
+                                    cx.theme().danger
+                                })
+                                .child(format!("{:.2}ms", data.total_gpu_ms))
+                        )
+                );
+        }
+        
+        result
+    }
+
+    /// Render a single GPU pass stat line with timing and percentage
+    fn render_pass_stat_elem<V: 'static>(
+        name: String,
+        time_ms: f32,
+        percent: f32,
+        color: Hsla,
+        cx: &mut Context<V>,
+    ) -> impl IntoElement
+    where
+        V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
+    {
+        let theme = cx.theme();
+        
+        h_flex()
+            .w_full()
+            .items_center()
+            .gap_2()
+            .child(
+                // Color indicator
+                div()
+                    .w(px(8.0))
+                    .h(px(8.0))
+                    .rounded(px(2.0))
+                    .bg(color)
+            )
+            .child(
+                // Name
+                div()
+                    .flex_1()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child(name)
+            )
+            .child(
+                // Timing
+                div()
+                    .text_xs()
+                    .text_color(theme.foreground)
+                    .child(format!("{:.2}ms", time_ms))
+            )
+            .child(
+                // Percentage
+                div()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child(format!("({:.1}%)", percent))
+            )
+    }
+
     fn render_performance_overlay<V: 'static>(
         &mut self,
         state: &mut LevelEditorState,
         fps_graph_state: Rc<RefCell<bool>>,
         gpu_engine: &Arc<Mutex<crate::ui::gpu_renderer::GpuRenderer>>,
         game_thread: &Arc<GameThread>,
-        current_pattern: crate::ui::rainbow_engine_final::RainbowPattern,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
@@ -803,7 +1113,7 @@ impl ViewportPanel {
         
         memory_history.push_back(MemoryDataPoint {
             index: *memory_counter,
-            memory_mb,
+            memory_mb: memory_mb as f64,
         });
         *memory_counter += 1;
         
@@ -851,12 +1161,8 @@ impl ViewportPanel {
         drop(vertices_history);
         drop(vertices_counter);
 
-        // Track input latency (time between input and frame render)
-        let input_latency_ms = if let Some(last_input) = *self.last_input_time.borrow() {
-            last_input.elapsed().as_micros() as f64 / 1000.0
-        } else {
-            0.0
-        };
+        // Track input latency from the input thread (measured in microseconds, stored atomically)
+        let input_latency_ms = self.input_state.input_latency_us.load(Ordering::Relaxed) as f64 / 1000.0;
 
         let mut input_latency_history = self.input_latency_history.borrow_mut();
         let mut input_latency_counter = self.input_latency_counter.borrow_mut();
@@ -1294,7 +1600,7 @@ impl ViewportPanel {
                                                 div()
                                                     .text_xs()
                                                     .text_color(cx.theme().muted_foreground)
-                                                    .child("Input Lag:")
+                                                    .child("Input Thread:")
                                             )
                                             .child(
                                                 div()
@@ -1552,7 +1858,7 @@ impl ViewportPanel {
                         )
                 )
             })
-            // INPUT LATENCY GRAPH - Critical for responsive controls!
+            // INPUT LATENCY GRAPH - Critical for responsive controls! (Measured on input thread)
             .when(!input_latency_data.is_empty(), |this| {
                 this.child(
                     v_flex()
@@ -1563,7 +1869,7 @@ impl ViewportPanel {
                                 .text_xs()
                                 .font_semibold()
                                 .text_color(cx.theme().foreground)
-                                .child("⚡ Input Latency (ms) - Lower is better")
+                                .child("⚡ Input Thread Latency (ms) - Time to send input to GPU")
                         )
                         .child(
                             div()

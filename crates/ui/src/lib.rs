@@ -10,10 +10,10 @@ mod root;
 mod styled;
 mod time;
 mod title_bar;
-pub mod viewport_final; // Final working zero-copy viewport
-pub mod viewport_optimized; // Production-ready optimized viewport
-pub mod gpu_viewport; // NEW: True zero-copy GPU viewport using ExternalTexture
+pub mod bevy_viewport; // Production-ready zero-copy Bevy viewport using GPUI's gpu_canvas
+pub mod gpu_viewport; // Compatibility alias for bevy_viewport
 pub mod gpu_mem_tracker; // GPU memory allocation tracker for debugging VRAM leaks
+pub mod dx11_shared_opener; // DX11 opener for DX12 shared handles (zero-copy bridge)
 mod virtual_list;
 mod window_border;
 

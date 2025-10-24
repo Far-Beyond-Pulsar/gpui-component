@@ -2431,7 +2431,7 @@ dependencies = [
 [[package]]
 name = "collections"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed#6ea85852398d07860ae92822ecdbcddab055ebae"
+source = "git+https://github.com/tristanpoland/zed?rev=46babb764207e7184c8daef687b52bbe013c9a32#46babb764207e7184c8daef687b52bbe013c9a32"
 dependencies = [
  "indexmap",
  "rustc-hash 2.1.1",
@@ -3138,7 +3138,7 @@ dependencies = [
 [[package]]
 name = "derive_refineable"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed#6ea85852398d07860ae92822ecdbcddab055ebae"
+source = "git+https://github.com/tristanpoland/zed?rev=46babb764207e7184c8daef687b52bbe013c9a32#46babb764207e7184c8daef687b52bbe013c9a32"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3439,6 +3439,7 @@ name = "engine_backend"
 version = "0.1.34"
 dependencies = [
  "PebbleVault",
+ "anyhow",
  "bevy",
  "bytemuck",
  "crossbeam-channel",
@@ -3449,8 +3450,13 @@ dependencies = [
  "serde",
  "tempfile",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
  "uuid",
- "wgpu 23.0.1",
+ "wgpu 26.0.1",
+ "wgpu-hal 26.0.4",
+ "wgpu-profiler",
+ "wgpu-types 26.0.0",
  "windows 0.58.0",
 ]
 
@@ -4452,7 +4458,7 @@ dependencies = [
 [[package]]
 name = "gpui"
 version = "0.2.1"
-source = "git+https://github.com/tristanpoland/zed#6ea85852398d07860ae92822ecdbcddab055ebae"
+source = "git+https://github.com/tristanpoland/zed?rev=46babb764207e7184c8daef687b52bbe013c9a32#46babb764207e7184c8daef687b52bbe013c9a32"
 dependencies = [
  "anyhow",
  "as-raw-xcb-connection",
@@ -4476,7 +4482,6 @@ dependencies = [
  "core-video",
  "cosmic-text",
  "ctor",
- "dashmap",
  "derive_more 0.99.20",
  "embed-resource",
  "etagere",
@@ -4499,7 +4504,6 @@ dependencies = [
  "objc",
  "objc2 0.6.3",
  "objc2-metal 0.3.2",
- "once_cell",
  "oo7",
  "open",
  "parking",
@@ -4621,6 +4625,7 @@ dependencies = [
  "unicode-segmentation",
  "uuid",
  "wgpu 0.20.1",
+ "windows 0.58.0",
  "winit 0.29.15",
 ]
 
@@ -4636,7 +4641,7 @@ dependencies = [
 [[package]]
 name = "gpui_macros"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed#6ea85852398d07860ae92822ecdbcddab055ebae"
+source = "git+https://github.com/tristanpoland/zed?rev=46babb764207e7184c8daef687b52bbe013c9a32#46babb764207e7184c8daef687b52bbe013c9a32"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -4995,7 +5000,7 @@ dependencies = [
 [[package]]
 name = "http_client"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed#6ea85852398d07860ae92822ecdbcddab055ebae"
+source = "git+https://github.com/tristanpoland/zed?rev=46babb764207e7184c8daef687b52bbe013c9a32#46babb764207e7184c8daef687b52bbe013c9a32"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -6102,7 +6107,7 @@ dependencies = [
 [[package]]
 name = "media"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed#6ea85852398d07860ae92822ecdbcddab055ebae"
+source = "git+https://github.com/tristanpoland/zed?rev=46babb764207e7184c8daef687b52bbe013c9a32#46babb764207e7184c8daef687b52bbe013c9a32"
 dependencies = [
  "anyhow",
  "bindgen 0.71.1",
@@ -7649,7 +7654,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "perf"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed#6ea85852398d07860ae92822ecdbcddab055ebae"
+source = "git+https://github.com/tristanpoland/zed?rev=46babb764207e7184c8daef687b52bbe013c9a32#46babb764207e7184c8daef687b52bbe013c9a32"
 dependencies = [
  "collections",
  "serde",
@@ -8156,7 +8161,7 @@ dependencies = [
 
 [[package]]
 name = "pulsar_engine"
-version = "0.1.42"
+version = "0.1.43"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -8654,7 +8659,7 @@ dependencies = [
 [[package]]
 name = "refineable"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed#6ea85852398d07860ae92822ecdbcddab055ebae"
+source = "git+https://github.com/tristanpoland/zed?rev=46babb764207e7184c8daef687b52bbe013c9a32#46babb764207e7184c8daef687b52bbe013c9a32"
 dependencies = [
  "derive_refineable",
  "workspace-hack",
@@ -9418,7 +9423,7 @@ checksum = "0f7d95a54511e0c7be3f51e8867aa8cf35148d7b9445d44de2f943e2b206e749"
 [[package]]
 name = "semantic_version"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed#6ea85852398d07860ae92822ecdbcddab055ebae"
+source = "git+https://github.com/tristanpoland/zed?rev=46babb764207e7184c8daef687b52bbe013c9a32#46babb764207e7184c8daef687b52bbe013c9a32"
 dependencies = [
  "anyhow",
  "serde",
@@ -10131,7 +10136,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 [[package]]
 name = "sum_tree"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed#6ea85852398d07860ae92822ecdbcddab055ebae"
+source = "git+https://github.com/tristanpoland/zed?rev=46babb764207e7184c8daef687b52bbe013c9a32#46babb764207e7184c8daef687b52bbe013c9a32"
 dependencies = [
  "arrayvec",
  "log",
@@ -11681,7 +11686,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 [[package]]
 name = "util"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed#6ea85852398d07860ae92822ecdbcddab055ebae"
+source = "git+https://github.com/tristanpoland/zed?rev=46babb764207e7184c8daef687b52bbe013c9a32#46babb764207e7184c8daef687b52bbe013c9a32"
 dependencies = [
  "anyhow",
  "async-fs 2.2.0",
@@ -11717,7 +11722,7 @@ dependencies = [
 [[package]]
 name = "util_macros"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed#6ea85852398d07860ae92822ecdbcddab055ebae"
+source = "git+https://github.com/tristanpoland/zed?rev=46babb764207e7184c8daef687b52bbe013c9a32#46babb764207e7184c8daef687b52bbe013c9a32"
 dependencies = [
  "perf",
  "quote",
@@ -12237,13 +12242,18 @@ dependencies = [
  "cfg_aliases 0.2.1",
  "document-features",
  "hashbrown 0.15.5",
+ "js-sys",
  "log",
  "naga 26.0.0",
+ "parking_lot",
  "portable-atomic",
  "profiling",
  "raw-window-handle",
  "smallvec",
  "static_assertions",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
  "wgpu-core 26.0.1",
  "wgpu-hal 26.0.4",
  "wgpu-types 26.0.0",
@@ -12326,6 +12336,7 @@ dependencies = [
  "smallvec",
  "thiserror 2.0.17",
  "wgpu-core-deps-apple",
+ "wgpu-core-deps-emscripten",
  "wgpu-core-deps-windows-linux-android",
  "wgpu-hal 26.0.4",
  "wgpu-types 26.0.0",
@@ -12336,6 +12347,15 @@ name = "wgpu-core-deps-apple"
 version = "26.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "18ae5fbde6a4cbebae38358aa73fcd6e0f15c6144b67ef5dc91ded0db125dbdf"
+dependencies = [
+ "wgpu-hal 26.0.4",
+]
+
+[[package]]
+name = "wgpu-core-deps-emscripten"
+version = "26.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7670e390f416006f746b4600fdd9136455e3627f5bd763abf9a65daa216dd2d"
 dependencies = [
  "wgpu-hal 26.0.4",
 ]
@@ -12455,15 +12475,20 @@ dependencies = [
  "cfg-if",
  "cfg_aliases 0.2.1",
  "core-graphics-types 0.2.0",
+ "glow 0.16.0",
+ "glutin_wgl_sys 0.6.1",
  "gpu-alloc",
  "gpu-allocator 0.27.0",
  "gpu-descriptor",
  "hashbrown 0.15.5",
+ "js-sys",
+ "khronos-egl",
  "libc",
  "libloading 0.8.9",
  "log",
  "metal 0.32.0",
  "naga 26.0.0",
+ "ndk-sys 0.6.0+11769913",
  "objc",
  "ordered-float",
  "parking_lot",
@@ -12475,9 +12500,22 @@ dependencies = [
  "renderdoc-sys",
  "smallvec",
  "thiserror 2.0.17",
+ "wasm-bindgen",
+ "web-sys",
  "wgpu-types 26.0.0",
  "windows 0.58.0",
  "windows-core 0.58.0",
+]
+
+[[package]]
+name = "wgpu-profiler"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43016a1a244a8ca4c3543441dc68d0c970430c74d6d9a17ae016426e2d3fdb08"
+dependencies = [
+ "parking_lot",
+ "thiserror 1.0.69",
+ "wgpu 23.0.1",
 ]
 
 [[package]]

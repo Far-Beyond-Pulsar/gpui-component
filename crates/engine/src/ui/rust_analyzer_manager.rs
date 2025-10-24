@@ -61,6 +61,10 @@ pub struct RustAnalyzerManager {
     pending_requests: Arc<Mutex<HashMap<i64, flume::Sender<serde_json::Value>>>>,
     /// Whether we've attempted installation on failure
     install_attempted: bool,
+    /// Time when we first received diagnostics (indicator that analysis is working)
+    first_diagnostics_time: Option<Instant>,
+    /// Whether initial analysis has been marked as complete
+    initial_analysis_complete: bool,
 }
 
 use std::collections::HashMap;
@@ -86,6 +90,8 @@ impl RustAnalyzerManager {
             progress_rx: None,
             pending_requests: Arc::new(Mutex::new(HashMap::new())),
             install_attempted: false,
+            first_diagnostics_time: None,
+            initial_analysis_complete: false,
         }
     }
 
@@ -355,6 +361,8 @@ impl RustAnalyzerManager {
         self.workspace_root = Some(workspace_root.clone());
         self.status = AnalyzerStatus::Starting;
         self.install_attempted = false; // Reset installation attempt flag
+        self.first_diagnostics_time = None; // Reset diagnostics tracking
+        self.initial_analysis_complete = false; // Reset completion flag
         cx.emit(AnalyzerEvent::StatusChanged(AnalyzerStatus::Starting));
         cx.notify();
 
@@ -651,6 +659,9 @@ impl RustAnalyzerManager {
                     },
                     "window": {
                         "workDoneProgress": true
+                    },
+                    "experimental": {
+                        "serverStatusNotification": true
                     }
                 },
                 "initializationOptions": {
@@ -713,28 +724,60 @@ impl RustAnalyzerManager {
                     "$/progress" => {
                         // Handle progress notifications
                         if let Some(params) = msg.get("params") {
+                            // Get the progress token to identify what type of progress this is
+                            let token = params.get("token").and_then(|t| t.as_str()).unwrap_or("");
+                            
                             if let Some(value) = params.get("value") {
                                 if let Some(kind) = value.get("kind").and_then(|k| k.as_str()) {
                                     match kind {
                                         "begin" => {
                                             let title = value.get("title").and_then(|t| t.as_str()).unwrap_or("Processing");
-                                            println!("📊 Progress started: {}", title);
+                                            println!("📊 Progress started [{}]: {}", token, title);
+                                            
+                                            // Extract meaningful information from the title
+                                            let message = if title.contains("Fetching") || title.contains("Loading") {
+                                                "Loading metadata...".to_string()
+                                            } else if title.contains("Indexing") || title.contains("Building") {
+                                                "Indexing crates...".to_string()
+                                            } else {
+                                                title.to_string()
+                                            };
+                                            
                                             let _ = progress_tx.send(ProgressUpdate::Progress {
                                                 progress: 0.0,
-                                                message: title.to_string(),
+                                                message,
                                             });
                                         }
                                         "report" => {
                                             let message = value.get("message").and_then(|m| m.as_str()).unwrap_or("");
                                             let percentage = value.get("percentage").and_then(|p| p.as_u64()).unwrap_or(0);
+                                            
+                                            // Extract crate name from the message if present
+                                            let display_message = if !message.is_empty() {
+                                                // Parse messages like "12/45" or crate names
+                                                if message.contains('/') {
+                                                    format!("Analyzing ({})...", message)
+                                                } else {
+                                                    message.to_string()
+                                                }
+                                            } else {
+                                                format!("{}%", percentage)
+                                            };
+                                            
+                                            println!("📊 Progress [{}]: {} ({}%)", token, display_message, percentage);
+                                            
                                             let _ = progress_tx.send(ProgressUpdate::Progress {
                                                 progress: (percentage as f32) / 100.0,
-                                                message: message.to_string(),
+                                                message: display_message,
                                             });
                                         }
                                         "end" => {
-                                            println!("✅ Progress complete");
-                                            let _ = progress_tx.send(ProgressUpdate::Ready);
+                                            let message = value.get("message").and_then(|m| m.as_str()).unwrap_or("");
+                                            println!("✅ Progress complete [{}]: {}", token, message);
+                                            
+                                            // DON'T mark as ready here - cachePriming can complete and restart multiple times!
+                                            // Instead, wait for the rust-analyzer/serverStatus notification with quiescent: true
+                                            // That's the ONLY reliable way to know when ALL analysis is complete
                                         }
                                         _ => {}
                                     }
@@ -793,8 +836,25 @@ impl RustAnalyzerManager {
                     "window/workDoneProgress/create" => {
                         println!("📊 Work done progress created");
                     }
+                    "rust-analyzer/serverStatus" => {
+                        // rust-analyzer sends this when its status changes
+                        // params: { health: "ok" | "warning" | "error", quiescent: bool, message?: string }
+                        // quiescent = true means the server is idle (all background work done)
+                        if let Some(params) = msg.get("params") {
+                            println!("🔔 rust-analyzer/serverStatus: {:?}", params);
+                            
+                            // Check if the server is quiescent (idle, all indexing done)
+                            if let Some(quiescent) = params.get("quiescent").and_then(|q| q.as_bool()) {
+                                if quiescent {
+                                    println!("✅ rust-analyzer is quiescent (all indexing complete)");
+                                    let _ = progress_tx.send(ProgressUpdate::Ready);
+                                }
+                            }
+                        }
+                    }
                     _ => {
-                        // Other notifications
+                        // Log unhandled notifications to help with debugging
+                        println!("📨 Unhandled LSP notification: {}", method);
                     }
                 }
             }
@@ -1037,97 +1097,99 @@ impl RustAnalyzerManager {
         }
     }
 
-    /// Update progress from the background thread (called from UI thread on each frame)
+    /// Update progress from the background thread (called from UI thread periodically)
     pub fn update_progress_from_thread(&mut self, cx: &mut Context<Self>) {
-        // Check for progress updates from the channel
+        // Collect all updates first to avoid borrow issues
+        let mut updates = Vec::new();
         if let Some(rx) = &self.progress_rx {
             // Drain all available messages
             while let Ok(update) = rx.try_recv() {
-                match update {
-                    ProgressUpdate::Progress { progress, message } => {
-                        self.status = AnalyzerStatus::Indexing {
-                            progress,
-                            message: message.clone(),
-                        };
-                        cx.emit(AnalyzerEvent::IndexingProgress { progress, message });
-                        cx.notify();
-                    }
-                    ProgressUpdate::Ready => {
+                updates.push(update);
+            }
+        }
+        
+        // Handle all collected updates
+        for update in updates {
+            self.handle_progress_update(update, cx);
+        }
+        
+        // Additional check: if we've been indexing for a while and receiving updates,
+        // but haven't marked as complete, check if we should timeout to ready
+        if !self.initial_analysis_complete {
+            if let Some(last_update) = self.last_update {
+                // If no updates for 3 seconds and we're in indexing state, mark as ready
+                // This handles cases where rust-analyzer doesn't send an explicit "end" progress event
+                if last_update.elapsed() > Duration::from_secs(3) && matches!(self.status, AnalyzerStatus::Indexing { .. }) {
+                    self.initial_analysis_complete = true;
+                    self.status = AnalyzerStatus::Ready;
+                    println!("✅ Initial analysis complete (timeout - no updates for 3s)");
+                    cx.emit(AnalyzerEvent::Ready);
+                    cx.notify();
+                }
+            }
+        }
+    }
+    
+    /// Handle a progress update from the background thread
+    fn handle_progress_update(&mut self, update: ProgressUpdate, cx: &mut Context<Self>) {
+        match update {
+            ProgressUpdate::Progress { progress, message } => {
+                self.status = AnalyzerStatus::Indexing {
+                    progress,
+                    message: message.clone(),
+                };
+                self.last_update = Some(Instant::now());
+                cx.emit(AnalyzerEvent::IndexingProgress { progress, message });
+                cx.notify();
+            }
+            ProgressUpdate::Ready => {
+                if !self.initial_analysis_complete {
+                    self.initial_analysis_complete = true;
+                    self.status = AnalyzerStatus::Ready;
+                    println!("✅ Initial analysis marked as complete");
+                    cx.emit(AnalyzerEvent::Ready);
+                    cx.notify();
+                }
+            }
+            ProgressUpdate::Error(e) => {
+                self.status = AnalyzerStatus::Error(e.clone());
+                cx.emit(AnalyzerEvent::Error(e));
+                cx.notify();
+            }
+            ProgressUpdate::ProcessExited(status) => {
+                let error_msg = if status.success() {
+                    "rust-analyzer exited normally".to_string()
+                } else {
+                    format!("rust-analyzer exited with error (status: {:?})", status)
+                };
+                println!("❌ {}", error_msg);
+                self.status = AnalyzerStatus::Error(error_msg.clone());
+                self.initialized = false;
+                cx.emit(AnalyzerEvent::Error(error_msg));
+                cx.notify();
+            }
+            ProgressUpdate::Diagnostics(diagnostics) => {
+                // Track when we first receive diagnostics - this indicates the analyzer is working
+                if self.first_diagnostics_time.is_none() {
+                    self.first_diagnostics_time = Some(Instant::now());
+                    println!("📊 First diagnostics received - analyzer is working");
+                }
+                
+                // If we've been receiving diagnostics for more than 2 seconds and haven't marked as ready,
+                // consider the initial analysis complete
+                if let Some(first_time) = self.first_diagnostics_time {
+                    if !self.initial_analysis_complete 
+                        && first_time.elapsed() > Duration::from_secs(2) {
+                        self.initial_analysis_complete = true;
                         self.status = AnalyzerStatus::Ready;
+                        println!("✅ Initial analysis complete based on diagnostics (received for 2s)");
                         cx.emit(AnalyzerEvent::Ready);
                         cx.notify();
                     }
-                    ProgressUpdate::Error(e) => {
-                        self.status = AnalyzerStatus::Error(e.clone());
-                        cx.emit(AnalyzerEvent::Error(e));
-                        cx.notify();
-                    }
-                    ProgressUpdate::ProcessExited(status) => {
-                        // Check if it exited with an error and we haven't tried installing yet
-                        let should_retry = !self.install_attempted && !status.success();
-                        
-                        if should_retry {
-                            println!("⚠️  rust-analyzer exited with error, attempting to install and retry...");
-                            self.install_attempted = true;
-                            
-                            // Try to install and restart
-                            match Self::install_rust_analyzer_to_deps() {
-                                Ok(installed_path) => {
-                                    println!("✓ Installed rust-analyzer, restarting...");
-                                    self.analyzer_path = installed_path;
-                                    
-                                    // Restart with the new path
-                                    if let Some(workspace) = self.workspace_root.clone() {
-                                        self.stop_internal();
-                                        // Small delay to clean up
-                                        std::thread::sleep(Duration::from_millis(100));
-                                        // Note: We can't call self.start() here directly as we're in update_progress_from_thread
-                                        // Instead, we set status to trigger a restart from the app
-                                        self.status = AnalyzerStatus::Idle;
-                                        cx.notify();
-                                        
-                                        // Spawn the start in the background
-                                        let analyzer_path = self.analyzer_path.clone();
-                                        let process_arc = self.process.clone();
-                                        let stdin_arc = self.stdin.clone();
-                                        let request_id_arc = self.request_id.clone();
-                                        let pending_requests_arc = self.pending_requests.clone();
-                                        
-                                        let (progress_tx, progress_rx) = channel();
-                                        self.progress_rx = Some(progress_rx);
-                                        
-                                        std::thread::spawn(move || {
-                                            let _ = Self::spawn_process_blocking(
-                                                &analyzer_path,
-                                                &workspace,
-                                                process_arc,
-                                                stdin_arc,
-                                                progress_tx,
-                                                pending_requests_arc,
-                                            );
-                                        });
-                                        
-                                        return; // Don't emit error event
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!("❌ Failed to install rust-analyzer: {}", e);
-                                }
-                            }
-                        }
-                        
-                        let error_msg = format!("rust-analyzer exited unexpectedly (status: {:?})", status);
-                        println!("❌ {}", error_msg);
-                        self.status = AnalyzerStatus::Error(error_msg.clone());
-                        self.initialized = false;
-                        cx.emit(AnalyzerEvent::Error(error_msg));
-                        cx.notify();
-                    }
-                    ProgressUpdate::Diagnostics(diagnostics) => {
-                        cx.emit(AnalyzerEvent::Diagnostics(diagnostics));
-                        // Don't notify here, let the app handle it
-                    }
                 }
+                
+                cx.emit(AnalyzerEvent::Diagnostics(diagnostics));
+                // Don't notify here, let the app handle it
             }
         }
     }

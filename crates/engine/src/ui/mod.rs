@@ -4,6 +4,7 @@ pub mod entry_screen;
 pub mod entry_window;
 pub mod file_manager_drawer;
 pub mod file_manager_window;
+pub mod loading_window;
 pub mod lsp_completion_provider;
 pub mod menu;
 pub mod panels;
@@ -13,8 +14,6 @@ pub mod project_selector;
 pub mod terminal; // New professional terminal module
 pub mod terminal_drawer;
 pub mod terminal_window;
-pub mod rainbow_engine_final;
-pub mod wgpu_3d_renderer;
 pub mod gpu_renderer;
 pub mod rust_analyzer_manager;
 pub mod settings_screen;

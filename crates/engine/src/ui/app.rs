@@ -74,6 +74,21 @@ impl PulsarApp {
         );
         Self::new_internal(Some(project_path), None, true, window, cx)
     }
+    
+    /// Create a new PulsarApp with a pre-initialized rust analyzer
+    /// This is used when loading from the loading screen to avoid re-initializing
+    pub fn new_with_project_and_analyzer(
+        project_path: PathBuf,
+        rust_analyzer: Entity<RustAnalyzerManager>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        eprintln!(
+            "DEBUG: PulsarApp::new_with_project_and_analyzer called with path: {:?}",
+            project_path
+        );
+        Self::new_internal(Some(project_path), Some(rust_analyzer), true, window, cx)
+    }
 
     /// Create a new window that shares the rust analyzer from an existing window
     /// This is used for detached windows and doesn't create a default Level Editor tab
