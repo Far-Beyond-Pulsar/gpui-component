@@ -659,6 +659,9 @@ impl RustAnalyzerManager {
                     },
                     "window": {
                         "workDoneProgress": true
+                    },
+                    "experimental": {
+                        "serverStatusNotification": true
                     }
                 },
                 "initializationOptions": {
@@ -772,18 +775,9 @@ impl RustAnalyzerManager {
                                             let message = value.get("message").and_then(|m| m.as_str()).unwrap_or("");
                                             println!("✅ Progress complete [{}]: {}", token, message);
                                             
-                                            // Mark as ready when the actual indexing/analysis completes
-                                            // rust-analyzer uses various tokens for different operations:
-                                            // - rustAnalyzer/Building build-artifacts: building proc-macros (happens FIRST, DON'T use this)
-                                            // - rustAnalyzer/Fetching: fetching metadata  
-                                            // - rustAnalyzer/Roots Scanned: initial workspace scan
-                                            // - rustAnalyzer/Building: building crate graph
-                                            // - rustAnalyzer/Indexing: indexing files (this is the MAIN one we want)
-                                            // We only mark as ready after actual source indexing, NOT build artifacts
-                                            if token.contains("rustAnalyzer") && !token.contains("build-artifacts") {
-                                                println!("🎯 Detected analyzer progress completion for token: {}", token);
-                                                let _ = progress_tx.send(ProgressUpdate::Ready);
-                                            }
+                                            // DON'T mark as ready here - cachePriming can complete and restart multiple times!
+                                            // Instead, wait for the rust-analyzer/serverStatus notification with quiescent: true
+                                            // That's the ONLY reliable way to know when ALL analysis is complete
                                         }
                                         _ => {}
                                     }
@@ -842,8 +836,25 @@ impl RustAnalyzerManager {
                     "window/workDoneProgress/create" => {
                         println!("📊 Work done progress created");
                     }
+                    "rust-analyzer/serverStatus" => {
+                        // rust-analyzer sends this when its status changes
+                        // params: { health: "ok" | "warning" | "error", quiescent: bool, message?: string }
+                        // quiescent = true means the server is idle (all background work done)
+                        if let Some(params) = msg.get("params") {
+                            println!("🔔 rust-analyzer/serverStatus: {:?}", params);
+                            
+                            // Check if the server is quiescent (idle, all indexing done)
+                            if let Some(quiescent) = params.get("quiescent").and_then(|q| q.as_bool()) {
+                                if quiescent {
+                                    println!("✅ rust-analyzer is quiescent (all indexing complete)");
+                                    let _ = progress_tx.send(ProgressUpdate::Ready);
+                                }
+                            }
+                        }
+                    }
                     _ => {
-                        // Other notifications
+                        // Log unhandled notifications to help with debugging
+                        println!("📨 Unhandled LSP notification: {}", method);
                     }
                 }
             }
