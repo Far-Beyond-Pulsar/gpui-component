@@ -7,6 +7,7 @@ use super::rust_analyzer_manager::{RustAnalyzerManager, AnalyzerStatus, Analyzer
 
 pub struct LoadingWindow {
     project_path: PathBuf,
+    project_name: String,
     loading_tasks: Vec<LoadingTask>,
     current_task_index: usize,
     progress: f32,
@@ -40,6 +41,13 @@ impl EventEmitter<LoadingComplete> for LoadingWindow {}
 
 impl LoadingWindow {
     pub fn new(project_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // Extract project name from path
+        let project_name = project_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Unnamed Project")
+            .to_string();
+        
         // Define all loading tasks
         let loading_tasks = vec![
             LoadingTask {
@@ -62,6 +70,7 @@ impl LoadingWindow {
 
         let mut loading_window = Self {
             project_path: project_path.clone(),
+            project_name,
             loading_tasks,
             current_task_index: 0,
             progress: 0.0,
@@ -302,8 +311,15 @@ impl Render for LoadingWindow {
         
         // Debug: log current progress
         if self.progress > 0.0 {
-            println!("🎨 Rendering loading window with progress: {:.2}%", self.progress * 100.0);
+            println!("🎨 Rendering loading window with progress: {:.2}%", self.progress);
         }
+        
+        // Calculate relative width for progress bar (Story crate style)
+        let relative_w = relative(match self.progress {
+            v if v < 0.0 => 0.0,
+            v if v > 100.0 => 1.0,
+            v => v / 100.0,
+        });
 
         div()
             .id("loading-window")
@@ -326,12 +342,25 @@ impl Render for LoadingWindow {
                             .items_center()
                             .gap_4()
                             .child(
-                                // Logo/Title
+                                // Logo/Title with project name
                                 div()
-                                    .text_xl()
-                                    .font_weight(FontWeight::BOLD)
-                                    .text_color(theme.foreground)
-                                    .child("Pulsar Engine")
+                                    .flex()
+                                    .flex_col()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(
+                                        div()
+                                            .text_xl()
+                                            .font_weight(FontWeight::BOLD)
+                                            .text_color(theme.foreground)
+                                            .child("Pulsar Engine")
+                                    )
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(theme.muted_foreground)
+                                            .child(self.project_name.clone())
+                                    )
                             )
                             .child(
                                 // Task list
@@ -418,11 +447,7 @@ impl Render for LoadingWindow {
                                     .top_0()
                                     .left_0()
                                     .h_full()
-                                    .w(relative(match self.progress {
-                                        v if v < 0.0 => 0.0,
-                                        v if v > 100.0 => 1.0,
-                                        v => v / 100.0,
-                                    }))
+                                    .w(relative_w)
                                     .bg(theme.accent)
                             )
                     )
