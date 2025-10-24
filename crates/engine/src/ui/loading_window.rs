@@ -94,7 +94,7 @@ impl LoadingWindow {
             _ => 500,
         };
 
-        cx.spawn(|this, mut cx| async move {
+        cx.spawn(async move |this, mut cx| {
             // Simulate work with smol::Timer instead of tokio
             Timer::after(Duration::from_millis(delay_ms)).await;
 
