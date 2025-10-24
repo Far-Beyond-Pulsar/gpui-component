@@ -361,7 +361,6 @@ impl ViewportPanel {
                         let keys: Vec<Keycode> = device_state.get_keys();
                         let shift_pressed = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
                         
-                        println!("[INPUT-THREAD] ========== RIGHT BUTTON PRESSED ==========");
                         let (x, y) = get_cursor_position();
                         locked_cursor_x.store(x, Ordering::Relaxed);
                         locked_cursor_y.store(y, Ordering::Relaxed);
@@ -372,19 +371,16 @@ impl ViewportPanel {
                             is_panning = true;
                             is_rotating = false;
                             mouse_middle_captured.store(true, Ordering::Relaxed);
-                            println!("[INPUT-THREAD] Shift+Right pressed - PAN mode");
                         } else {
                             // Right alone = Rotation (standard behavior)
                             is_rotating = true;
                             is_panning = false;
                             mouse_right_captured.store(true, Ordering::Relaxed);
-                            println!("[INPUT-THREAD] Right pressed - ROTATION mode");
                         }
                         hide_cursor();
                         right_was_pressed = true;
                     } else if !right_pressed && right_was_pressed {
                         // Right button just released - STOP ALL INPUT
-                        println!("[INPUT-THREAD] ========== RIGHT BUTTON RELEASED ==========");
                         if is_rotating {
                             mouse_right_captured.store(false, Ordering::Relaxed);
                             is_rotating = false;
@@ -521,7 +517,6 @@ impl ViewportPanel {
             .on_mouse_down(gpui::MouseButton::Left, move |_, _, _| {
                 // Right-click on viewport - enable input thread
                 viewport_mouse_down.store(true, Ordering::Relaxed);
-                println!("[VIEWPORT] Right-click ON viewport - input enabled");
             })
             .child(
                 // Main viewport - input thread handles ALL mouse/keyboard when focused
@@ -529,13 +524,6 @@ impl ViewportPanel {
                     .flex() // Enable flex
                     .flex_1() // Grow to fill available space
                     .size_full() // Take full size
-                    .on_mouse_down(
-                        gpui::MouseButton::Left,
-                        move |event: &MouseDownEvent, _phase, _cx| {
-                            println!("[VIEWPORT-INNER] ⬅️ LEFT CLICK at position: x={:.2}, y={:.2}", 
-                                event.position.x.as_f32(), event.position.y.as_f32());
-                        },
-                    )
                     .on_scroll_wheel(move |event: &gpui::ScrollWheelEvent, _phase, _cx| {
                         let scroll_delta: f32 = event.delta.pixel_delta(px(1.0)).y.into();
                         

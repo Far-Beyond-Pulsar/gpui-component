@@ -12,6 +12,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use ui::app::PulsarApp;
 use ui::entry_window::EntryWindow;
+use ui::loading_window::{LoadingWindow, LoadingComplete};
 use ui::project_selector::ProjectSelected;
 use ui::settings_window::SettingsWindow;
 
@@ -188,8 +189,8 @@ fn main() {
                             });
                         }
 
-                        // Open the main engine window with the selected project
-                        open_engine_window(project_path, cx);
+                        // Open the loading window
+                        open_loading_window(project_path, cx);
                     })
                     .detach();
                 }
@@ -198,6 +199,54 @@ fn main() {
             })
             .expect("failed to open entry window");
     });
+}
+
+fn open_loading_window(project_path: PathBuf, cx: &mut App) {
+    eprintln!("DEBUG: open_loading_window called with path: {:?}", project_path);
+    
+    // Create a smaller centered window for loading splash
+    let loading_window_size = size(px(600.), px(400.));
+    let loading_window_bounds = Bounds::centered(None, loading_window_size, cx);
+
+    let options = WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(loading_window_bounds)),
+        titlebar: Some(TitleBar::title_bar_options()),
+        window_min_size: Some(gpui::Size {
+            width: px(600.),
+            height: px(400.),
+        }),
+        kind: WindowKind::Normal,
+        is_resizable: false, // Loading window shouldn't be resizable
+        window_decorations: Some(gpui::WindowDecorations::Client),
+        #[cfg(target_os = "linux")]
+        window_background: gpui::WindowBackgroundAppearance::Transparent,
+        ..Default::default()
+    };
+
+    cx.open_window(options, |window, cx| {
+        let loading_view = cx.new(|cx| LoadingWindow::new(project_path.clone(), window, cx));
+        
+        // Subscribe to loading complete event
+        cx.subscribe(&loading_view, move |_loading, event: &LoadingComplete, cx| {
+            let project_path = event.project_path.clone();
+            
+            eprintln!("DEBUG: Loading complete, closing loading window and opening engine window");
+            
+            // Close the loading window
+            if let Some(active_window) = cx.active_window() {
+                let _ = active_window.update(cx, |_, window, _cx| {
+                    window.remove_window();
+                });
+            }
+            
+            // Open the main engine window
+            open_engine_window(project_path, cx);
+        })
+        .detach();
+        
+        cx.new(|cx| Root::new(loading_view.into(), window, cx))
+    })
+    .expect("failed to open loading window");
 }
 
 fn open_engine_window(project_path: PathBuf, cx: &mut App) {
