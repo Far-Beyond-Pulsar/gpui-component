@@ -93,22 +93,23 @@ impl LoadingWindow {
         // Start all initialization tasks asynchronously
         self.start_init_tasks(window, cx);
         
-        // Start polling analyzer progress - this calls update_progress_from_thread which
-        // reads from the channel and emits events that trigger our on_analyzer_event callback
+        // Start polling analyzer progress in a background thread
+        // The analyzer manager has a channel-based system where updates come from a background thread
+        // We need to poll update_progress_from_thread() on the main thread to process those updates
         self.start_analyzer_polling(window, cx);
     }
     
     fn start_analyzer_polling(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         // Poll the analyzer every 100ms to process progress updates from the background thread
-        // This is necessary because the analyzer's stdout reader thread sends updates via a channel
-        // and we need to periodically check that channel from the main thread
+        // The rust analyzer manager receives events on a channel from its stdout reader thread
+        // We must call update_progress_from_thread() to process those events which will emit
+        // AnalyzerEvent events that our subscription (on_analyzer_event) will receive
         cx.spawn_in(window, async move |this, mut cx| {
             loop {
                 cx.background_executor().timer(Duration::from_millis(100)).await;
                 
                 let should_continue = this.update(cx, |this, cx| {
-                    // Update analyzer progress - this processes messages from the background thread
-                    // and emits events that our subscription will catch
+                    // Process analyzer updates - this reads from the channel and emits events
                     if let Some(analyzer) = &this.rust_analyzer {
                         analyzer.update(cx, |analyzer, cx| {
                             analyzer.update_progress_from_thread(cx);
@@ -179,6 +180,7 @@ impl LoadingWindow {
         
         match event {
             AnalyzerEvent::StatusChanged(status) => {
+                println!("   Status changed to: {:?}", status);
                 match status {
                     AnalyzerStatus::Indexing { progress, message } => {
                         // Update the indexing task with the current crate name
@@ -191,17 +193,17 @@ impl LoadingWindow {
                             };
                             // Update overall progress: first 3 tasks (0.75) + analyzer progress (0.25)
                             self.progress = 0.75 + (progress * 0.25);
-                            println!("📊 Indexing progress: {:.1}% - {}", progress * 100.0, message);
+                            println!("   📊 Indexing progress: {:.1}% - {}", progress * 100.0, message);
                             cx.notify();
                         }
                     }
                     AnalyzerStatus::Ready => {
-                        println!("✅ Analyzer ready via StatusChanged");
+                        println!("   ✅ Analyzer ready via StatusChanged event");
                         self.mark_analyzer_ready(cx);
                     }
                     AnalyzerStatus::Error(err) => {
                         // Show error but still mark as complete to avoid hanging forever
-                        eprintln!("❌ Analyzer error: {}", err);
+                        eprintln!("   ❌ Analyzer error: {}", err);
                         if !self.analyzer_ready {
                             self.loading_tasks[3].status = TaskStatus::Completed;
                             self.loading_tasks[3].name = format!("Analyzer error: {}", err);
@@ -215,6 +217,7 @@ impl LoadingWindow {
                 }
             }
             AnalyzerEvent::IndexingProgress { progress, message } => {
+                println!("   📈 Indexing progress: {:.1}% - {}", progress * 100.0, message);
                 // Update the indexing task with the current crate name
                 if !self.analyzer_ready {
                     self.loading_tasks[3].status = TaskStatus::InProgress;
@@ -225,17 +228,16 @@ impl LoadingWindow {
                     };
                     // Update overall progress: first 3 tasks (0.75) + analyzer progress (0.25)
                     self.progress = 0.75 + (progress * 0.25);
-                    println!("📊 Indexing progress: {:.1}% - {}", progress * 100.0, message);
                     cx.notify();
                 }
             }
             AnalyzerEvent::Ready => {
-                println!("✅ Analyzer ready via Ready event");
+                println!("   ✅ Analyzer ready via Ready event");
                 self.mark_analyzer_ready(cx);
             }
             AnalyzerEvent::Error(err) => {
                 // Show error but still mark as complete to avoid hanging forever
-                eprintln!("❌ Analyzer error: {}", err);
+                eprintln!("   ❌ Analyzer error: {}", err);
                 if !self.analyzer_ready {
                     self.loading_tasks[3].status = TaskStatus::Completed;
                     self.loading_tasks[3].name = format!("Analyzer error: {}", err);
@@ -248,7 +250,7 @@ impl LoadingWindow {
             AnalyzerEvent::Diagnostics(_) => {
                 // Diagnostics indicate the analyzer is working - this is a good sign
                 // But don't mark as ready yet, wait for the explicit Ready event
-                println!("📋 Received diagnostics from analyzer (working...)");
+                println!("   📋 Received diagnostics from analyzer (working...)");
             }
         }
     }

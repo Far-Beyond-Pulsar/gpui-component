@@ -772,12 +772,16 @@ impl RustAnalyzerManager {
                                             let message = value.get("message").and_then(|m| m.as_str()).unwrap_or("");
                                             println!("✅ Progress complete [{}]: {}", token, message);
                                             
-                                            // Mark as ready when any major progress completes
-                                            // rust-analyzer uses various tokens for different operations
-                                            // We consider initial analysis complete when any of these finish
-                                            if token.contains("rustAnalyzer/Fetching") 
-                                                || token.contains("rustAnalyzer/Roots Scanned")
-                                                || token.contains("rustAnalyzer/Building") {
+                                            // Mark as ready when the actual indexing/analysis completes
+                                            // rust-analyzer uses various tokens for different operations:
+                                            // - rustAnalyzer/Building build-artifacts: building proc-macros (happens FIRST, DON'T use this)
+                                            // - rustAnalyzer/Fetching: fetching metadata  
+                                            // - rustAnalyzer/Roots Scanned: initial workspace scan
+                                            // - rustAnalyzer/Building: building crate graph
+                                            // - rustAnalyzer/Indexing: indexing files (this is the MAIN one we want)
+                                            // We only mark as ready after actual source indexing, NOT build artifacts
+                                            if token.contains("rustAnalyzer") && !token.contains("build-artifacts") {
+                                                println!("🎯 Detected analyzer progress completion for token: {}", token);
                                                 let _ = progress_tx.send(ProgressUpdate::Ready);
                                             }
                                         }
@@ -1102,11 +1106,12 @@ impl RustAnalyzerManager {
         // but haven't marked as complete, check if we should timeout to ready
         if !self.initial_analysis_complete {
             if let Some(last_update) = self.last_update {
-                // If no updates for 5 seconds and we're in indexing state, mark as ready
-                if last_update.elapsed() > Duration::from_secs(5) && matches!(self.status, AnalyzerStatus::Indexing { .. }) {
+                // If no updates for 3 seconds and we're in indexing state, mark as ready
+                // This handles cases where rust-analyzer doesn't send an explicit "end" progress event
+                if last_update.elapsed() > Duration::from_secs(3) && matches!(self.status, AnalyzerStatus::Indexing { .. }) {
                     self.initial_analysis_complete = true;
                     self.status = AnalyzerStatus::Ready;
-                    println!("✅ Initial analysis complete (timeout - no updates for 5s)");
+                    println!("✅ Initial analysis complete (timeout - no updates for 3s)");
                     cx.emit(AnalyzerEvent::Ready);
                     cx.notify();
                 }
@@ -1159,14 +1164,14 @@ impl RustAnalyzerManager {
                     println!("📊 First diagnostics received - analyzer is working");
                 }
                 
-                // If we've been receiving diagnostics for more than 3 seconds and haven't marked as ready,
+                // If we've been receiving diagnostics for more than 2 seconds and haven't marked as ready,
                 // consider the initial analysis complete
                 if let Some(first_time) = self.first_diagnostics_time {
                     if !self.initial_analysis_complete 
-                        && first_time.elapsed() > Duration::from_secs(3) {
+                        && first_time.elapsed() > Duration::from_secs(2) {
                         self.initial_analysis_complete = true;
                         self.status = AnalyzerStatus::Ready;
-                        println!("✅ Initial analysis complete based on diagnostics");
+                        println!("✅ Initial analysis complete based on diagnostics (received for 2s)");
                         cx.emit(AnalyzerEvent::Ready);
                         cx.notify();
                     }
