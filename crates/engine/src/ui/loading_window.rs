@@ -64,18 +64,25 @@ impl LoadingWindow {
             rust_analyzer: None,
         };
 
+        // Initialize rust analyzer immediately during construction
+        let analyzer = cx.new(|cx| RustAnalyzerManager::new(window, cx));
+        analyzer.update(cx, |analyzer, cx| {
+            analyzer.start(project_path.clone(), window, cx);
+        });
+        loading_window.rust_analyzer = Some(analyzer);
+
         // Start the loading process
-        loading_window.start_loading(window, cx);
+        loading_window.start_loading(cx);
 
         loading_window
     }
 
-    fn start_loading(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        // Process tasks sequentially with real initialization
-        self.process_next_task(window, cx);
+    fn start_loading(&mut self, cx: &mut Context<Self>) {
+        // Process tasks sequentially
+        self.process_next_task(cx);
     }
 
-    fn process_next_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn process_next_task(&mut self, cx: &mut Context<Self>) {
         if self.current_task_index >= self.loading_tasks.len() {
             // All tasks complete - emit event with initialized resources
             let project_path = self.project_path.clone();
@@ -93,68 +100,23 @@ impl LoadingWindow {
 
         let task_index = self.current_task_index;
         
-        // Execute actual initialization tasks
-        match task_index {
-            0 => {
-                // Task 0: Renderer init (simulated as it's already initialized)
-                cx.spawn(|this, mut cx: AsyncApp| async move {
-                    Timer::after(Duration::from_millis(300)).await;
-                    let _ = cx.update(|cx| {
-                        this.update(cx, |this, cx| {
-                            this.complete_task(task_index, cx);
-                        })
-                    });
-                }).detach();
-            }
-            1 => {
-                // Task 1: Load project data (simulated)
-                cx.spawn(|this, mut cx: AsyncApp| async move {
-                    Timer::after(Duration::from_millis(400)).await;
-                    let _ = cx.update(|cx| {
-                        this.update(cx, |this, cx| {
-                            this.complete_task(task_index, cx);
-                        })
-                    });
-                }).detach();
-            }
-            2 => {
-                // Task 2: Initialize Rust Analyzer - REAL initialization
-                let project_path = self.project_path.clone();
-                let analyzer = cx.new(|cx| RustAnalyzerManager::new(window, cx));
-                
-                // Start the analyzer
-                analyzer.update(cx, |analyzer, cx| {
-                    analyzer.start(project_path.clone(), window, cx);
-                });
-                
-                self.rust_analyzer = Some(analyzer.clone());
-                
-                // Wait a bit for analyzer to start (it will continue indexing in background)
-                cx.spawn(|this, mut cx: AsyncApp| async move {
-                    Timer::after(Duration::from_millis(800)).await;
-                    let _ = cx.update(|cx| {
-                        this.update(cx, |this, cx| {
-                            this.complete_task(task_index, cx);
-                        })
-                    });
-                }).detach();
-            }
-            3 => {
-                // Task 3: Prepare workspace (simulated)
-                cx.spawn(|this, mut cx: AsyncApp| async move {
-                    Timer::after(Duration::from_millis(300)).await;
-                    let _ = cx.update(|cx| {
-                        this.update(cx, |this, cx| {
-                            this.complete_task(task_index, cx);
-                        })
-                    });
-                }).detach();
-            }
-            _ => {
-                // Unknown task, just complete it
-                self.complete_task(task_index, cx);
-            }
-        }
+        // Execute initialization tasks (all simulated now since rust-analyzer starts immediately)
+        let delay_ms = match task_index {
+            0 => 300,  // Renderer init
+            1 => 400,  // Project data
+            2 => 800,  // Rust Analyzer (already started, just show progress)
+            3 => 300,  // Workspace prep
+            _ => 500,
+        };
+
+        cx.spawn(async move |this, mut cx| {
+            Timer::after(Duration::from_millis(delay_ms)).await;
+            let _ = cx.update(|cx| {
+                this.update(cx, |this, cx| {
+                    this.complete_task(task_index, cx);
+                })
+            });
+        }).detach();
     }
     
     fn complete_task(&mut self, task_index: usize, cx: &mut Context<Self>) {
@@ -163,15 +125,8 @@ impl LoadingWindow {
         self.progress = (self.current_task_index as f32) / (self.loading_tasks.len() as f32);
         cx.notify();
         
-        // Trigger next task - we'll handle this through the window update pattern
-        let project_path = self.project_path.clone();
-        cx.defer(move |this, cx| {
-            cx.update_window(cx.entity(&this).unwrap(), |_, window, cx| {
-                this.update(cx, |this, cx| {
-                    this.process_next_task(window, cx);
-                })
-            }).ok();
-        });
+        // Move to next task
+        self.process_next_task(cx);
     }
 }
 
