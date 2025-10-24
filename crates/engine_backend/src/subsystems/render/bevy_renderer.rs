@@ -114,7 +114,7 @@ impl CameraInput {
             pan_delta_x: 0.0,
             pan_delta_y: 0.0,
             zoom_delta: 0.0,
-            move_speed: 15.0,
+            move_speed: 30.0,
             pan_speed: 0.01,
             zoom_speed: 1.5,
             look_sensitivity: 0.3,
