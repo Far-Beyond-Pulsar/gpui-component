@@ -99,13 +99,15 @@ impl LoadingWindow {
             Timer::after(Duration::from_millis(delay_ms)).await;
 
             // Mark task as completed and move to next
-            let _ = this.update(&mut cx, |this, cx| {
-                this.loading_tasks[task_index].status = TaskStatus::Completed;
-                this.current_task_index += 1;
-                this.progress = (this.current_task_index as f32) / (this.loading_tasks.len() as f32);
-                cx.notify();
+            let _ = cx.update(|cx| {
+                this.update(cx, |this, cx| {
+                    this.loading_tasks[task_index].status = TaskStatus::Completed;
+                    this.current_task_index += 1;
+                    this.progress = (this.current_task_index as f32) / (this.loading_tasks.len() as f32);
+                    cx.notify();
 
-                this.process_next_task(cx);
+                    this.process_next_task(cx);
+                })
             });
         })
         .detach();
