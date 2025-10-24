@@ -14,6 +14,8 @@ pub struct LoadingWindow {
     analyzer_ready: bool,
     initial_tasks_complete: bool,
     _analyzer_subscription: Option<Subscription>,
+    /// Current analyzer work message (shown at bottom left)
+    analyzer_message: String,
 }
 
 #[derive(Clone)]
@@ -67,6 +69,7 @@ impl LoadingWindow {
             analyzer_ready: false,
             initial_tasks_complete: false,
             _analyzer_subscription: None,
+            analyzer_message: String::new(),
         };
 
         // Initialize and start rust analyzer immediately (subscriptions will handle events)
@@ -130,6 +133,8 @@ impl LoadingWindow {
     fn start_init_tasks(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         // Task 0: Renderer init (immediate)
         self.loading_tasks[0].status = TaskStatus::InProgress;
+        self.progress = 0.0;
+        self.analyzer_message = "Initializing renderer...".to_string();
         cx.notify();
         
         cx.spawn_in(window, async move |this, mut cx| {
@@ -141,6 +146,7 @@ impl LoadingWindow {
                 
                 // Task 1: Project data
                 this.loading_tasks[1].status = TaskStatus::InProgress;
+                this.analyzer_message = "Loading project data...".to_string();
                 cx.notify();
             });
             
@@ -151,6 +157,7 @@ impl LoadingWindow {
                 
                 // Task 2: Starting analyzer
                 this.loading_tasks[2].status = TaskStatus::InProgress;
+                this.analyzer_message = "Starting Rust Analyzer...".to_string();
                 cx.notify();
             });
             
@@ -162,6 +169,7 @@ impl LoadingWindow {
                 
                 // Mark task 3 as in progress - waiting for analyzer
                 this.loading_tasks[3].status = TaskStatus::InProgress;
+                this.analyzer_message = "Starting analysis...".to_string();
                 cx.notify();
                 
                 // Check if analyzer is already ready (unlikely but possible)
@@ -183,14 +191,13 @@ impl LoadingWindow {
                 println!("   Status changed to: {:?}", status);
                 match status {
                     AnalyzerStatus::Indexing { progress, message } => {
-                        // Update the indexing task with the current crate name
+                        // Update the indexing task status and detailed message
                         if !self.analyzer_ready {
                             self.loading_tasks[3].status = TaskStatus::InProgress;
-                            self.loading_tasks[3].name = if message.is_empty() {
-                                "Analyzing project...".to_string()
-                            } else {
-                                format!("Analyzing: {}", message)
-                            };
+                            // Keep task name simple - details go to bottom
+                            self.loading_tasks[3].name = "Analyzing project...".to_string();
+                            // Store detailed message for bottom display
+                            self.analyzer_message = message.clone();
                             // Update overall progress: first 3 tasks (0.75) + analyzer progress (0.25)
                             self.progress = 0.75 + (progress * 0.25);
                             println!("   📊 Indexing progress: {:.1}% - {}", progress * 100.0, message);
@@ -206,7 +213,8 @@ impl LoadingWindow {
                         eprintln!("   ❌ Analyzer error: {}", err);
                         if !self.analyzer_ready {
                             self.loading_tasks[3].status = TaskStatus::Completed;
-                            self.loading_tasks[3].name = format!("Analyzer error: {}", err);
+                            self.loading_tasks[3].name = "Analyzing project...".to_string();
+                            self.analyzer_message = format!("Error: {}", err);
                             self.progress = 1.0;
                             self.analyzer_ready = true;
                             cx.notify();
@@ -218,14 +226,13 @@ impl LoadingWindow {
             }
             AnalyzerEvent::IndexingProgress { progress, message } => {
                 println!("   📈 Indexing progress: {:.1}% - {}", progress * 100.0, message);
-                // Update the indexing task with the current crate name
+                // Update the indexing task status and detailed message
                 if !self.analyzer_ready {
                     self.loading_tasks[3].status = TaskStatus::InProgress;
-                    self.loading_tasks[3].name = if message.is_empty() {
-                        "Analyzing project...".to_string()
-                    } else {
-                        format!("Analyzing: {}", message)
-                    };
+                    // Keep task name simple - details go to bottom
+                    self.loading_tasks[3].name = "Analyzing project...".to_string();
+                    // Store detailed message for bottom display
+                    self.analyzer_message = message.clone();
                     // Update overall progress: first 3 tasks (0.75) + analyzer progress (0.25)
                     self.progress = 0.75 + (progress * 0.25);
                     cx.notify();
@@ -259,7 +266,8 @@ impl LoadingWindow {
         if !self.analyzer_ready {
             println!("✅ Marking analyzer as ready in LoadingWindow");
             self.loading_tasks[3].status = TaskStatus::Completed;
-            self.loading_tasks[3].name = "Rust Analyzer ready".to_string();
+            self.loading_tasks[3].name = "Analyzing project...".to_string();
+            self.analyzer_message = "Analysis complete".to_string();
             self.progress = 1.0;
             self.analyzer_ready = true;
             cx.notify();
@@ -378,11 +386,15 @@ impl Render for LoadingWindow {
                                     .whitespace_nowrap()
                                     .overflow_hidden()
                                     .child(
-                                        // Show the current task's name if in progress
-                                        self.loading_tasks.iter()
-                                            .find(|t| t.status == TaskStatus::InProgress)
-                                            .map(|t| t.name.clone())
-                                            .unwrap_or_else(|| "Initializing...".to_string())
+                                        // Show the analyzer message if available, otherwise show current task
+                                        if !self.analyzer_message.is_empty() {
+                                            self.analyzer_message.clone()
+                                        } else {
+                                            self.loading_tasks.iter()
+                                                .find(|t| t.status == TaskStatus::InProgress)
+                                                .map(|t| t.name.clone())
+                                                .unwrap_or_else(|| "Initializing...".to_string())
+                                        }
                                     )
                             )
                     )
