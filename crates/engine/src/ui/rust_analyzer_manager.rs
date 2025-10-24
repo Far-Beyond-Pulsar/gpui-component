@@ -772,12 +772,12 @@ impl RustAnalyzerManager {
                                             let message = value.get("message").and_then(|m| m.as_str()).unwrap_or("");
                                             println!("✅ Progress complete [{}]: {}", token, message);
                                             
-                                            // Only mark as completely ready if this is a major progress token
-                                            // Rust-analyzer uses specific tokens for different operations
-                                            // We consider it ready when metadata/indexing is complete
+                                            // Mark as ready when any major progress completes
+                                            // rust-analyzer uses various tokens for different operations
+                                            // We consider initial analysis complete when any of these finish
                                             if token.contains("rustAnalyzer/Fetching") 
                                                 || token.contains("rustAnalyzer/Roots Scanned")
-                                                || token.contains("rustAnalyzer/Building CrateGraph") {
+                                                || token.contains("rustAnalyzer/Building") {
                                                 let _ = progress_tx.send(ProgressUpdate::Ready);
                                             }
                                         }
@@ -1082,122 +1082,20 @@ impl RustAnalyzerManager {
         }
     }
 
-    /// Update progress from the background thread (called from UI thread on each frame)
+    /// Update progress from the background thread (called from UI thread periodically)
     pub fn update_progress_from_thread(&mut self, cx: &mut Context<Self>) {
-        // Check for progress updates from the channel
+        // Collect all updates first to avoid borrow issues
+        let mut updates = Vec::new();
         if let Some(rx) = &self.progress_rx {
             // Drain all available messages
             while let Ok(update) = rx.try_recv() {
-                match update {
-                    ProgressUpdate::Progress { progress, message } => {
-                        self.status = AnalyzerStatus::Indexing {
-                            progress,
-                            message: message.clone(),
-                        };
-                        self.last_update = Some(Instant::now());
-                        cx.emit(AnalyzerEvent::IndexingProgress { progress, message });
-                        cx.notify();
-                    }
-                    ProgressUpdate::Ready => {
-                        if !self.initial_analysis_complete {
-                            self.initial_analysis_complete = true;
-                            self.status = AnalyzerStatus::Ready;
-                            println!("✅ Initial analysis marked as complete");
-                            cx.emit(AnalyzerEvent::Ready);
-                            cx.notify();
-                        }
-                    }
-                    ProgressUpdate::Error(e) => {
-                        self.status = AnalyzerStatus::Error(e.clone());
-                        cx.emit(AnalyzerEvent::Error(e));
-                        cx.notify();
-                    }
-                    ProgressUpdate::ProcessExited(status) => {
-                        // Check if it exited with an error and we haven't tried installing yet
-                        let should_retry = !self.install_attempted && !status.success();
-                        
-                        if should_retry {
-                            println!("⚠️  rust-analyzer exited with error, attempting to install and retry...");
-                            self.install_attempted = true;
-                            
-                            // Try to install and restart
-                            match Self::install_rust_analyzer_to_deps() {
-                                Ok(installed_path) => {
-                                    println!("✓ Installed rust-analyzer, restarting...");
-                                    self.analyzer_path = installed_path;
-                                    
-                                    // Restart with the new path
-                                    if let Some(workspace) = self.workspace_root.clone() {
-                                        self.stop_internal();
-                                        // Small delay to clean up
-                                        std::thread::sleep(Duration::from_millis(100));
-                                        // Note: We can't call self.start() here directly as we're in update_progress_from_thread
-                                        // Instead, we set status to trigger a restart from the app
-                                        self.status = AnalyzerStatus::Idle;
-                                        cx.notify();
-                                        
-                                        // Spawn the start in the background
-                                        let analyzer_path = self.analyzer_path.clone();
-                                        let process_arc = self.process.clone();
-                                        let stdin_arc = self.stdin.clone();
-                                        let request_id_arc = self.request_id.clone();
-                                        let pending_requests_arc = self.pending_requests.clone();
-                                        
-                                        let (progress_tx, progress_rx) = channel();
-                                        self.progress_rx = Some(progress_rx);
-                                        
-                                        std::thread::spawn(move || {
-                                            let _ = Self::spawn_process_blocking(
-                                                &analyzer_path,
-                                                &workspace,
-                                                process_arc,
-                                                stdin_arc,
-                                                progress_tx,
-                                                pending_requests_arc,
-                                            );
-                                        });
-                                        
-                                        return; // Don't emit error event
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!("❌ Failed to install rust-analyzer: {}", e);
-                                }
-                            }
-                        }
-                        
-                        let error_msg = format!("rust-analyzer exited unexpectedly (status: {:?})", status);
-                        println!("❌ {}", error_msg);
-                        self.status = AnalyzerStatus::Error(error_msg.clone());
-                        self.initialized = false;
-                        cx.emit(AnalyzerEvent::Error(error_msg));
-                        cx.notify();
-                    }
-                    ProgressUpdate::Diagnostics(diagnostics) => {
-                        // Track when we first receive diagnostics - this indicates the analyzer is working
-                        if self.first_diagnostics_time.is_none() {
-                            self.first_diagnostics_time = Some(Instant::now());
-                            println!("📊 First diagnostics received - analyzer is working");
-                        }
-                        
-                        // If we've been receiving diagnostics for more than 3 seconds and haven't marked as ready,
-                        // consider the initial analysis complete
-                        if let Some(first_time) = self.first_diagnostics_time {
-                            if !self.initial_analysis_complete 
-                                && first_time.elapsed() > Duration::from_secs(3) {
-                                self.initial_analysis_complete = true;
-                                self.status = AnalyzerStatus::Ready;
-                                println!("✅ Initial analysis complete based on diagnostics");
-                                cx.emit(AnalyzerEvent::Ready);
-                                cx.notify();
-                            }
-                        }
-                        
-                        cx.emit(AnalyzerEvent::Diagnostics(diagnostics));
-                        // Don't notify here, let the app handle it
-                    }
-                }
+                updates.push(update);
             }
+        }
+        
+        // Handle all collected updates
+        for update in updates {
+            self.handle_progress_update(update, cx);
         }
         
         // Additional check: if we've been indexing for a while and receiving updates,
@@ -1212,6 +1110,70 @@ impl RustAnalyzerManager {
                     cx.emit(AnalyzerEvent::Ready);
                     cx.notify();
                 }
+            }
+        }
+    }
+    
+    /// Handle a progress update from the background thread
+    fn handle_progress_update(&mut self, update: ProgressUpdate, cx: &mut Context<Self>) {
+        match update {
+            ProgressUpdate::Progress { progress, message } => {
+                self.status = AnalyzerStatus::Indexing {
+                    progress,
+                    message: message.clone(),
+                };
+                self.last_update = Some(Instant::now());
+                cx.emit(AnalyzerEvent::IndexingProgress { progress, message });
+                cx.notify();
+            }
+            ProgressUpdate::Ready => {
+                if !self.initial_analysis_complete {
+                    self.initial_analysis_complete = true;
+                    self.status = AnalyzerStatus::Ready;
+                    println!("✅ Initial analysis marked as complete");
+                    cx.emit(AnalyzerEvent::Ready);
+                    cx.notify();
+                }
+            }
+            ProgressUpdate::Error(e) => {
+                self.status = AnalyzerStatus::Error(e.clone());
+                cx.emit(AnalyzerEvent::Error(e));
+                cx.notify();
+            }
+            ProgressUpdate::ProcessExited(status) => {
+                let error_msg = if status.success() {
+                    "rust-analyzer exited normally".to_string()
+                } else {
+                    format!("rust-analyzer exited with error (status: {:?})", status)
+                };
+                println!("❌ {}", error_msg);
+                self.status = AnalyzerStatus::Error(error_msg.clone());
+                self.initialized = false;
+                cx.emit(AnalyzerEvent::Error(error_msg));
+                cx.notify();
+            }
+            ProgressUpdate::Diagnostics(diagnostics) => {
+                // Track when we first receive diagnostics - this indicates the analyzer is working
+                if self.first_diagnostics_time.is_none() {
+                    self.first_diagnostics_time = Some(Instant::now());
+                    println!("📊 First diagnostics received - analyzer is working");
+                }
+                
+                // If we've been receiving diagnostics for more than 3 seconds and haven't marked as ready,
+                // consider the initial analysis complete
+                if let Some(first_time) = self.first_diagnostics_time {
+                    if !self.initial_analysis_complete 
+                        && first_time.elapsed() > Duration::from_secs(3) {
+                        self.initial_analysis_complete = true;
+                        self.status = AnalyzerStatus::Ready;
+                        println!("✅ Initial analysis complete based on diagnostics");
+                        cx.emit(AnalyzerEvent::Ready);
+                        cx.notify();
+                    }
+                }
+                
+                cx.emit(AnalyzerEvent::Diagnostics(diagnostics));
+                // Don't notify here, let the app handle it
             }
         }
     }
