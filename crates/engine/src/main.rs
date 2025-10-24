@@ -171,7 +171,7 @@ fn main() {
             ..Default::default()
         };
 
-        let entry_window = cx
+        let entry_window_handle = cx
             .open_window(entry_options, |window, cx| {
                 let entry_view = cx.new(|cx| EntryWindow::new(window, cx));
 
@@ -182,15 +182,18 @@ fn main() {
 
                         eprintln!("DEBUG: Subscription called with path: {:?}", project_path);
 
-                        // Close the entry window
-                        if let Some(active_window) = cx.active_window() {
-                            let _ = active_window.update(cx, |_, window, _cx| {
-                                window.remove_window();
-                            });
-                        }
+                        // Get the current window handle to close after opening the loading window
+                        let entry_window_to_close = cx.active_window();
 
                         // Open the loading window
                         open_loading_window(project_path, cx);
+                        
+                        // Close the entry window after opening the loading window
+                        if let Some(window) = entry_window_to_close {
+                            let _ = window.update(cx, |_, window, _cx| {
+                                window.remove_window();
+                            });
+                        }
                     })
                     .detach();
                 }
@@ -223,7 +226,7 @@ fn open_loading_window(project_path: PathBuf, cx: &mut App) {
         ..Default::default()
     };
 
-    cx.open_window(options, |window, cx| {
+    let loading_window_handle = cx.open_window(options, |window, cx| {
         let loading_view = cx.new(|cx| LoadingWindow::new(project_path.clone(), window, cx));
         
         // Subscribe to loading complete event
@@ -233,21 +236,26 @@ fn open_loading_window(project_path: PathBuf, cx: &mut App) {
             
             eprintln!("DEBUG: Loading complete, closing loading window and opening engine window");
             
-            // Close the loading window
-            if let Some(active_window) = cx.active_window() {
-                let _ = active_window.update(cx, |_, window, _cx| {
-                    window.remove_window();
-                });
-            }
+            // Get the current window handle to close after opening the engine window
+            let loading_window_to_close = cx.active_window();
             
             // Open the main engine window with pre-initialized resources
             open_engine_window_with_analyzer(project_path, rust_analyzer, cx);
+            
+            // Close the loading window after opening the engine window
+            if let Some(window) = loading_window_to_close {
+                let _ = window.update(cx, |_, window, _cx| {
+                    window.remove_window();
+                });
+            }
         })
         .detach();
         
         cx.new(|cx| Root::new(loading_view.into(), window, cx))
     })
     .expect("failed to open loading window");
+    
+    eprintln!("DEBUG: Loading window opened");
 }
 
 fn open_engine_window_with_analyzer(project_path: PathBuf, rust_analyzer: Entity<ui::rust_analyzer_manager::RustAnalyzerManager>, cx: &mut App) {

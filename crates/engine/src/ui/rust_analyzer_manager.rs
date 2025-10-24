@@ -61,6 +61,10 @@ pub struct RustAnalyzerManager {
     pending_requests: Arc<Mutex<HashMap<i64, flume::Sender<serde_json::Value>>>>,
     /// Whether we've attempted installation on failure
     install_attempted: bool,
+    /// Time when we first received diagnostics (indicator that analysis is working)
+    first_diagnostics_time: Option<Instant>,
+    /// Whether initial analysis has been marked as complete
+    initial_analysis_complete: bool,
 }
 
 use std::collections::HashMap;
@@ -86,6 +90,8 @@ impl RustAnalyzerManager {
             progress_rx: None,
             pending_requests: Arc::new(Mutex::new(HashMap::new())),
             install_attempted: false,
+            first_diagnostics_time: None,
+            initial_analysis_complete: false,
         }
     }
 
@@ -355,6 +361,8 @@ impl RustAnalyzerManager {
         self.workspace_root = Some(workspace_root.clone());
         self.status = AnalyzerStatus::Starting;
         self.install_attempted = false; // Reset installation attempt flag
+        self.first_diagnostics_time = None; // Reset diagnostics tracking
+        self.initial_analysis_complete = false; // Reset completion flag
         cx.emit(AnalyzerEvent::StatusChanged(AnalyzerStatus::Starting));
         cx.notify();
 
@@ -713,28 +721,65 @@ impl RustAnalyzerManager {
                     "$/progress" => {
                         // Handle progress notifications
                         if let Some(params) = msg.get("params") {
+                            // Get the progress token to identify what type of progress this is
+                            let token = params.get("token").and_then(|t| t.as_str()).unwrap_or("");
+                            
                             if let Some(value) = params.get("value") {
                                 if let Some(kind) = value.get("kind").and_then(|k| k.as_str()) {
                                     match kind {
                                         "begin" => {
                                             let title = value.get("title").and_then(|t| t.as_str()).unwrap_or("Processing");
-                                            println!("📊 Progress started: {}", title);
+                                            println!("📊 Progress started [{}]: {}", token, title);
+                                            
+                                            // Extract meaningful information from the title
+                                            let message = if title.contains("Fetching") || title.contains("Loading") {
+                                                "Loading metadata...".to_string()
+                                            } else if title.contains("Indexing") || title.contains("Building") {
+                                                "Indexing crates...".to_string()
+                                            } else {
+                                                title.to_string()
+                                            };
+                                            
                                             let _ = progress_tx.send(ProgressUpdate::Progress {
                                                 progress: 0.0,
-                                                message: title.to_string(),
+                                                message,
                                             });
                                         }
                                         "report" => {
                                             let message = value.get("message").and_then(|m| m.as_str()).unwrap_or("");
                                             let percentage = value.get("percentage").and_then(|p| p.as_u64()).unwrap_or(0);
+                                            
+                                            // Extract crate name from the message if present
+                                            let display_message = if !message.is_empty() {
+                                                // Parse messages like "12/45" or crate names
+                                                if message.contains('/') {
+                                                    format!("Analyzing ({})...", message)
+                                                } else {
+                                                    message.to_string()
+                                                }
+                                            } else {
+                                                format!("{}%", percentage)
+                                            };
+                                            
+                                            println!("📊 Progress [{}]: {} ({}%)", token, display_message, percentage);
+                                            
                                             let _ = progress_tx.send(ProgressUpdate::Progress {
                                                 progress: (percentage as f32) / 100.0,
-                                                message: message.to_string(),
+                                                message: display_message,
                                             });
                                         }
                                         "end" => {
-                                            println!("✅ Progress complete");
-                                            let _ = progress_tx.send(ProgressUpdate::Ready);
+                                            let message = value.get("message").and_then(|m| m.as_str()).unwrap_or("");
+                                            println!("✅ Progress complete [{}]: {}", token, message);
+                                            
+                                            // Only mark as completely ready if this is a major progress token
+                                            // Rust-analyzer uses specific tokens for different operations
+                                            // We consider it ready when metadata/indexing is complete
+                                            if token.contains("rustAnalyzer/Fetching") 
+                                                || token.contains("rustAnalyzer/Roots Scanned")
+                                                || token.contains("rustAnalyzer/Building CrateGraph") {
+                                                let _ = progress_tx.send(ProgressUpdate::Ready);
+                                            }
                                         }
                                         _ => {}
                                     }
@@ -1049,13 +1094,18 @@ impl RustAnalyzerManager {
                             progress,
                             message: message.clone(),
                         };
+                        self.last_update = Some(Instant::now());
                         cx.emit(AnalyzerEvent::IndexingProgress { progress, message });
                         cx.notify();
                     }
                     ProgressUpdate::Ready => {
-                        self.status = AnalyzerStatus::Ready;
-                        cx.emit(AnalyzerEvent::Ready);
-                        cx.notify();
+                        if !self.initial_analysis_complete {
+                            self.initial_analysis_complete = true;
+                            self.status = AnalyzerStatus::Ready;
+                            println!("✅ Initial analysis marked as complete");
+                            cx.emit(AnalyzerEvent::Ready);
+                            cx.notify();
+                        }
                     }
                     ProgressUpdate::Error(e) => {
                         self.status = AnalyzerStatus::Error(e.clone());
@@ -1124,9 +1174,43 @@ impl RustAnalyzerManager {
                         cx.notify();
                     }
                     ProgressUpdate::Diagnostics(diagnostics) => {
+                        // Track when we first receive diagnostics - this indicates the analyzer is working
+                        if self.first_diagnostics_time.is_none() {
+                            self.first_diagnostics_time = Some(Instant::now());
+                            println!("📊 First diagnostics received - analyzer is working");
+                        }
+                        
+                        // If we've been receiving diagnostics for more than 3 seconds and haven't marked as ready,
+                        // consider the initial analysis complete
+                        if let Some(first_time) = self.first_diagnostics_time {
+                            if !self.initial_analysis_complete 
+                                && first_time.elapsed() > Duration::from_secs(3) {
+                                self.initial_analysis_complete = true;
+                                self.status = AnalyzerStatus::Ready;
+                                println!("✅ Initial analysis complete based on diagnostics");
+                                cx.emit(AnalyzerEvent::Ready);
+                                cx.notify();
+                            }
+                        }
+                        
                         cx.emit(AnalyzerEvent::Diagnostics(diagnostics));
                         // Don't notify here, let the app handle it
                     }
+                }
+            }
+        }
+        
+        // Additional check: if we've been indexing for a while and receiving updates,
+        // but haven't marked as complete, check if we should timeout to ready
+        if !self.initial_analysis_complete {
+            if let Some(last_update) = self.last_update {
+                // If no updates for 5 seconds and we're in indexing state, mark as ready
+                if last_update.elapsed() > Duration::from_secs(5) && matches!(self.status, AnalyzerStatus::Indexing { .. }) {
+                    self.initial_analysis_complete = true;
+                    self.status = AnalyzerStatus::Ready;
+                    println!("✅ Initial analysis complete (timeout - no updates for 5s)");
+                    cx.emit(AnalyzerEvent::Ready);
+                    cx.notify();
                 }
             }
         }
