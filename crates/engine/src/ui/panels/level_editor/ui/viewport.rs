@@ -585,7 +585,7 @@ impl ViewportPanel {
                     .absolute()
                     .top_4()
                     .left(px(420.0)) // Position after viewport options
-                    .w(px(280.0))
+                    .w(px(340.0))
                     .child(self.render_gpu_pipeline_overlay(gpu_engine, cx))
             );
         }

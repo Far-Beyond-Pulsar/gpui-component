@@ -251,12 +251,6 @@ impl GameThread {
                     // Update game state
                     if let Ok(mut game_state) = state.try_lock() {
                         game_state.update(fixed_dt);
-                        
-                        // Print occasionally to verify it's running
-                        if tick_count % 240 == 0 {
-                            println!("[GAME-THREAD] ✅ Tick {} - {} objects active", 
-                                tick_count, game_state.objects.len());
-                        }
                     }
 
                     accumulated_time -= target_frame_time;
@@ -271,10 +265,7 @@ impl GameThread {
                     if let Ok(mut tps_lock) = tps.lock() {
                         *tps_lock = measured_tps;
                     }
-                    
-                    // Print TPS every second for debugging
-                    println!("[GAME-THREAD] 📊 Current TPS: {:.1}", measured_tps);
-                    
+
                     tick_count = 0;
                     tps_timer = Instant::now();
                 }

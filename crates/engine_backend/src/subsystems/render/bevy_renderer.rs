@@ -310,7 +310,7 @@ impl BevyRenderer {
         );
 
         app.add_plugins(bevy::app::ScheduleRunnerPlugin::run_loop(
-            Duration::from_secs_f64(1.0 / 250.0),
+            Duration::from_secs_f64(1.0 / 3000.0),
         ));
 
         println!("[BEVY] ✅ Plugins configured");
@@ -676,14 +676,6 @@ fn update_gpu_profiler_system(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    
-    if now > LAST_DEBUG_PRINT.load(Ordering::Relaxed) {
-        LAST_DEBUG_PRINT.store(now, Ordering::Relaxed);
-        println!("[GPU-PROFILER] Available diagnostic paths:");
-        for diagnostic in diagnostics.iter() {
-            println!("  - {} = {:?}", diagnostic.path(), diagnostic.smoothed());
-        }
-    }
     
     // Helper to get GPU timing from diagnostic path
     let get_gpu_timing = |path_str: &str| -> f32 {
