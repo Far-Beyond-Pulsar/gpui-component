@@ -294,84 +294,110 @@ impl Render for LoadingWindow {
             .id("loading-window")
             .flex()
             .flex_col()
-            .items_center()
-            .justify_center()
             .size_full()
             .bg(theme.background)
             .child(
+                // Main content area (centered)
                 div()
                     .flex()
                     .flex_col()
                     .items_center()
-                    .gap_4()
+                    .justify_center()
+                    .flex_1()
                     .child(
-                        // Logo/Title
                         div()
-                            .text_xl()
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(theme.foreground)
-                            .child("Pulsar Engine")
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .gap_4()
+                            .child(
+                                // Logo/Title
+                                div()
+                                    .text_xl()
+                                    .font_weight(FontWeight::BOLD)
+                                    .text_color(theme.foreground)
+                                    .child("Pulsar Engine")
+                            )
+                            .child(
+                                // Task list
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap_2()
+                                    .mt_4()
+                                    .children(
+                                        self.loading_tasks.iter().map(|task| {
+                                            let color = match task.status {
+                                                TaskStatus::Pending => theme.muted_foreground,
+                                                TaskStatus::InProgress => theme.accent,
+                                                TaskStatus::Completed => theme.success_foreground,
+                                            };
+                                            let icon = match task.status {
+                                                TaskStatus::Pending => "○",
+                                                TaskStatus::InProgress => "◐",
+                                                TaskStatus::Completed => "●",
+                                            };
+
+                                            div()
+                                                .flex()
+                                                .items_center()
+                                                .gap_2()
+                                                .child(
+                                                    div()
+                                                        .text_color(color)
+                                                        .child(icon)
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_sm()
+                                                        .text_color(color)
+                                                        .child(task.name.clone())
+                                                )
+                                        })
+                                    )
+                            )
+                    )
+            )
+            .child(
+                // Bottom section with current work and progress bar
+                div()
+                    .flex()
+                    .flex_col()
+                    .w_full()
+                    .child(
+                        // Current work indicator (bottom left, can truncate)
+                        div()
+                            .px_4()
+                            .pb_2()
+                            .w_full()
+                            .overflow_hidden()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme.muted_foreground)
+                                    .whitespace_nowrap()
+                                    .overflow_hidden()
+                                    .child(
+                                        // Show the current task's name if in progress
+                                        self.loading_tasks.iter()
+                                            .find(|t| t.status == TaskStatus::InProgress)
+                                            .map(|t| t.name.clone())
+                                            .unwrap_or_else(|| "Initializing...".to_string())
+                                    )
+                            )
                     )
                     .child(
-                        // Loading progress bar
+                        // Progress bar at the very bottom edge
                         div()
-                            .w(px(400.))
+                            .w_full()
                             .h(px(4.))
-                            .rounded_md()
                             .bg(theme.border)
                             .child(
                                 div()
                                     .h_full()
                                     .w(relative(self.progress))
-                                    .rounded_md()
                                     .bg(theme.accent)
                             )
-                    )
-                    .child(
-                        // Task list
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_2()
-                            .mt_4()
-                            .children(
-                                self.loading_tasks.iter().map(|task| {
-                                    let color = match task.status {
-                                        TaskStatus::Pending => theme.muted_foreground,
-                                        TaskStatus::InProgress => theme.accent,
-                                        TaskStatus::Completed => theme.success_foreground,
-                                    };
-                                    let icon = match task.status {
-                                        TaskStatus::Pending => "○",
-                                        TaskStatus::InProgress => "◐",
-                                        TaskStatus::Completed => "●",
-                                    };
-
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap_2()
-                                        .child(
-                                            div()
-                                                .text_color(color)
-                                                .child(icon)
-                                        )
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(color)
-                                                .child(task.name.clone())
-                                        )
-                                })
-                            )
-                    )
-                    .child(
-                        // Loading percentage
-                        div()
-                            .mt_4()
-                            .text_sm()
-                            .text_color(theme.muted_foreground)
-                            .child(format!("{}%", (self.progress * 100.0) as u32))
                     )
             )
     }
