@@ -808,18 +808,22 @@ impl ViewportPanel {
             None
         };
 
-        let theme = cx.theme();
-        
-        // Build pass stat elements up front to avoid closure borrow issues
-        let pass_stats = if let Some(ref data) = gpu_data {
+        // Get theme data and clone colors to avoid borrowing issues
+        let (background, radius, border, foreground, chart_1, chart_2, chart_3, chart_4, chart_5, warning, success) = {
+            let theme = cx.theme();
+            (theme.background, theme.radius, theme.border, theme.foreground, theme.chart_1, theme.chart_2, theme.chart_3, theme.chart_4, theme.chart_5, theme.warning, theme.success)
+        };
+
+        // Collect pass data first, then create elements one by one to avoid borrow issues
+        let pass_data = if let Some(ref data) = gpu_data {
             vec![
-                Self::render_pass_stat_elem("Shadow Pass", data.shadow_pass_ms, data.shadow_pass_pct, theme.chart_1, cx),
-                Self::render_pass_stat_elem("Opaque Pass", data.opaque_pass_ms, data.opaque_pass_pct, theme.chart_2, cx),
-                Self::render_pass_stat_elem("Alpha Mask", data.alpha_mask_pass_ms, data.alpha_mask_pass_pct, theme.chart_3, cx),
-                Self::render_pass_stat_elem("Transparent", data.transparent_pass_ms, data.transparent_pass_pct, theme.chart_4, cx),
-                Self::render_pass_stat_elem("Lighting", data.lighting_ms, data.lighting_pct, theme.chart_5, cx),
-                Self::render_pass_stat_elem("Post Process", data.post_processing_ms, data.post_processing_pct, theme.warning, cx),
-                Self::render_pass_stat_elem("UI Pass", data.ui_pass_ms, data.ui_pass_pct, theme.success, cx),
+                ("Shadow Pass", data.shadow_pass_ms, data.shadow_pass_pct, chart_1),
+                ("Opaque Pass", data.opaque_pass_ms, data.opaque_pass_pct, chart_2),
+                ("Alpha Mask", data.alpha_mask_pass_ms, data.alpha_mask_pass_pct, chart_3),
+                ("Transparent", data.transparent_pass_ms, data.transparent_pass_pct, chart_4),
+                ("Lighting", data.lighting_ms, data.lighting_pct, chart_5),
+                ("Post Process", data.post_processing_ms, data.post_processing_pct, warning),
+                ("UI Pass", data.ui_pass_ms, data.ui_pass_pct, success),
             ]
         } else {
             vec![]
@@ -829,10 +833,10 @@ impl ViewportPanel {
             .gap_1()
             .p_2()
             .w_full()
-            .bg(theme.background.opacity(0.95))
-            .rounded(theme.radius)
+            .bg(background.opacity(0.95))
+            .rounded(radius)
             .border_1()
-            .border_color(theme.border)
+            .border_color(border)
             .child(
                 // Header
                 h_flex()
@@ -843,7 +847,7 @@ impl ViewportPanel {
                         div()
                             .text_xs()
                             .font_semibold()
-                            .text_color(theme.foreground)
+                            .text_color(foreground)
                             .child("🔥 GPU Pipeline Stats")
                     )
             )
@@ -878,9 +882,10 @@ impl ViewportPanel {
                     .bg(theme.border)
             );
         
-        // Add individual pass timings
-        for stat in pass_stats {
-            result = result.child(stat);
+        // Add individual pass timings - create elements one by one to avoid borrow checker issues
+        for (name, time_ms, percent, color) in pass_data {
+            let elem = Self::render_pass_stat_elem(name, time_ms, percent, color, cx);
+            result = result.child(elem);
         }
         
         // Add separator and total
