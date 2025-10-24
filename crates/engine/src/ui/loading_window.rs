@@ -142,7 +142,7 @@ impl LoadingWindow {
             cx.background_executor().timer(Duration::from_millis(100)).await;
             let _ = this.update(cx, |this, cx| {
                 this.loading_tasks[0].status = TaskStatus::Completed;
-                this.progress = 0.25;
+                this.progress = 25.0;  // 25% complete
                 
                 // Task 1: Project data
                 this.loading_tasks[1].status = TaskStatus::InProgress;
@@ -153,7 +153,7 @@ impl LoadingWindow {
             cx.background_executor().timer(Duration::from_millis(100)).await;
             let _ = this.update(cx, |this, cx| {
                 this.loading_tasks[1].status = TaskStatus::Completed;
-                this.progress = 0.5;
+                this.progress = 50.0;  // 50% complete
                 
                 // Task 2: Starting analyzer
                 this.loading_tasks[2].status = TaskStatus::InProgress;
@@ -164,7 +164,7 @@ impl LoadingWindow {
             cx.background_executor().timer(Duration::from_millis(100)).await;
             let _ = this.update(cx, |this, cx| {
                 this.loading_tasks[2].status = TaskStatus::Completed;
-                this.progress = 0.75;
+                this.progress = 75.0;  // 75% complete
                 this.initial_tasks_complete = true;
                 
                 // Mark task 3 as in progress - waiting for analyzer
@@ -198,9 +198,10 @@ impl LoadingWindow {
                             self.loading_tasks[3].name = "Analyzing project...".to_string();
                             // Store detailed message for bottom display
                             self.analyzer_message = message.clone();
-                            // Update overall progress: first 3 tasks (0.75) + analyzer progress (0.25)
-                            self.progress = 0.75 + (progress * 0.25);
-                            println!("   📊 Indexing progress: {:.1}% - {}", progress * 100.0, message);
+                            // Update overall progress: first 3 tasks (75) + analyzer progress (0-100 maps to 0-25)
+                            // analyzer progress is 0.0-1.0, we need 75-100
+                            self.progress = 75.0 + (progress * 25.0);
+                            println!("   📊 Indexing progress: {:.1}% - overall: {:.1}%", progress * 100.0, self.progress);
                             cx.notify();
                         }
                     }
@@ -215,7 +216,7 @@ impl LoadingWindow {
                             self.loading_tasks[3].status = TaskStatus::Completed;
                             self.loading_tasks[3].name = "Analyzing project...".to_string();
                             self.analyzer_message = format!("Error: {}", err);
-                            self.progress = 1.0;
+                            self.progress = 100.0;
                             self.analyzer_ready = true;
                             cx.notify();
                             self.check_completion(cx);
@@ -233,8 +234,9 @@ impl LoadingWindow {
                     self.loading_tasks[3].name = "Analyzing project...".to_string();
                     // Store detailed message for bottom display
                     self.analyzer_message = message.clone();
-                    // Update overall progress: first 3 tasks (0.75) + analyzer progress (0.25)
-                    self.progress = 0.75 + (progress * 0.25);
+                    // Update overall progress: first 3 tasks (75) + analyzer progress (0-100 maps to 0-25)
+                    // analyzer progress is 0.0-1.0, we need 75-100
+                    self.progress = 75.0 + (progress * 25.0);
                     cx.notify();
                 }
             }
@@ -268,7 +270,7 @@ impl LoadingWindow {
             self.loading_tasks[3].status = TaskStatus::Completed;
             self.loading_tasks[3].name = "Analyzing project...".to_string();
             self.analyzer_message = "Analysis complete".to_string();
-            self.progress = 1.0;
+            self.progress = 100.0;  // 100% complete
             self.analyzer_ready = true;
             cx.notify();
             
@@ -297,6 +299,11 @@ impl LoadingWindow {
 impl Render for LoadingWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
+        
+        // Debug: log current progress
+        if self.progress > 0.0 {
+            println!("🎨 Rendering loading window with progress: {:.2}%", self.progress * 100.0);
+        }
 
         div()
             .id("loading-window")
@@ -403,11 +410,19 @@ impl Render for LoadingWindow {
                         div()
                             .w_full()
                             .h(px(4.))
+                            .relative()
                             .bg(theme.border)
                             .child(
                                 div()
+                                    .absolute()
+                                    .top_0()
+                                    .left_0()
                                     .h_full()
-                                    .w(relative(self.progress))
+                                    .w(relative(match self.progress {
+                                        v if v < 0.0 => 0.0,
+                                        v if v > 100.0 => 1.0,
+                                        v => v / 100.0,
+                                    }))
                                     .bg(theme.accent)
                             )
                     )
