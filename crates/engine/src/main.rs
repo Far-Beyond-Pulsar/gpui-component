@@ -229,6 +229,7 @@ fn open_loading_window(project_path: PathBuf, cx: &mut App) {
         // Subscribe to loading complete event
         cx.subscribe(&loading_view, move |_loading, event: &LoadingComplete, cx| {
             let project_path = event.project_path.clone();
+            let rust_analyzer = event.rust_analyzer.clone();
             
             eprintln!("DEBUG: Loading complete, closing loading window and opening engine window");
             
@@ -239,14 +240,63 @@ fn open_loading_window(project_path: PathBuf, cx: &mut App) {
                 });
             }
             
-            // Open the main engine window
-            open_engine_window(project_path, cx);
+            // Open the main engine window with pre-initialized resources
+            open_engine_window_with_analyzer(project_path, rust_analyzer, cx);
         })
         .detach();
         
         cx.new(|cx| Root::new(loading_view.into(), window, cx))
     })
     .expect("failed to open loading window");
+}
+
+fn open_engine_window_with_analyzer(project_path: PathBuf, rust_analyzer: Entity<ui::rust_analyzer_manager::RustAnalyzerManager>, cx: &mut App) {
+    eprintln!(
+        "DEBUG: open_engine_window_with_analyzer called with path: {:?}",
+        project_path
+    );
+    let mut window_size = size(px(1200.), px(800.));
+    if let Some(display) = cx.primary_display() {
+        let display_size = display.bounds().size;
+        window_size.width = window_size.width.min(display_size.width * 0.85);
+        window_size.height = window_size.height.min(display_size.height * 0.85);
+    }
+
+    let window_bounds = Bounds::centered(None, window_size, cx);
+
+    let options = WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(window_bounds)),
+        titlebar: Some(TitleBar::title_bar_options()),
+        window_min_size: Some(gpui::Size {
+            width: px(1200.),
+            height: px(800.),
+        }),
+        kind: WindowKind::Normal,
+        is_resizable: true,
+        window_decorations: Some(gpui::WindowDecorations::Client),
+        #[cfg(target_os = "linux")]
+        window_background: gpui::WindowBackgroundAppearance::Transparent,
+        ..Default::default()
+    };
+
+    let window = cx
+        .open_window(options, |window, cx| {
+            eprintln!("DEBUG: Creating PulsarApp with pre-initialized analyzer");
+            let view = cx.new(|cx| PulsarApp::new_with_project_and_analyzer(project_path.clone(), rust_analyzer.clone(), window, cx));
+            cx.new(|cx| Root::new(view.into(), window, cx))
+        })
+        .expect("failed to open engine window");
+
+    eprintln!("DEBUG: Engine window opened");
+
+    window
+        .update(cx, |_, window, _| {
+            window.activate_window();
+            window.set_window_title("Pulsar Engine");
+        })
+        .expect("failed to update engine window");
+
+    eprintln!("DEBUG: Engine window activated");
 }
 
 fn open_engine_window(project_path: PathBuf, cx: &mut App) {
