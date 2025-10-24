@@ -117,7 +117,7 @@ impl CameraInput {
             move_speed: 15.0,
             pan_speed: 0.01,
             zoom_speed: 1.5,
-            look_sensitivity: 0.15,
+            look_sensitivity: 0.3,
             boost: false,
             orbit_mode: false,
             orbit_distance: 10.0,

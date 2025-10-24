@@ -1,5 +1,6 @@
 use gpui::*;
-use gpui_component::{ActiveTheme, ContextModal, Root};
+use gpui::Hsla;
+use gpui_component::{ActiveTheme, Colorize, ContextModal, Root};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -448,7 +449,7 @@ impl Render for LoadingWindow {
                                     .left_0()
                                     .h_full()
                                     .w(relative_w)
-                                    .bg(theme.accent)
+                                    .bg(Hsla::parse_hex("#c2c2c8ff").unwrap())
                             )
                     )
             )
