@@ -3,6 +3,7 @@ use gpui_component::{ActiveTheme, ContextModal, Root};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use smol::Timer;
 
 pub struct LoadingWindow {
     project_path: PathBuf,
@@ -93,17 +94,17 @@ impl LoadingWindow {
             _ => 500,
         };
 
-        cx.spawn(async move |this, mut cx| {
-            // Simulate work
-            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+        cx.spawn(|this, mut cx| async move {
+            // Simulate work with smol::Timer instead of tokio
+            Timer::after(Duration::from_millis(delay_ms)).await;
 
             // Mark task as completed and move to next
-            let _ = this.update(cx, |this, cx| {
+            let _ = this.update(&mut cx, |this, cx| {
                 this.loading_tasks[task_index].status = TaskStatus::Completed;
                 this.current_task_index += 1;
                 this.progress = (this.current_task_index as f32) / (this.loading_tasks.len() as f32);
                 cx.notify();
-                
+
                 this.process_next_task(cx);
             });
         })
