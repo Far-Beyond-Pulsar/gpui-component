@@ -814,17 +814,26 @@ impl ViewportPanel {
             (theme.background, theme.radius, theme.border, theme.foreground, theme.chart_1, theme.chart_2, theme.chart_3, theme.chart_4, theme.chart_5, theme.warning, theme.success)
         };
 
-        // Collect pass data first, then create elements one by one to avoid borrow issues
+        // Collect pass data from dynamic render metrics
         let pass_data = if let Some(ref data) = gpu_data {
-            vec![
-                ("Shadow Pass", data.shadow_pass_ms, data.shadow_pass_pct, chart_1),
-                ("Opaque Pass", data.opaque_pass_ms, data.opaque_pass_pct, chart_2),
-                ("Alpha Mask", data.alpha_mask_pass_ms, data.alpha_mask_pass_pct, chart_3),
-                ("Transparent", data.transparent_pass_ms, data.transparent_pass_pct, chart_4),
-                ("Lighting", data.lighting_ms, data.lighting_pct, chart_5),
-                ("Post Process", data.post_processing_ms, data.post_processing_pct, warning),
-                ("UI Pass", data.ui_pass_ms, data.ui_pass_pct, success),
-            ]
+            // Filter out non-render metrics (fps, frame_time, frame_count)
+            let mut render_passes: Vec<_> = data.render_metrics.iter()
+                .filter(|metric| metric.path.starts_with("render/") && metric.value_ms > 0.0)
+                .collect();
+            
+            // Sort by value descending to show most expensive passes first
+            render_passes.sort_by(|a, b| b.value_ms.partial_cmp(&a.value_ms).unwrap_or(std::cmp::Ordering::Equal));
+            
+            // Create pass data with cycling colors
+            let colors = [chart_1, chart_2, chart_3, chart_4, chart_5, warning, success];
+            render_passes.into_iter()
+                .take(15) // Limit to 15 most expensive passes to avoid UI overflow
+                .enumerate()
+                .map(|(i, metric)| {
+                    let color = colors[i % colors.len()];
+                    (metric.name.clone(), metric.value_ms, metric.percentage, color)
+                })
+                .collect()
         } else {
             vec![]
         };
@@ -860,16 +869,16 @@ impl ViewportPanel {
                     .child(
                         div()
                             .text_xs()
-                            .text_color(theme.muted_foreground)
+                            .text_color(cx.theme().muted_foreground)
                             .child("Frame Time:")
                     )
                     .child(
                         div()
                             .text_xs()
                             .font_semibold()
-                            .text_color(theme.foreground)
+                            .text_color(foreground)
                             .child(if let Some(ref data) = gpu_data {
-                                format!("{:.2}ms", data.total_frame_ms)
+                                format!("{:.2}ms ({:.0} FPS)", data.total_frame_ms, data.fps)
                             } else {
                                 "N/A".to_string()
                             })
@@ -879,7 +888,7 @@ impl ViewportPanel {
                 div()
                     .w_full()
                     .h(px(1.0))
-                    .bg(theme.border)
+                    .bg(border)
             );
         
         // Add individual pass timings - create elements one by one to avoid borrow checker issues
@@ -895,7 +904,7 @@ impl ViewportPanel {
                     div()
                         .w_full()
                         .h(px(1.0))
-                        .bg(theme.border)
+                        .bg(border)
                         .mt_1()
                 )
                 .child(
@@ -907,7 +916,7 @@ impl ViewportPanel {
                             div()
                                 .text_xs()
                                 .font_semibold()
-                                .text_color(theme.foreground)
+                                .text_color(foreground)
                                 .child("Total GPU:")
                         )
                         .child(
@@ -915,11 +924,11 @@ impl ViewportPanel {
                                 .text_xs()
                                 .font_semibold()
                                 .text_color(if data.total_gpu_ms < 8.0 {
-                                    theme.success
+                                    success
                                 } else if data.total_gpu_ms < 16.0 {
-                                    theme.warning
+                                    warning
                                 } else {
-                                    theme.danger
+                                    cx.theme().danger
                                 })
                                 .child(format!("{:.2}ms", data.total_gpu_ms))
                         )
@@ -931,7 +940,7 @@ impl ViewportPanel {
 
     /// Render a single GPU pass stat line with timing and percentage
     fn render_pass_stat_elem<V: 'static>(
-        name: &'static str,
+        name: String,
         time_ms: f32,
         percent: f32,
         color: Hsla,
