@@ -207,16 +207,16 @@ fn main() {
 fn open_loading_window(project_path: PathBuf, cx: &mut App) {
     eprintln!("DEBUG: open_loading_window called with path: {:?}", project_path);
     
-    // Create a smaller centered window for loading splash
-    let loading_window_size = size(px(600.), px(400.));
+    // Create a smaller centered window for loading splash (16:9 aspect ratio)
+    let loading_window_size = size(px(960.), px(540.));
     let loading_window_bounds = Bounds::centered(None, loading_window_size, cx);
 
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(loading_window_bounds)),
         titlebar: Some(TitleBar::title_bar_options()),
         window_min_size: Some(gpui::Size {
-            width: px(600.),
-            height: px(400.),
+            width: px(960.),
+            height: px(540.),
         }),
         kind: WindowKind::Normal,
         is_resizable: false, // Loading window shouldn't be resizable
