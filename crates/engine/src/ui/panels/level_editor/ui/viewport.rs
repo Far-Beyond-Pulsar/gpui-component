@@ -345,12 +345,33 @@ impl ViewportPanel {
                     let is_panning = mouse_middle_captured.load(Ordering::Acquire);
                     
                     if !is_rotating && !is_panning {
-                        // Not active - clear state and wait
+                        // Not active - clear ALL state immediately
                         last_mouse_pos = None;
+                        
+                        // Clear atomic input state
                         input_state_for_thread.forward.store(0, Ordering::Relaxed);
                         input_state_for_thread.right.store(0, Ordering::Relaxed);
                         input_state_for_thread.up.store(0, Ordering::Relaxed);
-                        continue;
+                        input_state_for_thread.boost.store(false, Ordering::Relaxed);
+                        
+                        // CRITICAL: Also push zeros to GPU to stop camera immediately
+                        if let Ok(engine) = gpu_engine_for_thread.try_lock() {
+                            if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                                if let Ok(mut input) = bevy_renderer.camera_input.try_lock() {
+                                    input.forward = 0.0;
+                                    input.right = 0.0;
+                                    input.up = 0.0;
+                                    input.boost = false;
+                                    input.mouse_delta_x = 0.0;
+                                    input.mouse_delta_y = 0.0;
+                                    input.pan_delta_x = 0.0;
+                                    input.pan_delta_y = 0.0;
+                                    input.zoom_delta = 0.0;
+                                }
+                            }
+                        }
+                        
+                        continue; // Wait for activation
                     }
                     
                     // Camera controls are ACTIVE - poll input at high frequency
