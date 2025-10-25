@@ -544,6 +544,27 @@ impl Render for LevelEditorPanel {
                 let read_idx = bevy_renderer.get_read_index();
                 let mut state = self.viewport_state.write();
                 state.set_active_buffer(read_idx);
+                
+                // Sync selection from Bevy back to GPUI (for viewport raycast selection)
+                // This allows clicking objects in the viewport to update the hierarchy panel
+                if let Ok(gizmo) = bevy_renderer.gizmo_state.try_lock() {
+                    // Check if Bevy's selection differs from GPUI's selection
+                    let bevy_selection = gizmo.selected_object_id.clone();
+                    let gpui_selection = self.state.selected_object();
+                    
+                    if bevy_selection != gpui_selection {
+                        // Bevy selection changed (via raycast) - sync to GPUI
+                        self.state.select_object(bevy_selection.clone());
+                        
+                        if let Some(id) = bevy_selection {
+                            println!("[LEVEL-EDITOR] 🔄 Synced selection FROM Bevy TO GPUI: '{}'", id);
+                        } else {
+                            println!("[LEVEL-EDITOR] 🔄 Synced deselection FROM Bevy TO GPUI");
+                        }
+                        
+                        cx.notify(); // Trigger UI update to show new selection in hierarchy
+                    }
+                }
             }
         }
 

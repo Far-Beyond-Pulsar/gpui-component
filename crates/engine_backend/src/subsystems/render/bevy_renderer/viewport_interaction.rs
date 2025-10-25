@@ -9,6 +9,7 @@ use bevy::prelude::*;
 use std::sync::{Arc, Mutex};
 use super::components::{GameObjectId, MainCamera};
 use super::gizmos_bevy::{GizmoStateResource, GizmoVisual, GizmoAxis, GizmoType};
+use super::resources::SharedGizmoStateResource;
 
 /// Mouse input for viewport interaction (set from GPUI)
 #[derive(Resource, Default, Clone)]
@@ -39,6 +40,7 @@ pub fn viewport_click_selection_system(
     camera_query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
     object_query: Query<(Entity, &GameObjectId, &GlobalTransform)>,
     mut gizmo_state: ResMut<GizmoStateResource>,
+    shared_gizmo_state: Res<SharedGizmoStateResource>,
 ) {
     // Only process on click (not drag)
     if !mouse_input.left_clicked {
@@ -96,7 +98,7 @@ pub fn viewport_click_selection_system(
         }
     }
     
-    // Update selection
+    // Update selection in BOTH local and shared resources
     if let Some((selected_id, _)) = closest_hit {
         // Convert numeric ID to string ID
         let string_id = match selected_id {
@@ -106,6 +108,7 @@ pub fn viewport_click_selection_system(
             _ => format!("object_{}", selected_id),
         };
         
+        // Update local Bevy ECS resource
         gizmo_state.selected_object_id = Some(string_id.clone());
         
         // Update gizmo position to selected object
@@ -115,10 +118,24 @@ pub fn viewport_click_selection_system(
             gizmo_state.target_position = transform.translation();
         }
         
+        // CRITICAL: Also update the SHARED resource so GPUI can see the selection
+        if let Ok(mut shared) = shared_gizmo_state.0.try_lock() {
+            shared.selected_object_id = Some(string_id.clone());
+            shared.target_position = gizmo_state.target_position;
+            println!("[RAYCAST] 🔄 Synced selection to GPUI: '{}'", string_id);
+        }
+        
         println!("[RAYCAST] 🎯 Selected object ID {} ('{}')", selected_id, string_id);
     } else {
         // Clicked empty space - deselect
         gizmo_state.selected_object_id = None;
+        
+        // Also clear shared resource
+        if let Ok(mut shared) = shared_gizmo_state.0.try_lock() {
+            shared.selected_object_id = None;
+            println!("[RAYCAST] 🔄 Cleared selection in GPUI");
+        }
+        
         println!("[RAYCAST] ⭕ No hits - deselected (clicked empty space)");
     }
 }
@@ -234,19 +251,40 @@ fn screen_to_world_ray(
         1.0 - screen_pos.y * 2.0, // Flip Y
     );
     
-    // Get projection matrix
+    println!("[RAYCAST] 🎲 NDC: ({:.3}, {:.3})", ndc.x, ndc.y);
+    
+    // Get camera position (ray origin in world space)
+    let camera_pos = camera_transform.translation();
+    println!("[RAYCAST] 📹 Camera position (ray origin): {:?}", camera_pos);
+    
+    // Get projection matrix and inverse
     let projection = camera.clip_from_view();
-    let view_matrix = camera_transform.affine().inverse();
+    let inv_projection = projection.inverse();
     
-    // Unproject NDC to world space
-    let inv_proj_view = (projection * view_matrix.inverse()).inverse();
+    // Unproject NDC to view space
+    let near_ndc = Vec3::new(ndc.x, ndc.y, -1.0); // Near plane in NDC
+    let far_ndc = Vec3::new(ndc.x, ndc.y, 1.0);   // Far plane in NDC
     
-    let near_point = inv_proj_view.project_point3(Vec3::new(ndc.x, ndc.y, -1.0));
-    let far_point = inv_proj_view.project_point3(Vec3::new(ndc.x, ndc.y, 1.0));
+    // Convert from NDC to view space
+    let near_view = inv_projection.project_point3(near_ndc);
+    let far_view = inv_projection.project_point3(far_ndc);
     
-    let direction = (far_point - near_point).normalize();
+    println!("[RAYCAST] 🔵 Near view: {:?}, Far view: {:?}", near_view, far_view);
     
-    Ray3d::new(near_point, Dir3::new_unchecked(direction))
+    // Convert from view space to world space using camera transform
+    let camera_affine = camera_transform.affine();
+    let near_world = camera_affine.transform_point3(near_view);
+    let far_world = camera_affine.transform_point3(far_view);
+    
+    println!("[RAYCAST] 🌍 Near world: {:?}, Far world: {:?}", near_world, far_world);
+    
+    // Calculate ray direction
+    let direction = (far_world - near_world).normalize();
+    
+    println!("[RAYCAST] ➡️  Final ray: origin={:?}, dir={:?}", camera_pos, direction);
+    
+    // Use camera position as ray origin
+    Ray3d::new(camera_pos, Dir3::new_unchecked(direction))
 }
 
 /// Test if ray hits a gizmo visual

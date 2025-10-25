@@ -326,11 +326,10 @@ impl ViewportPanel {
             let mouse_middle_captured = self.mouse_middle_captured.clone();
             let locked_cursor_x = self.locked_cursor_x.clone();
             let locked_cursor_y = self.locked_cursor_y.clone();
-            let viewport_clicked = self.viewport_hovered.clone(); // Tracks if right-click was ON viewport
             
             std::thread::spawn(move || {
                 println!("[INPUT-THREAD] 🚀 Dedicated RAW INPUT processing thread started");
-                println!("[INPUT-THREAD] Input active ONLY when right-click starts ON viewport");
+                println!("[INPUT-THREAD] Camera controls active when right mouse button is held");
                 let device_state = DeviceState::new();
                 let mut last_mouse_pos: Option<(i32, i32)> = None;
                 let mut right_was_pressed = false;
@@ -346,17 +345,12 @@ impl ViewportPanel {
                     
                     // Poll mouse state ALWAYS
                     let mouse: MouseState = device_state.get_mouse();
-                    let right_pressed = mouse.button_pressed[1]; // Right button
-                    
-                    // Check if GPUI signaled that right-click happened ON viewport
-                    let clicked_on_viewport = viewport_clicked.load(Ordering::Relaxed);
-                    
-                    // CRITICAL: Only start processing if click originated ON viewport
-                    // Right click alone = Rotate camera (standard FPS controls)
-                    // Shift + Right click = Pan camera (modifier for alternate mode)
+                    let right_pressed = mouse.button_pressed[2]; // Right button
                     
                     // Check if right button state changed
-                    if right_pressed && !right_was_pressed && clicked_on_viewport {
+                    // NOTE: We always respond to right-click when it's detected, regardless of where it started.
+                    // This ensures responsive camera controls without race conditions between GPUI and input thread.
+                    if right_pressed && !right_was_pressed {
                         // Right button just pressed AND was on viewport - poll keyboard to check shift
                         let keys: Vec<Keycode> = device_state.get_keys();
                         let shift_pressed = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
@@ -389,9 +383,6 @@ impl ViewportPanel {
                             mouse_middle_captured.store(false, Ordering::Relaxed);
                             is_panning = false;
                         }
-                        
-                        // Clear the viewport clicked flag
-                        viewport_clicked.store(false, Ordering::Relaxed);
                         
                         // Clear all input atomics
                         input_state_for_thread.forward.store(0, Ordering::Relaxed);
