@@ -10,7 +10,7 @@ pub mod dxgi_shared_texture;
 // pub use wgpu_renderer::WgpuRenderer; // Disabled
 pub use bevy_renderer::{BevyRenderer, CameraInput, RenderMetrics, GpuProfilerData};
 pub use zero_copy_buffer::{ZeroCopyFrameBuffer, PersistentMappedBuffer};
-pub use shared_gpu_texture::{SharedGpuTexture, SharedTextureFormat, GpuSyncPrimitive};
+// pub use shared_gpu_texture::{SharedGpuTexture, SharedTextureFormat, GpuSyncPrimitive};
 pub use native_texture::{NativeTextureHandle, SharedTextureInfo, TextureFormat};
 pub use dxgi_shared_texture::*;
 

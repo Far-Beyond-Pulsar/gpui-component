@@ -165,21 +165,21 @@ impl BevyRenderer {
         app.add_systems(Startup, (create_shared_textures_startup, setup_scene).chain())
             .add_systems(Update, check_shutdown)
             // Sync systems - run FIRST to get latest data from main thread
-            .add_systems(Update, sync_camera_input_system) // Sync input thread camera input to Bevy ECS
-            .add_systems(Update, sync_gizmo_state_system) // NEW: Sync GPUI gizmo state to Bevy
+            .add_systems(Update, sync_camera_input_system)         // Sync input thread camera input to Bevy ECS
+            .add_systems(Update, sync_gizmo_state_system)          // NEW: Sync GPUI gizmo state to Bevy
             .add_systems(Update, sync_viewport_mouse_input_system) // NEW: Sync GPUI mouse clicks to Bevy
-            .add_systems(Update, sync_game_objects_system) // Sync game thread to Bevy
+            .add_systems(Update, sync_game_objects_system)         // Sync game thread to Bevy
             // Game systems - run after sync
-            .add_systems(Update, camera_movement_system) // Unreal-style camera controls
-            .add_systems(Update, update_gizmo_target_system) // Keep gizmo centered on selected object
-            .add_systems(Update, viewport_click_selection_system) // Viewport object selection via raycast
-            .add_systems(Update, gizmo_drag_system) // Gizmo dragging for object manipulation
+            .add_systems(Update, camera_movement_system)           // Unreal-style camera controls
+            .add_systems(Update, update_gizmo_target_system)       // Keep gizmo centered on selected object
+            .add_systems(Update, viewport_click_selection_system)  // Viewport object selection via raycast
+            .add_systems(Update, gizmo_drag_system)                // Gizmo dragging for object manipulation
             // Rendering systems - run last
-            .add_systems(Update, update_metrics_system) // Track FPS and frame times
-            .add_systems(Update, update_gpu_profiler_system) // Extract GPU profiler data from Bevy diagnostics
-            .add_systems(Update, update_gizmo_visuals) // Level editor gizmos
-            .add_systems(Update, update_selection_highlighting) // Selection outlines
-            .add_systems(Update, debug_rendering_system); // Add debug system
+            .add_systems(Update, update_metrics_system)            // Track FPS and frame times
+            .add_systems(Update, update_gpu_profiler_system)       // Extract GPU profiler data from Bevy diagnostics
+            .add_systems(Update, update_gizmo_visuals)             // Level editor gizmos
+            .add_systems(Update, update_selection_highlighting)    // Selection outlines
+            .add_systems(Update, debug_rendering_system);          // Add debug system
 
         // Render world systems
         if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
