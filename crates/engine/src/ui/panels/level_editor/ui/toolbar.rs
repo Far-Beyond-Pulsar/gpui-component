@@ -78,6 +78,57 @@ impl ToolbarPanel {
                     .mx_2()
             )
             .child(
+                // Play/Stop controls
+                h_flex()
+                    .gap_1()
+                    .child(
+                        if state.is_edit_mode() {
+                            Button::new("play")
+                                .icon(IconName::Play)
+                                .tooltip("Play (Ctrl+P)")
+                                .xsmall()
+                                .on_click(cx.listener(|_, _, _, cx| {
+                                    cx.dispatch_action(&PlayScene);
+                                }))
+                                .into_any_element()
+                        } else {
+                            Button::new("play_disabled")
+                                .icon(IconName::Play)
+                                .tooltip("Already playing")
+                                .xsmall()
+                                .ghost()
+                                .into_any_element()
+                        }
+                    )
+                    .child(
+                        if state.is_play_mode() {
+                            Button::new("stop")
+                                .icon(IconName::X)
+                                .tooltip("Stop (Ctrl+.)")
+                                .xsmall()
+                                .on_click(cx.listener(|_, _, _, cx| {
+                                    cx.dispatch_action(&StopScene);
+                                }))
+                                .into_any_element()
+                        } else {
+                            Button::new("stop_disabled")
+                                .icon(IconName::X)
+                                .tooltip("Not playing")
+                                .xsmall()
+                                .ghost()
+                                .into_any_element()
+                        }
+                    )
+            )
+            .child(
+                // Separator
+                div()
+                    .h_8()
+                    .w_px()
+                    .bg(cx.theme().border)
+                    .mx_2()
+            )
+            .child(
                 // Object creation tools
                 h_flex()
                     .gap_1()

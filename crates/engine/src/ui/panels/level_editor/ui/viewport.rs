@@ -326,11 +326,10 @@ impl ViewportPanel {
             let mouse_middle_captured = self.mouse_middle_captured.clone();
             let locked_cursor_x = self.locked_cursor_x.clone();
             let locked_cursor_y = self.locked_cursor_y.clone();
-            let viewport_clicked = self.viewport_hovered.clone(); // Tracks if right-click was ON viewport
             
             std::thread::spawn(move || {
                 println!("[INPUT-THREAD] 🚀 Dedicated RAW INPUT processing thread started");
-                println!("[INPUT-THREAD] Input active ONLY when right-click starts ON viewport");
+                println!("[INPUT-THREAD] Camera controls active when right mouse button is held");
                 let device_state = DeviceState::new();
                 let mut last_mouse_pos: Option<(i32, i32)> = None;
                 let mut right_was_pressed = false;
@@ -346,17 +345,12 @@ impl ViewportPanel {
                     
                     // Poll mouse state ALWAYS
                     let mouse: MouseState = device_state.get_mouse();
-                    let right_pressed = mouse.button_pressed[1]; // Right button
-                    
-                    // Check if GPUI signaled that right-click happened ON viewport
-                    let clicked_on_viewport = viewport_clicked.load(Ordering::Relaxed);
-                    
-                    // CRITICAL: Only start processing if click originated ON viewport
-                    // Right click alone = Rotate camera (standard FPS controls)
-                    // Shift + Right click = Pan camera (modifier for alternate mode)
+                    let right_pressed = mouse.button_pressed[2]; // Right button
                     
                     // Check if right button state changed
-                    if right_pressed && !right_was_pressed && clicked_on_viewport {
+                    // NOTE: We always respond to right-click when it's detected, regardless of where it started.
+                    // This ensures responsive camera controls without race conditions between GPUI and input thread.
+                    if right_pressed && !right_was_pressed {
                         // Right button just pressed AND was on viewport - poll keyboard to check shift
                         let keys: Vec<Keycode> = device_state.get_keys();
                         let shift_pressed = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
@@ -389,9 +383,6 @@ impl ViewportPanel {
                             mouse_middle_captured.store(false, Ordering::Relaxed);
                             is_panning = false;
                         }
-                        
-                        // Clear the viewport clicked flag
-                        viewport_clicked.store(false, Ordering::Relaxed);
                         
                         // Clear all input atomics
                         input_state_for_thread.forward.store(0, Ordering::Relaxed);
@@ -497,11 +488,14 @@ impl ViewportPanel {
             });
         }
 
-        // Clone the viewport_hovered flag for mouse down detection
-        let viewport_mouse_down = self.viewport_hovered.clone();
+        // Clone the viewport_hovered flag for right mouse button detection (camera controls)
+        let viewport_right_clicked = self.viewport_hovered.clone();
         
         // Clone for scroll wheel handler
         let input_state_scroll = self.input_state.clone();
+        
+        // Clone for left-click object selection
+        let gpu_engine_for_click = gpu_engine.clone();
         
         let mut viewport_div = div()
             .flex() // Enable flexbox
@@ -513,10 +507,65 @@ impl ViewportPanel {
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
-            // NO GPUI key handlers - input thread handles ALL input when mouse held
-            .on_mouse_down(gpui::MouseButton::Left, move |_, _, _| {
-                // Right-click on viewport - enable input thread
-                viewport_mouse_down.store(true, Ordering::Relaxed);
+            // Left-click for object selection in edit mode
+            .on_mouse_down(gpui::MouseButton::Left, {
+                let gpu_engine_click = gpu_engine_for_click.clone();
+                move |event: &gpui::MouseDownEvent, window: &mut gpui::Window, _cx: &mut gpui::App| {
+                    println!("[VIEWPORT] 🖱️ Left-click detected at screen position: {:?}", event.position);
+                    
+                    // Get viewport bounds from the window
+                    // For now we'll calculate normalized position assuming full window
+                    // TODO: Get actual viewport element bounds
+                    let window_size = window.viewport_size();
+                    
+                    // Convert Pixels to f32 using Into trait
+                    let pos_x: f32 = event.position.x.into();
+                    let pos_y: f32 = event.position.y.into();
+                    let width: f32 = window_size.width.into();
+                    let height: f32 = window_size.height.into();
+                    
+                    let normalized_x = (pos_x / width).clamp(0.0, 1.0);
+                    let normalized_y = (pos_y / height).clamp(0.0, 1.0);
+                    
+                    println!("[VIEWPORT] 📍 Normalized position (approx): ({:.3}, {:.3})", normalized_x, normalized_y);
+                    
+                    // Send to Bevy's ViewportMouseInput via shared resource
+                    if let Ok(engine) = gpu_engine_click.try_lock() {
+                        if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                            // Update shared viewport mouse input
+                            let mut mouse_input = bevy_renderer.viewport_mouse_input.lock();
+                            // Use engine_backend's Vec2 type instead of bevy::prelude::Vec2
+                            mouse_input.mouse_pos.x = normalized_x;
+                            mouse_input.mouse_pos.y = normalized_y;
+                            mouse_input.left_clicked = true;
+                            mouse_input.left_down = true;
+                            
+                            println!("[VIEWPORT] ✅ Sent click to Bevy (will be processed by raycast system)");
+                        } else {
+                            println!("[VIEWPORT] ⚠️ Bevy renderer not available");
+                        }
+                    } else {
+                        println!("[VIEWPORT] ⚠️ Could not lock GPU engine for click event");
+                    }
+                }
+            })
+            // Clear left_clicked flag on mouse up (so it's only true for one frame)
+            .on_mouse_up(gpui::MouseButton::Left, {
+                let gpu_engine_up = gpu_engine_for_click.clone();
+                move |_event: &gpui::MouseUpEvent, _window: &mut gpui::Window, _cx: &mut gpui::App| {
+                    if let Ok(engine) = gpu_engine_up.try_lock() {
+                        if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                            let mut mouse_input = bevy_renderer.viewport_mouse_input.lock();
+                            mouse_input.left_clicked = false; // Only true for one frame
+                            mouse_input.left_down = false;
+                        }
+                    }
+                }
+            })
+            // Right-click for camera controls (existing behavior)
+            .on_mouse_down(gpui::MouseButton::Right, move |_, _, _| {
+                // Right-click on viewport - enable camera controls via input thread
+                viewport_right_clicked.store(true, Ordering::Relaxed);
             })
             .child(
                 // Main viewport - input thread handles ALL mouse/keyboard when focused

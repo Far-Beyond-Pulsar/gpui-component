@@ -26,9 +26,12 @@ use std::cell::RefCell;
 
 use super::{
     LevelEditorState, SceneBrowser, HierarchyPanel, PropertiesPanel,
-    ViewportPanel, ToolbarPanel, CameraMode, ObjectType, TransformTool, Transform, SceneObject,
+    ViewportPanel, ToolbarPanel, CameraMode, TransformTool,
 };
 use super::actions::*;
+use crate::ui::panels::level_editor::scene_database::{
+    SceneObjectData, ObjectType, Transform, MeshType, LightType,
+};
 
 /// Main Level Editor Panel - Orchestrates all sub-components
 pub struct LevelEditorPanel {
@@ -84,19 +87,21 @@ impl LevelEditorPanel {
 
         println!("[LEVEL-EDITOR] ✅ Bevy viewport created (1600x900)");
         
-        // Create and start game thread for object movement FIRST
-        println!("[LEVEL-EDITOR] 🎮 Creating game thread with target 240 TPS...");
+        // Create game thread but DON'T start it yet (editor starts in Edit mode)
+        println!("[LEVEL-EDITOR] 🎮 Creating game thread (paused - Edit mode)...");
         let game_thread = Arc::new(GameThread::new(240.0));
         let game_state = game_thread.get_state();
-        game_thread.start();
-        println!("[LEVEL-EDITOR] ✅ Game thread started successfully!");
+        game_thread.set_enabled(false); // CRITICAL: Start disabled for Edit mode
+        game_thread.start(); // Thread runs but does nothing while disabled
+        println!("[LEVEL-EDITOR] ✅ Game thread created (paused for Edit mode)");
         
-        // Create GPU render engine with matching resolution and game thread link
-        println!("[LEVEL-EDITOR] 🎨 Creating GPU renderer linked to game thread...");
-        let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new_with_game_thread(1600, 900, Some(game_state))));
+        // Create GPU render engine WITHOUT game thread link initially (Edit mode)
+        println!("[LEVEL-EDITOR] 🎨 Creating GPU renderer (no game sync in Edit mode)...");
+        let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new(1600, 900))); // No game state initially
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
         
-        println!("[LEVEL-EDITOR] ✅ GPU renderer initialized with game thread sync");
+        println!("[LEVEL-EDITOR] ✅ GPU renderer initialized (Edit mode)");
+        println!("[LEVEL-EDITOR] 📝 Editor ready in EDIT MODE - objects frozen");
 
         // Wait a moment for Bevy to create shared textures, then initialize viewport
         let viewport_state_for_init = viewport_state.clone();
@@ -191,14 +196,15 @@ impl LevelEditorPanel {
     }
 
     fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let objects_count = self.state.scene_objects().len();
+        let selected_name = self.state.selected_object()
+            .and_then(|id| self.state.scene_database.get_object(&id))
+            .map(|obj| obj.name.clone())
+            .unwrap_or_else(|| "None".to_string());
+        
         StatusBar::new()
-            .add_left_item(format!("Objects: {}", self.state.scene_objects.len()))
-            .add_left_item(format!("Selected: {}",
-                self.state.selected_object.as_ref()
-                    .and_then(|id| self.state.get_selected_object())
-                    .map(|obj| obj.name.as_str())
-                    .unwrap_or("None")
-            ))
+            .add_left_item(format!("Objects: {}", objects_count))
+            .add_left_item(format!("Selected: {}", selected_name))
             .add_right_item(format!("{:?}", self.state.camera_mode))
             .add_right_item(format!("Grid: {}", if self.state.show_grid { "On" } else { "Off" }))
             .add_right_item(format!("Tool: {:?}", self.state.current_tool))
@@ -208,69 +214,168 @@ impl LevelEditorPanel {
     // Action handlers
     fn on_select_tool(&mut self, _: &SelectTool, _: &mut Window, cx: &mut Context<Self>) {
         self.state.set_tool(TransformTool::Select);
+        
+        // Update gizmo type in Bevy
+        if let Ok(mut engine) = self.gpu_engine.lock() {
+            if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                if let Ok(mut gizmo) = bevy_renderer.gizmo_state.lock() {
+                    use engine_backend::subsystems::render::bevy_renderer::BevyGizmoType;
+                    gizmo.gizmo_type = BevyGizmoType::None;
+                    println!("[LEVEL-EDITOR] 🎯 Gizmo type: None (Select mode)");
+                }
+            }
+        }
+        
         cx.notify();
     }
 
     fn on_move_tool(&mut self, _: &MoveTool, _: &mut Window, cx: &mut Context<Self>) {
         self.state.set_tool(TransformTool::Move);
+        
+        // Update gizmo type in Bevy
+        if let Ok(mut engine) = self.gpu_engine.lock() {
+            if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                if let Ok(mut gizmo) = bevy_renderer.gizmo_state.lock() {
+                    use engine_backend::subsystems::render::bevy_renderer::BevyGizmoType;
+                    gizmo.gizmo_type = BevyGizmoType::Translate;
+                    println!("[LEVEL-EDITOR] 🎯 Gizmo type: Translate");
+                }
+            }
+        }
+        
         cx.notify();
     }
 
     fn on_rotate_tool(&mut self, _: &RotateTool, _: &mut Window, cx: &mut Context<Self>) {
         self.state.set_tool(TransformTool::Rotate);
+        
+        // Update gizmo type in Bevy
+        if let Ok(mut engine) = self.gpu_engine.lock() {
+            if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                if let Ok(mut gizmo) = bevy_renderer.gizmo_state.lock() {
+                    use engine_backend::subsystems::render::bevy_renderer::BevyGizmoType;
+                    gizmo.gizmo_type = BevyGizmoType::Rotate;
+                    println!("[LEVEL-EDITOR] 🎯 Gizmo type: Rotate");
+                }
+            }
+        }
+        
         cx.notify();
     }
 
     fn on_scale_tool(&mut self, _: &ScaleTool, _: &mut Window, cx: &mut Context<Self>) {
         self.state.set_tool(TransformTool::Scale);
+        
+        // Update gizmo type in Bevy
+        if let Ok(mut engine) = self.gpu_engine.lock() {
+            if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                if let Ok(mut gizmo) = bevy_renderer.gizmo_state.lock() {
+                    use engine_backend::subsystems::render::bevy_renderer::BevyGizmoType;
+                    gizmo.gizmo_type = BevyGizmoType::Scale;
+                    println!("[LEVEL-EDITOR] 🎯 Gizmo type: Scale");
+                }
+            }
+        }
+        
         cx.notify();
     }
 
     fn on_add_object(&mut self, _: &AddObject, _: &mut Window, cx: &mut Context<Self>) {
-        let new_object = SceneObject {
-            id: format!("object_{}", self.state.scene_objects.len() + 1),
+        let objects_count = self.state.scene_objects().len();
+        let new_object = SceneObjectData {
+            id: format!("object_{}", objects_count + 1),
             name: "New Object".to_string(),
             object_type: ObjectType::Empty,
             transform: Transform::default(),
             visible: true,
+            locked: false,
+            parent: None,
             children: vec![],
+            components: vec![],
         };
-        self.state.add_object(new_object);
+        self.state.scene_database.add_object(new_object, None);
+        self.state.has_unsaved_changes = true;
         cx.notify();
     }
 
     fn on_add_object_of_type(&mut self, action: &AddObjectOfType, _: &mut Window, cx: &mut Context<Self>) {
         let object_type = match action.object_type.as_str() {
-            "Mesh" => ObjectType::Mesh,
-            "Light" => ObjectType::Light,
+            "Mesh" => ObjectType::Mesh(MeshType::Cube),
+            "Light" => ObjectType::Light(LightType::Directional),
             "Camera" => ObjectType::Camera,
             _ => ObjectType::Empty,
         };
 
-        let new_object = SceneObject {
-            id: format!("{}_{}", action.object_type.to_lowercase(), self.state.scene_objects.len() + 1),
+        let objects_count = self.state.scene_objects().len();
+        let new_object = SceneObjectData {
+            id: format!("{}_{}", action.object_type.to_lowercase(), objects_count + 1),
             name: format!("New {}", action.object_type),
             object_type,
             transform: Transform::default(),
             visible: true,
+            locked: false,
+            parent: None,
             children: vec![],
+            components: vec![],
         };
-        self.state.add_object(new_object);
+        self.state.scene_database.add_object(new_object, None);
+        self.state.has_unsaved_changes = true;
         cx.notify();
     }
 
     fn on_delete_object(&mut self, _: &DeleteObject, _: &mut Window, cx: &mut Context<Self>) {
-        self.state.remove_selected_object();
+        if let Some(id) = self.state.selected_object() {
+            self.state.scene_database.remove_object(&id);
+            self.state.has_unsaved_changes = true;
+            
+            // Deselect after deletion
+            self.state.select_object(None);
+            
+            // Clear gizmo selection in Bevy
+            if let Ok(mut engine) = self.gpu_engine.lock() {
+                if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                    if let Ok(mut gizmo) = bevy_renderer.gizmo_state.lock() {
+                        gizmo.selected_object_id = None;
+                        println!("[LEVEL-EDITOR] 🚫 Object deleted - Gizmo hidden");
+                    }
+                }
+            }
+        }
         cx.notify();
     }
 
     fn on_duplicate_object(&mut self, _: &DuplicateObject, _: &mut Window, cx: &mut Context<Self>) {
-        self.state.duplicate_selected_object();
+        if let Some(id) = self.state.selected_object() {
+            self.state.scene_database.duplicate_object(&id);
+            self.state.has_unsaved_changes = true;
+        }
         cx.notify();
     }
 
     fn on_select_object(&mut self, action: &SelectObject, _: &mut Window, cx: &mut Context<Self>) {
         self.state.select_object(Some(action.object_id.clone()));
+        
+        // Update gizmo position and selection in Bevy when object is selected
+        if let Some(obj) = self.state.get_selected_object() {
+            if let Ok(mut engine) = self.gpu_engine.lock() {
+                if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                    if let Ok(mut gizmo) = bevy_renderer.gizmo_state.lock() {
+                        // Set selected object ID (String)
+                        gizmo.selected_object_id = Some(obj.id.clone());
+                        
+                        // Update position
+                        gizmo.target_position.x = obj.transform.position[0];
+                        gizmo.target_position.y = obj.transform.position[1];
+                        gizmo.target_position.z = obj.transform.position[2];
+                        
+                        println!("[LEVEL-EDITOR] 🎯 Object '{}' selected - Gizmo at ({}, {}, {})",
+                            obj.id,
+                            gizmo.target_position.x, gizmo.target_position.y, gizmo.target_position.z);
+                    }
+                }
+            }
+        }
+        
         cx.notify();
     }
 
@@ -316,6 +421,53 @@ impl LevelEditorPanel {
 
     fn on_toggle_fps_graph_type(&mut self, _: &ToggleFpsGraphType, _: &mut Window, cx: &mut Context<Self>) {
         self.state.toggle_fps_graph_type();
+        cx.notify();
+    }
+
+    fn on_play_scene(&mut self, _: &PlayScene, _: &mut Window, cx: &mut Context<Self>) {
+        println!("[LEVEL-EDITOR] ▶️ PLAY button pressed");
+        
+        // Enter play mode (saves scene snapshot)
+        self.state.enter_play_mode();
+        
+        // Enable game thread
+        self.game_thread.set_enabled(true);
+        println!("[LEVEL-EDITOR] ✅ Game thread enabled - objects will move");
+        
+        // Hide gizmos in Bevy (Play mode)
+        if let Ok(mut engine) = self.gpu_engine.lock() {
+            if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                if let Ok(mut gizmo) = bevy_renderer.gizmo_state.lock() {
+                    gizmo.enabled = false;
+                    println!("[LEVEL-EDITOR] 🚫 Gizmos hidden (Play mode)");
+                }
+            }
+        }
+        
+        cx.notify();
+    }
+
+    fn on_stop_scene(&mut self, _: &StopScene, _: &mut Window, cx: &mut Context<Self>) {
+        println!("[LEVEL-EDITOR] ⏹️ STOP button pressed");
+        
+        // Disable game thread
+        self.game_thread.set_enabled(false);
+        println!("[LEVEL-EDITOR] ⏸️ Game thread disabled");
+        
+        // Exit play mode (restores scene from snapshot)
+        self.state.exit_play_mode();
+        println!("[LEVEL-EDITOR] ✅ Scene restored to edit state");
+        
+        // Show gizmos in Bevy (Edit mode)
+        if let Ok(mut engine) = self.gpu_engine.lock() {
+            if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                if let Ok(mut gizmo) = bevy_renderer.gizmo_state.lock() {
+                    gizmo.enabled = true;
+                    println!("[LEVEL-EDITOR] ✅ Gizmos visible (Edit mode)");
+                }
+            }
+        }
+        
         cx.notify();
     }
 
@@ -392,6 +544,27 @@ impl Render for LevelEditorPanel {
                 let read_idx = bevy_renderer.get_read_index();
                 let mut state = self.viewport_state.write();
                 state.set_active_buffer(read_idx);
+                
+                // Sync selection from Bevy back to GPUI (for viewport raycast selection)
+                // This allows clicking objects in the viewport to update the hierarchy panel
+                if let Ok(gizmo) = bevy_renderer.gizmo_state.try_lock() {
+                    // Check if Bevy's selection differs from GPUI's selection
+                    let bevy_selection = gizmo.selected_object_id.clone();
+                    let gpui_selection = self.state.selected_object();
+                    
+                    if bevy_selection != gpui_selection {
+                        // Bevy selection changed (via raycast) - sync to GPUI
+                        self.state.select_object(bevy_selection.clone());
+                        
+                        if let Some(id) = bevy_selection {
+                            println!("[LEVEL-EDITOR] 🔄 Synced selection FROM Bevy TO GPUI: '{}'", id);
+                        } else {
+                            println!("[LEVEL-EDITOR] 🔄 Synced deselection FROM Bevy TO GPUI");
+                        }
+                        
+                        cx.notify(); // Trigger UI update to show new selection in hierarchy
+                    }
+                }
             }
         }
 
@@ -424,6 +597,9 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_toggle_camera_mode_selector))
             .on_action(cx.listener(Self::on_toggle_viewport_options))
             .on_action(cx.listener(Self::on_toggle_fps_graph_type))
+            // Play/Edit mode
+            .on_action(cx.listener(Self::on_play_scene))
+            .on_action(cx.listener(Self::on_stop_scene))
             // Camera modes
             .on_action(cx.listener(Self::on_perspective_view))
             .on_action(cx.listener(Self::on_orthographic_view))

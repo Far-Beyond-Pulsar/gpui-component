@@ -3,7 +3,8 @@ use gpui_component::{
     button::Button, h_flex, v_flex, scroll::ScrollbarAxis, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
 };
 
-use super::state::{LevelEditorState, ObjectType, Transform};
+use super::state::{LevelEditorState, Transform};
+use crate::ui::panels::level_editor::scene_database::ObjectType;
 
 /// Properties Panel - Inspector showing properties of the selected object
 pub struct PropertiesPanel;
@@ -53,9 +54,9 @@ impl PropertiesPanel {
                         if let Some(selected) = state.get_selected_object() {
                             v_flex()
                                 .gap_4()
-                                .child(Self::render_object_header(selected, cx))
+                                .child(Self::render_object_header(&selected, cx))
                                 .child(Self::render_transform_section(&selected.transform, cx))
-                                .child(Self::render_object_type_section(selected, cx))
+                                .child(Self::render_object_type_section(&selected, cx))
                                 .into_any_element()
                         } else {
                             div()
@@ -134,17 +135,19 @@ impl PropertiesPanel {
                     .text_color(cx.theme().foreground)
                     .child(match object.object_type {
                         ObjectType::Camera => "Camera Settings",
-                        ObjectType::Light => "Light Settings",
-                        ObjectType::Mesh => "Mesh Settings",
+                        ObjectType::Light(_) => "Light Settings",
+                        ObjectType::Mesh(_) => "Mesh Settings",
                         ObjectType::Empty => "Empty Object",
+                        ObjectType::ParticleSystem => "Particle System",
+                        ObjectType::AudioSource => "Audio Source",
                     })
             )
             .child(
                 match object.object_type {
                     ObjectType::Camera => Self::render_camera_settings(cx).into_any_element(),
-                    ObjectType::Light => Self::render_light_settings(cx).into_any_element(),
-                    ObjectType::Mesh => Self::render_mesh_settings(cx).into_any_element(),
-                    ObjectType::Empty => div().into_any_element(),
+                    ObjectType::Light(_) => Self::render_light_settings(cx).into_any_element(),
+                    ObjectType::Mesh(_) => Self::render_mesh_settings(cx).into_any_element(),
+                    _ => div().into_any_element(),
                 }
             )
     }

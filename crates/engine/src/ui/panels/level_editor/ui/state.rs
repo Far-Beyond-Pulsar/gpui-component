@@ -1,12 +1,29 @@
 use std::path::PathBuf;
 use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
+// Import our scene database and gizmo systems
+use crate::ui::panels::level_editor::{SceneDatabase, GizmoState, GizmoType};
+
+/// Editor mode - Edit or Play
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EditorMode {
+    Edit,  // Editing mode - gizmos active, game thread paused
+    Play,  // Play mode - game running, gizmos hidden
+}
 
 /// Shared state for the Level Editor
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct LevelEditorState {
-    /// Currently selected object in the hierarchy
-    pub selected_object: Option<String>,
+    /// Scene database - single source of truth for all scene data
+    pub scene_database: SceneDatabase,
+    /// Snapshot of scene state when entering play mode (for reset on stop)
+    pub scene_snapshot: Option<Arc<parking_lot::RwLock<Vec<crate::ui::panels::level_editor::scene_database::SceneObjectData>>>>,
+    /// Gizmo state for 3D manipulation
+    pub gizmo_state: Arc<parking_lot::RwLock<GizmoState>>,
+    /// Current editor mode
+    pub editor_mode: EditorMode,
     /// Currently open scene file
     pub current_scene: Option<PathBuf>,
     /// Whether the scene has unsaved changes
@@ -25,8 +42,6 @@ pub struct LevelEditorState {
     pub show_viewport_options: bool,
     /// FPS graph type (true = line, false = bar)
     pub fps_graph_is_line: bool,
-    /// Scene objects (simplified for now)
-    pub scene_objects: Vec<SceneObject>,
     /// Expanded state for hierarchy items
     pub expanded_objects: HashSet<String>,
 }
@@ -48,38 +63,32 @@ pub enum CameraMode {
     Side,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SceneObject {
-    pub id: String,
-    pub name: String,
-    pub object_type: ObjectType,
-    pub transform: Transform,
-    pub visible: bool,
-    pub children: Vec<SceneObject>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub enum ObjectType {
-    Camera,
-    Light,
-    Mesh,
-    Empty,
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub struct Transform {
-    pub position: [f32; 3],
-    pub rotation: [f32; 3],
-    pub scale: [f32; 3],
-}
+// Legacy types for backwards compatibility - now forwarded from scene_database
+pub use crate::ui::panels::level_editor::scene_database::{
+    ObjectType as SceneObjectType,
+    Transform,
+    SceneObjectData as SceneObject,
+    LightType,
+    MeshType,
+};
 
 impl Default for LevelEditorState {
     fn default() -> Self {
+        // Create scene database with default objects matching Bevy renderer
+        let scene_database = SceneDatabase::with_default_scene();
+        
+        // Create gizmo state with translate tool active
+        let mut gizmo_state = GizmoState::new();
+        gizmo_state.set_gizmo_type(GizmoType::Translate);
+        
         Self {
-            selected_object: None,
+            scene_database,
+            scene_snapshot: None,
+            gizmo_state: Arc::new(parking_lot::RwLock::new(gizmo_state)),
+            editor_mode: EditorMode::Edit, // Start in edit mode
             current_scene: None,
             has_unsaved_changes: false,
-            current_tool: TransformTool::Select,
+            current_tool: TransformTool::Move,
             camera_mode: CameraMode::Perspective,
             show_wireframe: false,
             show_lighting: true,
@@ -88,8 +97,7 @@ impl Default for LevelEditorState {
             show_viewport_controls: true,
             show_camera_mode_selector: true,
             show_viewport_options: true,
-            fps_graph_is_line: true,  // Default to line graph
-            scene_objects: Self::create_default_scene(),
+            fps_graph_is_line: true,
             expanded_objects: HashSet::new(),
         }
     }
@@ -100,132 +108,125 @@ impl LevelEditorState {
         Self::default()
     }
 
-    fn create_default_scene() -> Vec<SceneObject> {
-        vec![
-            SceneObject {
-                id: "main_camera".to_string(),
-                name: "Main Camera".to_string(),
-                object_type: ObjectType::Camera,
-                transform: Transform {
-                    position: [0.0, 5.0, 10.0],
-                    rotation: [0.0, 0.0, 0.0],
-                    scale: [1.0, 1.0, 1.0],
-                },
-                visible: true,
-                children: vec![],
-            },
-            SceneObject {
-                id: "directional_light".to_string(),
-                name: "Directional Light".to_string(),
-                object_type: ObjectType::Light,
-                transform: Transform {
-                    position: [5.0, 10.0, 5.0],
-                    rotation: [-45.0, 45.0, 0.0],
-                    scale: [1.0, 1.0, 1.0],
-                },
-                visible: true,
-                children: vec![],
-            },
-            SceneObject {
-                id: "cube_1".to_string(),
-                name: "Cube".to_string(),
-                object_type: ObjectType::Mesh,
-                transform: Transform {
-                    position: [0.0, 0.0, 0.0],
-                    rotation: [0.0, 0.0, 0.0],
-                    scale: [1.0, 1.0, 1.0],
-                },
-                visible: true,
-                children: vec![],
-            },
-            SceneObject {
-                id: "sphere_1".to_string(),
-                name: "Sphere".to_string(),
-                object_type: ObjectType::Mesh,
-                transform: Transform {
-                    position: [3.0, 0.0, 0.0],
-                    rotation: [0.0, 0.0, 0.0],
-                    scale: [1.0, 1.0, 1.0],
-                },
-                visible: true,
-                children: vec![],
-            },
-        ]
+    /// Enter play mode - snapshot scene and start game thread
+    pub fn enter_play_mode(&mut self) {
+        println!("[EDITOR] 🎮 Entering PLAY mode");
+        
+        // Save snapshot of current scene state for restoration
+        let objects = self.scene_database.get_all_objects();
+        self.scene_snapshot = Some(Arc::new(parking_lot::RwLock::new(objects)));
+        
+        // Switch to play mode
+        self.editor_mode = EditorMode::Play;
+        
+        // Hide gizmos
+        let mut gizmo = self.gizmo_state.write();
+        gizmo.set_gizmo_type(GizmoType::None);
+        
+        println!("[EDITOR] ✅ Play mode active - game thread will start");
     }
 
+    /// Exit play mode - restore scene state and stop game thread
+    pub fn exit_play_mode(&mut self) {
+        println!("[EDITOR] 🛑 Exiting PLAY mode");
+        
+        // Restore scene from snapshot
+        if let Some(ref snapshot) = self.scene_snapshot {
+            let objects = snapshot.read().clone();
+            
+            // Clear current scene
+            self.scene_database.clear();
+            
+            // Restore all objects
+            for obj in objects {
+                self.scene_database.add_object(obj, None);
+            }
+            
+            println!("[EDITOR] ✅ Scene restored from snapshot");
+        }
+        
+        // Switch back to edit mode
+        self.editor_mode = EditorMode::Edit;
+        
+        // Restore gizmo based on current tool
+        let gizmo_type = match self.current_tool {
+            TransformTool::Select => GizmoType::None,
+            TransformTool::Move => GizmoType::Translate,
+            TransformTool::Rotate => GizmoType::Rotate,
+            TransformTool::Scale => GizmoType::Scale,
+        };
+        
+        let mut gizmo = self.gizmo_state.write();
+        gizmo.set_gizmo_type(gizmo_type);
+        
+        // Clear snapshot
+        self.scene_snapshot = None;
+        
+        println!("[EDITOR] ✅ Edit mode active");
+    }
+
+    /// Check if in edit mode
+    pub fn is_edit_mode(&self) -> bool {
+        self.editor_mode == EditorMode::Edit
+    }
+
+    /// Check if in play mode
+    pub fn is_play_mode(&self) -> bool {
+        self.editor_mode == EditorMode::Play
+    }
+
+    /// Get selected object ID
+    pub fn selected_object(&self) -> Option<String> {
+        self.scene_database.get_selected_object_id()
+    }
+
+    /// Get all scene objects for hierarchy display
+    pub fn scene_objects(&self) -> Vec<SceneObject> {
+        self.scene_database.get_root_objects()
+    }
+
+    /// Select an object
     pub fn select_object(&mut self, object_id: Option<String>) {
-        self.selected_object = object_id;
-    }
-
-    pub fn get_selected_object(&self) -> Option<&SceneObject> {
-        let id = self.selected_object.as_ref()?;
-        self.find_object_by_id(id, &self.scene_objects)
-    }
-
-    pub fn get_selected_object_mut(&mut self) -> Option<&mut SceneObject> {
-        let id = self.selected_object.as_ref()?.clone();
-        Self::find_object_by_id_mut_static(&id, &mut self.scene_objects)
-    }
-
-    fn find_object_by_id<'a>(&self, id: &str, objects: &'a [SceneObject]) -> Option<&'a SceneObject> {
-        for obj in objects {
-            if obj.id == id {
-                return Some(obj);
-            }
-            if let Some(child) = self.find_object_by_id(id, &obj.children) {
-                return Some(child);
-            }
-        }
-        None
-    }
-
-    fn find_object_by_id_mut_static<'a>(id: &str, objects: &'a mut [SceneObject]) -> Option<&'a mut SceneObject> {
-        for obj in objects {
-            if obj.id == id {
-                return Some(obj);
-            }
-            if let Some(child) = Self::find_object_by_id_mut_static(id, &mut obj.children) {
-                return Some(child);
-            }
-        }
-        None
-    }
-
-    pub fn add_object(&mut self, object: SceneObject) {
-        self.scene_objects.push(object);
-        self.has_unsaved_changes = true;
-    }
-
-    pub fn remove_selected_object(&mut self) {
-        if let Some(id) = &self.selected_object {
-            let id = id.clone();
-            Self::remove_object_by_id_static(&id, &mut self.scene_objects);
-            self.selected_object = None;
-            self.has_unsaved_changes = true;
+        self.scene_database.select_object(object_id.clone());
+        
+        // Update gizmo target
+        if let Some(id) = object_id {
+            let mut gizmo = self.gizmo_state.write();
+            gizmo.target_object_id = Some(id);
         }
     }
 
-    fn remove_object_by_id_static(id: &str, objects: &mut Vec<SceneObject>) -> bool {
-        if let Some(pos) = objects.iter().position(|obj| obj.id == id) {
-            objects.remove(pos);
-            return true;
-        }
-        for obj in objects {
-            if Self::remove_object_by_id_static(id, &mut obj.children) {
-                return true;
-            }
-        }
-        false
+    /// Get selected object data
+    pub fn get_selected_object(&self) -> Option<SceneObject> {
+        self.scene_database.get_selected_object()
     }
 
+    /// Set the current transform tool (only in edit mode)
     pub fn set_tool(&mut self, tool: TransformTool) {
+        if !self.is_edit_mode() {
+            return; // Ignore tool changes in play mode
+        }
+        
         self.current_tool = tool;
+        
+        // Update gizmo type
+        let gizmo_type = match tool {
+            TransformTool::Select => GizmoType::None,
+            TransformTool::Move => GizmoType::Translate,
+            TransformTool::Rotate => GizmoType::Rotate,
+            TransformTool::Scale => GizmoType::Scale,
+        };
+        
+        let mut gizmo = self.gizmo_state.write();
+        gizmo.set_gizmo_type(gizmo_type);
     }
 
+    /// Set camera mode
     pub fn set_camera_mode(&mut self, mode: CameraMode) {
         self.camera_mode = mode;
     }
 
+    /// Toggle object expanded state in hierarchy
     pub fn toggle_object_expanded(&mut self, object_id: &str) {
         if self.expanded_objects.contains(object_id) {
             self.expanded_objects.remove(object_id);
@@ -234,74 +235,65 @@ impl LevelEditorState {
         }
     }
 
+    /// Check if object is expanded in hierarchy
     pub fn is_object_expanded(&self, object_id: &str) -> bool {
         self.expanded_objects.contains(object_id)
     }
 
-    pub fn expand_all(&mut self, objects: &[SceneObject]) {
-        for obj in objects {
-            if !obj.children.is_empty() {
-                self.expanded_objects.insert(obj.id.clone());
-                self.expand_all(&obj.children);
+    /// Expand all objects in hierarchy
+    pub fn expand_all(&mut self) {
+        fn expand_recursive(objects: &[SceneObject], set: &mut HashSet<String>) {
+            for obj in objects {
+                if !obj.children.is_empty() {
+                    set.insert(obj.id.clone());
+                }
             }
         }
+        expand_recursive(&self.scene_objects(), &mut self.expanded_objects);
     }
 
+    /// Collapse all objects in hierarchy
     pub fn collapse_all(&mut self) {
         self.expanded_objects.clear();
     }
 
-    pub fn duplicate_selected_object(&mut self) {
-        if let Some(id) = &self.selected_object.clone() {
-            if let Some(obj) = self.find_object_by_id(id, &self.scene_objects) {
-                let mut new_obj = obj.clone();
-                new_obj.id = format!("{}_copy", obj.id);
-                new_obj.name = format!("{} Copy", obj.name);
-                self.scene_objects.push(new_obj);
-                self.has_unsaved_changes = true;
-            }
-        }
-    }
-
+    /// Toggle grid visibility
     pub fn toggle_grid(&mut self) {
         self.show_grid = !self.show_grid;
     }
 
+    /// Toggle wireframe rendering
     pub fn toggle_wireframe(&mut self) {
         self.show_wireframe = !self.show_wireframe;
     }
 
+    /// Toggle lighting
     pub fn toggle_lighting(&mut self) {
         self.show_lighting = !self.show_lighting;
     }
 
+    /// Toggle performance overlay
     pub fn toggle_performance_overlay(&mut self) {
         self.show_performance_overlay = !self.show_performance_overlay;
     }
 
+    /// Toggle viewport controls
     pub fn toggle_viewport_controls(&mut self) {
         self.show_viewport_controls = !self.show_viewport_controls;
     }
 
+    /// Toggle camera mode selector
     pub fn toggle_camera_mode_selector(&mut self) {
         self.show_camera_mode_selector = !self.show_camera_mode_selector;
     }
 
+    /// Toggle viewport options
     pub fn toggle_viewport_options(&mut self) {
         self.show_viewport_options = !self.show_viewport_options;
     }
 
+    /// Toggle FPS graph type
     pub fn toggle_fps_graph_type(&mut self) {
         self.fps_graph_is_line = !self.fps_graph_is_line;
-    }
-}
-
-impl Transform {
-    pub fn default() -> Self {
-        Self {
-            position: [0.0, 0.0, 0.0],
-            rotation: [0.0, 0.0, 0.0],
-            scale: [1.0, 1.0, 1.0],
-        }
     }
 }

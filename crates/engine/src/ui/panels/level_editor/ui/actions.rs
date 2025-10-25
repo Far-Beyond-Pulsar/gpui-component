@@ -47,6 +47,10 @@ actions!(
         FrontView,
         SideView,
 
+        // Play/Edit mode
+        PlayScene,
+        StopScene,
+
         // Edit operations
         Undo,
         Redo,

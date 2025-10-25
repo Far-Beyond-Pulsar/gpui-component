@@ -3446,6 +3446,7 @@ dependencies = [
  "futures",
  "image",
  "nalgebra 0.32.6",
+ "parking_lot",
  "rapier3d",
  "serde",
  "tempfile",
@@ -8161,7 +8162,7 @@ dependencies = [
 
 [[package]]
 name = "pulsar_engine"
-version = "0.1.43"
+version = "0.1.44"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
