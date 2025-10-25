@@ -16,9 +16,6 @@ WIP, Comtribution encouraged
 <img width="2515" height="1362" alt="image" src="https://github.com/user-attachments/assets/ec5a5148-4ba8-45bd-bb8f-d5746a73273f" />
 <img width="902" height="602" alt="image" src="https://github.com/user-attachments/assets/94e058e8-e179-44d1-bfb4-fa20e5ca7637" />
 <img width="1538" height="968" alt="image" src="https://github.com/user-attachments/assets/cf4fff8f-4d2f-49b8-ae4b-251dd0c398b7" />
-
-
-
-
+<img width="2560" height="1552" alt="image" src="https://github.com/user-attachments/assets/78ddfebf-4550-4de5-9bf0-11928d43ab1a" />
 
 [Talk wth the core devs and community!](https://github.com/Far-Beyond-Pulsar/Pulsar-Native/discussions)
