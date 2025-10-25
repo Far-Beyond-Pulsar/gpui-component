@@ -640,7 +640,7 @@ impl ViewportPanel {
             .on_mouse_move({
                 let gpu_engine_move = gpu_engine_for_click.clone();
                 let element_bounds_move = element_bounds_for_click.clone();
-                let mut last_mouse_pos: Option<(f32, f32)> = None;
+                let last_mouse_pos = Rc::new(RefCell::new(Option::<(f32, f32)>::None));
                 
                 move |event: &gpui::MouseMoveEvent, _window, _cx| {
                     // Convert window to element coordinates
@@ -661,13 +661,15 @@ impl ViewportPanel {
                     let normalized_y = (element_y / viewport_height).clamp(0.0, 1.0);
                     
                     // Calculate delta from last position
-                    let (delta_x, delta_y) = if let Some((last_x, last_y)) = last_mouse_pos {
+                    let mut last_pos = last_mouse_pos.borrow_mut();
+                    let (delta_x, delta_y) = if let Some((last_x, last_y)) = *last_pos {
                         (normalized_x - last_x, normalized_y - last_y)
                     } else {
                         (0.0, 0.0)
                     };
                     
-                    last_mouse_pos = Some((normalized_x, normalized_y));
+                    *last_pos = Some((normalized_x, normalized_y));
+                    drop(last_pos); // Release borrow
                     
                     // Update Bevy mouse input
                     if let Ok(engine) = gpu_engine_move.try_lock() {
