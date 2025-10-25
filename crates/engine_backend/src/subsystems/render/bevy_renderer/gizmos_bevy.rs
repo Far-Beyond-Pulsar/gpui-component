@@ -39,7 +39,7 @@ pub struct GizmoStateResource {
     pub active_axis: GizmoAxis,
     pub target_position: Vec3,
     pub enabled: bool, // False in Play mode
-    pub selected_object_id: Option<u64>, // ID of currently selected object (None = no selection, no gizmo)
+    pub selected_object_id: Option<String>, // ID of currently selected object (None = no selection, no gizmo)
 }
 
 impl Default for GizmoStateResource {
@@ -55,6 +55,10 @@ impl Default for GizmoStateResource {
 }
 
 /// System to update gizmo visuals based on selected object
+/// Gizmos are ONLY visible when:
+/// 1. Editor is in Edit mode (enabled = true)
+/// 2. An object is selected (selected_object_id is Some)
+/// 3. A gizmo tool is active (gizmo_type != None)
 pub fn update_gizmo_visuals(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -62,7 +66,7 @@ pub fn update_gizmo_visuals(
     gizmo_state: Res<GizmoStateResource>,
     gizmo_query: Query<Entity, With<GizmoVisual>>,
 ) {
-    // Clear existing gizmos
+    // ALWAYS clear existing gizmos first
     for entity in gizmo_query.iter() {
         commands.entity(entity).despawn();
     }
@@ -78,7 +82,7 @@ pub fn update_gizmo_visuals(
         return;
     }
     
-    // Render appropriate gizmo type
+    // Render appropriate gizmo type at target position
     match gizmo_state.gizmo_type {
         GizmoType::Translate => {
             spawn_translate_gizmo(&mut commands, &mut meshes, &mut materials, &gizmo_state);
@@ -376,12 +380,23 @@ pub fn update_selection_highlighting(
         return;
     }
     
-    // Get selected object ID
-    let selected_id = gizmo_state.selected_object_id;
+    // Helper to convert String ID to numeric ID
+    // For now, we map known IDs: "red_cube" -> 1, "blue_sphere" -> 2, "gold_sphere" -> 3
+    let selected_numeric_id = gizmo_state.selected_object_id.as_ref().and_then(|id| {
+        match id.as_str() {
+            "red_cube" => Some(1),
+            "blue_sphere" => Some(2),
+            "gold_sphere" => Some(3),
+            _ => {
+                // Try to parse as number
+                id.parse::<u64>().ok()
+            }
+        }
+    });
     
     // Update selection state on all objects
     for (entity, game_obj_id, has_selected) in game_objects.iter() {
-        let should_be_selected = selected_id == Some(game_obj_id.0);
+        let should_be_selected = selected_numeric_id == Some(game_obj_id.0);
         
         if should_be_selected && has_selected.is_none() {
             // Add selection marker and outline
@@ -390,6 +405,7 @@ pub fn update_selection_highlighting(
                 color: Color::srgb(1.0, 0.7, 0.0), // Orange outline
                 width: 0.05,
             });
+            println!("[BEVY-GIZMO] ✅ Selected object {} (ID: {})", game_obj_id.0, gizmo_state.selected_object_id.as_ref().unwrap_or(&"none".to_string()));
         } else if !should_be_selected && has_selected.is_some() {
             // Remove selection marker and outline
             commands.entity(entity).remove::<Selected>();

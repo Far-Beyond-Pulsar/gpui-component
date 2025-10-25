@@ -327,6 +327,19 @@ impl LevelEditorPanel {
         if let Some(id) = self.state.selected_object() {
             self.state.scene_database.remove_object(&id);
             self.state.has_unsaved_changes = true;
+            
+            // Deselect after deletion
+            self.state.select_object(None);
+            
+            // Clear gizmo selection in Bevy
+            if let Ok(mut engine) = self.gpu_engine.lock() {
+                if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                    if let Ok(mut gizmo) = bevy_renderer.gizmo_state.lock() {
+                        gizmo.selected_object_id = None;
+                        println!("[LEVEL-EDITOR] 🚫 Object deleted - Gizmo hidden");
+                    }
+                }
+            }
         }
         cx.notify();
     }
@@ -342,16 +355,21 @@ impl LevelEditorPanel {
     fn on_select_object(&mut self, action: &SelectObject, _: &mut Window, cx: &mut Context<Self>) {
         self.state.select_object(Some(action.object_id.clone()));
         
-        // Update gizmo position in Bevy when object is selected
+        // Update gizmo position and selection in Bevy when object is selected
         if let Some(obj) = self.state.get_selected_object() {
             if let Ok(mut engine) = self.gpu_engine.lock() {
                 if let Some(ref bevy_renderer) = engine.bevy_renderer {
                     if let Ok(mut gizmo) = bevy_renderer.gizmo_state.lock() {
-                        // Update position (use simple tuple, Bevy's Vec3 is internal)
+                        // Set selected object ID (String)
+                        gizmo.selected_object_id = Some(obj.id.clone());
+                        
+                        // Update position
                         gizmo.target_position.x = obj.transform.position[0];
                         gizmo.target_position.y = obj.transform.position[1];
                         gizmo.target_position.z = obj.transform.position[2];
-                        println!("[LEVEL-EDITOR] 🎯 Gizmo position updated to ({}, {}, {})",
+                        
+                        println!("[LEVEL-EDITOR] 🎯 Object '{}' selected - Gizmo at ({}, {}, {})",
+                            obj.id,
                             gizmo.target_position.x, gizmo.target_position.y, gizmo.target_position.z);
                     }
                 }

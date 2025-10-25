@@ -13,6 +13,7 @@ use super::metrics::*;
 use super::scene::*;
 use super::textures::*;
 use super::gizmos_bevy::*;
+use super::viewport_interaction::*;
 
 /// Renderer state
 pub struct BevyRenderer {
@@ -140,6 +141,8 @@ impl BevyRenderer {
             .insert_resource(ShutdownFlag(shutdown.clone()))
             .insert_resource(GameThreadResource(game_thread_state))
             .insert_resource(gizmo_state.lock().unwrap().clone()) // Level editor gizmos
+            .insert_resource(ViewportMouseInput::default()) // Viewport mouse interaction
+            .insert_resource(GizmoInteractionState::default()) // Gizmo drag state
             .add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin::default()) // Bevy frame time diagnostics
             .add_plugins(bevy::render::diagnostic::RenderDiagnosticsPlugin::default()); // Bevy GPU render diagnostics
         
@@ -149,6 +152,9 @@ impl BevyRenderer {
             .add_systems(Update, sync_camera_input_system) // NEW: Sync input thread camera input to Bevy ECS
             .add_systems(Update, camera_movement_system) // Unreal-style camera controls
             .add_systems(Update, sync_game_objects_system) // NEW: Sync game thread to Bevy
+            .add_systems(Update, update_gizmo_target_system) // Keep gizmo centered on selected object
+            .add_systems(Update, viewport_click_selection_system) // Viewport object selection via raycast
+            .add_systems(Update, gizmo_drag_system) // Gizmo dragging for object manipulation
             .add_systems(Update, update_metrics_system) // Track FPS and frame times
             .add_systems(Update, update_gpu_profiler_system) // Extract GPU profiler data from Bevy diagnostics
             .add_systems(Update, update_gizmo_visuals) // Level editor gizmos
