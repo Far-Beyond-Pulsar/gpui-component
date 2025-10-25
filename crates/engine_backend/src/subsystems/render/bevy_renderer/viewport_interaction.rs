@@ -1,7 +1,7 @@
 //! Viewport Interaction System
 //! 
 //! Handles mouse interaction with the viewport for:
-//! - Object selection via raycasting
+//! - Object selection via raycasting (async, spread over multiple frames)
 //! - Gizmo manipulation (drag to transform objects)
 //! - Camera-independent picking
 
@@ -34,20 +34,51 @@ pub struct GizmoInteractionState {
     pub drag_start_object_id: Option<u64>,
 }
 
-/// System to handle viewport click for object selection
-pub fn viewport_click_selection_system(
+/// Pending raycast request (processed asynchronously over multiple frames)
+#[derive(Resource)]
+pub struct PendingRaycast {
+    pub active: bool,
+    pub ray_origin: Vec3,
+    pub ray_direction: Dir3,
+    pub objects_to_test: Vec<(u64, Vec3)>, // (id, position)
+    pub current_index: usize,
+    pub closest_hit: Option<(u64, f32)>, // (id, distance)
+    pub frame_budget_us: u64, // Microseconds per frame for raycasting
+}
+
+impl Default for PendingRaycast {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PendingRaycast {
+    pub fn new() -> Self {
+        Self {
+            active: false,
+            ray_origin: Vec3::ZERO,
+            ray_direction: Dir3::new_unchecked(Vec3::Z),
+            objects_to_test: Vec::new(),
+            current_index: 0,
+            closest_hit: None,
+            frame_budget_us: 100, // 100us = 0.1ms per frame budget
+        }
+    }
+}
+
+/// System to initiate async raycast on click
+pub fn viewport_click_initiate_raycast_system(
     mouse_input: Res<ViewportMouseInput>,
     camera_query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
     object_query: Query<(Entity, &GameObjectId, &GlobalTransform)>,
-    mut gizmo_state: ResMut<GizmoStateResource>,
-    shared_gizmo_state: Res<SharedGizmoStateResource>,
+    mut pending_raycast: ResMut<PendingRaycast>,
 ) {
-    // Only process on click (not drag)
-    if !mouse_input.left_clicked {
+    // Only process on NEW click (not drag, not if already processing)
+    if !mouse_input.left_clicked || pending_raycast.active {
         return;
     }
     
-    println!("[RAYCAST] 🎯 Processing left-click for object selection");
+    println!("[RAYCAST] 🎯 Initiating async raycast for object selection");
     println!("[RAYCAST] 📍 Mouse position: ({:.3}, {:.3})", mouse_input.mouse_pos.x, mouse_input.mouse_pos.y);
     
     // Get camera
@@ -55,8 +86,6 @@ pub fn viewport_click_selection_system(
         println!("[RAYCAST] ⚠️ No camera found!");
         return;
     };
-    
-    println!("[RAYCAST] 📷 Camera found at: {:?}", camera_transform.translation());
     
     // Create ray from mouse position
     let ray = screen_to_world_ray(
@@ -67,39 +96,77 @@ pub fn viewport_click_selection_system(
     
     println!("[RAYCAST] ➡️ Ray origin: {:?}, direction: {:?}", ray.origin, ray.direction);
     
-    // Test all objects for intersection
-    let mut closest_hit: Option<(u64, f32)> = None;
-    let object_count = object_query.iter().count();
-    println!("[RAYCAST] 🔍 Testing {} objects for intersection", object_count);
+    // Collect all objects to test (just positions, lightweight)
+    let objects: Vec<(u64, Vec3)> = object_query.iter()
+        .map(|(_entity, game_obj_id, transform)| (game_obj_id.0, transform.translation()))
+        .collect();
     
-    for (_entity, game_obj_id, obj_transform) in object_query.iter() {
-        // Simple bounding sphere test for now
-        let obj_pos = obj_transform.translation();
-        let ray_to_object = obj_pos - ray.origin;
-        let projection = ray_to_object.dot(*ray.direction);
+    println!("[RAYCAST] 📦 Queued {} objects for async testing", objects.len());
+    
+    // Initialize async raycast state
+    pending_raycast.active = true;
+    pending_raycast.ray_origin = ray.origin;
+    pending_raycast.ray_direction = ray.direction;
+    pending_raycast.objects_to_test = objects;
+    pending_raycast.current_index = 0;
+    pending_raycast.closest_hit = None;
+}
+
+/// System to process raycast incrementally (runs every frame with time budget)
+pub fn viewport_raycast_process_system(
+    mut pending_raycast: ResMut<PendingRaycast>,
+    mut gizmo_state: ResMut<GizmoStateResource>,
+    shared_gizmo_state: Res<SharedGizmoStateResource>,
+    object_query: Query<(Entity, &GameObjectId, &GlobalTransform)>,
+) {
+    if !pending_raycast.active {
+        return; // No active raycast
+    }
+    
+    let frame_start = std::time::Instant::now();
+    let budget = std::time::Duration::from_micros(pending_raycast.frame_budget_us);
+    
+    // Process objects within time budget
+    let mut tests_this_frame = 0;
+    while pending_raycast.current_index < pending_raycast.objects_to_test.len() {
+        // Check if we've exceeded time budget
+        if frame_start.elapsed() > budget && tests_this_frame > 0 {
+            // Exceeded budget - continue next frame
+            println!("[RAYCAST] ⏱️ Frame budget exceeded ({} tests), continuing next frame...", tests_this_frame);
+            return;
+        }
+        
+        let (obj_id, obj_pos) = pending_raycast.objects_to_test[pending_raycast.current_index];
+        
+        // Perform ray-sphere intersection test
+        let ray_to_object = obj_pos - pending_raycast.ray_origin;
+        let projection = ray_to_object.dot(*pending_raycast.ray_direction);
         
         if projection > 0.0 {
-            let closest_point = ray.origin + *ray.direction * projection;
+            let closest_point = pending_raycast.ray_origin + *pending_raycast.ray_direction * projection;
             let dist_to_ray = closest_point.distance(obj_pos);
             
-            // Rough radius estimate (TODO: use actual mesh bounds)
-            let radius = 1.5; // Fixed radius for now since GlobalTransform doesn't expose scale directly
-            
-            println!("[RAYCAST]   Object ID {}: pos={:?}, dist={:.3}, radius={:.3}",
-                game_obj_id.0, obj_pos, dist_to_ray, radius);
+            let radius = 1.5; // Fixed radius for now
             
             if dist_to_ray < radius {
-                // Hit! Check if it's closer than previous hits
-                println!("[RAYCAST]   ✅ HIT! Object ID {} (distance: {:.3})", game_obj_id.0, projection);
-                if closest_hit.is_none() || projection < closest_hit.unwrap().1 {
-                    closest_hit = Some((game_obj_id.0, projection));
+                // Hit! Check if closer than previous hits
+                if pending_raycast.closest_hit.is_none() || projection < pending_raycast.closest_hit.unwrap().1 {
+                    pending_raycast.closest_hit = Some((obj_id, projection));
                 }
             }
         }
+        
+        pending_raycast.current_index += 1;
+        tests_this_frame += 1;
     }
     
-    // Update selection in BOTH local and shared resources
-    if let Some((selected_id, _)) = closest_hit {
+    // Finished all objects - apply selection
+    println!("[RAYCAST] ✅ Async raycast complete! Tested {} objects in {} frames", 
+        pending_raycast.objects_to_test.len(),
+        (pending_raycast.objects_to_test.len() + tests_this_frame - 1) / tests_this_frame.max(1)
+    );
+    
+    if let Some((selected_id, distance)) = pending_raycast.closest_hit {
         // Convert numeric ID to string ID
         let string_id = match selected_id {
             1 => "red_cube".to_string(),
@@ -107,6 +174,8 @@ pub fn viewport_click_selection_system(
             3 => "gold_sphere".to_string(),
             _ => format!("object_{}", selected_id),
         };
+        
+        println!("[RAYCAST] 🎯 Selected object ID {} ('{}') at distance {:.3}", selected_id, string_id, distance);
         
         // Update local Bevy ECS resource
         gizmo_state.selected_object_id = Some(string_id.clone());
@@ -118,26 +187,24 @@ pub fn viewport_click_selection_system(
             gizmo_state.target_position = transform.translation();
         }
         
-        // CRITICAL: Also update the SHARED resource so GPUI can see the selection
+        // Update shared resource for GPUI
         if let Ok(mut shared) = shared_gizmo_state.0.try_lock() {
             shared.selected_object_id = Some(string_id.clone());
             shared.target_position = gizmo_state.target_position;
             println!("[RAYCAST] 🔄 Synced selection to GPUI: '{}'", string_id);
         }
-        
-        println!("[RAYCAST] 🎯 Selected object ID {} ('{}')", selected_id, string_id);
     } else {
-        // Clicked empty space - deselect
+        // No hits - deselect
+        println!("[RAYCAST] ⭕ No hits - deselected");
         gizmo_state.selected_object_id = None;
         
-        // Also clear shared resource
         if let Ok(mut shared) = shared_gizmo_state.0.try_lock() {
             shared.selected_object_id = None;
-            println!("[RAYCAST] 🔄 Cleared selection in GPUI");
         }
-        
-        println!("[RAYCAST] ⭕ No hits - deselected (clicked empty space)");
     }
+    
+    // Mark raycast as complete
+    pending_raycast.active = false;
 }
 
 /// System to handle gizmo dragging for object manipulation
