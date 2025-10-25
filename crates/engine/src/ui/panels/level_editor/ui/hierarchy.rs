@@ -5,8 +5,9 @@ use gpui_component::{
     h_flex, v_flex, scroll::ScrollbarAxis, ActiveTheme, Icon, IconName, Selectable, Sizable, StyledExt,
 };
 
-use super::state::{LevelEditorState, ObjectType, SceneObject};
+use super::state::{LevelEditorState, SceneObject};
 use super::actions::*;
+use crate::ui::panels::level_editor::scene_database::ObjectType;
 
 /// Hierarchy Panel - Scene outliner showing all objects in a tree structure
 pub struct HierarchyPanel;
@@ -82,7 +83,7 @@ impl HierarchyPanel {
                             .size_full()
                             .scrollable(ScrollbarAxis::Vertical)
                             .children(
-                                state.scene_objects.iter().map(|obj| {
+                                state.scene_objects().iter().map(|obj| {
                                     Self::render_object_tree_item(obj, state, 0, cx)
                                 })
                             )
@@ -99,14 +100,13 @@ impl HierarchyPanel {
     where
         V: EventEmitter<PanelEvent> + Render,
     {
-        let is_selected = state.selected_object.as_ref() == Some(&object.id);
+        let is_selected = state.selected_object().as_ref() == Some(&object.id);
         let has_children = !object.children.is_empty();
         let is_expanded = state.is_object_expanded(&object.id);
         let indent = px(depth as f32 * 16.0);
         let icon = Self::get_icon_for_object_type(object.object_type);
         let object_id = object.id.clone();
         let object_id_for_expand = object.id.clone();
-        let object_id_for_menu = object.id.clone();
 
         // Build item div base
         let item_id = SharedString::from(format!("object-{}", object.id));
@@ -200,24 +200,18 @@ impl HierarchyPanel {
                             .child(if object.visible { "●" } else { "○" })
                     )
             )
-            .children(
-                if is_expanded {
-                    // Render children recursively only if expanded
-                    object.children.iter().map(|child| {
-                        Self::render_object_tree_item(child, state, depth + 1, cx)
-                    }).collect::<Vec<_>>()
-                } else {
-                    vec![]
-                }
-            )
+            // Note: Children rendering removed for now since object.children
+            // contains ObjectIds, not full SceneObjects. Would need to look them up from database.
     }
 
     fn get_icon_for_object_type(object_type: ObjectType) -> IconName {
         match object_type {
             ObjectType::Camera => IconName::Camera,
-            ObjectType::Light => IconName::LightBulb,
-            ObjectType::Mesh => IconName::Box,
+            ObjectType::Light(_) => IconName::LightBulb,
+            ObjectType::Mesh(_) => IconName::Box,
             ObjectType::Empty => IconName::Circle,
+            ObjectType::ParticleSystem => IconName::Play,
+            ObjectType::AudioSource => IconName::MusicNote,
         }
     }
 }

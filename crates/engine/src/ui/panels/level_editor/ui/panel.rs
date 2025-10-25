@@ -26,9 +26,12 @@ use std::cell::RefCell;
 
 use super::{
     LevelEditorState, SceneBrowser, HierarchyPanel, PropertiesPanel,
-    ViewportPanel, ToolbarPanel, CameraMode, ObjectType, TransformTool, Transform, SceneObject,
+    ViewportPanel, ToolbarPanel, CameraMode, TransformTool,
 };
 use super::actions::*;
+use crate::ui::panels::level_editor::scene_database::{
+    SceneObjectData, ObjectType, Transform, MeshType, LightType,
+};
 
 /// Main Level Editor Panel - Orchestrates all sub-components
 pub struct LevelEditorPanel {
@@ -191,14 +194,15 @@ impl LevelEditorPanel {
     }
 
     fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let objects_count = self.state.scene_objects().len();
+        let selected_name = self.state.selected_object()
+            .and_then(|id| self.state.scene_database.get_object(&id))
+            .map(|obj| obj.name.clone())
+            .unwrap_or_else(|| "None".to_string());
+        
         StatusBar::new()
-            .add_left_item(format!("Objects: {}", self.state.scene_objects.len()))
-            .add_left_item(format!("Selected: {}",
-                self.state.selected_object.as_ref()
-                    .and_then(|id| self.state.get_selected_object())
-                    .map(|obj| obj.name.as_str())
-                    .unwrap_or("None")
-            ))
+            .add_left_item(format!("Objects: {}", objects_count))
+            .add_left_item(format!("Selected: {}", selected_name))
             .add_right_item(format!("{:?}", self.state.camera_mode))
             .add_right_item(format!("Grid: {}", if self.state.show_grid { "On" } else { "Off" }))
             .add_right_item(format!("Tool: {:?}", self.state.current_tool))
@@ -227,45 +231,61 @@ impl LevelEditorPanel {
     }
 
     fn on_add_object(&mut self, _: &AddObject, _: &mut Window, cx: &mut Context<Self>) {
-        let new_object = SceneObject {
-            id: format!("object_{}", self.state.scene_objects.len() + 1),
+        let objects_count = self.state.scene_objects().len();
+        let new_object = SceneObjectData {
+            id: format!("object_{}", objects_count + 1),
             name: "New Object".to_string(),
             object_type: ObjectType::Empty,
             transform: Transform::default(),
             visible: true,
+            locked: false,
+            parent: None,
             children: vec![],
+            components: vec![],
         };
-        self.state.add_object(new_object);
+        self.state.scene_database.add_object(new_object, None);
+        self.state.has_unsaved_changes = true;
         cx.notify();
     }
 
     fn on_add_object_of_type(&mut self, action: &AddObjectOfType, _: &mut Window, cx: &mut Context<Self>) {
         let object_type = match action.object_type.as_str() {
-            "Mesh" => ObjectType::Mesh,
-            "Light" => ObjectType::Light,
+            "Mesh" => ObjectType::Mesh(MeshType::Cube),
+            "Light" => ObjectType::Light(LightType::Directional),
             "Camera" => ObjectType::Camera,
             _ => ObjectType::Empty,
         };
 
-        let new_object = SceneObject {
-            id: format!("{}_{}", action.object_type.to_lowercase(), self.state.scene_objects.len() + 1),
+        let objects_count = self.state.scene_objects().len();
+        let new_object = SceneObjectData {
+            id: format!("{}_{}", action.object_type.to_lowercase(), objects_count + 1),
             name: format!("New {}", action.object_type),
             object_type,
             transform: Transform::default(),
             visible: true,
+            locked: false,
+            parent: None,
             children: vec![],
+            components: vec![],
         };
-        self.state.add_object(new_object);
+        self.state.scene_database.add_object(new_object, None);
+        self.state.has_unsaved_changes = true;
         cx.notify();
     }
 
     fn on_delete_object(&mut self, _: &DeleteObject, _: &mut Window, cx: &mut Context<Self>) {
-        self.state.remove_selected_object();
+        if let Some(id) = self.state.selected_object() {
+            self.state.scene_database.remove_object(&id);
+            self.state.has_unsaved_changes = true;
+        }
         cx.notify();
     }
 
     fn on_duplicate_object(&mut self, _: &DuplicateObject, _: &mut Window, cx: &mut Context<Self>) {
-        self.state.duplicate_selected_object();
+        if let Some(id) = self.state.selected_object() {
+            self.state.scene_database.duplicate_object(&id);
+            self.state.has_unsaved_changes = true;
+        }
         cx.notify();
     }
 
