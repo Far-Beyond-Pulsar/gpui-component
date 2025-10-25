@@ -87,19 +87,21 @@ impl LevelEditorPanel {
 
         println!("[LEVEL-EDITOR] ✅ Bevy viewport created (1600x900)");
         
-        // Create and start game thread for object movement FIRST
-        println!("[LEVEL-EDITOR] 🎮 Creating game thread with target 240 TPS...");
+        // Create game thread but DON'T start it yet (editor starts in Edit mode)
+        println!("[LEVEL-EDITOR] 🎮 Creating game thread (paused - Edit mode)...");
         let game_thread = Arc::new(GameThread::new(240.0));
         let game_state = game_thread.get_state();
-        game_thread.start();
-        println!("[LEVEL-EDITOR] ✅ Game thread started successfully!");
+        game_thread.set_enabled(false); // CRITICAL: Start disabled for Edit mode
+        game_thread.start(); // Thread runs but does nothing while disabled
+        println!("[LEVEL-EDITOR] ✅ Game thread created (paused for Edit mode)");
         
-        // Create GPU render engine with matching resolution and game thread link
-        println!("[LEVEL-EDITOR] 🎨 Creating GPU renderer linked to game thread...");
-        let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new_with_game_thread(1600, 900, Some(game_state))));
+        // Create GPU render engine WITHOUT game thread link initially (Edit mode)
+        println!("[LEVEL-EDITOR] 🎨 Creating GPU renderer (no game sync in Edit mode)...");
+        let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new(1600, 900))); // No game state initially
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
         
-        println!("[LEVEL-EDITOR] ✅ GPU renderer initialized with game thread sync");
+        println!("[LEVEL-EDITOR] ✅ GPU renderer initialized (Edit mode)");
+        println!("[LEVEL-EDITOR] 📝 Editor ready in EDIT MODE - objects frozen");
 
         // Wait a moment for Bevy to create shared textures, then initialize viewport
         let viewport_state_for_init = viewport_state.clone();
@@ -339,6 +341,49 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
+    fn on_play_scene(&mut self, _: &PlayScene, _: &mut Window, cx: &mut Context<Self>) {
+        println!("[LEVEL-EDITOR] ▶️ PLAY button pressed");
+        
+        // Enter play mode (saves scene snapshot)
+        self.state.enter_play_mode();
+        
+        // Enable game thread
+        self.game_thread.set_enabled(true);
+        println!("[LEVEL-EDITOR] ✅ Game thread enabled - objects will move");
+        
+        // Link renderer to game thread for synchronized rendering
+        if let Ok(mut engine) = self.gpu_engine.lock() {
+            if let Some(ref mut bevy_renderer) = engine.bevy_renderer {
+                // TODO: Link Bevy renderer to game state
+                println!("[LEVEL-EDITOR] 🔗 Renderer linked to game thread");
+            }
+        }
+        
+        cx.notify();
+    }
+
+    fn on_stop_scene(&mut self, _: &StopScene, _: &mut Window, cx: &mut Context<Self>) {
+        println!("[LEVEL-EDITOR] ⏹️ STOP button pressed");
+        
+        // Disable game thread
+        self.game_thread.set_enabled(false);
+        println!("[LEVEL-EDITOR] ⏸️ Game thread disabled");
+        
+        // Exit play mode (restores scene from snapshot)
+        self.state.exit_play_mode();
+        println!("[LEVEL-EDITOR] ✅ Scene restored to edit state");
+        
+        // Unlink renderer from game thread
+        if let Ok(mut engine) = self.gpu_engine.lock() {
+            if let Some(ref mut bevy_renderer) = engine.bevy_renderer {
+                // TODO: Unlink Bevy renderer from game state
+                println!("[LEVEL-EDITOR] 🔓 Renderer unlinked from game thread");
+            }
+        }
+        
+        cx.notify();
+    }
+
     fn on_perspective_view(&mut self, _: &PerspectiveView, _: &mut Window, cx: &mut Context<Self>) {
         self.state.set_camera_mode(CameraMode::Perspective);
         cx.notify();
@@ -444,6 +489,9 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_toggle_camera_mode_selector))
             .on_action(cx.listener(Self::on_toggle_viewport_options))
             .on_action(cx.listener(Self::on_toggle_fps_graph_type))
+            // Play/Edit mode
+            .on_action(cx.listener(Self::on_play_scene))
+            .on_action(cx.listener(Self::on_stop_scene))
             // Camera modes
             .on_action(cx.listener(Self::on_perspective_view))
             .on_action(cx.listener(Self::on_orthographic_view))

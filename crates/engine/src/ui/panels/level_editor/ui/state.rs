@@ -6,13 +6,24 @@ use std::sync::Arc;
 // Import our scene database and gizmo systems
 use crate::ui::panels::level_editor::{SceneDatabase, GizmoState, GizmoType};
 
+/// Editor mode - Edit or Play
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EditorMode {
+    Edit,  // Editing mode - gizmos active, game thread paused
+    Play,  // Play mode - game running, gizmos hidden
+}
+
 /// Shared state for the Level Editor
 #[derive(Clone)]
 pub struct LevelEditorState {
     /// Scene database - single source of truth for all scene data
     pub scene_database: SceneDatabase,
+    /// Snapshot of scene state when entering play mode (for reset on stop)
+    pub scene_snapshot: Option<Arc<parking_lot::RwLock<Vec<crate::ui::panels::level_editor::scene_database::SceneObjectData>>>>,
     /// Gizmo state for 3D manipulation
     pub gizmo_state: Arc<parking_lot::RwLock<GizmoState>>,
+    /// Current editor mode
+    pub editor_mode: EditorMode,
     /// Currently open scene file
     pub current_scene: Option<PathBuf>,
     /// Whether the scene has unsaved changes
@@ -72,7 +83,9 @@ impl Default for LevelEditorState {
         
         Self {
             scene_database,
+            scene_snapshot: None,
             gizmo_state: Arc::new(parking_lot::RwLock::new(gizmo_state)),
+            editor_mode: EditorMode::Edit, // Start in edit mode
             current_scene: None,
             has_unsaved_changes: false,
             current_tool: TransformTool::Move,
@@ -93,6 +106,73 @@ impl Default for LevelEditorState {
 impl LevelEditorState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Enter play mode - snapshot scene and start game thread
+    pub fn enter_play_mode(&mut self) {
+        println!("[EDITOR] 🎮 Entering PLAY mode");
+        
+        // Save snapshot of current scene state for restoration
+        let objects = self.scene_database.get_all_objects();
+        self.scene_snapshot = Some(Arc::new(parking_lot::RwLock::new(objects)));
+        
+        // Switch to play mode
+        self.editor_mode = EditorMode::Play;
+        
+        // Hide gizmos
+        let mut gizmo = self.gizmo_state.write();
+        gizmo.set_gizmo_type(GizmoType::None);
+        
+        println!("[EDITOR] ✅ Play mode active - game thread will start");
+    }
+
+    /// Exit play mode - restore scene state and stop game thread
+    pub fn exit_play_mode(&mut self) {
+        println!("[EDITOR] 🛑 Exiting PLAY mode");
+        
+        // Restore scene from snapshot
+        if let Some(ref snapshot) = self.scene_snapshot {
+            let objects = snapshot.read().clone();
+            
+            // Clear current scene
+            self.scene_database.clear();
+            
+            // Restore all objects
+            for obj in objects {
+                self.scene_database.add_object(obj, None);
+            }
+            
+            println!("[EDITOR] ✅ Scene restored from snapshot");
+        }
+        
+        // Switch back to edit mode
+        self.editor_mode = EditorMode::Edit;
+        
+        // Restore gizmo based on current tool
+        let gizmo_type = match self.current_tool {
+            TransformTool::Select => GizmoType::None,
+            TransformTool::Move => GizmoType::Translate,
+            TransformTool::Rotate => GizmoType::Rotate,
+            TransformTool::Scale => GizmoType::Scale,
+        };
+        
+        let mut gizmo = self.gizmo_state.write();
+        gizmo.set_gizmo_type(gizmo_type);
+        
+        // Clear snapshot
+        self.scene_snapshot = None;
+        
+        println!("[EDITOR] ✅ Edit mode active");
+    }
+
+    /// Check if in edit mode
+    pub fn is_edit_mode(&self) -> bool {
+        self.editor_mode == EditorMode::Edit
+    }
+
+    /// Check if in play mode
+    pub fn is_play_mode(&self) -> bool {
+        self.editor_mode == EditorMode::Play
     }
 
     /// Get selected object ID
@@ -121,8 +201,12 @@ impl LevelEditorState {
         self.scene_database.get_selected_object()
     }
 
-    /// Set the current transform tool
+    /// Set the current transform tool (only in edit mode)
     pub fn set_tool(&mut self, tool: TransformTool) {
+        if !self.is_edit_mode() {
+            return; // Ignore tool changes in play mode
+        }
+        
         self.current_tool = tool;
         
         // Update gizmo type
@@ -162,8 +246,6 @@ impl LevelEditorState {
             for obj in objects {
                 if !obj.children.is_empty() {
                     set.insert(obj.id.clone());
-                    // Note: SceneObject.children is Vec<ObjectId>, not Vec<SceneObject>
-                    // We'd need to look them up from the database, but for now just mark the ID
                 }
             }
         }
