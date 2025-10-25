@@ -5,6 +5,7 @@
 
 use bevy::prelude::*;
 use std::sync::Arc;
+use super::components::{GameObjectId, Selected, SelectionOutline};
 
 /// Gizmo type - which manipulation tool is active
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -38,6 +39,7 @@ pub struct GizmoStateResource {
     pub active_axis: GizmoAxis,
     pub target_position: Vec3,
     pub enabled: bool, // False in Play mode
+    pub selected_object_id: Option<u64>, // ID of currently selected object (None = no selection, no gizmo)
 }
 
 impl Default for GizmoStateResource {
@@ -47,6 +49,7 @@ impl Default for GizmoStateResource {
             active_axis: GizmoAxis::None,
             target_position: Vec3::ZERO,
             enabled: true, // Start enabled (Edit mode)
+            selected_object_id: None, // No object selected initially
         }
     }
 }
@@ -64,8 +67,14 @@ pub fn update_gizmo_visuals(
         commands.entity(entity).despawn();
     }
     
-    // Don't render gizmos if disabled or no tool selected
-    if !gizmo_state.enabled || gizmo_state.gizmo_type == GizmoType::None {
+    // Don't render gizmos if:
+    // 1. Disabled (Play mode)
+    // 2. No object selected
+    // 3. No tool selected
+    if !gizmo_state.enabled 
+        || gizmo_state.selected_object_id.is_none() 
+        || gizmo_state.gizmo_type == GizmoType::None 
+    {
         return;
     }
     
@@ -346,3 +355,46 @@ fn spawn_scale_gizmo(
         },
     ));
 }
+
+/// System to update selection highlighting
+/// Adds/removes outline materials on objects based on selection state
+pub fn update_selection_highlighting(
+    mut commands: Commands,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    gizmo_state: Res<GizmoStateResource>,
+    // All game objects with their IDs
+    game_objects: Query<(Entity, &GameObjectId, Option<&Selected>)>,
+    // Objects that have outline materials
+    outlined_objects: Query<(Entity, &SelectionOutline)>,
+) {
+    if !gizmo_state.enabled {
+        // In Play mode, clear all selection outlines
+        for (entity, _) in outlined_objects.iter() {
+            commands.entity(entity).remove::<SelectionOutline>();
+            commands.entity(entity).remove::<Selected>();
+        }
+        return;
+    }
+    
+    // Get selected object ID
+    let selected_id = gizmo_state.selected_object_id;
+    
+    // Update selection state on all objects
+    for (entity, game_obj_id, has_selected) in game_objects.iter() {
+        let should_be_selected = selected_id == Some(game_obj_id.0);
+        
+        if should_be_selected && has_selected.is_none() {
+            // Add selection marker and outline
+            commands.entity(entity).insert(Selected);
+            commands.entity(entity).insert(SelectionOutline {
+                color: Color::srgb(1.0, 0.7, 0.0), // Orange outline
+                width: 0.05,
+            });
+        } else if !should_be_selected && has_selected.is_some() {
+            // Remove selection marker and outline
+            commands.entity(entity).remove::<Selected>();
+            commands.entity(entity).remove::<SelectionOutline>();
+        }
+    }
+}
+

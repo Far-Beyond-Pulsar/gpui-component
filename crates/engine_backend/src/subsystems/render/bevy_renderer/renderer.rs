@@ -152,6 +152,7 @@ impl BevyRenderer {
             .add_systems(Update, update_metrics_system) // Track FPS and frame times
             .add_systems(Update, update_gpu_profiler_system) // Extract GPU profiler data from Bevy diagnostics
             .add_systems(Update, update_gizmo_visuals) // Level editor gizmos
+            .add_systems(Update, update_selection_highlighting) // Selection outlines
             .add_systems(Update, debug_rendering_system); // Add debug system
 
         // Render world systems
