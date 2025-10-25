@@ -3446,6 +3446,7 @@ dependencies = [
  "futures",
  "image",
  "nalgebra 0.32.6",
+ "parking_lot",
  "rapier3d",
  "serde",
  "tempfile",

@@ -18,6 +18,15 @@ pub struct GameThreadResource(pub Option<Arc<Mutex<crate::subsystems::game::Game
 #[derive(Resource, Clone)]
 pub struct CameraInputResource(pub Arc<Mutex<CameraInput>>);
 
+/// Resource containing shared gizmo state from GPUI (updated by editor, read by Bevy)
+#[derive(Resource, Clone)]
+pub struct SharedGizmoStateResource(pub Arc<Mutex<super::gizmos_bevy::GizmoStateResource>>);
+
+/// Resource containing shared viewport mouse input from GPUI (for object selection raycasts)
+#[derive(Resource, Clone)]
+pub struct SharedViewportMouseInputResource(pub Arc<parking_lot::Mutex<super::viewport_interaction::ViewportMouseInput>>);
+
+
 /// Metrics tracking resource - shared between Bevy and the main thread
 #[derive(Resource, Clone)]
 pub struct MetricsResource {

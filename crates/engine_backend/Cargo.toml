@@ -42,6 +42,7 @@ image = "0.25"
 bytemuck = { version = "1.14", features = ["derive"] }
 crossbeam-channel = "0.5"
 futures = "0.3"
+parking_lot = "0.12"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [

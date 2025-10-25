@@ -41,14 +41,20 @@ pub fn viewport_click_selection_system(
     mut gizmo_state: ResMut<GizmoStateResource>,
 ) {
     // Only process on click (not drag)
-    if !mouse_input.left_clicked || gizmo_state.is_changed() {
+    if !mouse_input.left_clicked {
         return;
     }
     
+    println!("[RAYCAST] 🎯 Processing left-click for object selection");
+    println!("[RAYCAST] 📍 Mouse position: ({:.3}, {:.3})", mouse_input.mouse_pos.x, mouse_input.mouse_pos.y);
+    
     // Get camera
     let Ok((camera, camera_transform)) = camera_query.single() else {
+        println!("[RAYCAST] ⚠️ No camera found!");
         return;
     };
+    
+    println!("[RAYCAST] 📷 Camera found at: {:?}", camera_transform.translation());
     
     // Create ray from mouse position
     let ray = screen_to_world_ray(
@@ -57,24 +63,32 @@ pub fn viewport_click_selection_system(
         camera_transform,
     );
     
+    println!("[RAYCAST] ➡️ Ray origin: {:?}, direction: {:?}", ray.origin, ray.direction);
+    
     // Test all objects for intersection
     let mut closest_hit: Option<(u64, f32)> = None;
+    let object_count = object_query.iter().count();
+    println!("[RAYCAST] 🔍 Testing {} objects for intersection", object_count);
     
     for (_entity, game_obj_id, obj_transform) in object_query.iter() {
         // Simple bounding sphere test for now
-        let distance = ray.origin.distance(obj_transform.translation());
-        let ray_to_object = obj_transform.translation() - ray.origin;
+        let obj_pos = obj_transform.translation();
+        let ray_to_object = obj_pos - ray.origin;
         let projection = ray_to_object.dot(*ray.direction);
         
         if projection > 0.0 {
             let closest_point = ray.origin + *ray.direction * projection;
-            let dist_to_ray = closest_point.distance(obj_transform.translation());
+            let dist_to_ray = closest_point.distance(obj_pos);
             
             // Rough radius estimate (TODO: use actual mesh bounds)
             let radius = 1.5; // Fixed radius for now since GlobalTransform doesn't expose scale directly
             
+            println!("[RAYCAST]   Object ID {}: pos={:?}, dist={:.3}, radius={:.3}",
+                game_obj_id.0, obj_pos, dist_to_ray, radius);
+            
             if dist_to_ray < radius {
                 // Hit! Check if it's closer than previous hits
+                println!("[RAYCAST]   ✅ HIT! Object ID {} (distance: {:.3})", game_obj_id.0, projection);
                 if closest_hit.is_none() || projection < closest_hit.unwrap().1 {
                     closest_hit = Some((game_obj_id.0, projection));
                 }
@@ -101,11 +115,11 @@ pub fn viewport_click_selection_system(
             gizmo_state.target_position = transform.translation();
         }
         
-        println!("[VIEWPORT] 🎯 Selected object ID {} via raycast", selected_id);
+        println!("[RAYCAST] 🎯 Selected object ID {} ('{}')", selected_id, string_id);
     } else {
         // Clicked empty space - deselect
         gizmo_state.selected_object_id = None;
-        println!("[VIEWPORT] ⭕ Deselected - clicked empty space");
+        println!("[RAYCAST] ⭕ No hits - deselected (clicked empty space)");
     }
 }
 

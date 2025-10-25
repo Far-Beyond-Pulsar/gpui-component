@@ -22,6 +22,7 @@ pub struct BevyRenderer {
     pub metrics: Arc<MetricsResource>,
     pub gpu_profiler: Arc<Mutex<GpuProfilerData>>,
     pub gizmo_state: Arc<Mutex<GizmoStateResource>>,
+    pub viewport_mouse_input: Arc<parking_lot::Mutex<ViewportMouseInput>>,
     shutdown: Arc<AtomicBool>,
     _render_thread: Option<std::thread::JoinHandle<()>>,
 }
@@ -40,7 +41,13 @@ impl BevyRenderer {
         let camera_input = Arc::new(Mutex::new(CameraInput::new()));
         let metrics = Arc::new(MetricsResource::default());
         let gpu_profiler = Arc::new(Mutex::new(GpuProfilerData::default()));
+        
+        // Create SHARED gizmo state (Arc<Mutex<>> accessible from both GPUI and Bevy)
         let gizmo_state = Arc::new(Mutex::new(GizmoStateResource::default()));
+        
+        // Create SHARED viewport mouse input (parking_lot::Mutex for better performance)
+        let viewport_mouse_input = Arc::new(parking_lot::Mutex::new(ViewportMouseInput::default()));
+        
         let shutdown = Arc::new(AtomicBool::new(false));
 
         let shared_textures_clone = shared_textures.clone();
@@ -48,6 +55,7 @@ impl BevyRenderer {
         let metrics_clone = metrics.clone();
         let gpu_profiler_clone = gpu_profiler.clone();
         let gizmo_state_clone = gizmo_state.clone();
+        let viewport_mouse_input_clone = viewport_mouse_input.clone();
         let shutdown_clone = shutdown.clone();
         let game_thread_clone = game_thread_state.clone();
 
@@ -62,6 +70,7 @@ impl BevyRenderer {
                     metrics_clone,
                     gpu_profiler_clone,
                     gizmo_state_clone,
+                    viewport_mouse_input_clone,
                     shutdown_clone,
                     game_thread_clone,
                 );
@@ -76,6 +85,7 @@ impl BevyRenderer {
             metrics,
             gpu_profiler,
             gizmo_state,
+            viewport_mouse_input,
             shutdown,
             _render_thread: Some(render_thread),
         }
@@ -89,6 +99,7 @@ impl BevyRenderer {
         metrics: Arc<MetricsResource>,
         gpu_profiler: Arc<Mutex<GpuProfilerData>>,
         gizmo_state: Arc<Mutex<GizmoStateResource>>,
+        viewport_mouse_input: Arc<parking_lot::Mutex<ViewportMouseInput>>,
         shutdown: Arc<AtomicBool>,
         game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
     ) {
@@ -140,8 +151,12 @@ impl BevyRenderer {
             .insert_resource(GpuProfilerResource { data: gpu_profiler.clone() }) // GPU profiler data
             .insert_resource(ShutdownFlag(shutdown.clone()))
             .insert_resource(GameThreadResource(game_thread_state))
+            // Shared resources from GPUI (Arc<Mutex<>> accessible from both threads)
+            .insert_resource(SharedGizmoStateResource(gizmo_state.clone()))
+            .insert_resource(SharedViewportMouseInputResource(viewport_mouse_input.clone()))
+            // Local Bevy ECS resources (synced from shared resources each frame)
             .insert_resource(gizmo_state.lock().unwrap().clone()) // Level editor gizmos
-            .insert_resource(ViewportMouseInput::default()) // Viewport mouse interaction
+            .insert_resource(viewport_mouse_input.lock().clone()) // Viewport mouse interaction
             .insert_resource(GizmoInteractionState::default()) // Gizmo drag state
             .add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin::default()) // Bevy frame time diagnostics
             .add_plugins(bevy::render::diagnostic::RenderDiagnosticsPlugin::default()); // Bevy GPU render diagnostics
@@ -149,12 +164,17 @@ impl BevyRenderer {
         // Main world systems - create textures FIRST, then setup scene
         app.add_systems(Startup, (create_shared_textures_startup, setup_scene).chain())
             .add_systems(Update, check_shutdown)
-            .add_systems(Update, sync_camera_input_system) // NEW: Sync input thread camera input to Bevy ECS
+            // Sync systems - run FIRST to get latest data from main thread
+            .add_systems(Update, sync_camera_input_system) // Sync input thread camera input to Bevy ECS
+            .add_systems(Update, sync_gizmo_state_system) // NEW: Sync GPUI gizmo state to Bevy
+            .add_systems(Update, sync_viewport_mouse_input_system) // NEW: Sync GPUI mouse clicks to Bevy
+            .add_systems(Update, sync_game_objects_system) // Sync game thread to Bevy
+            // Game systems - run after sync
             .add_systems(Update, camera_movement_system) // Unreal-style camera controls
-            .add_systems(Update, sync_game_objects_system) // NEW: Sync game thread to Bevy
             .add_systems(Update, update_gizmo_target_system) // Keep gizmo centered on selected object
             .add_systems(Update, viewport_click_selection_system) // Viewport object selection via raycast
             .add_systems(Update, gizmo_drag_system) // Gizmo dragging for object manipulation
+            // Rendering systems - run last
             .add_systems(Update, update_metrics_system) // Track FPS and frame times
             .add_systems(Update, update_gpu_profiler_system) // Extract GPU profiler data from Bevy diagnostics
             .add_systems(Update, update_gizmo_visuals) // Level editor gizmos

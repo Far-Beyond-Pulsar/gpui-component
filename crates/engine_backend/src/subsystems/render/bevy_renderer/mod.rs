@@ -34,3 +34,4 @@ pub use renderer::BevyRenderer;
 pub use textures::{RENDER_WIDTH, RENDER_HEIGHT};
 pub use gizmos_bevy::{GizmoType as BevyGizmoType, GizmoAxis as BevyGizmoAxis, GizmoStateResource};
 pub use viewport_interaction::{ViewportMouseInput, GizmoInteractionState};
+pub use sync::{sync_gizmo_state_system, sync_viewport_mouse_input_system};

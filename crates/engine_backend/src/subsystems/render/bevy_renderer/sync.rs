@@ -2,8 +2,47 @@
 
 use bevy::prelude::*;
 use super::components::GameObjectId;
-use super::resources::GameThreadResource;
+use super::resources::{GameThreadResource, SharedGizmoStateResource, SharedViewportMouseInputResource};
 use super::gizmos_bevy::GizmoStateResource;
+use super::viewport_interaction::ViewportMouseInput;
+
+/// Sync gizmo state from GPUI (shared Arc<Mutex<>>) to Bevy's ECS resource
+/// This allows GPUI to control gizmo type, selection, etc.
+pub fn sync_gizmo_state_system(
+    shared_gizmo: Res<SharedGizmoStateResource>,
+    mut bevy_gizmo: ResMut<GizmoStateResource>,
+) {
+    // Try to lock shared state (non-blocking)
+    if let Ok(shared) = shared_gizmo.0.try_lock() {
+        // Copy all fields from shared to Bevy's resource
+        bevy_gizmo.gizmo_type = shared.gizmo_type;
+        bevy_gizmo.active_axis = shared.active_axis;
+        bevy_gizmo.target_position = shared.target_position;
+        bevy_gizmo.enabled = shared.enabled;
+        bevy_gizmo.selected_object_id = shared.selected_object_id.clone();
+    }
+}
+
+/// Sync viewport mouse input from GPUI to Bevy for raycast selection
+pub fn sync_viewport_mouse_input_system(
+    shared_mouse: Res<SharedViewportMouseInputResource>,
+    mut bevy_mouse: ResMut<ViewportMouseInput>,
+) {
+    // Try to lock shared state (non-blocking) - parking_lot returns Option, not Result
+    if let Some(shared) = shared_mouse.0.try_lock() {
+        // Copy all mouse input fields
+        bevy_mouse.mouse_pos = shared.mouse_pos;
+        bevy_mouse.left_clicked = shared.left_clicked;
+        bevy_mouse.left_down = shared.left_down;
+        bevy_mouse.mouse_delta = shared.mouse_delta;
+        
+        // Debug log when click is detected
+        if shared.left_clicked {
+            println!("[BEVY-SYNC] 🖱️ Mouse click synced: pos=({:.3}, {:.3})", shared.mouse_pos.x, shared.mouse_pos.y);
+        }
+    }
+}
+
 
 /// Sync game thread object positions/rotations to Bevy entities
 /// This system reads from the game thread state and updates matching Bevy transforms
