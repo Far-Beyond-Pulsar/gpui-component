@@ -10,7 +10,13 @@
 /// - Viewport: 3D rendering with camera controls
 /// - Asset Browser: Browse and preview project assets
 /// - Toolbar: Transform tools and quick actions
+/// - Scene Database: In-memory scene management with undo/redo
+/// - Gizmos: 3D manipulation tools (translate, rotate, scale)
 
 mod ui;
+mod scene_database;
+mod gizmos;
 
 pub use ui::LevelEditorPanel;
+pub use scene_database::{SceneDatabase, SceneObjectData, ObjectType, Transform, Component};
+pub use gizmos::{GizmoState, GizmoType, GizmoAxis, GizmoRenderData};
