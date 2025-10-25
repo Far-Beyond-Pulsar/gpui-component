@@ -167,31 +167,6 @@ impl ToolbarPanel {
                     )
             )
             .child(
-                // Separator
-                div()
-                    .h_8()
-                    .w_px()
-                    .bg(cx.theme().border)
-                    .mx_2()
-            )
-            .child(
-                // Scene actions
-                h_flex()
-                    .gap_1()
-                    .child(
-                        Button::new("play_scene")
-                            .icon(IconName::Play)
-                            .tooltip("Play Scene (F5)")
-                            .xsmall()
-                    )
-                    .child(
-                        Button::new("stop_scene")
-                            .icon(IconName::Square)
-                            .tooltip("Stop Scene")
-                            .xsmall()
-                    )
-            )
-            .child(
                 // Spacer
                 div().flex_1()
             )
