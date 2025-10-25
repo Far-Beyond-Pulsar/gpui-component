@@ -158,7 +158,7 @@ impl BevyRenderer {
             .insert_resource(gizmo_state.lock().unwrap().clone()) // Level editor gizmos
             .insert_resource(viewport_mouse_input.lock().clone()) // Viewport mouse interaction
             .insert_resource(GizmoInteractionState::default()) // Gizmo drag state
-            .insert_resource(PendingRaycast::new()) // Async raycast state
+            .insert_resource(ActiveRaycastTask::default()) // Async raycast task
             .add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin::default()) // Bevy frame time diagnostics
             .add_plugins(bevy::render::diagnostic::RenderDiagnosticsPlugin::default()); // Bevy GPU render diagnostics
         
@@ -173,8 +173,8 @@ impl BevyRenderer {
             // Game systems - run after sync
             .add_systems(Update, camera_movement_system)           // Unreal-style camera controls
             .add_systems(Update, update_gizmo_target_system)       // Keep gizmo centered on selected object
-            .add_systems(Update, viewport_click_initiate_raycast_system) // ASYNC: Start raycast on click
-            .add_systems(Update, viewport_raycast_process_system)  // ASYNC: Process raycast incrementally
+            .add_systems(Update, viewport_click_initiate_raycast_system) // FULLY ASYNC: Spawn Bevy worker task
+            .add_systems(Update, viewport_poll_raycast_system)     // FULLY ASYNC: Poll result from worker
             .add_systems(Update, gizmo_drag_system)                // Gizmo dragging for object manipulation
             // Rendering systems - run last
             .add_systems(Update, update_metrics_system)            // Track FPS and frame times
