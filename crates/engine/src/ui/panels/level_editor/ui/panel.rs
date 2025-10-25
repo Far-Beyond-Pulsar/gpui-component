@@ -347,13 +347,12 @@ impl LevelEditorPanel {
             if let Ok(mut engine) = self.gpu_engine.lock() {
                 if let Some(ref bevy_renderer) = engine.bevy_renderer {
                     if let Ok(mut gizmo) = bevy_renderer.gizmo_state.lock() {
-                        // Convert to Bevy Vec3
-                        gizmo.target_position = bevy::prelude::Vec3::new(
-                            obj.transform.position[0],
-                            obj.transform.position[1],
-                            obj.transform.position[2],
-                        );
-                        println!("[LEVEL-EDITOR] 🎯 Gizmo position updated to {:?}", gizmo.target_position);
+                        // Update position (use simple tuple, Bevy's Vec3 is internal)
+                        gizmo.target_position.x = obj.transform.position[0];
+                        gizmo.target_position.y = obj.transform.position[1];
+                        gizmo.target_position.z = obj.transform.position[2];
+                        println!("[LEVEL-EDITOR] 🎯 Gizmo position updated to ({}, {}, {})",
+                            gizmo.target_position.x, gizmo.target_position.y, gizmo.target_position.z);
                     }
                 }
             }
