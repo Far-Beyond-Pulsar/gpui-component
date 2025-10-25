@@ -326,10 +326,11 @@ impl ViewportPanel {
             let mouse_middle_captured = self.mouse_middle_captured.clone();
             let locked_cursor_x = self.locked_cursor_x.clone();
             let locked_cursor_y = self.locked_cursor_y.clone();
+            let viewport_hovered = self.viewport_hovered.clone();
             
             std::thread::spawn(move || {
                 println!("[INPUT-THREAD] 🚀 Dedicated RAW INPUT processing thread started");
-                println!("[INPUT-THREAD] Camera controls active when right mouse button is held");
+                println!("[INPUT-THREAD] ⚠️  Camera controls ONLY active when right-click originates on viewport");
                 let device_state = DeviceState::new();
                 let mut last_mouse_pos: Option<(i32, i32)> = None;
                 let mut right_was_pressed = false;
@@ -348,9 +349,21 @@ impl ViewportPanel {
                     let right_pressed = mouse.button_pressed[2]; // Right button
                     
                     // Check if right button state changed
-                    // NOTE: We always respond to right-click when it's detected, regardless of where it started.
-                    // This ensures responsive camera controls without race conditions between GPUI and input thread.
+                    // CRITICAL: Only activate if viewport_hovered flag is set by GPUI event handler!
+                    // This prevents accidental activation when clicking outside viewport
                     if right_pressed && !right_was_pressed {
+                        // Check if GPUI detected right-click on viewport element
+                        let was_on_viewport = viewport_hovered.load(Ordering::Relaxed);
+                        
+                        if !was_on_viewport {
+                            // Right-click was NOT on viewport - ignore it!
+                            println!("[INPUT-THREAD] ⚠️  Ignoring right-click (not on viewport)");
+                            right_was_pressed = true; // Track state but don't activate
+                            continue; // Skip activation
+                        }
+                        
+                        println!("[INPUT-THREAD] ✅ Right-click detected on viewport - activating camera controls");
+                        
                         // Right button just pressed AND was on viewport - poll keyboard to check shift
                         let keys: Vec<Keycode> = device_state.get_keys();
                         let shift_pressed = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
@@ -365,11 +378,13 @@ impl ViewportPanel {
                             is_panning = true;
                             is_rotating = false;
                             mouse_middle_captured.store(true, Ordering::Relaxed);
+                            println!("[INPUT-THREAD] 🎥 Pan mode activated (Shift + Right)");
                         } else {
                             // Right alone = Rotation (standard behavior)
                             is_rotating = true;
                             is_panning = false;
                             mouse_right_captured.store(true, Ordering::Relaxed);
+                            println!("[INPUT-THREAD] 🎥 Rotate mode activated (Right)");
                         }
                         hide_cursor();
                         right_was_pressed = true;
@@ -378,16 +393,21 @@ impl ViewportPanel {
                         if is_rotating {
                             mouse_right_captured.store(false, Ordering::Relaxed);
                             is_rotating = false;
+                            println!("[INPUT-THREAD] 🛑 Rotate mode deactivated");
                         }
                         if is_panning {
                             mouse_middle_captured.store(false, Ordering::Relaxed);
                             is_panning = false;
+                            println!("[INPUT-THREAD] 🛑 Pan mode deactivated");
                         }
                         
                         // Clear all input atomics
                         input_state_for_thread.forward.store(0, Ordering::Relaxed);
                         input_state_for_thread.right.store(0, Ordering::Relaxed);
                         input_state_for_thread.up.store(0, Ordering::Relaxed);
+                        
+                        // Clear viewport hovered flag - ready for next click
+                        viewport_hovered.store(false, Ordering::Relaxed);
                         
                         let lock_x = locked_cursor_x.load(Ordering::Relaxed);
                         let lock_y = locked_cursor_y.load(Ordering::Relaxed);
@@ -562,10 +582,25 @@ impl ViewportPanel {
                     }
                 }
             })
-            // Right-click for camera controls (existing behavior)
-            .on_mouse_down(gpui::MouseButton::Right, move |_, _, _| {
-                // Right-click on viewport - enable camera controls via input thread
-                viewport_right_clicked.store(true, Ordering::Relaxed);
+            // Right-click for camera controls - MUST originate on viewport element
+            .on_mouse_down(gpui::MouseButton::Right, {
+                let viewport_flag = viewport_right_clicked.clone();
+                move |event, window, _cx| {
+                    println!("[VIEWPORT] 🖱️ Right-click DOWN on viewport at {:?}", event.position);
+                    // Set flag to indicate right-click originated on viewport
+                    // Input thread will check this before activating camera controls
+                    viewport_flag.store(true, Ordering::Relaxed);
+                }
+            })
+            // Also handle mouse leave - if mouse leaves viewport during drag, we should allow it to continue
+            // but new clicks outside viewport should be ignored
+            .on_mouse_up(gpui::MouseButton::Right, {
+                let viewport_flag = viewport_right_clicked.clone();
+                move |_event, _window, _cx| {
+                    println!("[VIEWPORT] 🖱️ Right-click UP");
+                    // Note: We don't clear the flag here because input thread handles that
+                    // This prevents race conditions between GPUI and input thread
+                }
             })
             .child(
                 // Main viewport - input thread handles ALL mouse/keyboard when focused
