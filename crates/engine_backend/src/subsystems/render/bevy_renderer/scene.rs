@@ -14,26 +14,32 @@ pub fn setup_scene(
 ) {
     println!("[BEVY] 🎬 Setting up scene...");
 
-    // Get the render target handles that were created by create_shared_textures
-    let render_target_0 = match shared_textures.0.lock().ok().and_then(|l| l.as_ref().map(|t| t.textures[0].clone())) {
-        Some(handle) => {
-            println!("[BEVY] ✅ Got render target handle: {:?}", handle);
-            println!("[BEVY] 📍 Camera will render to asset ID: {:?}", handle.id());
-            handle
-        },
+    // Get the shared textures to determine which buffer to render to
+    let textures = match shared_textures.0.lock().ok().and_then(|l| l.as_ref().cloned()) {
+        Some(t) => t,
         None => {
             println!("[BEVY] ❌ No render targets available");
             return;
         }
     };
+    
+    // Get the WRITE buffer index (this is where the camera will render)
+    let write_index = textures.write_index.load(std::sync::atomic::Ordering::Acquire);
+    let render_target = textures.textures[write_index].clone();
+    
+    println!("[BEVY] ✅ Got render target handles");
+    println!("[BEVY] 📍 Initial write_index={}, read_index={}", 
+             write_index, 
+             textures.read_index.load(std::sync::atomic::Ordering::Acquire));
+    println!("[BEVY] 🎯 Camera will initially render to buffer {} (asset ID: {:?})", 
+             write_index, render_target.id());
 
     // Camera rendering to shared DXGI texture with TONEMAPPING DISABLED
     println!("[BEVY] 📹 Creating camera targeting shared texture");
-    println!("[BEVY] 🎯 Camera will render to buffer 0 (handle: {:?})", render_target_0.id());
     commands.spawn((
         Camera3d::default(),
         Camera {
-            target: bevy::camera::RenderTarget::Image(render_target_0.into()),
+            target: bevy::camera::RenderTarget::Image(render_target.into()),
             clear_color: bevy::prelude::ClearColorConfig::Custom(Color::srgb(0.2, 0.2, 0.3)), // Dark blue-grey background
             ..default()
         },
@@ -41,7 +47,8 @@ pub fn setup_scene(
         Tonemapping::None, // CRITICAL: Disable tonemapping for proper color reproduction
         MainCamera,
     ));
-    println!("[BEVY] ✅ Camera spawned with tonemapping DISABLED - rendering to buffer 0");
+    println!("[BEVY] ✅ Camera spawned with tonemapping DISABLED - double-buffering enabled!");
+    println!("[BEVY] 🔄 Camera renders to write buffer, GPUI reads from read buffer");
 
     // Scene objects - SUPER BRIGHT AND OBVIOUS
     println!("[BEVY] 🎨 Spawning HIGH-VISIBILITY scene objects...");
@@ -160,6 +167,47 @@ pub fn setup_scene(
     println!("[BEVY] 🟡 Gold metallic sphere (top)");
     println!("[BEVY] 🟢 Green metallic sphere (front)");
     println!("[BEVY] 💡 PBR lighting with 2-point lighting + ambient");
+}
+
+/// System to swap render target buffers for double buffering
+/// This runs AFTER rendering to ensure the camera always renders to the write buffer
+/// while GPUI reads from the read buffer
+pub fn swap_render_buffers_system(
+    shared_textures: Res<SharedTexturesResource>,
+    mut camera_query: Query<&mut Camera, With<MainCamera>>,
+) {
+    // Get the shared textures
+    let textures = match shared_textures.0.lock().ok().and_then(|l| l.as_ref().cloned()) {
+        Some(t) => t,
+        None => return,
+    };
+
+    // Swap the buffer indices atomically
+    let old_write = textures.write_index.load(std::sync::atomic::Ordering::Acquire);
+    let old_read = textures.read_index.load(std::sync::atomic::Ordering::Acquire);
+    
+    // Swap: write becomes read, read becomes write
+    textures.write_index.store(old_read, std::sync::atomic::Ordering::Release);
+    textures.read_index.store(old_write, std::sync::atomic::Ordering::Release);
+    
+    let new_write = textures.write_index.load(std::sync::atomic::Ordering::Acquire);
+    
+    // Increment frame counter
+    textures.frame_number.fetch_add(1, std::sync::atomic::Ordering::Release);
+    
+    // Update camera target to render to the new write buffer
+    for mut camera in camera_query.iter_mut() {
+        let new_target_handle = textures.textures[new_write].clone();
+        camera.target = bevy::camera::RenderTarget::Image(new_target_handle.into());
+        
+        // Log every 120 frames (once per second at 120 FPS)
+        static FRAME_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let frame = FRAME_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if frame % 120 == 0 {
+            println!("[BEVY] 🔄 Buffer swap: write={}, read={}, frame={}", 
+                     new_write, old_write, textures.frame_number.load(std::sync::atomic::Ordering::Acquire));
+        }
+    }
 }
 
 // Debug system to track rendering

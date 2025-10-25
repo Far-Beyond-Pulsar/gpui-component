@@ -179,7 +179,8 @@ impl BevyRenderer {
             .add_systems(Update, update_gpu_profiler_system)       // Extract GPU profiler data from Bevy diagnostics
             .add_systems(Update, update_gizmo_visuals)             // Level editor gizmos
             .add_systems(Update, update_selection_highlighting)    // Selection outlines
-            .add_systems(Update, debug_rendering_system);          // Add debug system
+            .add_systems(Update, debug_rendering_system)           // Add debug system
+            .add_systems(Update, swap_render_buffers_system);      // CRITICAL: Swap buffers for double-buffering
 
         // Render world systems
         if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
@@ -229,9 +230,13 @@ impl BevyRenderer {
     }
 
     pub fn get_read_index(&self) -> usize {
-        // Always use buffer 0 - we're using single-buffered rendering for now
-        // TODO: Implement proper double-buffering with camera swapping
-        0
+        // Read from shared textures' read_index (GPUI reads from this buffer)
+        if let Ok(lock) = self.shared_textures.lock() {
+            if let Some(ref textures) = *lock {
+                return textures.read_index.load(Ordering::Acquire);
+            }
+        }
+        0 // Fallback to buffer 0
     }
 
     pub fn get_current_native_handle(&self) -> Option<crate::subsystems::render::NativeTextureHandle> {

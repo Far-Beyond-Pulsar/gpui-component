@@ -1,5 +1,5 @@
 //! Bevy Renderer with DIRECT rendering to DXGI shared textures
-//! Clean implementation - no complex buffer swapping, just render to shared GPU memory
+//! Double-buffered implementation - write to one buffer while GPUI reads from the other
 //!
 //! This module is organized into logical submodules:
 //! - `types`: Core data structures (RenderMetrics, GpuProfilerData, CameraInput, etc.)
