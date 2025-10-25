@@ -158,6 +158,7 @@ impl BevyRenderer {
             .insert_resource(gizmo_state.lock().unwrap().clone()) // Level editor gizmos
             .insert_resource(viewport_mouse_input.lock().clone()) // Viewport mouse interaction
             .insert_resource(GizmoInteractionState::default()) // Gizmo drag state
+            .insert_resource(ActiveRaycastTask::default()) // Async raycast task
             .add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin::default()) // Bevy frame time diagnostics
             .add_plugins(bevy::render::diagnostic::RenderDiagnosticsPlugin::default()); // Bevy GPU render diagnostics
         
@@ -165,21 +166,23 @@ impl BevyRenderer {
         app.add_systems(Startup, (create_shared_textures_startup, setup_scene).chain())
             .add_systems(Update, check_shutdown)
             // Sync systems - run FIRST to get latest data from main thread
-            .add_systems(Update, sync_camera_input_system) // Sync input thread camera input to Bevy ECS
-            .add_systems(Update, sync_gizmo_state_system) // NEW: Sync GPUI gizmo state to Bevy
+            .add_systems(Update, sync_camera_input_system)         // Sync input thread camera input to Bevy ECS
+            .add_systems(Update, sync_gizmo_state_system)          // NEW: Sync GPUI gizmo state to Bevy
             .add_systems(Update, sync_viewport_mouse_input_system) // NEW: Sync GPUI mouse clicks to Bevy
-            .add_systems(Update, sync_game_objects_system) // Sync game thread to Bevy
+            .add_systems(Update, sync_game_objects_system)         // Sync game thread to Bevy
             // Game systems - run after sync
-            .add_systems(Update, camera_movement_system) // Unreal-style camera controls
-            .add_systems(Update, update_gizmo_target_system) // Keep gizmo centered on selected object
-            .add_systems(Update, viewport_click_selection_system) // Viewport object selection via raycast
-            .add_systems(Update, gizmo_drag_system) // Gizmo dragging for object manipulation
+            .add_systems(Update, camera_movement_system)           // Unreal-style camera controls
+            .add_systems(Update, update_gizmo_target_system)       // Keep gizmo centered on selected object
+            .add_systems(Update, viewport_click_initiate_raycast_system) // FULLY ASYNC: Spawn Bevy worker task
+            .add_systems(Update, viewport_poll_raycast_system)     // FULLY ASYNC: Poll result from worker
+            .add_systems(Update, gizmo_drag_system)                // Gizmo dragging for object manipulation
             // Rendering systems - run last
-            .add_systems(Update, update_metrics_system) // Track FPS and frame times
-            .add_systems(Update, update_gpu_profiler_system) // Extract GPU profiler data from Bevy diagnostics
-            .add_systems(Update, update_gizmo_visuals) // Level editor gizmos
-            .add_systems(Update, update_selection_highlighting) // Selection outlines
-            .add_systems(Update, debug_rendering_system); // Add debug system
+            .add_systems(Update, update_metrics_system)            // Track FPS and frame times
+            .add_systems(Update, update_gpu_profiler_system)       // Extract GPU profiler data from Bevy diagnostics
+            .add_systems(Update, update_gizmo_visuals)             // Level editor gizmos
+            .add_systems(Update, update_selection_highlighting)    // Selection outlines
+            .add_systems(Update, debug_rendering_system)           // Add debug system
+            .add_systems(Update, swap_render_buffers_system);      // CRITICAL: Swap buffers for double-buffering
 
         // Render world systems
         if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
@@ -229,9 +232,13 @@ impl BevyRenderer {
     }
 
     pub fn get_read_index(&self) -> usize {
-        // Always use buffer 0 - we're using single-buffered rendering for now
-        // TODO: Implement proper double-buffering with camera swapping
-        0
+        // Read from shared textures' read_index (GPUI reads from this buffer)
+        if let Ok(lock) = self.shared_textures.lock() {
+            if let Some(ref textures) = *lock {
+                return textures.read_index.load(Ordering::Acquire);
+            }
+        }
+        0 // Fallback to buffer 0
     }
 
     pub fn get_current_native_handle(&self) -> Option<crate::subsystems::render::NativeTextureHandle> {

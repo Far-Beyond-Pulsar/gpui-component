@@ -329,12 +329,9 @@ impl ViewportPanel {
             
             std::thread::spawn(move || {
                 println!("[INPUT-THREAD] 🚀 Dedicated RAW INPUT processing thread started");
-                println!("[INPUT-THREAD] Camera controls active when right mouse button is held");
+                println!("[INPUT-THREAD] 🎯 Activated by GPUI right-click, deactivated by GPUI release");
                 let device_state = DeviceState::new();
                 let mut last_mouse_pos: Option<(i32, i32)> = None;
-                let mut right_was_pressed = false;
-                let mut is_rotating = false; // Track if we're in rotation mode (Right without Shift)
-                let mut is_panning = false;  // Track if we're in pan mode (Shift + Right)
                 
                 loop {
                     // Mark when we start processing input
@@ -343,154 +340,124 @@ impl ViewportPanel {
                     // Sleep for ~8ms (~120Hz processing rate)
                     std::thread::sleep(std::time::Duration::from_millis(8));
                     
-                    // Poll mouse state ALWAYS
-                    let mouse: MouseState = device_state.get_mouse();
-                    let right_pressed = mouse.button_pressed[2]; // Right button
+                    // Check if camera controls are active (set by GPUI mouse events)
+                    let is_rotating = mouse_right_captured.load(Ordering::Acquire);
+                    let is_panning = mouse_middle_captured.load(Ordering::Acquire);
                     
-                    // Check if right button state changed
-                    // NOTE: We always respond to right-click when it's detected, regardless of where it started.
-                    // This ensures responsive camera controls without race conditions between GPUI and input thread.
-                    if right_pressed && !right_was_pressed {
-                        // Right button just pressed AND was on viewport - poll keyboard to check shift
-                        let keys: Vec<Keycode> = device_state.get_keys();
-                        let shift_pressed = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
+                    if !is_rotating && !is_panning {
+                        // Not active - clear ALL state immediately
+                        last_mouse_pos = None;
                         
-                        let (x, y) = get_cursor_position();
-                        locked_cursor_x.store(x, Ordering::Relaxed);
-                        locked_cursor_y.store(y, Ordering::Relaxed);
-                        last_mouse_pos = Some((x, y));
-                        
-                        if shift_pressed {
-                            // Shift + Right = Panning
-                            is_panning = true;
-                            is_rotating = false;
-                            mouse_middle_captured.store(true, Ordering::Relaxed);
-                        } else {
-                            // Right alone = Rotation (standard behavior)
-                            is_rotating = true;
-                            is_panning = false;
-                            mouse_right_captured.store(true, Ordering::Relaxed);
-                        }
-                        hide_cursor();
-                        right_was_pressed = true;
-                    } else if !right_pressed && right_was_pressed {
-                        // Right button just released - STOP ALL INPUT
-                        if is_rotating {
-                            mouse_right_captured.store(false, Ordering::Relaxed);
-                            is_rotating = false;
-                        }
-                        if is_panning {
-                            mouse_middle_captured.store(false, Ordering::Relaxed);
-                            is_panning = false;
-                        }
-                        
-                        // Clear all input atomics
+                        // Clear atomic input state
                         input_state_for_thread.forward.store(0, Ordering::Relaxed);
                         input_state_for_thread.right.store(0, Ordering::Relaxed);
                         input_state_for_thread.up.store(0, Ordering::Relaxed);
+                        input_state_for_thread.boost.store(false, Ordering::Relaxed);
                         
-                        let lock_x = locked_cursor_x.load(Ordering::Relaxed);
-                        let lock_y = locked_cursor_y.load(Ordering::Relaxed);
-                        lock_cursor_position(lock_x, lock_y);
-                        show_cursor();
-                        last_mouse_pos = None;
-                        right_was_pressed = false;
-                    }
-                    
-                    // ONLY process input while button is HELD
-                    if is_rotating || is_panning {
-                        // Poll keyboard for WASD ONLY while button held
-                        let keys: Vec<Keycode> = device_state.get_keys();
-                        
-                        // Update WASD input
-                        let forward = if keys.contains(&Keycode::W) { 1 } else if keys.contains(&Keycode::S) { -1 } else { 0 };
-                        let right = if keys.contains(&Keycode::D) { 1 } else if keys.contains(&Keycode::A) { -1 } else { 0 };
-                        let up = if keys.contains(&Keycode::E) || keys.contains(&Keycode::Space) { 1 } 
-                                else if keys.contains(&Keycode::Q) || keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift) { -1 } 
-                                else { 0 };
-                        let boost = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
-                        
-                        input_state_for_thread.forward.store(forward, Ordering::Relaxed);
-                        input_state_for_thread.right.store(right, Ordering::Relaxed);
-                        input_state_for_thread.up.store(up, Ordering::Relaxed);
-                        input_state_for_thread.boost.store(boost, Ordering::Relaxed);
-                        
-                        // Calculate mouse delta and reset cursor
-                        let (current_x, current_y) = get_cursor_position();
-                        
-                        if let Some((last_x, last_y)) = last_mouse_pos {
-                            let dx = current_x - last_x;
-                            let dy = current_y - last_y;
-                            
-                            if dx != 0 || dy != 0 {
-                                // Store deltas in atomics based on mode
-                                if is_rotating {
-                                    // Right alone = Rotation (standard FPS camera)
-                                    input_state_for_thread.mouse_delta_x.fetch_add((dx as f32 * 1000.0) as i32, Ordering::Relaxed);
-                                    input_state_for_thread.mouse_delta_y.fetch_add((dy as f32 * 1000.0) as i32, Ordering::Relaxed);
+                        // CRITICAL: Also push zeros to GPU to stop camera immediately
+                        if let Ok(engine) = gpu_engine_for_thread.try_lock() {
+                            if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                                if let Ok(mut input) = bevy_renderer.camera_input.try_lock() {
+                                    input.forward = 0.0;
+                                    input.right = 0.0;
+                                    input.up = 0.0;
+                                    input.boost = false;
+                                    input.mouse_delta_x = 0.0;
+                                    input.mouse_delta_y = 0.0;
+                                    input.pan_delta_x = 0.0;
+                                    input.pan_delta_y = 0.0;
+                                    input.zoom_delta = 0.0;
                                 }
-                                if is_panning {
-                                    // Shift + Right = Panning
-                                    input_state_for_thread.pan_delta_x.fetch_add((dx as f32 * 1000.0) as i32, Ordering::Relaxed);
-                                    input_state_for_thread.pan_delta_y.fetch_add((dy as f32 * 1000.0) as i32, Ordering::Relaxed);
-                                }
-                                
-                                // Reset cursor to locked position for infinite movement
-                                let lock_x = locked_cursor_x.load(Ordering::Relaxed);
-                                let lock_y = locked_cursor_y.load(Ordering::Relaxed);
-                                lock_cursor_position(lock_x, lock_y);
-                                // Keep last_mouse_pos at the locked position
-                                last_mouse_pos = Some((lock_x, lock_y));
                             }
                         }
+                        
+                        continue; // Wait for activation
                     }
                     
-                    // Try to acquire GPU engine lock without blocking
+                    // Camera controls are ACTIVE - poll input at high frequency
+                    // Poll keyboard for WASD
+                    let keys: Vec<Keycode> = device_state.get_keys();
+                    
+                    let forward = if keys.contains(&Keycode::W) { 1 } else if keys.contains(&Keycode::S) { -1 } else { 0 };
+                    let right = if keys.contains(&Keycode::D) { 1 } else if keys.contains(&Keycode::A) { -1 } else { 0 };
+                    let up = if keys.contains(&Keycode::E) || keys.contains(&Keycode::Space) { 1 } 
+                            else if keys.contains(&Keycode::Q) || keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift) { -1 } 
+                            else { 0 };
+                    let boost = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
+                    
+                    input_state_for_thread.forward.store(forward, Ordering::Relaxed);
+                    input_state_for_thread.right.store(right, Ordering::Relaxed);
+                    input_state_for_thread.up.store(up, Ordering::Relaxed);
+                    input_state_for_thread.boost.store(boost, Ordering::Relaxed);
+                    
+                    // Get current mouse position for delta calculation
+                    let (current_x, current_y) = get_cursor_position();
+                    
+                    // Calculate delta if we have a previous position
+                    if let Some((last_x, last_y)) = last_mouse_pos {
+                        let dx = current_x - last_x;
+                        let dy = current_y - last_y;
+                        
+                        if dx != 0 || dy != 0 {
+                            // Store deltas based on mode
+                            if is_rotating {
+                                // Rotation mode
+                                input_state_for_thread.mouse_delta_x.fetch_add((dx as f32 * 1000.0) as i32, Ordering::Relaxed);
+                                input_state_for_thread.mouse_delta_y.fetch_add((dy as f32 * 1000.0) as i32, Ordering::Relaxed);
+                            }
+                            if is_panning {
+                                // Pan mode
+                                input_state_for_thread.pan_delta_x.fetch_add((dx as f32 * 1000.0) as i32, Ordering::Relaxed);
+                                input_state_for_thread.pan_delta_y.fetch_add((dy as f32 * 1000.0) as i32, Ordering::Relaxed);
+                            }
+                            
+                            // Reset cursor to locked position for infinite movement
+                            let lock_x = locked_cursor_x.load(Ordering::Relaxed);
+                            let lock_y = locked_cursor_y.load(Ordering::Relaxed);
+                            lock_cursor_position(lock_x, lock_y);
+                            last_mouse_pos = Some((lock_x, lock_y));
+                        }
+                    } else {
+                        // First frame of active state - initialize position
+                        last_mouse_pos = Some((current_x, current_y));
+                    }
+                    
+                    // Try to push to GPU (non-blocking)
                     if let Ok(engine) = gpu_engine_for_thread.try_lock() {
                         if let Some(ref bevy_renderer) = engine.bevy_renderer {
                             if let Ok(mut input) = bevy_renderer.camera_input.try_lock() {
-                                // Read atomic values (no blocking!)
+                                // Read atomic values
                                 input.forward = input_state_for_thread.forward.load(Ordering::Relaxed) as f32;
                                 input.right = input_state_for_thread.right.load(Ordering::Relaxed) as f32;
                                 input.up = input_state_for_thread.up.load(Ordering::Relaxed) as f32;
                                 input.boost = input_state_for_thread.boost.load(Ordering::Relaxed);
                                 
-                                // Read and CLEAR mouse deltas (always swap to 0, even if they're 0)
+                                // Read and CLEAR deltas
                                 let mouse_x = input_state_for_thread.mouse_delta_x.swap(0, Ordering::Relaxed);
                                 let mouse_y = input_state_for_thread.mouse_delta_y.swap(0, Ordering::Relaxed);
-                                // Set to the CameraInput (including 0 to clear previous frame's deltas)
                                 input.mouse_delta_x = mouse_x as f32 / 1000.0;
                                 input.mouse_delta_y = mouse_y as f32 / 1000.0;
                                 
-                                // Read and CLEAR pan deltas (always swap to 0, even if they're 0)
                                 let pan_x = input_state_for_thread.pan_delta_x.swap(0, Ordering::Relaxed);
                                 let pan_y = input_state_for_thread.pan_delta_y.swap(0, Ordering::Relaxed);
-                                // Set to the CameraInput (including 0 to clear previous frame's deltas)
                                 input.pan_delta_x = pan_x as f32 / 1000.0;
                                 input.pan_delta_y = pan_y as f32 / 1000.0;
                                 
-                                // Read and CLEAR zoom delta (always swap to 0, even if it's 0)
                                 let zoom = input_state_for_thread.zoom_delta.swap(0, Ordering::Relaxed);
-                                // Set to the CameraInput (including 0 to clear previous frame's delta)
                                 input.zoom_delta = zoom as f32 / 1000.0;
                                 
-                                // Update move speed
                                 input.move_speed = input_state_for_thread.move_speed.load(Ordering::Relaxed) as f32 / 100.0;
                                 
-                                // Calculate and store input latency (time from input start to GPU update)
+                                // Track latency
                                 let input_latency = input_start.elapsed().as_micros() as u64;
                                 input_state_for_thread.input_latency_us.store(input_latency, Ordering::Relaxed);
                             }
                         }
                     }
-                    // If lock fails, skip this cycle - no blocking!
                 }
             });
         }
 
-        // Clone the viewport_hovered flag for right mouse button detection (camera controls)
-        let viewport_right_clicked = self.viewport_hovered.clone();
-        
         // Clone for scroll wheel handler
         let input_state_scroll = self.input_state.clone();
         
@@ -507,6 +474,59 @@ impl ViewportPanel {
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
+            // Right-click DOWN on viewport = ACTIVATE camera controls
+            .on_mouse_down(gpui::MouseButton::Right, {
+                let mouse_right_captured = self.mouse_right_captured.clone();
+                let mouse_middle_captured = self.mouse_middle_captured.clone();
+                let locked_cursor_x = self.locked_cursor_x.clone();
+                let locked_cursor_y = self.locked_cursor_y.clone();
+                move |event, window, cx| {
+                    println!("[VIEWPORT] 🖱️ Right-click DOWN on viewport - ACTIVATING camera controls");
+                    
+                    // Check if Shift is held for pan mode
+                    let shift_pressed = event.modifiers.shift;
+                    
+                    // Get and lock cursor position
+                    let (x, y) = get_cursor_position();
+                    locked_cursor_x.store(x, Ordering::Relaxed);
+                    locked_cursor_y.store(y, Ordering::Relaxed);
+                    
+                    if shift_pressed {
+                        // Shift + Right = Pan mode
+                        mouse_middle_captured.store(true, Ordering::Release);
+                        println!("[VIEWPORT] 🎥 Pan mode activated (Shift + Right)");
+                    } else {
+                        // Right alone = Rotate mode
+                        mouse_right_captured.store(true, Ordering::Release);
+                        println!("[VIEWPORT] 🎥 Rotate mode activated (Right)");
+                    }
+                    
+                    // Hide cursor for infinite movement
+                    hide_cursor();
+                }
+            })
+            // Right-click UP anywhere = DEACTIVATE camera controls
+            .on_mouse_up(gpui::MouseButton::Right, {
+                let mouse_right_captured = self.mouse_right_captured.clone();
+                let mouse_middle_captured = self.mouse_middle_captured.clone();
+                let locked_cursor_x = self.locked_cursor_x.clone();
+                let locked_cursor_y = self.locked_cursor_y.clone();
+                move |event, window, cx| {
+                    println!("[VIEWPORT] 🖱️ Right-click UP - DEACTIVATING camera controls");
+                    
+                    // Deactivate both modes
+                    mouse_right_captured.store(false, Ordering::Release);
+                    mouse_middle_captured.store(false, Ordering::Release);
+                    
+                    // Restore cursor at locked position
+                    let lock_x = locked_cursor_x.load(Ordering::Relaxed);
+                    let lock_y = locked_cursor_y.load(Ordering::Relaxed);
+                    lock_cursor_position(lock_x, lock_y);
+                    show_cursor();
+                    
+                    println!("[VIEWPORT] ✅ Camera controls deactivated, cursor restored");
+                }
+            })
             // Left-click for object selection in edit mode
             .on_mouse_down(gpui::MouseButton::Left, {
                 let gpu_engine_click = gpu_engine_for_click.clone();
@@ -561,11 +581,6 @@ impl ViewportPanel {
                         }
                     }
                 }
-            })
-            // Right-click for camera controls (existing behavior)
-            .on_mouse_down(gpui::MouseButton::Right, move |_, _, _| {
-                // Right-click on viewport - enable camera controls via input thread
-                viewport_right_clicked.store(true, Ordering::Relaxed);
             })
             .child(
                 // Main viewport - input thread handles ALL mouse/keyboard when focused

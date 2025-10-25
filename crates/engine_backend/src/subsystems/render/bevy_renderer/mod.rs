@@ -1,5 +1,5 @@
 //! Bevy Renderer with DIRECT rendering to DXGI shared textures
-//! Clean implementation - no complex buffer swapping, just render to shared GPU memory
+//! Double-buffered implementation - write to one buffer while GPUI reads from the other
 //!
 //! This module is organized into logical submodules:
 //! - `types`: Core data structures (RenderMetrics, GpuProfilerData, CameraInput, etc.)
@@ -33,5 +33,5 @@ pub use types::{RenderMetrics, GpuProfilerData, DiagnosticMetric, CameraInput, S
 pub use renderer::BevyRenderer;
 pub use textures::{RENDER_WIDTH, RENDER_HEIGHT};
 pub use gizmos_bevy::{GizmoType as BevyGizmoType, GizmoAxis as BevyGizmoAxis, GizmoStateResource};
-pub use viewport_interaction::{ViewportMouseInput, GizmoInteractionState};
+pub use viewport_interaction::{ViewportMouseInput, GizmoInteractionState, ActiveRaycastTask, RaycastResult};
 pub use sync::{sync_gizmo_state_system, sync_viewport_mouse_input_system};

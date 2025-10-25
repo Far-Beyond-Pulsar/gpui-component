@@ -168,8 +168,21 @@ pub fn create_shared_textures(
 
     println!("[BEVY] ✅ Created DXGI textures: 0x{:X}, 0x{:X}", handle_0, handle_1);
 
-    // Store handles for GPUI
+    // Store handles for GPUI - both in global storage and in SharedGpuTextures
     crate::subsystems::render::native_texture::store_shared_handles(vec![handle_0, handle_1]);
+    
+    // Store native handles in SharedGpuTextures for indexed access
+    if let Ok(mut lock) = shared_textures.0.lock() {
+        if let Some(ref mut textures) = *lock {
+            if let Ok(mut handles_lock) = textures.native_handles.lock() {
+                *handles_lock = Some([
+                    crate::subsystems::render::NativeTextureHandle::D3D11(handle_0),
+                    crate::subsystems::render::NativeTextureHandle::D3D11(handle_1),
+                ]);
+                println!("[BEVY] 💾 Stored native handles in SharedGpuTextures");
+            }
+        }
+    }
 
     // Wrap D3D12 textures as wgpu textures and inject into Bevy
     unsafe {
