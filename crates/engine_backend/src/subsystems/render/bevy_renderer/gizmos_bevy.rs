@@ -1,0 +1,348 @@
+//! Gizmos - 3D manipulation visuals for the Bevy renderer
+//!
+//! This module renders interactive 3D gizmos for object transformation in the level editor.
+//! Gizmos are only visible in Edit mode and hidden during Play mode.
+
+use bevy::prelude::*;
+use std::sync::Arc;
+
+/// Gizmo type - which manipulation tool is active
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GizmoType {
+    None,
+    Translate,
+    Rotate,
+    Scale,
+}
+
+/// Gizmo axis being manipulated
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GizmoAxis {
+    None,
+    X,
+    Y,
+    Z,
+}
+
+/// Component marker for gizmo entities
+#[derive(Component)]
+pub struct GizmoVisual {
+    pub gizmo_type: GizmoType,
+    pub axis: GizmoAxis,
+}
+
+/// Resource holding gizmo state from the editor
+#[derive(Resource, Clone)]
+pub struct GizmoStateResource {
+    pub gizmo_type: GizmoType,
+    pub active_axis: GizmoAxis,
+    pub target_position: Vec3,
+    pub enabled: bool, // False in Play mode
+}
+
+impl Default for GizmoStateResource {
+    fn default() -> Self {
+        Self {
+            gizmo_type: GizmoType::Translate,
+            active_axis: GizmoAxis::None,
+            target_position: Vec3::ZERO,
+            enabled: true, // Start enabled (Edit mode)
+        }
+    }
+}
+
+/// System to update gizmo visuals based on selected object
+pub fn update_gizmo_visuals(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    gizmo_state: Res<GizmoStateResource>,
+    gizmo_query: Query<Entity, With<GizmoVisual>>,
+) {
+    // Clear existing gizmos
+    for entity in gizmo_query.iter() {
+        commands.entity(entity).despawn();
+    }
+    
+    // Don't render gizmos if disabled or no tool selected
+    if !gizmo_state.enabled || gizmo_state.gizmo_type == GizmoType::None {
+        return;
+    }
+    
+    // Render appropriate gizmo type
+    match gizmo_state.gizmo_type {
+        GizmoType::Translate => {
+            spawn_translate_gizmo(&mut commands, &mut meshes, &mut materials, &gizmo_state);
+        }
+        GizmoType::Rotate => {
+            spawn_rotate_gizmo(&mut commands, &mut meshes, &mut materials, &gizmo_state);
+        }
+        GizmoType::Scale => {
+            spawn_scale_gizmo(&mut commands, &mut meshes, &mut materials, &gizmo_state);
+        }
+        GizmoType::None => {}
+    }
+}
+
+/// Spawn translate gizmo (3 colored arrows)
+fn spawn_translate_gizmo(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    gizmo_state: &GizmoStateResource,
+) {
+    let arrow_length = 2.0;
+    let arrow_radius = 0.05;
+    let position = gizmo_state.target_position;
+    
+    // X axis (Red arrow)
+    let x_color = if gizmo_state.active_axis == GizmoAxis::X {
+        Color::srgb(1.0, 1.0, 0.0) // Yellow when active
+    } else {
+        Color::srgb(1.0, 0.2, 0.2) // Red
+    };
+    
+    commands.spawn((
+        Mesh3d(meshes.add(Capsule3d::new(arrow_radius, arrow_length))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: x_color,
+            unlit: true,
+            alpha_mode: AlphaMode::Opaque,
+            ..default()
+        })),
+        Transform::from_translation(position + Vec3::X * arrow_length / 2.0)
+            .with_rotation(Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2)),
+        GizmoVisual {
+            gizmo_type: GizmoType::Translate,
+            axis: GizmoAxis::X,
+        },
+    ));
+    
+    // Y axis (Green arrow)
+    let y_color = if gizmo_state.active_axis == GizmoAxis::Y {
+        Color::srgb(1.0, 1.0, 0.0) // Yellow when active
+    } else {
+        Color::srgb(0.2, 1.0, 0.2) // Green
+    };
+    
+    commands.spawn((
+        Mesh3d(meshes.add(Capsule3d::new(arrow_radius, arrow_length))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: y_color,
+            unlit: true,
+            alpha_mode: AlphaMode::Opaque,
+            ..default()
+        })),
+        Transform::from_translation(position + Vec3::Y * arrow_length / 2.0),
+        GizmoVisual {
+            gizmo_type: GizmoType::Translate,
+            axis: GizmoAxis::Y,
+        },
+    ));
+    
+    // Z axis (Blue arrow)
+    let z_color = if gizmo_state.active_axis == GizmoAxis::Z {
+        Color::srgb(1.0, 1.0, 0.0) // Yellow when active
+    } else {
+        Color::srgb(0.2, 0.5, 1.0) // Blue
+    };
+    
+    commands.spawn((
+        Mesh3d(meshes.add(Capsule3d::new(arrow_radius, arrow_length))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: z_color,
+            unlit: true,
+            alpha_mode: AlphaMode::Opaque,
+            ..default()
+        })),
+        Transform::from_translation(position + Vec3::Z * arrow_length / 2.0)
+            .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
+        GizmoVisual {
+            gizmo_type: GizmoType::Translate,
+            axis: GizmoAxis::Z,
+        },
+    ));
+}
+
+/// Spawn rotate gizmo (3 colored rings)
+fn spawn_rotate_gizmo(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    gizmo_state: &GizmoStateResource,
+) {
+    let ring_radius = 1.5;
+    let ring_thickness = 0.03;
+    let position = gizmo_state.target_position;
+    
+    // X axis ring (Red)
+    let x_color = if gizmo_state.active_axis == GizmoAxis::X {
+        Color::srgb(1.0, 1.0, 0.0)
+    } else {
+        Color::srgb(1.0, 0.2, 0.2)
+    };
+    
+    commands.spawn((
+        Mesh3d(meshes.add(Torus {
+            minor_radius: ring_thickness,
+            major_radius: ring_radius,
+        })),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: x_color,
+            unlit: true,
+            alpha_mode: AlphaMode::Opaque,
+            ..default()
+        })),
+        Transform::from_translation(position)
+            .with_rotation(Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
+        GizmoVisual {
+            gizmo_type: GizmoType::Rotate,
+            axis: GizmoAxis::X,
+        },
+    ));
+    
+    // Y axis ring (Green)
+    let y_color = if gizmo_state.active_axis == GizmoAxis::Y {
+        Color::srgb(1.0, 1.0, 0.0)
+    } else {
+        Color::srgb(0.2, 1.0, 0.2)
+    };
+    
+    commands.spawn((
+        Mesh3d(meshes.add(Torus {
+            minor_radius: ring_thickness,
+            major_radius: ring_radius,
+        })),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: y_color,
+            unlit: true,
+            alpha_mode: AlphaMode::Opaque,
+            ..default()
+        })),
+        Transform::from_translation(position),
+        GizmoVisual {
+            gizmo_type: GizmoType::Rotate,
+            axis: GizmoAxis::Y,
+        },
+    ));
+    
+    // Z axis ring (Blue)
+    let z_color = if gizmo_state.active_axis == GizmoAxis::Z {
+        Color::srgb(1.0, 1.0, 0.0)
+    } else {
+        Color::srgb(0.2, 0.5, 1.0)
+    };
+    
+    commands.spawn((
+        Mesh3d(meshes.add(Torus {
+            minor_radius: ring_thickness,
+            major_radius: ring_radius,
+        })),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: z_color,
+            unlit: true,
+            alpha_mode: AlphaMode::Opaque,
+            ..default()
+        })),
+        Transform::from_translation(position)
+            .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
+        GizmoVisual {
+            gizmo_type: GizmoType::Rotate,
+            axis: GizmoAxis::Z,
+        },
+    ));
+}
+
+/// Spawn scale gizmo (3 colored cubes)
+fn spawn_scale_gizmo(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    gizmo_state: &GizmoStateResource,
+) {
+    let handle_distance = 2.0;
+    let handle_size = 0.2;
+    let position = gizmo_state.target_position;
+    
+    // X axis handle (Red cube)
+    let x_color = if gizmo_state.active_axis == GizmoAxis::X {
+        Color::srgb(1.0, 1.0, 0.0)
+    } else {
+        Color::srgb(1.0, 0.2, 0.2)
+    };
+    
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(handle_size, handle_size, handle_size))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: x_color,
+            unlit: true,
+            alpha_mode: AlphaMode::Opaque,
+            ..default()
+        })),
+        Transform::from_translation(position + Vec3::X * handle_distance),
+        GizmoVisual {
+            gizmo_type: GizmoType::Scale,
+            axis: GizmoAxis::X,
+        },
+    ));
+    
+    // Y axis handle (Green cube)
+    let y_color = if gizmo_state.active_axis == GizmoAxis::Y {
+        Color::srgb(1.0, 1.0, 0.0)
+    } else {
+        Color::srgb(0.2, 1.0, 0.2)
+    };
+    
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(handle_size, handle_size, handle_size))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: y_color,
+            unlit: true,
+            alpha_mode: AlphaMode::Opaque,
+            ..default()
+        })),
+        Transform::from_translation(position + Vec3::Y * handle_distance),
+        GizmoVisual {
+            gizmo_type: GizmoType::Scale,
+            axis: GizmoAxis::Y,
+        },
+    ));
+    
+    // Z axis handle (Blue cube)
+    let z_color = if gizmo_state.active_axis == GizmoAxis::Z {
+        Color::srgb(1.0, 1.0, 0.0)
+    } else {
+        Color::srgb(0.2, 0.5, 1.0)
+    };
+    
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(handle_size, handle_size, handle_size))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: z_color,
+            unlit: true,
+            alpha_mode: AlphaMode::Opaque,
+            ..default()
+        })),
+        Transform::from_translation(position + Vec3::Z * handle_distance),
+        GizmoVisual {
+            gizmo_type: GizmoType::Scale,
+            axis: GizmoAxis::Z,
+        },
+    ));
+    
+    // Center cube for uniform scaling
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(handle_size * 1.5, handle_size * 1.5, handle_size * 1.5))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.8, 0.8, 0.8),
+            unlit: true,
+            alpha_mode: AlphaMode::Opaque,
+            ..default()
+        })),
+        Transform::from_translation(position),
+        GizmoVisual {
+            gizmo_type: GizmoType::Scale,
+            axis: GizmoAxis::None, // Uniform scale
+        },
+    ));
+}

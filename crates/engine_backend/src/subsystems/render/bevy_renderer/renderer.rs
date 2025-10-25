@@ -12,6 +12,7 @@ use super::sync::*;
 use super::metrics::*;
 use super::scene::*;
 use super::textures::*;
+use super::gizmos_bevy::*;
 
 /// Renderer state
 pub struct BevyRenderer {
@@ -19,6 +20,7 @@ pub struct BevyRenderer {
     pub camera_input: Arc<Mutex<CameraInput>>,
     pub metrics: Arc<MetricsResource>,
     pub gpu_profiler: Arc<Mutex<GpuProfilerData>>,
+    pub gizmo_state: Arc<Mutex<GizmoStateResource>>,
     shutdown: Arc<AtomicBool>,
     _render_thread: Option<std::thread::JoinHandle<()>>,
 }
@@ -37,12 +39,14 @@ impl BevyRenderer {
         let camera_input = Arc::new(Mutex::new(CameraInput::new()));
         let metrics = Arc::new(MetricsResource::default());
         let gpu_profiler = Arc::new(Mutex::new(GpuProfilerData::default()));
+        let gizmo_state = Arc::new(Mutex::new(GizmoStateResource::default()));
         let shutdown = Arc::new(AtomicBool::new(false));
 
         let shared_textures_clone = shared_textures.clone();
         let camera_input_clone = camera_input.clone();
         let metrics_clone = metrics.clone();
         let gpu_profiler_clone = gpu_profiler.clone();
+        let gizmo_state_clone = gizmo_state.clone();
         let shutdown_clone = shutdown.clone();
         let game_thread_clone = game_thread_state.clone();
 
@@ -56,6 +60,7 @@ impl BevyRenderer {
                     camera_input_clone,
                     metrics_clone,
                     gpu_profiler_clone,
+                    gizmo_state_clone,
                     shutdown_clone,
                     game_thread_clone,
                 );
@@ -69,6 +74,7 @@ impl BevyRenderer {
             camera_input,
             metrics,
             gpu_profiler,
+            gizmo_state,
             shutdown,
             _render_thread: Some(render_thread),
         }
@@ -81,6 +87,7 @@ impl BevyRenderer {
         camera_input: Arc<Mutex<CameraInput>>,
         metrics: Arc<MetricsResource>,
         gpu_profiler: Arc<Mutex<GpuProfilerData>>,
+        gizmo_state: Arc<Mutex<GizmoStateResource>>,
         shutdown: Arc<AtomicBool>,
         game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
     ) {
@@ -132,6 +139,7 @@ impl BevyRenderer {
             .insert_resource(GpuProfilerResource { data: gpu_profiler.clone() }) // GPU profiler data
             .insert_resource(ShutdownFlag(shutdown.clone()))
             .insert_resource(GameThreadResource(game_thread_state))
+            .insert_resource(gizmo_state.lock().unwrap().clone()) // Level editor gizmos
             .add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin::default()) // Bevy frame time diagnostics
             .add_plugins(bevy::render::diagnostic::RenderDiagnosticsPlugin::default()); // Bevy GPU render diagnostics
         
@@ -143,6 +151,7 @@ impl BevyRenderer {
             .add_systems(Update, sync_game_objects_system) // NEW: Sync game thread to Bevy
             .add_systems(Update, update_metrics_system) // Track FPS and frame times
             .add_systems(Update, update_gpu_profiler_system) // Extract GPU profiler data from Bevy diagnostics
+            .add_systems(Update, update_gizmo_visuals) // Level editor gizmos
             .add_systems(Update, debug_rendering_system); // Add debug system
 
         // Render world systems
