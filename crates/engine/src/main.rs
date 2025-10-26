@@ -10,7 +10,7 @@ use serde::Deserialize;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-use ui::app::PulsarApp;
+use ui::app::{PulsarApp, PulsarRoot};
 use ui::entry_window::EntryWindow;
 use ui::loading_window::{LoadingWindow, LoadingComplete};
 use ui::project_selector::ProjectSelected;
@@ -290,8 +290,9 @@ fn open_engine_window_with_analyzer(project_path: PathBuf, rust_analyzer: Entity
     let window = cx
         .open_window(options, |window, cx| {
             eprintln!("DEBUG: Creating PulsarApp with pre-initialized analyzer");
-            let view = cx.new(|cx| PulsarApp::new_with_project_and_analyzer(project_path.clone(), rust_analyzer.clone(), window, cx));
-            cx.new(|cx| Root::new(view.into(), window, cx))
+            let app = cx.new(|cx| PulsarApp::new_with_project_and_analyzer(project_path.clone(), rust_analyzer.clone(), window, cx));
+            let root = cx.new(|cx| PulsarRoot::new("Pulsar Engine", app, window, cx));
+            cx.new(|cx| Root::new(root.into(), window, cx))
         })
         .expect("failed to open engine window");
 
@@ -339,8 +340,9 @@ fn open_engine_window(project_path: PathBuf, cx: &mut App) {
     let window = cx
         .open_window(options, |window, cx| {
             eprintln!("DEBUG: Creating PulsarApp");
-            let view = cx.new(|cx| PulsarApp::new_with_project(project_path.clone(), window, cx));
-            cx.new(|cx| Root::new(view.into(), window, cx))
+            let app = cx.new(|cx| PulsarApp::new_with_project(project_path.clone(), window, cx));
+            let root = cx.new(|cx| PulsarRoot::new("Pulsar Engine", app, window, cx));
+            cx.new(|cx| Root::new(root.into(), window, cx))
         })
         .expect("failed to open engine window");
 

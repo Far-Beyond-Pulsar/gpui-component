@@ -378,29 +378,13 @@ impl EntryScreen {
     }
     
     pub(crate) fn open_project_settings(&mut self, project_path: PathBuf, project_name: String, cx: &mut Context<Self>) {
-        // Create settings with empty data first (instant UI)
+        // Create settings with NO data loaded - instant UI
         let settings = views::ProjectSettings::new(project_path.clone(), project_name);
         self.project_settings = Some(settings);
         cx.notify();
         
-        // Load all data asynchronously in background
-        cx.spawn(async move |this, mut cx| {
-            // Run all data loading in a background thread
-            let loaded_settings = std::thread::spawn(move || {
-                views::ProjectSettings::load_all_data_async(project_path)
-            })
-            .join()
-            .ok();
-            
-            if let Some(settings) = loaded_settings {
-                let _ = cx.update(|cx| {
-                    let _ = this.update(cx, |screen, cx| {
-                        screen.project_settings = Some(settings);
-                        cx.notify();
-                    });
-                });
-            }
-        }).detach();
+        // NOTE: Data will be loaded per-tab when user switches to each tab
+        // This ensures instant modal opening with no freeze
     }
     
     pub(crate) fn close_project_settings(&mut self, cx: &mut Context<Self>) {
@@ -410,8 +394,77 @@ impl EntryScreen {
     
     pub(crate) fn change_project_settings_tab(&mut self, tab: views::ProjectSettingsTab, cx: &mut Context<Self>) {
         if let Some(settings) = &mut self.project_settings {
-            settings.active_tab = tab;
+            settings.active_tab = tab.clone();
             cx.notify();
+            
+            // Load data for this specific tab in background if not already loaded
+            let needs_loading = match &tab {
+                views::ProjectSettingsTab::General => false, // Always instant
+                views::ProjectSettingsTab::GitInfo => settings.commit_count.is_none(),
+                views::ProjectSettingsTab::GitCI => settings.workflow_files.is_empty(),
+                views::ProjectSettingsTab::Metadata => false, // Quick to render
+                views::ProjectSettingsTab::DiskInfo => settings.disk_size.is_none(),
+                views::ProjectSettingsTab::Performance => settings.disk_size.is_none() || settings.git_repo_size.is_none(),
+                views::ProjectSettingsTab::Integrations => settings.preferred_editor.is_none(),
+            };
+            
+            if needs_loading {
+                let project_path = settings.project_path.clone();
+                let tab_for_load = tab.clone();
+                let tab_for_match = tab.clone();
+                
+                // Load ONLY this tab's data in background thread
+                cx.spawn(async move |this, mut cx| {
+                    let loaded_data = std::thread::spawn(move || {
+                        let mut temp_settings = views::ProjectSettings::new(project_path.clone(), String::new());
+                        temp_settings.load_tab_data_sync(&tab_for_load);
+                        temp_settings
+                    })
+                    .join()
+                    .ok();
+                    
+                    if let Some(loaded) = loaded_data {
+                        let _ = cx.update(|cx| {
+                            let _ = this.update(cx, |screen, cx| {
+                                if let Some(ref mut settings) = screen.project_settings {
+                                    // Merge only the loaded data for this tab
+                                    match tab_for_match {
+                                        views::ProjectSettingsTab::GitInfo => {
+                                            settings.git_repo_size = loaded.git_repo_size;
+                                            settings.commit_count = loaded.commit_count;
+                                            settings.branch_count = loaded.branch_count;
+                                            settings.remote_url = loaded.remote_url;
+                                            settings.last_commit_date = loaded.last_commit_date;
+                                            settings.last_commit_message = loaded.last_commit_message;
+                                            settings.uncommitted_changes = loaded.uncommitted_changes;
+                                            settings.current_branch = loaded.current_branch;
+                                            settings.stash_count = loaded.stash_count;
+                                            settings.untracked_files = loaded.untracked_files;
+                                        }
+                                        views::ProjectSettingsTab::GitCI => {
+                                            settings.workflow_files = loaded.workflow_files;
+                                        }
+                                        views::ProjectSettingsTab::DiskInfo => {
+                                            settings.disk_size = loaded.disk_size;
+                                            settings.git_repo_size = loaded.git_repo_size;
+                                        }
+                                        views::ProjectSettingsTab::Performance => {
+                                            settings.disk_size = loaded.disk_size;
+                                            settings.git_repo_size = loaded.git_repo_size;
+                                        }
+                                        views::ProjectSettingsTab::Integrations => {
+                                            settings.preferred_editor = loaded.preferred_editor;
+                                            settings.preferred_git_tool = loaded.preferred_git_tool;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                cx.notify();
+                            });
+                        });
+                    }
+                }).detach();
+            }
         }
     }
     

@@ -167,6 +167,7 @@ impl ProjectSettings {
             project_path,
             project_name,
             active_tab: ProjectSettingsTab::General,
+            // All fields start as None - load on demand per tab
             git_repo_size: None,
             disk_size: None,
             commit_count: None,
@@ -185,44 +186,66 @@ impl ProjectSettings {
             is_updating_tools: false,
         }
     }
+    
+    /// Load data for a specific tab only - called when tab is first accessed
+    pub fn load_tab_data_sync(&mut self, tab: &ProjectSettingsTab) {
+        match tab {
+            ProjectSettingsTab::General => {
+                // General data is already available (project_path, project_name)
+                // Nothing to load asynchronously
+            }
+            ProjectSettingsTab::GitInfo => {
+                if self.commit_count.is_none() {
+                    self.load_git_info();
+                }
+            }
+            ProjectSettingsTab::GitCI => {
+                if self.workflow_files.is_empty() {
+                    self.load_git_ci_info();
+                }
+            }
+            ProjectSettingsTab::Metadata => {
+                // Metadata is mostly file-based, quick to load
+            }
+            ProjectSettingsTab::DiskInfo => {
+                if self.disk_size.is_none() {
+                    self.load_disk_info();
+                }
+            }
+            ProjectSettingsTab::Performance => {
+                if self.disk_size.is_none() {
+                    self.load_disk_info();
+                }
+                if self.git_repo_size.is_none() {
+                    self.load_git_info();
+                }
+            }
+            ProjectSettingsTab::Integrations => {
+                if self.preferred_editor.is_none() {
+                    self.load_tool_preferences();
+                }
+            }
+        }
+    }
 
     pub fn load_all_data(&mut self) {
-        // This is now a no-op - data loads asynchronously
-        // Kept for compatibility
+        // Load all data synchronously - used for initial background load
+        self.load_disk_info();
+        self.load_git_info();
+        self.load_git_ci_info();
+        self.load_tool_preferences();
     }
     
     pub fn load_all_data_async(project_path: PathBuf) -> Self {
-        // Load synchronously blocking data in background thread
-        let disk_size = Self::calculate_directory_size(&project_path).ok();
-        let git_info = Self::load_git_info_sync(&project_path);
-        let workflow_files = Self::load_git_ci_info_sync(&project_path);
-        let (preferred_editor, preferred_git_tool) = load_project_tool_preferences(&project_path);
-        
-        Self {
-            project_path: project_path.clone(),
-            project_name: project_path
+        // DON'T load anything here - return empty struct
+        // Data will be loaded per-tab on demand
+        Self::new(project_path.clone(), 
+            project_path
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("Unknown")
-                .to_string(),
-            active_tab: ProjectSettingsTab::General,
-            disk_size,
-            git_repo_size: git_info.repo_size,
-            commit_count: git_info.commit_count,
-            branch_count: git_info.branch_count,
-            remote_url: git_info.remote_url,
-            last_commit_date: git_info.last_commit_date,
-            last_commit_message: git_info.last_commit_message,
-            uncommitted_changes: git_info.uncommitted_changes,
-            current_branch: git_info.current_branch,
-            stash_count: git_info.stash_count,
-            untracked_files: git_info.untracked_files,
-            workflow_files,
-            preferred_editor,
-            preferred_git_tool,
-            available_tools_cache: None,
-            is_updating_tools: false,
-        }
+                .to_string()
+        )
     }
 
     fn load_disk_info(&mut self) {
@@ -399,6 +422,12 @@ impl ProjectSettings {
         self.workflow_files = Self::load_git_ci_info_sync(&self.project_path);
     }
     
+    fn load_tool_preferences(&mut self) {
+        let (preferred_editor, preferred_git_tool) = load_project_tool_preferences(&self.project_path);
+        self.preferred_editor = preferred_editor;
+        self.preferred_git_tool = preferred_git_tool;
+    }
+    
     fn load_git_ci_info_sync(project_path: &PathBuf) -> Vec<String> {
         let workflows_dir = project_path.join(".github").join("workflows");
         if workflows_dir.exists() {
@@ -417,12 +446,6 @@ impl ProjectSettings {
             }
         }
         Vec::new()
-    }
-    
-    fn load_tool_preferences(&mut self) {
-        let (preferred_editor, preferred_git_tool) = load_project_tool_preferences(&self.project_path);
-        self.preferred_editor = preferred_editor;
-        self.preferred_git_tool = preferred_git_tool;
     }
 }
 

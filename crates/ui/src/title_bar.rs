@@ -9,6 +9,9 @@ use gpui::{
 };
 
 pub const TITLE_BAR_HEIGHT: Pixels = px(34.);
+#[cfg(target_os = "macos")]
+const TITLE_BAR_LEFT_PADDING: Pixels = px(80.);
+#[cfg(not(target_os = "macos"))]
 const TITLE_BAR_LEFT_PADDING: Pixels = px(12.);
 
 /// TitleBar used to customize the appearance of the title bar.
@@ -146,6 +149,7 @@ impl ControlIcon {
 
 impl RenderOnce for ControlIcon {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let is_linux = cfg!(target_os = "linux");
         let is_windows = cfg!(target_os = "windows");
         let fg = self.fg(cx);
         let hover_fg = self.hover_fg(cx);
@@ -168,8 +172,7 @@ impl RenderOnce for ControlIcon {
             .when(is_windows, |this| {
                 this.window_control_area(self.window_control_area())
             })
-            .when(!is_windows, |this| {
-                // On Linux and macOS, handle clicks manually
+            .when(is_linux, |this| {
                 this.on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     window.prevent_default();
                     cx.stop_propagation();
@@ -202,7 +205,10 @@ struct WindowControls {
 
 impl RenderOnce for WindowControls {
     fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
-        // Always render window controls on all platforms
+        if cfg!(target_os = "macos") {
+            return div().id("window-controls");
+        }
+
         h_flex()
             .id("window-controls")
             .items_center()
