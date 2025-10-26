@@ -1140,243 +1140,279 @@ impl PulsarApp {
             .read(cx)
             .count_by_severity(crate::ui::problems_drawer::DiagnosticSeverity::Warning);
 
-        // AAA-STUDIO-QUALITY STATUS BAR WITH MODERN DESIGN
-        h_flex()
+        // Get status colors
+        let (status_color, status_icon) = match status {
+            AnalyzerStatus::Ready => (cx.theme().success, IconName::CheckCircle),
+            AnalyzerStatus::Indexing { .. } | AnalyzerStatus::Starting => {
+                (cx.theme().warning, IconName::Loader)
+            }
+            AnalyzerStatus::Error(_) => (cx.theme().danger, IconName::AlertCircle),
+            AnalyzerStatus::Stopped => (cx.theme().muted_foreground, IconName::Circle),
+            AnalyzerStatus::Idle => (cx.theme().muted_foreground, IconName::Circle),
+        };
+
+        // ✨ COMPLETELY REDESIGNED MODERN STATUS BAR ✨
+        div()
             .w_full()
-            .h(px(36.))
-            .items_center()
-            .gap_3()
-            .px_4()
-            .bg(cx.theme().secondary)
-            .border_t_1()
-            .border_color(cx.theme().border)
+            .relative()
+            // Progress bar overlay at top (only when indexing)
+            .when(self.analyzer_progress > 0.0 && self.analyzer_progress < 1.0, |this| {
+                this.child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .h(px(2.))
+                        .w(relative(self.analyzer_progress))
+                        .bg(cx.theme().primary)
+                        .shadow_md(),
+                )
+            })
             .child(
-                // LEFT SECTION - Quick Actions
                 h_flex()
-                    .gap_1p5()
+                    .w_full()
+                    .h(px(28.))
                     .items_center()
+                    .px_3()
+                    .gap_2()
+                    .bg(cx.theme().background)
+                    .border_t_1()
+                    .border_color(cx.theme().border)
                     .child(
-                        Button::new("toggle-drawer")
-                            .ghost()
-                            .xsmall()
-                            .icon(IconName::Folder)
-                            .label("Files")
-                            .when(drawer_open, |btn| btn.primary())
-                            .tooltip("Toggle Project Files (Ctrl+B)")
-                            .on_click(cx.listener(|app, _, window, cx| {
-                                app.toggle_drawer(window, cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("open-problems")
-                            .ghost()
-                            .xsmall()
-                            .when(error_count > 0, |btn| {
-                                btn.with_variant(gpui_component::button::ButtonVariant::Danger)
-                            })
-                            .when(error_count == 0 && warning_count > 0, |btn| {
-                                btn.with_variant(gpui_component::button::ButtonVariant::Warning)
-                            })
-                            .icon(if error_count > 0 {
-                                IconName::Close
-                            } else if warning_count > 0 {
-                                IconName::TriangleAlert
-                            } else {
-                                IconName::CheckCircle
-                            })
-                            .label(if error_count + warning_count > 0 {
-                                format!(
-                                    "{} {}",
-                                    error_count + warning_count,
-                                    if error_count > 0 { "Errors" } else { "Warnings" }
-                                )
-                            } else {
-                                "No Problems".to_string()
-                            })
-                            .tooltip("Open Problems Window")
-                            .on_click(cx.listener(|app, _, window, cx| {
-                                app.toggle_problems(window, cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("open-terminal")
-                            .ghost()
-                            .xsmall()
-                            .icon(IconName::Terminal)
-                            .label("Terminal")
-                            .tooltip("Open Terminal Window")
-                            .on_click(cx.listener(|app, _, window, cx| {
-                                app.toggle_terminal(window, cx);
-                            })),
-                    ),
-            )
-            .child(
-                // CENTER SECTION - Rust Analyzer with Modern Progress Display
-                h_flex()
-                    .flex_1()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        // Modern status card with progress bar
-                        v_flex()
+                        // LEFT: Quick Actions with Icon-Only Compact Design
+                        h_flex()
                             .gap_1()
-                            .px_4()
-                            .py_1p5()
-                            .rounded(px(8.0))
-                            .bg(cx.theme().background.opacity(0.6))
-                            .border_1()
-                            .border_color(cx.theme().border.opacity(0.6))
-                            .shadow_sm()
+                            .items_center()
                             .child(
-                                // Top row: Icon, Status, Controls
-                                h_flex()
-                                    .gap_2p5()
-                                    .items_center()
+                                div()
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.))
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(cx.theme().muted.opacity(0.3)))
+                                    .when(drawer_open, |s| {
+                                        s.bg(cx.theme().primary.opacity(0.15))
+                                    })
                                     .child(
-                                        // Pulsing status indicator
-                                        div()
-                                            .w(px(8.))
-                                            .h(px(8.))
-                                            .rounded_full()
-                                            .bg(match status {
-                                                AnalyzerStatus::Ready => cx.theme().success,
-                                                AnalyzerStatus::Indexing { .. }
-                                                | AnalyzerStatus::Starting => cx.theme().warning,
-                                                AnalyzerStatus::Error(_) => cx.theme().danger,
-                                                _ => cx.theme().muted_foreground,
-                                            })
-                                            .shadow_lg()
-                                            // Add subtle pulse animation for indexing
-                                            .when(matches!(status, AnalyzerStatus::Indexing { .. } | AnalyzerStatus::Starting), |this| {
-                                                this.opacity(0.8)
+                                        Icon::new(IconName::Folder)
+                                            .size(px(16.))
+                                            .color(if drawer_open {
+                                                cx.theme().primary
+                                            } else {
+                                                cx.theme().muted_foreground
                                             }),
                                     )
+                                    .tooltip("Toggle Files (Ctrl+B)")
+                                    .on_click(cx.listener(|app, _, window, cx| {
+                                        app.toggle_drawer(window, cx);
+                                    })),
+                            )
+                            .child(
+                                // Problems indicator with badge
+                                div()
+                                    .relative()
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.))
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(cx.theme().muted.opacity(0.3)))
                                     .child(
-                                        div()
-                                            .text_xs()
-                                            .font_semibold()
-                                            .text_color(cx.theme().foreground)
-                                            .child("rust-analyzer"),
+                                        Icon::new(if error_count > 0 {
+                                            IconName::Close
+                                        } else if warning_count > 0 {
+                                            IconName::TriangleAlert
+                                        } else {
+                                            IconName::CheckCircle
+                                        })
+                                        .size(px(16.))
+                                        .color(if error_count > 0 {
+                                            cx.theme().danger
+                                        } else if warning_count > 0 {
+                                            cx.theme().warning
+                                        } else {
+                                            cx.theme().success
+                                        }),
                                     )
+                                    .when(error_count + warning_count > 0, |this| {
+                                        this.child(
+                                            // Badge with count
+                                            div()
+                                                .absolute()
+                                                .top(px(-4.))
+                                                .right(px(-4.))
+                                                .min_w(px(16.))
+                                                .h(px(16.))
+                                                .px_1()
+                                                .rounded(px(8.))
+                                                .bg(if error_count > 0 {
+                                                    cx.theme().danger
+                                                } else {
+                                                    cx.theme().warning
+                                                })
+                                                .flex()
+                                                .items_center()
+                                                .justify_center()
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        .font_bold()
+                                                        .text_color(rgb(0xFFFFFF))
+                                                        .child(format!("{}", error_count + warning_count)),
+                                                ),
+                                        )
+                                    })
+                                    .tooltip(format!(
+                                        "{} Errors, {} Warnings",
+                                        error_count, warning_count
+                                    ))
+                                    .on_click(cx.listener(|app, _, window, cx| {
+                                        app.toggle_problems(window, cx);
+                                    })),
+                            )
+                            .child(
+                                div()
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.))
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(cx.theme().muted.opacity(0.3)))
                                     .child(
-                                        div()
-                                            .text_xs()
-                                            .text_color(cx.theme().muted_foreground.opacity(0.5))
-                                            .child("•"),
+                                        Icon::new(IconName::Terminal)
+                                            .size(px(16.))
+                                            .color(cx.theme().muted_foreground),
                                     )
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .font_medium()
-                                            .text_color(match status {
-                                                AnalyzerStatus::Ready => cx.theme().success,
-                                                AnalyzerStatus::Indexing { .. } => cx.theme().warning,
-                                                AnalyzerStatus::Error(_) => cx.theme().danger,
-                                                _ => cx.theme().muted_foreground,
-                                            })
-                                            .child(self.analyzer_status_text.clone()),
-                                    )
-                                    .when(!self.analyzer_detail_message.is_empty(), |this| {
+                                    .tooltip("Terminal")
+                                    .on_click(cx.listener(|app, _, window, cx| {
+                                        app.toggle_terminal(window, cx);
+                                    })),
+                            )
+                            .child(
+                                // Separator
+                                div()
+                                    .w(px(1.))
+                                    .h(px(18.))
+                                    .bg(cx.theme().border),
+                            ),
+                    )
+                    .child(
+                        // CENTER: Rust Analyzer Status - Sleek & Compact
+                        h_flex()
+                            .flex_1()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                // Status icon with subtle glow
+                                Icon::new(status_icon)
+                                    .size(px(14.))
+                                    .color(status_color),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_medium()
+                                    .text_color(cx.theme().foreground)
+                                    .child("rust-analyzer"),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(status_color)
+                                    .child(self.analyzer_status_text.clone()),
+                            )
+                            .when(!self.analyzer_detail_message.is_empty(), |this| {
+                                this.child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground.opacity(0.7))
+                                        .child("—"),
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(self.analyzer_detail_message.clone()),
+                                )
+                            })
+                            .child(
+                                // Analyzer controls - minimal
+                                h_flex()
+                                    .gap_0p5()
+                                    .ml_2()
+                                    .when(is_running, |this| {
                                         this.child(
                                             div()
-                                                .text_xs()
-                                                .text_color(cx.theme().muted_foreground.opacity(0.5))
-                                                .child("•"),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child(self.analyzer_detail_message.clone()),
+                                                .p_1()
+                                                .rounded(px(3.))
+                                                .cursor_pointer()
+                                                .hover(|s| s.bg(cx.theme().danger.opacity(0.2)))
+                                                .child(
+                                                    Icon::new(IconName::X)
+                                                        .size(px(12.))
+                                                        .color(cx.theme().muted_foreground),
+                                                )
+                                                .tooltip("Stop")
+                                                .on_click(cx.listener(|app, _, window, cx| {
+                                                    app.rust_analyzer.update(cx, |analyzer, cx| {
+                                                        analyzer.stop(window, cx);
+                                                    });
+                                                })),
                                         )
                                     })
                                     .child(
-                                        // Control buttons
-                                        h_flex()
-                                            .gap_0p5()
-                                            .ml_2()
-                                            .when(is_running, |this| {
-                                                this.child(
-                                                    Button::new("stop-analyzer")
-                                                        .ghost()
-                                                        .icon(IconName::Close)
-                                                        .tooltip("Stop rust-analyzer")
-                                                        .xsmall()
-                                                        .on_click(cx.listener(|app, _, window, cx| {
-                                                            app.rust_analyzer.update(cx, |analyzer, cx| {
-                                                                analyzer.stop(window, cx);
-                                                            });
-                                                        })),
-                                                )
-                                            })
+                                        div()
+                                            .p_1()
+                                            .rounded(px(3.))
+                                            .cursor_pointer()
+                                            .hover(|s| s.bg(cx.theme().muted.opacity(0.3)))
                                             .child(
-                                                Button::new("restart-analyzer")
-                                                    .ghost()
-                                                    .icon(IconName::Undo)
-                                                    .tooltip(if is_running {
-                                                        "Restart rust-analyzer"
-                                                    } else {
-                                                        "Start rust-analyzer"
-                                                    })
-                                                    .xsmall()
-                                                    .on_click(cx.listener(move |app, _, window, cx| {
-                                                        if let Some(project) = app.project_path.clone() {
-                                                            app.rust_analyzer.update(cx, |analyzer, cx| {
-                                                                if is_running {
-                                                                    analyzer.restart(window, cx);
-                                                                } else {
-                                                                    analyzer.start(project, window, cx);
-                                                                }
-                                                            });
+                                                Icon::new(IconName::Undo)
+                                                    .size(px(12.))
+                                                    .color(cx.theme().muted_foreground),
+                                            )
+                                            .tooltip(if is_running { "Restart" } else { "Start" })
+                                            .on_click(cx.listener(move |app, _, window, cx| {
+                                                if let Some(project) = app.project_path.clone() {
+                                                    app.rust_analyzer.update(cx, |analyzer, cx| {
+                                                        if is_running {
+                                                            analyzer.restart(window, cx);
+                                                        } else {
+                                                            analyzer.start(project, window, cx);
                                                         }
-                                                    })),
-                                            ),
+                                                    });
+                                                }
+                                            })),
                                     ),
-                            )
-                            // Progress bar (only shown when indexing)
-                            .when(self.analyzer_progress > 0.0 && self.analyzer_progress < 1.0, |this| {
-                                this.child(
-                                    // Modern progress bar
-                                    div()
-                                        .w_full()
-                                        .h(px(3.))
-                                        .rounded(px(2.))
-                                        .bg(cx.theme().muted.opacity(0.3))
-                                        .child(
-                                            div()
-                                                .h_full()
-                                                .rounded(px(2.))
-                                                .bg(cx.theme().warning)
-                                                .w(relative(self.analyzer_progress))
-                                                .shadow_sm(),
-                                        ),
-                                )
-                            }),
-                    ),
-            )
-            .child(
-                // RIGHT SECTION - Project Info
-                h_flex()
-                    .items_center()
-                    .px_3()
-                    .py_1p5()
-                    .rounded(px(6.0))
-                    .bg(cx.theme().background.opacity(0.3))
+                            ),
+                    )
                     .child(
+                        // Separator
                         div()
-                            .text_xs()
-                            .font_family("JetBrainsMono-Regular")
-                            .text_color(cx.theme().muted_foreground)
-                            .children(
-                                self.project_path
-                                    .as_ref()
-                                    .and_then(|path| path.file_name())
-                                    .map(|name| name.to_string_lossy().to_string())
-                                    .or_else(|| {
+                            .w(px(1.))
+                            .h(px(18.))
+                            .bg(cx.theme().border),
+                    )
+                    .child(
+                        // RIGHT: Project Name - Clean Display
+                        h_flex()
+                            .items_center()
+                            .gap_1p5()
+                            .child(
+                                Icon::new(IconName::Folder)
+                                    .size(px(14.))
+                                    .color(cx.theme().muted_foreground),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_medium()
+                                    .text_color(cx.theme().foreground)
+                                    .children(
                                         self.project_path
                                             .as_ref()
-                                            .map(|path| path.display().to_string())
-                                    }),
+                                            .and_then(|path| path.file_name())
+                                            .map(|name| name.to_string_lossy().to_string())
+                                            .or(Some("No Project".to_string())),
+                                    ),
                             ),
                     ),
             )
