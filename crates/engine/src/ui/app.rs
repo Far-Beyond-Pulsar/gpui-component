@@ -1001,13 +1001,6 @@ impl Render for PulsarApp {
             .on_action(cx.listener(Self::on_toggle_problems))
             .on_action(cx.listener(Self::on_toggle_terminal))
             .child(
-                // Menu bar
-                {
-                    let title_bar = cx.new(|cx| AppTitleBar::new("Pulsar Engine", window, cx));
-                    title_bar.clone()
-                },
-            )
-            .child(
                 // Main dock area
                 div()
                     .flex_1()
