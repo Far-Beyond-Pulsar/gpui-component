@@ -313,7 +313,7 @@ impl Render for AppTitleBar {
                             .small()
                             .ghost()
                             .on_click(|_, _, cx| {
-                                cx.open_url("https://github.com/longbridge/gpui-component")
+                                cx.open_url("https://github.com/Far-Beyond-Pulsar/Pulsar-Native")
                             }),
                     )
                     .child(
