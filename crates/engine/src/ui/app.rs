@@ -97,6 +97,8 @@ pub struct PulsarApp {
     // Rust Analyzer
     rust_analyzer: Entity<RustAnalyzerManager>,
     analyzer_status_text: String,
+    analyzer_detail_message: String, // Detailed progress message (e.g., "Indexing workspace (50/200 crates)")
+    analyzer_progress: f32, // 0.0 to 1.0 for progress bar
     // Notification tracking
     shown_welcome_notification: bool,
 }
@@ -337,6 +339,8 @@ impl PulsarApp {
             next_tab_id: 1,
             rust_analyzer,
             analyzer_status_text: "Idle".to_string(),
+            analyzer_detail_message: String::new(),
+            analyzer_progress: 0.0,
             shown_welcome_notification: false,
         };
         
@@ -352,41 +356,62 @@ impl PulsarApp {
     ) {
         match event {
             AnalyzerEvent::StatusChanged(status) => {
-                self.analyzer_status_text = match status {
-                    AnalyzerStatus::Idle => "Idle".to_string(),
-                    AnalyzerStatus::Starting => "Starting...".to_string(),
+                match status {
+                    AnalyzerStatus::Idle => {
+                        self.analyzer_status_text = "Idle".to_string();
+                        self.analyzer_detail_message = String::new();
+                        self.analyzer_progress = 0.0;
+                    }
+                    AnalyzerStatus::Starting => {
+                        self.analyzer_status_text = "Starting...".to_string();
+                        self.analyzer_detail_message = "Initializing language server".to_string();
+                        self.analyzer_progress = 0.0;
+                    }
                     AnalyzerStatus::Indexing { progress, message } => {
-                        format!("Indexing: {} ({:.0}%)", message, progress * 100.0)
+                        self.analyzer_status_text = "Indexing".to_string();
+                        self.analyzer_detail_message = message.clone();
+                        self.analyzer_progress = *progress;
                     }
                     AnalyzerStatus::Ready => {
+                        self.analyzer_status_text = "Ready".to_string();
+                        self.analyzer_detail_message = "Code intelligence active".to_string();
+                        self.analyzer_progress = 1.0;
                         // Show success notification
                         window.push_notification(
                             Notification::success("Rust Analyzer Ready")
                                 .message("Code intelligence is now available"),
                             cx
                         );
-                        "Ready ✓".to_string()
                     }
                     AnalyzerStatus::Error(e) => {
+                        self.analyzer_status_text = "Error".to_string();
+                        self.analyzer_detail_message = e.to_string();
+                        self.analyzer_progress = 0.0;
                         // Show error notification
                         window.push_notification(
-                            Notification::error("Rust Analyzer Error")
+                            Notification::error("Analyzer Error")
                                 .message(e.to_string()),
                             cx
                         );
-                        format!("Error: {}", e)
                     }
-                    AnalyzerStatus::Stopped => "Stopped".to_string(),
+                    AnalyzerStatus::Stopped => {
+                        self.analyzer_status_text = "Stopped".to_string();
+                        self.analyzer_detail_message = String::new();
+                        self.analyzer_progress = 0.0;
+                    }
                 };
                 cx.notify();
             }
             AnalyzerEvent::IndexingProgress { progress, message } => {
-                self.analyzer_status_text =
-                    format!("Indexing: {} ({:.0}%)", message, progress * 100.0);
+                self.analyzer_status_text = "Indexing".to_string();
+                self.analyzer_detail_message = message.clone();
+                self.analyzer_progress = *progress;
                 cx.notify();
             }
             AnalyzerEvent::Ready => {
-                self.analyzer_status_text = "Ready ✓".to_string();
+                self.analyzer_status_text = "Ready".to_string();
+                self.analyzer_detail_message = "Code intelligence active".to_string();
+                self.analyzer_progress = 1.0;
                 // Show success notification
                 window.push_notification(
                     Notification::success("Code Intelligence Ready")
@@ -396,7 +421,9 @@ impl PulsarApp {
                 cx.notify();
             }
             AnalyzerEvent::Error(e) => {
-                self.analyzer_status_text = format!("Error: {}", e);
+                self.analyzer_status_text = "Error".to_string();
+                self.analyzer_detail_message = e.to_string();
+                self.analyzer_progress = 0.0;
                 // Show error notification
                 window.push_notification(
                     Notification::error("Analyzer Error").message(e.to_string()),
@@ -1113,25 +1140,25 @@ impl PulsarApp {
             .read(cx)
             .count_by_severity(crate::ui::problems_drawer::DiagnosticSeverity::Warning);
 
-        // STUDIO-QUALITY STATUS BAR
+        // AAA-STUDIO-QUALITY STATUS BAR WITH MODERN DESIGN
         h_flex()
             .w_full()
-            .h(px(34.))
-            .px_3()
+            .h(px(36.))
             .items_center()
-            .gap_4()
+            .gap_3()
+            .px_4()
             .bg(cx.theme().secondary)
-            .border_t_2()
+            .border_t_1()
             .border_color(cx.theme().border)
             .child(
-                // LEFT SECTION - Actions
+                // LEFT SECTION - Quick Actions
                 h_flex()
-                    .gap_2()
+                    .gap_1p5()
                     .items_center()
                     .child(
-                        // Project Files Toggle
                         Button::new("toggle-drawer")
                             .ghost()
+                            .xsmall()
                             .icon(IconName::Folder)
                             .label("Files")
                             .when(drawer_open, |btn| btn.primary())
@@ -1141,9 +1168,9 @@ impl PulsarApp {
                             })),
                     )
                     .child(
-                        // Problems Window Button - with smart styling
                         Button::new("open-problems")
                             .ghost()
+                            .xsmall()
                             .when(error_count > 0, |btn| {
                                 btn.with_variant(gpui_component::button::ButtonVariant::Danger)
                             })
@@ -1161,11 +1188,7 @@ impl PulsarApp {
                                 format!(
                                     "{} {}",
                                     error_count + warning_count,
-                                    if error_count > 0 {
-                                        "Problems"
-                                    } else {
-                                        "Warnings"
-                                    }
+                                    if error_count > 0 { "Errors" } else { "Warnings" }
                                 )
                             } else {
                                 "No Problems".to_string()
@@ -1176,9 +1199,9 @@ impl PulsarApp {
                             })),
                     )
                     .child(
-                        // Terminal Window Button
                         Button::new("open-terminal")
                             .ghost()
+                            .xsmall()
                             .icon(IconName::Terminal)
                             .label("Terminal")
                             .tooltip("Open Terminal Window")
@@ -1188,108 +1211,151 @@ impl PulsarApp {
                     ),
             )
             .child(
-                // CENTER SECTION - Rust Analyzer Status
+                // CENTER SECTION - Rust Analyzer with Modern Progress Display
                 h_flex()
                     .flex_1()
                     .items_center()
                     .justify_center()
-                    .gap_3()
                     .child(
-                        // Professional status indicator
-                        h_flex()
-                            .items_center()
-                            .gap_2()
-                            .px_3()
-                            .py_1p5()
-                            .rounded(px(6.0))
-                            .bg(cx.theme().background.opacity(0.5))
-                            .border_1()
-                            .border_color(cx.theme().border.opacity(0.5))
-                            .child(
-                                // Animated status dot
-                                div()
-                                    .w(px(10.))
-                                    .h(px(10.))
-                                    .rounded_full()
-                                    .bg(match status {
-                                        AnalyzerStatus::Ready => cx.theme().success,
-                                        AnalyzerStatus::Indexing { .. }
-                                        | AnalyzerStatus::Starting => cx.theme().warning,
-                                        AnalyzerStatus::Error(_) => cx.theme().danger,
-                                        _ => cx.theme().muted_foreground,
-                                    })
-                                    .shadow_sm(),
-                            )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_medium()
-                                    .text_color(cx.theme().foreground)
-                                    .child("rust-analyzer"),
-                            )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("·"),
-                            )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(match status {
-                                        AnalyzerStatus::Ready => cx.theme().success,
-                                        AnalyzerStatus::Indexing { .. } => cx.theme().warning,
-                                        AnalyzerStatus::Error(_) => cx.theme().danger,
-                                        _ => cx.theme().muted_foreground,
-                                    })
-                                    .child(self.analyzer_status_text.clone()),
-                            ),
-                    )
-                    .child(
-                        // Analyzer controls
-                        h_flex()
+                        // Modern status card with progress bar
+                        v_flex()
                             .gap_1()
-                            .items_center()
-                            .when(is_running, |this| {
-                                this.child(
-                                    Button::new("stop-analyzer")
-                                        .ghost()
-                                        .icon(IconName::Close)
-                                        .tooltip("Stop rust-analyzer")
-                                        .xsmall()
-                                        .on_click(cx.listener(|app, _, window, cx| {
-                                            app.rust_analyzer.update(cx, |analyzer, cx| {
-                                                analyzer.stop(window, cx);
-                                            });
-                                        })),
-                                )
-                            })
+                            .px_4()
+                            .py_1p5()
+                            .rounded(px(8.0))
+                            .bg(cx.theme().background.opacity(0.6))
+                            .border_1()
+                            .border_color(cx.theme().border.opacity(0.6))
+                            .shadow_sm()
                             .child(
-                                Button::new("restart-analyzer")
-                                    .ghost()
-                                    .icon(IconName::Undo)
-                                    .tooltip(if is_running {
-                                        "Restart rust-analyzer"
-                                    } else {
-                                        "Start rust-analyzer"
+                                // Top row: Icon, Status, Controls
+                                h_flex()
+                                    .gap_2p5()
+                                    .items_center()
+                                    .child(
+                                        // Pulsing status indicator
+                                        div()
+                                            .w(px(8.))
+                                            .h(px(8.))
+                                            .rounded_full()
+                                            .bg(match status {
+                                                AnalyzerStatus::Ready => cx.theme().success,
+                                                AnalyzerStatus::Indexing { .. }
+                                                | AnalyzerStatus::Starting => cx.theme().warning,
+                                                AnalyzerStatus::Error(_) => cx.theme().danger,
+                                                _ => cx.theme().muted_foreground,
+                                            })
+                                            .shadow_lg()
+                                            // Add subtle pulse animation for indexing
+                                            .when(matches!(status, AnalyzerStatus::Indexing { .. } | AnalyzerStatus::Starting), |this| {
+                                                this.opacity(0.8)
+                                            }),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_semibold()
+                                            .text_color(cx.theme().foreground)
+                                            .child("rust-analyzer"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(cx.theme().muted_foreground.opacity(0.5))
+                                            .child("•"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_medium()
+                                            .text_color(match status {
+                                                AnalyzerStatus::Ready => cx.theme().success,
+                                                AnalyzerStatus::Indexing { .. } => cx.theme().warning,
+                                                AnalyzerStatus::Error(_) => cx.theme().danger,
+                                                _ => cx.theme().muted_foreground,
+                                            })
+                                            .child(self.analyzer_status_text.clone()),
+                                    )
+                                    .when(!self.analyzer_detail_message.is_empty(), |this| {
+                                        this.child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground.opacity(0.5))
+                                                .child("•"),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child(self.analyzer_detail_message.clone()),
+                                        )
                                     })
-                                    .xsmall()
-                                    .on_click(cx.listener(move |app, _, window, cx| {
-                                        if let Some(project) = app.project_path.clone() {
-                                            app.rust_analyzer.update(cx, |analyzer, cx| {
-                                                if is_running {
-                                                    analyzer.restart(window, cx);
-                                                } else {
-                                                    analyzer.start(project, window, cx);
-                                                }
-                                            });
-                                        }
-                                    })),
-                            ),
+                                    .child(
+                                        // Control buttons
+                                        h_flex()
+                                            .gap_0p5()
+                                            .ml_2()
+                                            .when(is_running, |this| {
+                                                this.child(
+                                                    Button::new("stop-analyzer")
+                                                        .ghost()
+                                                        .icon(IconName::Close)
+                                                        .tooltip("Stop rust-analyzer")
+                                                        .xsmall()
+                                                        .on_click(cx.listener(|app, _, window, cx| {
+                                                            app.rust_analyzer.update(cx, |analyzer, cx| {
+                                                                analyzer.stop(window, cx);
+                                                            });
+                                                        })),
+                                                )
+                                            })
+                                            .child(
+                                                Button::new("restart-analyzer")
+                                                    .ghost()
+                                                    .icon(IconName::Undo)
+                                                    .tooltip(if is_running {
+                                                        "Restart rust-analyzer"
+                                                    } else {
+                                                        "Start rust-analyzer"
+                                                    })
+                                                    .xsmall()
+                                                    .on_click(cx.listener(move |app, _, window, cx| {
+                                                        if let Some(project) = app.project_path.clone() {
+                                                            app.rust_analyzer.update(cx, |analyzer, cx| {
+                                                                if is_running {
+                                                                    analyzer.restart(window, cx);
+                                                                } else {
+                                                                    analyzer.start(project, window, cx);
+                                                                }
+                                                            });
+                                                        }
+                                                    })),
+                                            ),
+                                    ),
+                            )
+                            // Progress bar (only shown when indexing)
+                            .when(self.analyzer_progress > 0.0 && self.analyzer_progress < 1.0, |this| {
+                                this.child(
+                                    // Modern progress bar
+                                    div()
+                                        .w_full()
+                                        .h(px(3.))
+                                        .rounded(px(2.))
+                                        .bg(cx.theme().muted.opacity(0.3))
+                                        .child(
+                                            div()
+                                                .h_full()
+                                                .rounded(px(2.))
+                                                .bg(cx.theme().warning)
+                                                .w(relative(self.analyzer_progress))
+                                                .shadow_sm(),
+                                        ),
+                                )
+                            }),
                     ),
             )
             .child(
-                // RIGHT SECTION - Project Path
+                // RIGHT SECTION - Project Info
                 h_flex()
                     .items_center()
                     .px_3()
