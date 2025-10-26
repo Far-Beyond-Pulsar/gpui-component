@@ -1153,13 +1153,8 @@ impl Render for PulsarApp {
         // Create command palette if open
         let command_palette = if self.command_palette_open {
             let palette = cx.new(|cx| CommandPalette::new(window, cx));
-            cx.subscribe(
-                &palette,
-                |app, palette, event, window, cx| {
-                    app.on_command_selected(&palette, event, window, cx);
-                },
-            )
-            .detach();
+            cx.subscribe_in(&palette, window, Self::on_command_selected)
+                .detach();
             Some(palette)
         } else {
             None
