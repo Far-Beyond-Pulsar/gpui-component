@@ -1,9 +1,10 @@
-use gpui::{prelude::*, div, px, rgb, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, MouseButton, Render, SharedString, Window};
+use gpui::{prelude::*, div, px, rgb, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, KeyBinding, MouseButton, Render, SharedString, Window};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
-    h_flex, input::InputState, input::TextInput, v_flex, ActiveTheme as _, Icon, IconName,
+    h_flex, input::{InputState, InputEvent}, input::TextInput, v_flex, ActiveTheme as _, Icon, IconName,
     Sizable as _, StyledExt,
 };
+use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CommandType {
@@ -97,6 +98,7 @@ enum PaletteMode {
 }
 
 impl EventEmitter<CommandSelected> for CommandPalette {}
+impl EventEmitter<DismissEvent> for CommandPalette {}
 
 impl Focusable for CommandPalette {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
@@ -116,6 +118,15 @@ impl CommandPalette {
         let filtered_commands = commands.clone();
 
         let focus_handle = cx.focus_handle();
+
+        // Subscribe to input changes to update the filter
+        cx.subscribe(&search_input, |this, _input, event: &InputEvent, cx| {
+            if let InputEvent::Change = event {
+                let query = this.search_input.read(cx).text().to_string();
+                this.update_filter(&query, cx);
+                cx.notify();
+            }
+        }).detach();
 
         Self {
             search_input,
@@ -231,7 +242,7 @@ impl CommandPalette {
 }
 
 impl Render for CommandPalette {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let selected_index = self.selected_index;
         
         v_flex()
@@ -244,6 +255,27 @@ impl Render for CommandPalette {
             .shadow_lg()
             .overflow_hidden()
             .track_focus(&self.focus_handle)
+            .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                // Stop propagation to prevent closing the palette when clicking inside
+                cx.stop_propagation();
+            })
+            .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _window, cx| {
+                match event.keystroke.key.as_str() {
+                    "down" => {
+                        this.move_selection(1, cx);
+                    }
+                    "up" => {
+                        this.move_selection(-1, cx);
+                    }
+                    "enter" => {
+                        this.select_command(cx);
+                    }
+                    "escape" => {
+                        cx.emit(DismissEvent);
+                    }
+                    _ => {}
+                }
+            }))
             .child(
                 // Search input
                 h_flex()

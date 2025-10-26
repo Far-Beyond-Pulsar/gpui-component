@@ -1153,8 +1153,20 @@ impl Render for PulsarApp {
         // Create command palette if open
         let command_palette = if self.command_palette_open {
             let palette = cx.new(|cx| CommandPalette::new(window, cx));
+            
+            // Subscribe to dismiss events
+            cx.subscribe_in(&palette, window, |this: &mut PulsarApp, _palette, _event: &DismissEvent, _window, cx| {
+                this.command_palette_open = false;
+                cx.notify();
+            }).detach();
+            
+            // Subscribe to command selected events
             cx.subscribe_in(&palette, window, Self::on_command_selected)
                 .detach();
+            
+            // Focus the palette
+            window.focus(&palette.read(cx).focus_handle(cx));
+            
             Some(palette)
         } else {
             None
@@ -1230,7 +1242,11 @@ impl Render for PulsarApp {
                         app.command_palette_open = false;
                         cx.notify();
                     }))
-                    .child(palette)
+                    .child(
+                        div()
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                            .child(palette)
+                    )
             }))
             .into_any_element()
     }
