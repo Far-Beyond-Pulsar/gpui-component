@@ -738,7 +738,7 @@ impl PulsarApp {
                 self.toggle_problems(window, cx);
             }
             CommandType::OpenSettings => {
-                cx.dispatch_action(Box::new(crate::OpenSettings));
+                cx.dispatch_action(&crate::OpenSettings);
             }
             CommandType::BuildProject => {
                 window.push_notification(
@@ -1214,6 +1214,24 @@ impl Render for PulsarApp {
                 // Footer with rust analyzer status and controls
                 self.render_footer(drawer_open, cx),
             )
+            .children(command_palette.map(|palette| {
+                // Command Palette Modal Overlay
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .size_full()
+                    .flex()
+                    .items_start()
+                    .justify_center()
+                    .pt(px(100.))
+                    .bg(Hsla::black().opacity(0.5))
+                    .on_mouse_down(MouseButton::Left, cx.listener(|app, _, _, cx| {
+                        app.command_palette_open = false;
+                        cx.notify();
+                    }))
+                    .child(palette)
+            }))
             .into_any_element()
     }
 }
@@ -1505,28 +1523,6 @@ impl PulsarApp {
                             ),
                     ),
             )
-            .children(command_palette.map(|palette| {
-                // Command Palette Modal Overlay
-                div()
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .size_full()
-                    .flex()
-                    .items_start()
-                    .justify_center()
-                    .pt(px(100.))
-                    .bg(Hsla::black().opacity(0.5))
-                    .on_mouse_down(MouseButton::Left, cx.listener(|app, _, _, cx| {
-                        app.command_palette_open = false;
-                        cx.notify();
-                    }))
-                    .child(
-                        div()
-                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                            .child(palette),
-                    )
-            }))
     }
 }
 

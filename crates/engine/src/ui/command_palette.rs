@@ -107,8 +107,8 @@ impl Focusable for CommandPalette {
 impl CommandPalette {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search_input = cx.new(|cx| {
-            let mut state = InputState::new(cx);
-            state.set_placeholder("Type a command or search files...");
+            let mut state = InputState::new(window, cx);
+            state.set_placeholder("Type a command or search files...", window, cx);
             state
         });
 
