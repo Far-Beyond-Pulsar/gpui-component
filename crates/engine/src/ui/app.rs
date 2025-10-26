@@ -1185,41 +1185,33 @@ impl PulsarApp {
                             .gap_1()
                             .items_center()
                             .child(
-                                div()
-                                    .px_2()
-                                    .py_1()
-                                    .rounded(px(4.))
-                                    .cursor_pointer()
-                                    .hover(|s| s.bg(cx.theme().muted.opacity(0.3)))
-                                    .when(drawer_open, |s| {
-                                        s.bg(cx.theme().primary.opacity(0.15))
-                                    })
-                                    .child(
+                                Button::new("toggle-files")
+                                    .ghost()
+                                    .icon(
                                         Icon::new(IconName::Folder)
                                             .size(px(16.))
                                             .text_color(if drawer_open {
                                                 cx.theme().primary
                                             } else {
                                                 cx.theme().muted_foreground
-                                            }),
+                                            })
                                     )
-                                    .tooltip(move |window, cx| {
-                                        Tooltip::new("Toggle Files (Ctrl+B)").build(window, cx)
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.))
+                                    .when(drawer_open, |s| {
+                                        s.bg(cx.theme().primary.opacity(0.15))
                                     })
+                                    .tooltip("Toggle Files (Ctrl+B)")
                                     .on_click(cx.listener(|app, _, window, cx| {
                                         app.toggle_drawer(window, cx);
                                     })),
                             )
                             .child(
                                 // Problems indicator with badge
-                                div()
-                                    .relative()
-                                    .px_2()
-                                    .py_1()
-                                    .rounded(px(4.))
-                                    .cursor_pointer()
-                                    .hover(|s| s.bg(cx.theme().muted.opacity(0.3)))
-                                    .child(
+                                Button::new("toggle-problems")
+                                    .ghost()
+                                    .icon(
                                         Icon::new(if error_count > 0 {
                                             IconName::Close
                                         } else if warning_count > 0 {
@@ -1234,8 +1226,12 @@ impl PulsarApp {
                                             cx.theme().warning
                                         } else {
                                             cx.theme().success
-                                        }),
+                                        })
                                     )
+                                    .relative()
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.))
                                     .when(error_count + warning_count > 0, |this| {
                                         this.child(
                                             // Badge with count
@@ -1264,31 +1260,26 @@ impl PulsarApp {
                                                 ),
                                         )
                                     })
-                                    .tooltip(move |window, cx| {
-                                        Tooltip::new(format!(
-                                            "{} Errors, {} Warnings",
-                                            error_count, warning_count
-                                        )).build(window, cx)
-                                    })
+                                    .tooltip(format!(
+                                        "{} Errors, {} Warnings",
+                                        error_count, warning_count
+                                    ))
                                     .on_click(cx.listener(|app, _, window, cx| {
                                         app.toggle_problems(window, cx);
                                     })),
                             )
                             .child(
-                                div()
+                                Button::new("toggle-terminal")
+                                    .ghost()
+                                    .icon(
+                                        Icon::new(IconName::Terminal)
+                                            .size(px(16.))
+                                            .text_color(cx.theme().muted_foreground)
+                                    )
                                     .px_2()
                                     .py_1()
                                     .rounded(px(4.))
-                                    .cursor_pointer()
-                                    .hover(|s| s.bg(cx.theme().muted.opacity(0.3)))
-                                    .child(
-                                        Icon::new(IconName::Terminal)
-                                            .size(px(16.))
-                                            .text_color(cx.theme().muted_foreground),
-                                    )
-                                    .tooltip(move |window, cx| {
-                                        Tooltip::new("Terminal").build(window, cx)
-                                    })
+                                    .tooltip("Terminal")
                                     .on_click(cx.listener(|app, _, window, cx| {
                                         app.toggle_terminal(window, cx);
                                     })),
@@ -1347,19 +1338,17 @@ impl PulsarApp {
                                     .ml_2()
                                     .when(is_running, |this| {
                                         this.child(
-                                            div()
-                                                .p_1()
-                                                .rounded(px(3.))
-                                                .cursor_pointer()
-                                                .hover(|s| s.bg(cx.theme().danger.opacity(0.2)))
-                                                .child(
+                                            Button::new("analyzer-stop")
+                                                .ghost()
+                                                .icon(
                                                     Icon::new(IconName::X)
                                                         .size(px(12.))
-                                                        .text_color(cx.theme().muted_foreground),
+                                                        .text_color(cx.theme().muted_foreground)
                                                 )
-                                                .tooltip(move |window, cx| {
-                                                    Tooltip::new("Stop").build(window, cx)
-                                                })
+                                                .p_1()
+                                                .rounded(px(3.))
+                                                .hover(|s| s.bg(cx.theme().danger.opacity(0.2)))
+                                                .tooltip("Stop")
                                                 .on_click(cx.listener(|app, _, window, cx| {
                                                     app.rust_analyzer.update(cx, |analyzer, cx| {
                                                         analyzer.stop(window, cx);
@@ -1368,19 +1357,16 @@ impl PulsarApp {
                                         )
                                     })
                                     .child(
-                                        div()
-                                            .p_1()
-                                            .rounded(px(3.))
-                                            .cursor_pointer()
-                                            .hover(|s| s.bg(cx.theme().muted.opacity(0.3)))
-                                            .child(
+                                        Button::new("analyzer-restart")
+                                            .ghost()
+                                            .icon(
                                                 Icon::new(IconName::Undo)
                                                     .size(px(12.))
-                                                    .text_color(cx.theme().muted_foreground),
+                                                    .text_color(cx.theme().muted_foreground)
                                             )
-                                            .tooltip(move |window, cx| {
-                                                Tooltip::new(if is_running { "Restart" } else { "Start" }).build(window, cx)
-                                            })
+                                            .p_1()
+                                            .rounded(px(3.))
+                                            .tooltip(if is_running { "Restart" } else { "Start" })
                                             .on_click(cx.listener(move |app, _, window, cx| {
                                                 if let Some(project) = app.project_path.clone() {
                                                     app.rust_analyzer.update(cx, |analyzer, cx| {
