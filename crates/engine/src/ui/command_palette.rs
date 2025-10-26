@@ -1,4 +1,4 @@
-use gpui::{prelude::*, div, px, rgb, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, KeyBinding, MouseButton, Render, SharedString, Window};
+use gpui::{prelude::*, div, px, rgb, App, Context, DismissEvent, Entity, EventEmitter, KeyBinding, MouseButton, Render, SharedString, Window};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     h_flex, input::{InputState, InputEvent}, input::TextInput, v_flex, ActiveTheme as _, Icon, IconName,
@@ -84,7 +84,6 @@ pub struct CommandSelected {
 
 pub struct CommandPalette {
     pub search_input: Entity<InputState>,
-    focus_handle: FocusHandle,
     commands: Vec<Command>,
     filtered_commands: Vec<Command>,
     selected_index: usize,
@@ -100,12 +99,6 @@ enum PaletteMode {
 impl EventEmitter<CommandSelected> for CommandPalette {}
 impl EventEmitter<DismissEvent> for CommandPalette {}
 
-impl Focusable for CommandPalette {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
-        self.focus_handle.clone()
-    }
-}
-
 impl CommandPalette {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search_input = cx.new(|cx| {
@@ -116,8 +109,6 @@ impl CommandPalette {
 
         let commands = Self::default_commands();
         let filtered_commands = commands.clone();
-
-        let focus_handle = cx.focus_handle();
 
         // Subscribe to input changes to update the filter
         cx.subscribe(&search_input, |this, _input, event: &InputEvent, cx| {
@@ -136,7 +127,6 @@ impl CommandPalette {
 
         Self {
             search_input,
-            focus_handle,
             commands,
             filtered_commands,
             selected_index: 0,
@@ -260,7 +250,6 @@ impl Render for CommandPalette {
             .rounded(px(8.))
             .shadow_lg()
             .overflow_hidden()
-            .track_focus(&self.focus_handle)
             .on_mouse_down(MouseButton::Left, |_, _, cx| {
                 // Stop propagation to prevent closing the palette when clicking inside
                 cx.stop_propagation();
