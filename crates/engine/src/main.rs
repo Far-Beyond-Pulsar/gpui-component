@@ -178,6 +178,9 @@ fn main() {
             .open_window(entry_options, |window, cx| {
                 let entry_view = cx.new(|cx| EntryWindow::new(window, cx));
 
+                // Capture the window handle BEFORE any async operations
+                let window_handle = window.window_handle();
+
                 // Subscribe to project selection events inside the window
                 if let Some(entry_screen) = entry_view.read(cx).entry_screen().cloned() {
                     cx.subscribe(&entry_screen, move |_entry, event: &ProjectSelected, cx| {
@@ -185,18 +188,15 @@ fn main() {
 
                         eprintln!("DEBUG: Subscription called with path: {:?}", project_path);
 
-                        // Get the current window handle to close after opening the loading window
-                        let entry_window_to_close = cx.active_window();
-
                         // Open the loading window
                         open_loading_window(project_path, cx);
-                        
-                        // Close the entry window after opening the loading window
-                        if let Some(window) = entry_window_to_close {
-                            let _ = window.update(cx, |_, window, _cx| {
-                                window.remove_window();
-                            });
-                        }
+
+                        // Close the entry window using the captured window handle
+                        // This is reliable because we captured it when the window was created
+                        let _ = window_handle.update(cx, |_, window, _cx| {
+                            eprintln!("DEBUG: Closing entry window");
+                            window.remove_window();
+                        });
                     })
                     .detach();
                 }
@@ -231,29 +231,31 @@ fn open_loading_window(project_path: PathBuf, cx: &mut App) {
 
     let loading_window_handle = cx.open_window(options, |window, cx| {
         let loading_view = cx.new(|cx| LoadingWindow::new(project_path.clone(), window, cx));
-        
+
+        // Capture the window handle BEFORE any async operations
+        // This ensures we have the correct window to close, regardless of focus changes
+        let window_handle = window.window_handle();
+
         // Subscribe to loading complete event
         cx.subscribe(&loading_view, move |_loading, event: &LoadingComplete, cx| {
             let project_path = event.project_path.clone();
             let rust_analyzer = event.rust_analyzer.clone();
-            
-            eprintln!("DEBUG: Loading complete, closing loading window and opening engine window");
-            
-            // Get the current window handle to close after opening the engine window
-            let loading_window_to_close = cx.active_window();
-            
+
+            eprintln!("DEBUG: Loading complete, opening engine window and closing loading window");
+
             // Open the main engine window with pre-initialized resources
             open_engine_window_with_analyzer(project_path, rust_analyzer, cx);
-            
-            // Close the loading window after opening the engine window
-            if let Some(window) = loading_window_to_close {
-                let _ = window.update(cx, |_, window, _cx| {
-                    window.remove_window();
-                });
-            }
+
+            // Close the loading window using the captured window handle
+            // This is reliable because we captured it when the window was created,
+            // not after potentially async operations or focus changes
+            let _ = window_handle.update(cx, |_, window, _cx| {
+                eprintln!("DEBUG: Closing loading window");
+                window.remove_window();
+            });
         })
         .detach();
-        
+
         cx.new(|cx| Root::new(loading_view.into(), window, cx))
     })
     .expect("failed to open loading window");
