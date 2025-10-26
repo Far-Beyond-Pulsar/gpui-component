@@ -110,6 +110,9 @@ pub struct PulsarApp {
     shown_welcome_notification: bool,
     // Command Palette
     command_palette_open: bool,
+    command_palette: Option<Entity<CommandPalette>>,
+    // Focus management
+    focus_handle: FocusHandle,
 }
 
 impl PulsarApp {
@@ -352,6 +355,8 @@ impl PulsarApp {
             analyzer_progress: 0.0,
             shown_welcome_notification: false,
             command_palette_open: false,
+            command_palette: None,
+            focus_handle: cx.focus_handle(),
         };
         
         app
@@ -700,10 +705,39 @@ impl PulsarApp {
     fn on_toggle_command_palette(
         &mut self,
         _: &ToggleCommandPalette,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.command_palette_open = !self.command_palette_open;
+
+        if self.command_palette_open {
+            // Create the command palette entity
+            let palette = cx.new(|cx| CommandPalette::new(window, cx));
+
+            // Subscribe to dismiss events
+            cx.subscribe_in(&palette, window, |this: &mut PulsarApp, _palette, _event: &DismissEvent, window, cx| {
+                this.command_palette_open = false;
+                this.command_palette = None;
+                // Restore focus to the app so shortcuts work immediately
+                this.focus_handle.focus(window);
+                cx.notify();
+            }).detach();
+
+            // Subscribe to command selected events
+            cx.subscribe_in(&palette, window, Self::on_command_selected)
+                .detach();
+
+            // Focus the input AFTER creation using the correct method
+            let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
+            input_handle.focus(window);  // Correct: focus_handle.focus(window)
+
+            self.command_palette = Some(palette);
+        } else {
+            self.command_palette = None;
+            // Restore focus to the app so shortcuts work immediately
+            self.focus_handle.focus(window);
+        }
+
         cx.notify();
     }
 
@@ -1122,6 +1156,12 @@ impl PulsarApp {
     }
 }
 
+impl Focusable for PulsarApp {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
 impl Render for PulsarApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Show welcome notification on first render if project was loaded
@@ -1150,34 +1190,15 @@ impl Render for PulsarApp {
             return screen.clone().into_any_element();
         }
 
-        // Create command palette if open
-        let command_palette = if self.command_palette_open {
-            let palette = cx.new(|cx| CommandPalette::new(window, cx));
-            
-            // Subscribe to dismiss events
-            cx.subscribe_in(&palette, window, |this: &mut PulsarApp, _palette, _event: &DismissEvent, _window, cx| {
-                this.command_palette_open = false;
-                cx.notify();
-            }).detach();
-            
-            // Subscribe to command selected events
-            cx.subscribe_in(&palette, window, Self::on_command_selected)
-                .detach();
-            
-            // Focus the search input inside the palette
-            let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
-            window.focus(&input_handle);
-            
-            Some(palette)
-        } else {
-            None
-        };
+        // Use the stored command palette entity
+        let command_palette = self.command_palette.clone();
 
         let drawer_open = self.drawer_open;
 
         v_flex()
             .size_full()
             .bg(cx.theme().background)
+            .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_toggle_file_manager))
             .on_action(cx.listener(Self::on_toggle_problems))
             .on_action(cx.listener(Self::on_toggle_terminal))
