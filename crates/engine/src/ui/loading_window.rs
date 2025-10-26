@@ -324,10 +324,22 @@ impl Render for LoadingWindow {
 
         div()
             .id("loading-window")
+            .relative()
             .flex()
             .flex_col()
             .size_full()
             .bg(theme.background)
+            .child(
+                // Background image layer
+                div()
+                    .absolute()
+                    .size_full()
+                    .child(
+                        img("images/Splash.png")
+                            .size_full()
+                            .object_fit(gpui::ObjectFit::Cover)
+                    )
+            )
             .child(
                 // Main content area (centered)
                 div()
@@ -343,12 +355,16 @@ impl Render for LoadingWindow {
                             .items_center()
                             .gap_4()
                             .child(
-                                // Logo/Title with project name
+                                // Logo/Title with project name (with background)
                                 div()
                                     .flex()
                                     .flex_col()
                                     .items_center()
                                     .gap_1()
+                                    .px_6()
+                                    .py_4()
+                                    .rounded_lg()
+                                    .bg(gpui::black().opacity(0.5))
                                     .child(
                                         div()
                                             .text_xl()
@@ -364,12 +380,16 @@ impl Render for LoadingWindow {
                                     )
                             )
                             .child(
-                                // Task list
+                                // Task list (with background)
                                 div()
                                     .flex()
                                     .flex_col()
                                     .gap_2()
                                     .mt_4()
+                                    .px_6()
+                                    .py_4()
+                                    .rounded_lg()
+                                    .bg(gpui::black().opacity(0.5))
                                     .children(
                                         self.loading_tasks.iter().map(|task| {
                                             let color = match task.status {
@@ -410,7 +430,7 @@ impl Render for LoadingWindow {
                     .flex_col()
                     .w_full()
                     .child(
-                        // Current work indicator (bottom left, can truncate)
+                        // Current work indicator (bottom left, can truncate) with background
                         div()
                             .px_4()
                             .pb_2()
@@ -418,6 +438,10 @@ impl Render for LoadingWindow {
                             .overflow_hidden()
                             .child(
                                 div()
+                                    .px_4()
+                                    .py_2()
+                                    .rounded_lg()
+                                    .bg(gpui::black().opacity(0.5))
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
                                     .whitespace_nowrap()

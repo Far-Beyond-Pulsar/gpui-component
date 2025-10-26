@@ -1,8 +1,10 @@
-use gpui::{prelude::*, Animation, AnimationExt as _, *};
+use gpui::{prelude::*, Animation, AnimationExt as _, SharedString, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
-    h_flex, v_flex, ActiveTheme as _, IconName, Sizable as _, StyledExt,
+    notification::Notification,
+    tooltip::Tooltip,
+    h_flex, v_flex, ActiveTheme as _, ContextModal as _, Icon, IconName, Sizable as _, StyledExt,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -10,6 +12,7 @@ use std::path::PathBuf;
 use std::{sync::Arc, time::Duration};
 
 use super::{
+    command_palette::{CommandPalette, CommandSelected, CommandType},
     editors::EditorType,
     entry_screen::EntryScreen,
     file_manager_drawer::{FileManagerDrawer, FileSelected, FileType, PopoutFileManagerEvent},
@@ -39,6 +42,51 @@ pub struct ToggleProblems;
 #[action(namespace = pulsar_app)]
 pub struct ToggleTerminal;
 
+// Action to toggle the command palette
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = pulsar_app)]
+pub struct ToggleCommandPalette;
+
+// Root wrapper that contains the titlebar, matching gpui-component storybook structure
+pub struct PulsarRoot {
+    title_bar: Entity<AppTitleBar>,
+    app: Entity<PulsarApp>,
+}
+
+impl PulsarRoot {
+    pub fn new(
+        title: impl Into<SharedString>,
+        app: Entity<PulsarApp>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let title_bar = cx.new(|cx| AppTitleBar::new(title, window, cx));
+        Self { title_bar, app }
+    }
+}
+
+impl Render for PulsarRoot {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use gpui_component::Root;
+        
+        let drawer_layer = Root::render_drawer_layer(window, cx);
+        let modal_layer = Root::render_modal_layer(window, cx);
+        let notification_layer = Root::render_notification_layer(window, cx);
+
+        div()
+            .size_full()
+            .child(
+                v_flex()
+                    .size_full()
+                    .child(self.title_bar.clone())
+                    .child(div().flex_1().overflow_hidden().child(self.app.clone()))
+            )
+            .children(drawer_layer)
+            .children(modal_layer)
+            .children(notification_layer)
+    }
+}
+
 pub struct PulsarApp {
     dock_area: Entity<DockArea>,
     project_path: Option<PathBuf>,
@@ -56,6 +104,12 @@ pub struct PulsarApp {
     // Rust Analyzer
     rust_analyzer: Entity<RustAnalyzerManager>,
     analyzer_status_text: String,
+    analyzer_detail_message: String, // Detailed progress message (e.g., "Indexing workspace (50/200 crates)")
+    analyzer_progress: f32, // 0.0 to 1.0 for progress bar
+    // Notification tracking
+    shown_welcome_notification: bool,
+    // Command Palette
+    command_palette_open: bool,
 }
 
 impl PulsarApp {
@@ -279,7 +333,7 @@ impl PulsarApp {
                 .detach();
         }
 
-        Self {
+        let app = Self {
             dock_area,
             project_path,
             entry_screen,
@@ -294,41 +348,97 @@ impl PulsarApp {
             next_tab_id: 1,
             rust_analyzer,
             analyzer_status_text: "Idle".to_string(),
-        }
+            analyzer_detail_message: String::new(),
+            analyzer_progress: 0.0,
+            shown_welcome_notification: false,
+            command_palette_open: false,
+        };
+        
+        app
     }
 
     fn on_analyzer_event(
         &mut self,
         _manager: &Entity<RustAnalyzerManager>,
         event: &AnalyzerEvent,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         match event {
             AnalyzerEvent::StatusChanged(status) => {
-                self.analyzer_status_text = match status {
-                    AnalyzerStatus::Idle => "Idle".to_string(),
-                    AnalyzerStatus::Starting => "Starting...".to_string(),
-                    AnalyzerStatus::Indexing { progress, message } => {
-                        format!("Indexing: {} ({:.0}%)", message, progress * 100.0)
+                match status {
+                    AnalyzerStatus::Idle => {
+                        self.analyzer_status_text = "Idle".to_string();
+                        self.analyzer_detail_message = String::new();
+                        self.analyzer_progress = 0.0;
                     }
-                    AnalyzerStatus::Ready => "Ready ✓".to_string(),
-                    AnalyzerStatus::Error(e) => format!("Error: {}", e),
-                    AnalyzerStatus::Stopped => "Stopped".to_string(),
+                    AnalyzerStatus::Starting => {
+                        self.analyzer_status_text = "Starting...".to_string();
+                        self.analyzer_detail_message = "Initializing language server".to_string();
+                        self.analyzer_progress = 0.0;
+                    }
+                    AnalyzerStatus::Indexing { progress, message } => {
+                        self.analyzer_status_text = "Indexing".to_string();
+                        self.analyzer_detail_message = message.clone();
+                        self.analyzer_progress = *progress;
+                    }
+                    AnalyzerStatus::Ready => {
+                        self.analyzer_status_text = "Ready".to_string();
+                        self.analyzer_detail_message = "Code intelligence active".to_string();
+                        self.analyzer_progress = 1.0;
+                        // Show success notification
+                        window.push_notification(
+                            Notification::success("Rust Analyzer Ready")
+                                .message("Code intelligence is now available"),
+                            cx
+                        );
+                    }
+                    AnalyzerStatus::Error(e) => {
+                        self.analyzer_status_text = "Error".to_string();
+                        self.analyzer_detail_message = e.to_string();
+                        self.analyzer_progress = 0.0;
+                        // Show error notification
+                        window.push_notification(
+                            Notification::error("Analyzer Error")
+                                .message(e.to_string()),
+                            cx
+                        );
+                    }
+                    AnalyzerStatus::Stopped => {
+                        self.analyzer_status_text = "Stopped".to_string();
+                        self.analyzer_detail_message = String::new();
+                        self.analyzer_progress = 0.0;
+                    }
                 };
                 cx.notify();
             }
             AnalyzerEvent::IndexingProgress { progress, message } => {
-                self.analyzer_status_text =
-                    format!("Indexing: {} ({:.0}%)", message, progress * 100.0);
+                self.analyzer_status_text = "Indexing".to_string();
+                self.analyzer_detail_message = message.clone();
+                self.analyzer_progress = *progress;
                 cx.notify();
             }
             AnalyzerEvent::Ready => {
-                self.analyzer_status_text = "Ready ✓".to_string();
+                self.analyzer_status_text = "Ready".to_string();
+                self.analyzer_detail_message = "Code intelligence active".to_string();
+                self.analyzer_progress = 1.0;
+                // Show success notification
+                window.push_notification(
+                    Notification::success("Code Intelligence Ready")
+                        .message("Rust Analyzer indexing complete"),
+                    cx
+                );
                 cx.notify();
             }
             AnalyzerEvent::Error(e) => {
-                self.analyzer_status_text = format!("Error: {}", e);
+                self.analyzer_status_text = "Error".to_string();
+                self.analyzer_detail_message = e.to_string();
+                self.analyzer_progress = 0.0;
+                // Show error notification
+                window.push_notification(
+                    Notification::error("Analyzer Error").message(e.to_string()),
+                    cx
+                );
                 cx.notify();
             }
             AnalyzerEvent::Diagnostics(diagnostics) => {
@@ -585,6 +695,78 @@ impl PulsarApp {
         cx: &mut Context<Self>,
     ) {
         self.toggle_terminal(window, cx);
+    }
+
+    fn on_toggle_command_palette(
+        &mut self,
+        _: &ToggleCommandPalette,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.command_palette_open = !self.command_palette_open;
+        cx.notify();
+    }
+
+    fn on_command_selected(
+        &mut self,
+        _palette: &Entity<CommandPalette>,
+        event: &CommandSelected,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Close the palette
+        self.command_palette_open = false;
+        cx.notify();
+
+        // Handle the command
+        match event.command.command_type {
+            CommandType::Files => {
+                // TODO: Implement file search mode
+                window.push_notification(
+                    Notification::info("Coming Soon")
+                        .message("File search will be implemented soon"),
+                    cx
+                );
+            }
+            CommandType::ToggleFileManager => {
+                self.toggle_drawer(window, cx);
+            }
+            CommandType::ToggleTerminal => {
+                self.toggle_terminal(window, cx);
+            }
+            CommandType::ToggleProblems => {
+                self.toggle_problems(window, cx);
+            }
+            CommandType::OpenSettings => {
+                cx.dispatch_action(&crate::OpenSettings);
+            }
+            CommandType::BuildProject => {
+                window.push_notification(
+                    Notification::info("Build")
+                        .message("Building project..."),
+                    cx
+                );
+                // TODO: Implement build
+            }
+            CommandType::RunProject => {
+                window.push_notification(
+                    Notification::info("Run")
+                        .message("Running project..."),
+                    cx
+                );
+                // TODO: Implement run
+            }
+            CommandType::RestartAnalyzer => {
+                self.rust_analyzer.update(cx, |analyzer, cx| {
+                    analyzer.restart(window, cx);
+                });
+            }
+            CommandType::StopAnalyzer => {
+                self.rust_analyzer.update(cx, |analyzer, cx| {
+                    analyzer.stop(window, cx);
+                });
+            }
+        }
     }
 
     fn on_navigate_to_diagnostic(
@@ -942,6 +1124,22 @@ impl PulsarApp {
 
 impl Render for PulsarApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Show welcome notification on first render if project was loaded
+        if !self.shown_welcome_notification && self.project_path.is_some() {
+            self.shown_welcome_notification = true;
+            if let Some(ref path) = self.project_path {
+                let project_name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("Project");
+                window.push_notification(
+                    Notification::info("Project Loaded")
+                        .message(format!("Welcome to {}", project_name)),
+                    cx
+                );
+            }
+        }
+        
         // Update rust-analyzer progress if indexing
         self.rust_analyzer.update(cx, |analyzer, cx| {
             analyzer.update_progress_from_thread(cx);
@@ -952,6 +1150,29 @@ impl Render for PulsarApp {
             return screen.clone().into_any_element();
         }
 
+        // Create command palette if open
+        let command_palette = if self.command_palette_open {
+            let palette = cx.new(|cx| CommandPalette::new(window, cx));
+            
+            // Subscribe to dismiss events
+            cx.subscribe_in(&palette, window, |this: &mut PulsarApp, _palette, _event: &DismissEvent, _window, cx| {
+                this.command_palette_open = false;
+                cx.notify();
+            }).detach();
+            
+            // Subscribe to command selected events
+            cx.subscribe_in(&palette, window, Self::on_command_selected)
+                .detach();
+            
+            // Focus the search input inside the palette
+            let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
+            window.focus(&input_handle);
+            
+            Some(palette)
+        } else {
+            None
+        };
+
         let drawer_open = self.drawer_open;
 
         v_flex()
@@ -960,13 +1181,7 @@ impl Render for PulsarApp {
             .on_action(cx.listener(Self::on_toggle_file_manager))
             .on_action(cx.listener(Self::on_toggle_problems))
             .on_action(cx.listener(Self::on_toggle_terminal))
-            .child(
-                // Menu bar
-                {
-                    let title_bar = cx.new(|cx| AppTitleBar::new("Pulsar Engine", window, cx));
-                    title_bar.clone()
-                },
-            )
+            .on_action(cx.listener(Self::on_toggle_command_palette))
             .child(
                 // Main dock area
                 div()
@@ -1012,6 +1227,28 @@ impl Render for PulsarApp {
                 // Footer with rust analyzer status and controls
                 self.render_footer(drawer_open, cx),
             )
+            .children(command_palette.map(|palette| {
+                // Command Palette Modal Overlay
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .size_full()
+                    .flex()
+                    .items_start()
+                    .justify_center()
+                    .pt(px(100.))
+                    .bg(Hsla::black().opacity(0.5))
+                    .on_mouse_down(MouseButton::Left, cx.listener(|app, _, _, cx| {
+                        app.command_palette_open = false;
+                        cx.notify();
+                    }))
+                    .child(
+                        div()
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                            .child(palette)
+                    )
+            }))
             .into_any_element()
     }
 }
@@ -1031,204 +1268,275 @@ impl PulsarApp {
             .read(cx)
             .count_by_severity(crate::ui::problems_drawer::DiagnosticSeverity::Warning);
 
-        // STUDIO-QUALITY STATUS BAR
-        h_flex()
+        // Get status colors
+        let (status_color, status_icon) = match status {
+            AnalyzerStatus::Ready => (cx.theme().success, IconName::CheckCircle),
+            AnalyzerStatus::Indexing { .. } | AnalyzerStatus::Starting => {
+                (cx.theme().warning, IconName::Loader)
+            }
+            AnalyzerStatus::Error(_) => (cx.theme().danger, IconName::TriangleAlert),
+            AnalyzerStatus::Stopped => (cx.theme().muted_foreground, IconName::Circle),
+            AnalyzerStatus::Idle => (cx.theme().muted_foreground, IconName::Circle),
+        };
+
+        // ✨ COMPLETELY REDESIGNED MODERN STATUS BAR ✨
+        div()
             .w_full()
-            .h(px(34.))
-            .px_3()
-            .items_center()
-            .gap_4()
-            .bg(cx.theme().secondary)
-            .border_t_2()
-            .border_color(cx.theme().border)
+            .relative()
+            // Progress bar overlay at top (only when indexing)
+            .when(self.analyzer_progress > 0.0 && self.analyzer_progress < 1.0, |this| {
+                this.child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .h(px(2.))
+                        .w(relative(self.analyzer_progress))
+                        .bg(cx.theme().primary)
+                        .shadow_md(),
+                )
+            })
             .child(
-                // LEFT SECTION - Actions
                 h_flex()
+                    .w_full()
+                    .h(px(28.))
+                    .items_center()
+                    .px_3()
                     .gap_2()
-                    .items_center()
+                    .bg(cx.theme().background)
+                    .border_t_1()
+                    .border_color(cx.theme().border)
                     .child(
-                        // Project Files Toggle
-                        Button::new("toggle-drawer")
-                            .ghost()
-                            .icon(IconName::Folder)
-                            .label("Files")
-                            .when(drawer_open, |btn| btn.primary())
-                            .tooltip("Toggle Project Files (Ctrl+B)")
-                            .on_click(cx.listener(|app, _, window, cx| {
-                                app.toggle_drawer(window, cx);
-                            })),
-                    )
-                    .child(
-                        // Problems Window Button - with smart styling
-                        Button::new("open-problems")
-                            .ghost()
-                            .when(error_count > 0, |btn| {
-                                btn.with_variant(gpui_component::button::ButtonVariant::Danger)
-                            })
-                            .when(error_count == 0 && warning_count > 0, |btn| {
-                                btn.with_variant(gpui_component::button::ButtonVariant::Warning)
-                            })
-                            .icon(if error_count > 0 {
-                                IconName::Close
-                            } else if warning_count > 0 {
-                                IconName::TriangleAlert
-                            } else {
-                                IconName::CheckCircle
-                            })
-                            .label(if error_count + warning_count > 0 {
-                                format!(
-                                    "{} {}",
-                                    error_count + warning_count,
-                                    if error_count > 0 {
-                                        "Problems"
-                                    } else {
-                                        "Warnings"
-                                    }
-                                )
-                            } else {
-                                "No Problems".to_string()
-                            })
-                            .tooltip("Open Problems Window")
-                            .on_click(cx.listener(|app, _, window, cx| {
-                                app.toggle_problems(window, cx);
-                            })),
-                    )
-                    .child(
-                        // Terminal Window Button
-                        Button::new("open-terminal")
-                            .ghost()
-                            .icon(IconName::Terminal)
-                            .label("Terminal")
-                            .tooltip("Open Terminal Window")
-                            .on_click(cx.listener(|app, _, window, cx| {
-                                app.toggle_terminal(window, cx);
-                            })),
-                    ),
-            )
-            .child(
-                // CENTER SECTION - Rust Analyzer Status
-                h_flex()
-                    .flex_1()
-                    .items_center()
-                    .justify_center()
-                    .gap_3()
-                    .child(
-                        // Professional status indicator
+                        // LEFT: Quick Actions with Icon-Only Compact Design
                         h_flex()
+                            .gap_1()
+                            .items_center()
+                            .child(
+                                Button::new("toggle-files")
+                                    .ghost()
+                                    .icon(
+                                        Icon::new(IconName::Folder)
+                                            .size(px(16.))
+                                            .text_color(if drawer_open {
+                                                cx.theme().primary
+                                            } else {
+                                                cx.theme().muted_foreground
+                                            })
+                                    )
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.))
+                                    .when(drawer_open, |s| {
+                                        s.bg(cx.theme().primary.opacity(0.15))
+                                    })
+                                    .tooltip("Toggle Files (Ctrl+B)")
+                                    .on_click(cx.listener(|app, _, window, cx| {
+                                        app.toggle_drawer(window, cx);
+                                    })),
+                            )
+                            .child(
+                                // Problems indicator with badge
+                                Button::new("toggle-problems")
+                                    .ghost()
+                                    .icon(
+                                        Icon::new(if error_count > 0 {
+                                            IconName::Close
+                                        } else if warning_count > 0 {
+                                            IconName::TriangleAlert
+                                        } else {
+                                            IconName::CheckCircle
+                                        })
+                                        .size(px(16.))
+                                        .text_color(if error_count > 0 {
+                                            cx.theme().danger
+                                        } else if warning_count > 0 {
+                                            cx.theme().warning
+                                        } else {
+                                            cx.theme().success
+                                        })
+                                    )
+                                    .relative()
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.))
+                                    .when(error_count + warning_count > 0, |this| {
+                                        this.child(
+                                            // Badge with count
+                                            div()
+                                                .absolute()
+                                                .top(px(-4.))
+                                                .right(px(-4.))
+                                                .min_w(px(16.))
+                                                .h(px(16.))
+                                                .px_1()
+                                                .rounded(px(8.))
+                                                .bg(if error_count > 0 {
+                                                    cx.theme().danger
+                                                } else {
+                                                    cx.theme().warning
+                                                })
+                                                .flex()
+                                                .items_center()
+                                                .justify_center()
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        .font_bold()
+                                                        .text_color(rgb(0xFFFFFF))
+                                                        .child(format!("{}", error_count + warning_count)),
+                                                ),
+                                        )
+                                    })
+                                    .tooltip(format!(
+                                        "{} Errors, {} Warnings",
+                                        error_count, warning_count
+                                    ))
+                                    .on_click(cx.listener(|app, _, window, cx| {
+                                        app.toggle_problems(window, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("toggle-terminal")
+                                    .ghost()
+                                    .icon(
+                                        Icon::new(IconName::Terminal)
+                                            .size(px(16.))
+                                            .text_color(cx.theme().muted_foreground)
+                                    )
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.))
+                                    .tooltip("Terminal")
+                                    .on_click(cx.listener(|app, _, window, cx| {
+                                        app.toggle_terminal(window, cx);
+                                    })),
+                            )
+                            .child(
+                                // Separator
+                                div()
+                                    .w(px(1.))
+                                    .h(px(18.))
+                                    .bg(cx.theme().border),
+                            ),
+                    )
+                    .child(
+                        // CENTER: Rust Analyzer Status - Sleek & Compact
+                        h_flex()
+                            .flex_1()
                             .items_center()
                             .gap_2()
-                            .px_3()
-                            .py_1p5()
-                            .rounded(px(6.0))
-                            .bg(cx.theme().background.opacity(0.5))
-                            .border_1()
-                            .border_color(cx.theme().border.opacity(0.5))
                             .child(
-                                // Animated status dot
-                                div()
-                                    .w(px(10.))
-                                    .h(px(10.))
-                                    .rounded_full()
-                                    .bg(match status {
-                                        AnalyzerStatus::Ready => cx.theme().success,
-                                        AnalyzerStatus::Indexing { .. }
-                                        | AnalyzerStatus::Starting => cx.theme().warning,
-                                        AnalyzerStatus::Error(_) => cx.theme().danger,
-                                        _ => cx.theme().muted_foreground,
-                                    })
-                                    .shadow_sm(),
+                                // Status icon with subtle glow
+                                Icon::new(status_icon)
+                                    .size(px(14.))
+                                    .text_color(status_color),
                             )
                             .child(
                                 div()
-                                    .text_sm()
+                                    .text_xs()
                                     .font_medium()
                                     .text_color(cx.theme().foreground)
                                     .child("rust-analyzer"),
                             )
                             .child(
                                 div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("·"),
-                            )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(match status {
-                                        AnalyzerStatus::Ready => cx.theme().success,
-                                        AnalyzerStatus::Indexing { .. } => cx.theme().warning,
-                                        AnalyzerStatus::Error(_) => cx.theme().danger,
-                                        _ => cx.theme().muted_foreground,
-                                    })
+                                    .text_xs()
+                                    .text_color(status_color)
                                     .child(self.analyzer_status_text.clone()),
-                            ),
-                    )
-                    .child(
-                        // Analyzer controls
-                        h_flex()
-                            .gap_1()
-                            .items_center()
-                            .when(is_running, |this| {
+                            )
+                            .when(!self.analyzer_detail_message.is_empty(), |this| {
                                 this.child(
-                                    Button::new("stop-analyzer")
-                                        .ghost()
-                                        .icon(IconName::Close)
-                                        .tooltip("Stop rust-analyzer")
-                                        .xsmall()
-                                        .on_click(cx.listener(|app, _, window, cx| {
-                                            app.rust_analyzer.update(cx, |analyzer, cx| {
-                                                analyzer.stop(window, cx);
-                                            });
-                                        })),
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground.opacity(0.7))
+                                        .child("—"),
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(self.analyzer_detail_message.clone()),
                                 )
                             })
                             .child(
-                                Button::new("restart-analyzer")
-                                    .ghost()
-                                    .icon(IconName::Undo)
-                                    .tooltip(if is_running {
-                                        "Restart rust-analyzer"
-                                    } else {
-                                        "Start rust-analyzer"
+                                // Analyzer controls - minimal
+                                h_flex()
+                                    .gap_0p5()
+                                    .ml_2()
+                                    .when(is_running, |this| {
+                                        this.child(
+                                            Button::new("analyzer-stop")
+                                                .ghost()
+                                                .icon(
+                                                    Icon::new(IconName::X)
+                                                        .size(px(12.))
+                                                        .text_color(cx.theme().muted_foreground)
+                                                )
+                                                .p_1()
+                                                .rounded(px(3.))
+                                                .hover(|s| s.bg(cx.theme().danger.opacity(0.2)))
+                                                .tooltip("Stop")
+                                                .on_click(cx.listener(|app, _, window, cx| {
+                                                    app.rust_analyzer.update(cx, |analyzer, cx| {
+                                                        analyzer.stop(window, cx);
+                                                    });
+                                                })),
+                                        )
                                     })
-                                    .xsmall()
-                                    .on_click(cx.listener(move |app, _, window, cx| {
-                                        if let Some(project) = app.project_path.clone() {
-                                            app.rust_analyzer.update(cx, |analyzer, cx| {
-                                                if is_running {
-                                                    analyzer.restart(window, cx);
-                                                } else {
-                                                    analyzer.start(project, window, cx);
+                                    .child(
+                                        Button::new("analyzer-restart")
+                                            .ghost()
+                                            .icon(
+                                                Icon::new(IconName::Undo)
+                                                    .size(px(12.))
+                                                    .text_color(cx.theme().muted_foreground)
+                                            )
+                                            .p_1()
+                                            .rounded(px(3.))
+                                            .tooltip(if is_running { "Restart" } else { "Start" })
+                                            .on_click(cx.listener(move |app, _, window, cx| {
+                                                if let Some(project) = app.project_path.clone() {
+                                                    app.rust_analyzer.update(cx, |analyzer, cx| {
+                                                        if is_running {
+                                                            analyzer.restart(window, cx);
+                                                        } else {
+                                                            analyzer.start(project, window, cx);
+                                                        }
+                                                    });
                                                 }
-                                            });
-                                        }
-                                    })),
+                                            })),
+                                    ),
                             ),
-                    ),
-            )
-            .child(
-                // RIGHT SECTION - Project Path
-                h_flex()
-                    .items_center()
-                    .px_3()
-                    .py_1p5()
-                    .rounded(px(6.0))
-                    .bg(cx.theme().background.opacity(0.3))
+                    )
                     .child(
+                        // Separator
                         div()
-                            .text_xs()
-                            .font_family("JetBrainsMono-Regular")
-                            .text_color(cx.theme().muted_foreground)
-                            .children(
-                                self.project_path
-                                    .as_ref()
-                                    .and_then(|path| path.file_name())
-                                    .map(|name| name.to_string_lossy().to_string())
-                                    .or_else(|| {
+                            .w(px(1.))
+                            .h(px(18.))
+                            .bg(cx.theme().border),
+                    )
+                    .child(
+                        // RIGHT: Project Name - Clean Display
+                        h_flex()
+                            .items_center()
+                            .gap_1p5()
+                            .child(
+                                Icon::new(IconName::Folder)
+                                    .size(px(14.))
+                                    .text_color(cx.theme().muted_foreground),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_medium()
+                                    .text_color(cx.theme().foreground)
+                                    .children(
                                         self.project_path
                                             .as_ref()
-                                            .map(|path| path.display().to_string())
-                                    }),
+                                            .and_then(|path| path.file_name())
+                                            .map(|name| name.to_string_lossy().to_string())
+                                            .or(Some("No Project".to_string())),
+                                    ),
                             ),
                     ),
             )
@@ -1495,5 +1803,6 @@ impl EditorPanel {
         )
     }
 }
+
 
 

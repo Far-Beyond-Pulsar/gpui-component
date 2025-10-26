@@ -8215,6 +8215,7 @@ dependencies = [
  "which 6.0.3",
  "winapi",
  "windows 0.58.0",
+ "winresource",
 ]
 
 [[package]]
@@ -13430,6 +13431,16 @@ checksum = "cb5a765337c50e9ec252c2069be9bf91c7df47afb103b642ba3a53bf8101be97"
 dependencies = [
  "cfg-if",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "winresource"
+version = "0.1.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edcacf11b6f48dd21b9ba002f991bdd5de29b2da8cc2800412f4b80f677e4957"
+dependencies = [
+ "toml 0.8.23",
+ "version_check",
 ]
 
 [[package]]

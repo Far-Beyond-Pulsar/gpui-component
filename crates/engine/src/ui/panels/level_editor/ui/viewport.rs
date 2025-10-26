@@ -211,6 +211,8 @@ pub struct ViewportPanel {
     viewport: Entity<BevyViewport>,
     viewport_controls: ViewportControls,
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
+    // Element bounds for accurate coordinate conversion (window → element)
+    element_bounds: Rc<RefCell<Option<Bounds<Pixels>>>>,
     // FPS tracking for rolling graph - using RefCell for interior mutability
     fps_history: RefCell<VecDeque<FpsDataPoint>>,
     fps_sample_counter: RefCell<usize>,
@@ -270,6 +272,7 @@ impl ViewportPanel {
             viewport,
             viewport_controls: ViewportControls::new(),
             render_enabled,
+            element_bounds: Rc::new(RefCell::new(None)),
             fps_history: RefCell::new(VecDeque::with_capacity(120)),
             fps_sample_counter: RefCell::new(0),
             tps_history: RefCell::new(VecDeque::with_capacity(120)),
@@ -464,6 +467,10 @@ impl ViewportPanel {
         // Clone for left-click object selection
         let gpu_engine_for_click = gpu_engine.clone();
         
+        // Clone element bounds for tracking
+        let element_bounds_for_prepaint = self.element_bounds.clone();
+        let element_bounds_for_click = self.element_bounds.clone();
+        
         let mut viewport_div = div()
             .flex() // Enable flexbox
             .flex_col() // Column direction
@@ -474,6 +481,45 @@ impl ViewportPanel {
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
+            // CRITICAL: Capture element bounds for accurate coordinate conversion
+            .on_children_prepainted(move |children_bounds: Vec<Bounds<Pixels>>, _window, _cx| {
+                if !children_bounds.is_empty() {
+                    // Calculate bounding box from all children (window coordinates)
+                    let mut min_x = f32::MAX;
+                    let mut min_y = f32::MAX;
+                    let mut max_x = f32::MIN;
+                    let mut max_y = f32::MIN;
+                    
+                    for bounds in &children_bounds {
+                        let bounds_min_x: f32 = bounds.origin.x.into();
+                        let bounds_min_y: f32 = bounds.origin.y.into();
+                        let bounds_width: f32 = bounds.size.width.into();
+                        let bounds_height: f32 = bounds.size.height.into();
+                        
+                        min_x = min_x.min(bounds_min_x);
+                        min_y = min_y.min(bounds_min_y);
+                        max_x = max_x.max(bounds_min_x + bounds_width);
+                        max_y = max_y.max(bounds_min_y + bounds_height);
+                    }
+                    
+                    let bounds = Bounds {
+                        origin: point(px(min_x), px(min_y)),
+                        size: size(px(max_x - min_x), px(max_y - min_y)),
+                    };
+                    
+                    *element_bounds_for_prepaint.borrow_mut() = Some(bounds);
+                    
+                    // Debug log (only occasionally to avoid spam)
+                    static mut FRAME_COUNT: u32 = 0;
+                    unsafe {
+                        FRAME_COUNT += 1;
+                        if FRAME_COUNT % 60 == 1 {
+                            println!("[VIEWPORT] 📐 Element bounds: origin=({:.1}, {:.1}) size=({:.1}x{:.1})", 
+                                min_x, min_y, max_x - min_x, max_y - min_y);
+                        }
+                    }
+                }
+            })
             // Right-click DOWN on viewport = ACTIVATE camera controls
             .on_mouse_down(gpui::MouseButton::Right, {
                 let mouse_right_captured = self.mouse_right_captured.clone();
@@ -530,24 +576,45 @@ impl ViewportPanel {
             // Left-click for object selection in edit mode
             .on_mouse_down(gpui::MouseButton::Left, {
                 let gpu_engine_click = gpu_engine_for_click.clone();
+                let element_bounds = element_bounds_for_click.clone();
                 move |event: &gpui::MouseDownEvent, window: &mut gpui::Window, _cx: &mut gpui::App| {
-                    println!("[VIEWPORT] 🖱️ Left-click detected at screen position: {:?}", event.position);
+                    println!("[VIEWPORT] 🖱️ Left-click detected at window position: {:?}", event.position);
                     
-                    // Get viewport bounds from the window
-                    // For now we'll calculate normalized position assuming full window
-                    // TODO: Get actual viewport element bounds
-                    let window_size = window.viewport_size();
+                    // Convert window coordinates to element-relative coordinates
+                    let bounds_opt = element_bounds.borrow();
+                    let (element_x, element_y, viewport_width, viewport_height) = if let Some(ref bounds) = *bounds_opt {
+                        let origin_x: f32 = bounds.origin.x.into();
+                        let origin_y: f32 = bounds.origin.y.into();
+                        let width: f32 = bounds.size.width.into();
+                        let height: f32 = bounds.size.height.into();
+                        
+                        let pos_x: f32 = event.position.x.into();
+                        let pos_y: f32 = event.position.y.into();
+                        
+                        // Convert to element-relative coordinates
+                        let elem_x = pos_x - origin_x;
+                        let elem_y = pos_y - origin_y;
+                        
+                        println!("[VIEWPORT] 📐 Element-relative position: ({:.1}, {:.1}) in viewport ({:.1}x{:.1})", 
+                            elem_x, elem_y, width, height);
+                        
+                        (elem_x, elem_y, width, height)
+                    } else {
+                        // Fallback: use window coordinates (first frame before bounds captured)
+                        println!("[VIEWPORT] ⚠️ Element bounds not yet captured, using window coords");
+                        let window_size = window.viewport_size();
+                        let pos_x: f32 = event.position.x.into();
+                        let pos_y: f32 = event.position.y.into();
+                        let width: f32 = window_size.width.into();
+                        let height: f32 = window_size.height.into();
+                        (pos_x, pos_y, width, height)
+                    };
                     
-                    // Convert Pixels to f32 using Into trait
-                    let pos_x: f32 = event.position.x.into();
-                    let pos_y: f32 = event.position.y.into();
-                    let width: f32 = window_size.width.into();
-                    let height: f32 = window_size.height.into();
+                    // Convert to normalized coordinates (0.0 to 1.0)
+                    let normalized_x = (element_x / viewport_width).clamp(0.0, 1.0);
+                    let normalized_y = (element_y / viewport_height).clamp(0.0, 1.0);
                     
-                    let normalized_x = (pos_x / width).clamp(0.0, 1.0);
-                    let normalized_y = (pos_y / height).clamp(0.0, 1.0);
-                    
-                    println!("[VIEWPORT] 📍 Normalized position (approx): ({:.3}, {:.3})", normalized_x, normalized_y);
+                    println!("[VIEWPORT] 🎯 Normalized position: ({:.3}, {:.3})", normalized_x, normalized_y);
                     
                     // Send to Bevy's ViewportMouseInput via shared resource
                     if let Ok(engine) = gpu_engine_click.try_lock() {
@@ -566,6 +633,53 @@ impl ViewportPanel {
                         }
                     } else {
                         println!("[VIEWPORT] ⚠️ Could not lock GPU engine for click event");
+                    }
+                }
+            })
+            // Track mouse movement for gizmo dragging (while left button is down)
+            .on_mouse_move({
+                let gpu_engine_move = gpu_engine_for_click.clone();
+                let element_bounds_move = element_bounds_for_click.clone();
+                let last_mouse_pos = Rc::new(RefCell::new(Option::<(f32, f32)>::None));
+                
+                move |event: &gpui::MouseMoveEvent, _window, _cx| {
+                    // Convert window to element coordinates
+                    let bounds_opt = element_bounds_move.borrow();
+                    let (element_x, element_y, viewport_width, viewport_height) = if let Some(ref bounds) = *bounds_opt {
+                        let origin_x: f32 = bounds.origin.x.into();
+                        let origin_y: f32 = bounds.origin.y.into();
+                        let width: f32 = bounds.size.width.into();
+                        let height: f32 = bounds.size.height.into();
+                        let pos_x: f32 = event.position.x.into();
+                        let pos_y: f32 = event.position.y.into();
+                        (pos_x - origin_x, pos_y - origin_y, width, height)
+                    } else {
+                        return; // Skip if bounds not captured yet
+                    };
+                    
+                    let normalized_x = (element_x / viewport_width).clamp(0.0, 1.0);
+                    let normalized_y = (element_y / viewport_height).clamp(0.0, 1.0);
+                    
+                    // Calculate delta from last position
+                    let mut last_pos = last_mouse_pos.borrow_mut();
+                    let (delta_x, delta_y) = if let Some((last_x, last_y)) = *last_pos {
+                        (normalized_x - last_x, normalized_y - last_y)
+                    } else {
+                        (0.0, 0.0)
+                    };
+                    
+                    *last_pos = Some((normalized_x, normalized_y));
+                    drop(last_pos); // Release borrow
+                    
+                    // Update Bevy mouse input
+                    if let Ok(engine) = gpu_engine_move.try_lock() {
+                        if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                            let mut mouse_input = bevy_renderer.viewport_mouse_input.lock();
+                            mouse_input.mouse_pos.x = normalized_x;
+                            mouse_input.mouse_pos.y = normalized_y;
+                            mouse_input.mouse_delta.x = delta_x;
+                            mouse_input.mouse_delta.y = delta_y;
+                        }
                     }
                 }
             })

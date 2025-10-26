@@ -1,4 +1,5 @@
 pub mod app;
+pub mod command_palette;
 pub mod editors;
 pub mod entry_screen;
 pub mod entry_window;

@@ -283,18 +283,18 @@ impl Root {
 
         let active_drawer_placement = root.read(cx).active_drawer.clone().map(|d| d.placement);
 
-        let (mt, mr) = match active_drawer_placement {
+        let (mb, mr) = match active_drawer_placement {
             Some(Placement::Right) => (None, root.read(cx).drawer_size),
-            Some(Placement::Top) => (root.read(cx).drawer_size, None),
+            Some(Placement::Bottom) => (root.read(cx).drawer_size, None),
             _ => (None, None),
         };
 
         Some(
             div()
                 .absolute()
-                .top_0()
+                .bottom_0()
                 .right_0()
-                .when_some(mt, |this, offset| this.mt(offset))
+                .when_some(mb, |this, offset| this.mb(offset))
                 .when_some(mr, |this, offset| this.mr(offset))
                 .child(root.read(cx).notification.clone()),
         )

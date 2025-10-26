@@ -229,16 +229,10 @@ impl ThemeRegistry {
                 let entry = entry?;
                 let path = entry.path();
                 if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("json") {
-                    println!("Loading theme file: {}", path.display());
                     let file_content = fs::read_to_string(path.clone())?;
 
                     match serde_json::from_str::<ThemeSet>(&file_content) {
                         Ok(theme_set) => {
-                            println!(
-                                "Loaded theme set '{}' with {} themes",
-                                theme_set.name,
-                                theme_set.themes.len()
-                            );
                             themes.extend(theme_set.themes);
                         }
                         Err(e) => {

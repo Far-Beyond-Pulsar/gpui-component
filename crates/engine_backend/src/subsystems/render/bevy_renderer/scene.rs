@@ -203,10 +203,6 @@ pub fn swap_render_buffers_system(
         // Log every 120 frames (once per second at 120 FPS)
         static FRAME_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let frame = FRAME_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if frame % 120 == 0 {
-            println!("[BEVY] 🔄 Buffer swap: write={}, read={}, frame={}", 
-                     new_write, old_write, textures.frame_number.load(std::sync::atomic::Ordering::Acquire));
-        }
     }
 }
 

@@ -10,7 +10,7 @@ use serde::Deserialize;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-use ui::app::PulsarApp;
+use ui::app::{PulsarApp, PulsarRoot, ToggleCommandPalette};
 use ui::entry_window::EntryWindow;
 use ui::loading_window::{LoadingWindow, LoadingComplete};
 use ui::project_selector::ProjectSelected;
@@ -145,7 +145,10 @@ fn main() {
         crate::themes::init(cx);
         crate::ui::terminal::init(cx); // Initialize terminal keybindings (Tab handling)
 
-        cx.bind_keys([KeyBinding::new("ctrl-,", OpenSettings, None)]);
+        cx.bind_keys([
+            KeyBinding::new("ctrl-,", OpenSettings, None),
+            KeyBinding::new("ctrl-space", ToggleCommandPalette, None),
+        ]);
         cx.on_action(|_: &OpenSettings, cx| {
             open_settings_window(cx);
         });
@@ -207,16 +210,16 @@ fn main() {
 fn open_loading_window(project_path: PathBuf, cx: &mut App) {
     eprintln!("DEBUG: open_loading_window called with path: {:?}", project_path);
     
-    // Create a smaller centered window for loading splash
-    let loading_window_size = size(px(600.), px(400.));
+    // Create a smaller centered window for loading splash (16:9 aspect ratio)
+    let loading_window_size = size(px(960.), px(540.));
     let loading_window_bounds = Bounds::centered(None, loading_window_size, cx);
 
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(loading_window_bounds)),
         titlebar: Some(TitleBar::title_bar_options()),
         window_min_size: Some(gpui::Size {
-            width: px(600.),
-            height: px(400.),
+            width: px(960.),
+            height: px(540.),
         }),
         kind: WindowKind::Normal,
         is_resizable: false, // Loading window shouldn't be resizable
@@ -290,8 +293,9 @@ fn open_engine_window_with_analyzer(project_path: PathBuf, rust_analyzer: Entity
     let window = cx
         .open_window(options, |window, cx| {
             eprintln!("DEBUG: Creating PulsarApp with pre-initialized analyzer");
-            let view = cx.new(|cx| PulsarApp::new_with_project_and_analyzer(project_path.clone(), rust_analyzer.clone(), window, cx));
-            cx.new(|cx| Root::new(view.into(), window, cx))
+            let app = cx.new(|cx| PulsarApp::new_with_project_and_analyzer(project_path.clone(), rust_analyzer.clone(), window, cx));
+            let root = cx.new(|cx| PulsarRoot::new("Pulsar Engine", app, window, cx));
+            cx.new(|cx| Root::new(root.into(), window, cx))
         })
         .expect("failed to open engine window");
 
@@ -339,8 +343,9 @@ fn open_engine_window(project_path: PathBuf, cx: &mut App) {
     let window = cx
         .open_window(options, |window, cx| {
             eprintln!("DEBUG: Creating PulsarApp");
-            let view = cx.new(|cx| PulsarApp::new_with_project(project_path.clone(), window, cx));
-            cx.new(|cx| Root::new(view.into(), window, cx))
+            let app = cx.new(|cx| PulsarApp::new_with_project(project_path.clone(), window, cx));
+            let root = cx.new(|cx| PulsarRoot::new("Pulsar Engine", app, window, cx));
+            cx.new(|cx| Root::new(root.into(), window, cx))
         })
         .expect("failed to open engine window");
 
