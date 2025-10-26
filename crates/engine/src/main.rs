@@ -10,7 +10,7 @@ use serde::Deserialize;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-use ui::app::{PulsarApp, PulsarRoot};
+use ui::app::{PulsarApp, PulsarRoot, ToggleCommandPalette};
 use ui::entry_window::EntryWindow;
 use ui::loading_window::{LoadingWindow, LoadingComplete};
 use ui::project_selector::ProjectSelected;
@@ -145,7 +145,10 @@ fn main() {
         crate::themes::init(cx);
         crate::ui::terminal::init(cx); // Initialize terminal keybindings (Tab handling)
 
-        cx.bind_keys([KeyBinding::new("ctrl-,", OpenSettings, None)]);
+        cx.bind_keys([
+            KeyBinding::new("ctrl-,", OpenSettings, None),
+            KeyBinding::new("ctrl-space", ToggleCommandPalette, None),
+        ]);
         cx.on_action(|_: &OpenSettings, cx| {
             open_settings_window(cx);
         });

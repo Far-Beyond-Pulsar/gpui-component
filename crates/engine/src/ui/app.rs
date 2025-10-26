@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use std::{sync::Arc, time::Duration};
 
 use super::{
+    command_palette::{CommandPalette, CommandSelected, CommandType},
     editors::EditorType,
     entry_screen::EntryScreen,
     file_manager_drawer::{FileManagerDrawer, FileSelected, FileType, PopoutFileManagerEvent},
@@ -40,6 +41,11 @@ pub struct ToggleProblems;
 #[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[action(namespace = pulsar_app)]
 pub struct ToggleTerminal;
+
+// Action to toggle the command palette
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = pulsar_app)]
+pub struct ToggleCommandPalette;
 
 // Root wrapper that contains the titlebar, matching gpui-component storybook structure
 pub struct PulsarRoot {
@@ -102,6 +108,8 @@ pub struct PulsarApp {
     analyzer_progress: f32, // 0.0 to 1.0 for progress bar
     // Notification tracking
     shown_welcome_notification: bool,
+    // Command Palette
+    command_palette_open: bool,
 }
 
 impl PulsarApp {
@@ -343,6 +351,7 @@ impl PulsarApp {
             analyzer_detail_message: String::new(),
             analyzer_progress: 0.0,
             shown_welcome_notification: false,
+            command_palette_open: false,
         };
         
         app
@@ -686,6 +695,78 @@ impl PulsarApp {
         cx: &mut Context<Self>,
     ) {
         self.toggle_terminal(window, cx);
+    }
+
+    fn on_toggle_command_palette(
+        &mut self,
+        _: &ToggleCommandPalette,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.command_palette_open = !self.command_palette_open;
+        cx.notify();
+    }
+
+    fn on_command_selected(
+        &mut self,
+        _palette: &Entity<CommandPalette>,
+        event: &CommandSelected,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Close the palette
+        self.command_palette_open = false;
+        cx.notify();
+
+        // Handle the command
+        match event.command.command_type {
+            CommandType::Files => {
+                // TODO: Implement file search mode
+                window.push_notification(
+                    Notification::info("Coming Soon")
+                        .message("File search will be implemented soon"),
+                    cx
+                );
+            }
+            CommandType::ToggleFileManager => {
+                self.toggle_drawer(window, cx);
+            }
+            CommandType::ToggleTerminal => {
+                self.toggle_terminal(window, cx);
+            }
+            CommandType::ToggleProblems => {
+                self.toggle_problems(window, cx);
+            }
+            CommandType::OpenSettings => {
+                cx.dispatch_action(Box::new(crate::OpenSettings));
+            }
+            CommandType::BuildProject => {
+                window.push_notification(
+                    Notification::info("Build")
+                        .message("Building project..."),
+                    cx
+                );
+                // TODO: Implement build
+            }
+            CommandType::RunProject => {
+                window.push_notification(
+                    Notification::info("Run")
+                        .message("Running project..."),
+                    cx
+                );
+                // TODO: Implement run
+            }
+            CommandType::RestartAnalyzer => {
+                self.rust_analyzer.update(cx, |analyzer, cx| {
+                    analyzer.restart(window, cx);
+                });
+            }
+            CommandType::StopAnalyzer => {
+                self.rust_analyzer.update(cx, |analyzer, cx| {
+                    analyzer.stop(window, cx);
+                });
+            }
+        }
     }
 
     fn on_navigate_to_diagnostic(
@@ -1069,6 +1150,21 @@ impl Render for PulsarApp {
             return screen.clone().into_any_element();
         }
 
+        // Create command palette if open
+        let command_palette = if self.command_palette_open {
+            let palette = cx.new(|cx| CommandPalette::new(window, cx));
+            cx.subscribe(
+                &palette,
+                |app, palette, event, window, cx| {
+                    app.on_command_selected(&palette, event, window, cx);
+                },
+            )
+            .detach();
+            Some(palette)
+        } else {
+            None
+        };
+
         let drawer_open = self.drawer_open;
 
         v_flex()
@@ -1077,6 +1173,7 @@ impl Render for PulsarApp {
             .on_action(cx.listener(Self::on_toggle_file_manager))
             .on_action(cx.listener(Self::on_toggle_problems))
             .on_action(cx.listener(Self::on_toggle_terminal))
+            .on_action(cx.listener(Self::on_toggle_command_palette))
             .child(
                 // Main dock area
                 div()
@@ -1413,6 +1510,28 @@ impl PulsarApp {
                             ),
                     ),
             )
+            .children(command_palette.map(|palette| {
+                // Command Palette Modal Overlay
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .size_full()
+                    .flex()
+                    .items_start()
+                    .justify_center()
+                    .pt(px(100.))
+                    .bg(Hsla::black().opacity(0.5))
+                    .on_mouse_down(MouseButton::Left, cx.listener(|app, _, _, cx| {
+                        app.command_palette_open = false;
+                        cx.notify();
+                    }))
+                    .child(
+                        div()
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                            .child(palette),
+                    )
+            }))
     }
 }
 
