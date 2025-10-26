@@ -2,7 +2,8 @@ use gpui::{prelude::*, Animation, AnimationExt as _, SharedString, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
-    h_flex, v_flex, ActiveTheme as _, IconName, Sizable as _, StyledExt,
+    notification::Notification,
+    h_flex, v_flex, ActiveTheme as _, ContextModal as _, IconName, Sizable as _, StyledExt,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -96,6 +97,8 @@ pub struct PulsarApp {
     // Rust Analyzer
     rust_analyzer: Entity<RustAnalyzerManager>,
     analyzer_status_text: String,
+    // Notification tracking
+    shown_welcome_notification: bool,
 }
 
 impl PulsarApp {
@@ -319,7 +322,7 @@ impl PulsarApp {
                 .detach();
         }
 
-        Self {
+        let app = Self {
             dock_area,
             project_path,
             entry_screen,
@@ -334,14 +337,17 @@ impl PulsarApp {
             next_tab_id: 1,
             rust_analyzer,
             analyzer_status_text: "Idle".to_string(),
-        }
+            shown_welcome_notification: false,
+        };
+        
+        app
     }
 
     fn on_analyzer_event(
         &mut self,
         _manager: &Entity<RustAnalyzerManager>,
         event: &AnalyzerEvent,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         match event {
@@ -352,8 +358,24 @@ impl PulsarApp {
                     AnalyzerStatus::Indexing { progress, message } => {
                         format!("Indexing: {} ({:.0}%)", message, progress * 100.0)
                     }
-                    AnalyzerStatus::Ready => "Ready ✓".to_string(),
-                    AnalyzerStatus::Error(e) => format!("Error: {}", e),
+                    AnalyzerStatus::Ready => {
+                        // Show success notification
+                        window.push_notification(
+                            Notification::success("Rust Analyzer Ready")
+                                .message("Code intelligence is now available"),
+                            cx
+                        );
+                        "Ready ✓".to_string()
+                    }
+                    AnalyzerStatus::Error(e) => {
+                        // Show error notification
+                        window.push_notification(
+                            Notification::error("Rust Analyzer Error")
+                                .message(e.to_string()),
+                            cx
+                        );
+                        format!("Error: {}", e)
+                    }
                     AnalyzerStatus::Stopped => "Stopped".to_string(),
                 };
                 cx.notify();
@@ -365,10 +387,21 @@ impl PulsarApp {
             }
             AnalyzerEvent::Ready => {
                 self.analyzer_status_text = "Ready ✓".to_string();
+                // Show success notification
+                window.push_notification(
+                    Notification::success("Code Intelligence Ready")
+                        .message("Rust Analyzer indexing complete"),
+                    cx
+                );
                 cx.notify();
             }
             AnalyzerEvent::Error(e) => {
                 self.analyzer_status_text = format!("Error: {}", e);
+                // Show error notification
+                window.push_notification(
+                    Notification::error("Analyzer Error").message(e.to_string()),
+                    cx
+                );
                 cx.notify();
             }
             AnalyzerEvent::Diagnostics(diagnostics) => {
@@ -982,6 +1015,22 @@ impl PulsarApp {
 
 impl Render for PulsarApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Show welcome notification on first render if project was loaded
+        if !self.shown_welcome_notification && self.project_path.is_some() {
+            self.shown_welcome_notification = true;
+            if let Some(ref path) = self.project_path {
+                let project_name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("Project");
+                window.push_notification(
+                    Notification::info("Project Loaded")
+                        .message(format!("Welcome to {}", project_name)),
+                    cx
+                );
+            }
+        }
+        
         // Update rust-analyzer progress if indexing
         self.rust_analyzer.update(cx, |analyzer, cx| {
             analyzer.update_progress_from_thread(cx);
