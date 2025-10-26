@@ -5,6 +5,8 @@ use gpui_component::{
     Sizable as _, StyledExt,
 };
 use std::sync::Arc;
+use std::path::PathBuf;
+use super::file_utils::{FileInfo, find_openable_files};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CommandType {
@@ -82,12 +84,20 @@ pub struct CommandSelected {
     pub command: Command,
 }
 
+#[derive(Clone, Debug)]
+pub struct FileSelected {
+    pub path: PathBuf,
+}
+
 pub struct CommandPalette {
     pub search_input: Entity<InputState>,
     commands: Vec<Command>,
     filtered_commands: Vec<Command>,
+    files: Vec<FileInfo>,
+    filtered_files: Vec<FileInfo>,
     selected_index: usize,
     mode: PaletteMode,
+    project_root: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -97,10 +107,15 @@ enum PaletteMode {
 }
 
 impl EventEmitter<CommandSelected> for CommandPalette {}
+impl EventEmitter<FileSelected> for CommandPalette {}
 impl EventEmitter<DismissEvent> for CommandPalette {}
 
 impl CommandPalette {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_with_project(None, window, cx)
+    }
+
+    pub fn new_with_project(project_root: Option<PathBuf>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search_input = cx.new(|cx| {
             let mut state = InputState::new(window, cx);
             state.set_placeholder("Type a command or search files...", window, cx);
@@ -109,6 +124,14 @@ impl CommandPalette {
 
         let commands = Self::default_commands();
         let filtered_commands = commands.clone();
+
+        // Load files if we have a project root
+        let files = if let Some(ref root) = project_root {
+            find_openable_files(root, Some(8))
+        } else {
+            Vec::new()
+        };
+        let filtered_files = Vec::new();
 
         // Subscribe to input changes to update the filter
         cx.subscribe(&search_input, |this, _input, event: &InputEvent, cx| {
@@ -119,7 +142,7 @@ impl CommandPalette {
                     cx.notify();
                 }
                 InputEvent::PressEnter { .. } => {
-                    this.select_command(cx);
+                    this.select_item(cx);
                 }
                 _ => {}
             }
@@ -129,8 +152,11 @@ impl CommandPalette {
             search_input,
             commands,
             filtered_commands,
+            files,
+            filtered_files,
             selected_index: 0,
             mode: PaletteMode::Commands,
+            project_root,
         }
     }
 
@@ -202,36 +228,75 @@ impl CommandPalette {
         ]
     }
 
+    fn enter_file_mode(&mut self, cx: &mut Context<Self>) {
+        self.mode = PaletteMode::Files;
+        self.selected_index = 0;
+
+        // Show all files initially
+        self.filtered_files = self.files.clone();
+        cx.notify();
+    }
+
     fn update_filter(&mut self, query: &str, _cx: &mut Context<Self>) {
-        if query.is_empty() {
-            self.filtered_commands = self.commands.clone();
-        } else {
-            self.filtered_commands = self
-                .commands
-                .iter()
-                .filter(|cmd| cmd.matches(query))
-                .cloned()
-                .collect();
+        match self.mode {
+            PaletteMode::Commands => {
+                if query.is_empty() {
+                    self.filtered_commands = self.commands.clone();
+                } else {
+                    self.filtered_commands = self
+                        .commands
+                        .iter()
+                        .filter(|cmd| cmd.matches(query))
+                        .cloned()
+                        .collect();
+                }
+            }
+            PaletteMode::Files => {
+                use super::file_utils::search_files;
+                self.filtered_files = search_files(&self.files, query);
+            }
         }
         self.selected_index = 0;
     }
 
-    fn select_command(&mut self, cx: &mut Context<Self>) {
-        if let Some(command) = self.filtered_commands.get(self.selected_index) {
-            cx.emit(CommandSelected {
-                command: command.clone(),
-            });
+    fn select_item(&mut self, cx: &mut Context<Self>) {
+        match self.mode {
+            PaletteMode::Commands => {
+                if let Some(command) = self.filtered_commands.get(self.selected_index) {
+                    // Check if this is the "Search Files" command
+                    if command.command_type == CommandType::Files {
+                        self.enter_file_mode(cx);
+                        return;
+                    }
+
+                    cx.emit(CommandSelected {
+                        command: command.clone(),
+                    });
+                }
+            }
+            PaletteMode::Files => {
+                if let Some(file) = self.filtered_files.get(self.selected_index) {
+                    cx.emit(FileSelected {
+                        path: file.path.clone(),
+                    });
+                }
+            }
         }
     }
 
     fn move_selection(&mut self, delta: isize, cx: &mut Context<Self>) {
-        if self.filtered_commands.is_empty() {
+        let item_count = match self.mode {
+            PaletteMode::Commands => self.filtered_commands.len(),
+            PaletteMode::Files => self.filtered_files.len(),
+        };
+
+        if item_count == 0 {
             return;
         }
 
         let new_index = (self.selected_index as isize + delta)
-            .rem_euclid(self.filtered_commands.len() as isize) as usize;
-        
+            .rem_euclid(item_count as isize) as usize;
+
         self.selected_index = new_index;
         cx.notify();
     }
@@ -291,66 +356,131 @@ impl Render for CommandPalette {
                     ),
             )
             .child(
-                // Command list
+                // Results list (commands or files based on mode)
                 v_flex()
                     .flex_1()
                     .overflow_hidden()
                     .gap_0p5()
                     .p_2()
-                    .children(self.filtered_commands.iter().enumerate().map(|(i, cmd)| {
-                        let is_selected = i == selected_index;
-                        let command = cmd.clone();
-                        
-                        h_flex()
-                            .w_full()
-                            .px_3()
-                            .py_2()
-                            .rounded(px(6.))
-                            .gap_3()
-                            .items_center()
-                            .cursor_pointer()
-                            .when(is_selected, |this| {
-                                this.bg(cx.theme().primary.opacity(0.15))
-                            })
-                            .hover(|s| s.bg(cx.theme().muted.opacity(0.2)))
-                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                                this.selected_index = i;
-                                this.select_command(cx);
-                            }))
-                            .child(
-                                Icon::new(command.icon)
-                                    .size(px(20.))
-                                    .text_color(if is_selected {
-                                        cx.theme().primary
-                                    } else {
-                                        cx.theme().muted_foreground
-                                    }),
-                            )
-                            .child(
-                                v_flex()
-                                    .flex_1()
-                                    .gap_0p5()
-                                    .child(
-                                        div()
-                                            .text_sm()
-                                            .font_semibold()
-                                            .text_color(if is_selected {
-                                                cx.theme().foreground
-                                            } else {
-                                                cx.theme().foreground.opacity(0.9)
-                                            })
-                                            .child(command.name.clone()),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .text_color(cx.theme().muted_foreground)
-                                            .child(command.description.clone()),
-                                    ),
-                            )
-                    })),
+                    .when(self.mode == PaletteMode::Commands, |this| {
+                        this.children(self.filtered_commands.iter().enumerate().map(|(i, cmd)| {
+                            let is_selected = i == selected_index;
+                            let command = cmd.clone();
+
+                            h_flex()
+                                .w_full()
+                                .px_3()
+                                .py_2()
+                                .rounded(px(6.))
+                                .gap_3()
+                                .items_center()
+                                .cursor_pointer()
+                                .when(is_selected, |this| {
+                                    this.bg(cx.theme().primary.opacity(0.15))
+                                })
+                                .hover(|s| s.bg(cx.theme().muted.opacity(0.2)))
+                                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                                    this.selected_index = i;
+                                    this.select_item(cx);
+                                }))
+                                .child(
+                                    Icon::new(command.icon)
+                                        .size(px(20.))
+                                        .text_color(if is_selected {
+                                            cx.theme().primary
+                                        } else {
+                                            cx.theme().muted_foreground
+                                        }),
+                                )
+                                .child(
+                                    v_flex()
+                                        .flex_1()
+                                        .gap_0p5()
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_semibold()
+                                                .text_color(if is_selected {
+                                                    cx.theme().foreground
+                                                } else {
+                                                    cx.theme().foreground.opacity(0.9)
+                                                })
+                                                .child(command.name.clone()),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child(command.description.clone()),
+                                        ),
+                                )
+                        }))
+                    })
+                    .when(self.mode == PaletteMode::Files, |this| {
+                        this.children(self.filtered_files.iter().enumerate().map(|(i, file)| {
+                            let is_selected = i == selected_index;
+                            let file_info = file.clone();
+                            let icon = match file_info.file_type {
+                                super::file_utils::FileType::Script => IconName::Code,
+                                super::file_utils::FileType::Class => IconName::Box,
+                                super::file_utils::FileType::DawProject => IconName::MusicNote,
+                                _ => IconName::FileNotFound,
+                            };
+
+                            h_flex()
+                                .w_full()
+                                .px_3()
+                                .py_2()
+                                .rounded(px(6.))
+                                .gap_3()
+                                .items_center()
+                                .cursor_pointer()
+                                .when(is_selected, |this| {
+                                    this.bg(cx.theme().primary.opacity(0.15))
+                                })
+                                .hover(|s| s.bg(cx.theme().muted.opacity(0.2)))
+                                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                                    this.selected_index = i;
+                                    this.select_item(cx);
+                                }))
+                                .child(
+                                    Icon::new(icon)
+                                        .size(px(20.))
+                                        .text_color(if is_selected {
+                                            cx.theme().primary
+                                        } else {
+                                            cx.theme().muted_foreground
+                                        }),
+                                )
+                                .child(
+                                    v_flex()
+                                        .flex_1()
+                                        .gap_0p5()
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_semibold()
+                                                .text_color(if is_selected {
+                                                    cx.theme().foreground
+                                                } else {
+                                                    cx.theme().foreground.opacity(0.9)
+                                                })
+                                                .child(file_info.name.clone()),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child(file_info.path.to_string_lossy().to_string()),
+                                        ),
+                                )
+                        }))
+                    }),
             )
-            .when(self.filtered_commands.is_empty(), |this| {
+            .when(
+                (self.mode == PaletteMode::Commands && self.filtered_commands.is_empty()) ||
+                (self.mode == PaletteMode::Files && self.filtered_files.is_empty()),
+                |this| {
                 this.child(
                     div()
                         .flex_1()
@@ -371,7 +501,11 @@ impl Render for CommandPalette {
                                     div()
                                         .text_sm()
                                         .text_color(cx.theme().muted_foreground)
-                                        .child("No commands found"),
+                                        .child(if self.mode == PaletteMode::Files {
+                                            "No files found"
+                                        } else {
+                                            "No commands found"
+                                        }),
                                 ),
                         ),
                 )

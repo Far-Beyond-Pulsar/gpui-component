@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::{sync::Arc, time::Duration};
 
 use super::{
-    command_palette::{CommandPalette, CommandSelected, CommandType},
+    command_palette::{CommandPalette, CommandSelected, CommandType, FileSelected as PaletteFileSelected},
     editors::EditorType,
     entry_screen::EntryScreen,
     file_manager_drawer::{FileManagerDrawer, FileSelected, FileType, PopoutFileManagerEvent},
@@ -711,8 +711,10 @@ impl PulsarApp {
         self.command_palette_open = !self.command_palette_open;
 
         if self.command_palette_open {
-            // Create the command palette entity
-            let palette = cx.new(|cx| CommandPalette::new(window, cx));
+            // Create the command palette entity with project root for file search
+            let palette = cx.new(|cx| {
+                CommandPalette::new_with_project(self.project_path.clone(), window, cx)
+            });
 
             // Subscribe to dismiss events
             cx.subscribe_in(&palette, window, |this: &mut PulsarApp, _palette, _event: &DismissEvent, window, cx| {
@@ -725,6 +727,10 @@ impl PulsarApp {
 
             // Subscribe to command selected events
             cx.subscribe_in(&palette, window, Self::on_command_selected)
+                .detach();
+
+            // Subscribe to file selected events
+            cx.subscribe_in(&palette, window, Self::on_palette_file_selected)
                 .detach();
 
             // Focus the input AFTER creation using the correct method
@@ -755,12 +761,10 @@ impl PulsarApp {
         // Handle the command
         match event.command.command_type {
             CommandType::Files => {
-                // TODO: Implement file search mode
-                window.push_notification(
-                    Notification::info("Coming Soon")
-                        .message("File search will be implemented soon"),
-                    cx
-                );
+                // This is now handled by the command palette switching to file mode
+                // Don't close the palette or show notifications
+                self.command_palette_open = true;
+                return;
             }
             CommandType::ToggleFileManager => {
                 self.toggle_drawer(window, cx);
@@ -801,6 +805,25 @@ impl PulsarApp {
                 });
             }
         }
+    }
+
+    fn on_palette_file_selected(
+        &mut self,
+        _palette: &Entity<CommandPalette>,
+        event: &PaletteFileSelected,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Close the palette
+        self.command_palette_open = false;
+        self.command_palette = None;
+        cx.notify();
+
+        // Open the selected file
+        self.open_path(event.path.clone(), window, cx);
+
+        // Restore focus to the app
+        self.focus_handle.focus(window);
     }
 
     fn on_navigate_to_diagnostic(
