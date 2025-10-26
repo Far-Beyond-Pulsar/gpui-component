@@ -1164,8 +1164,9 @@ impl Render for PulsarApp {
             cx.subscribe_in(&palette, window, Self::on_command_selected)
                 .detach();
             
-            // Focus the palette
-            window.focus(&palette.read(cx).focus_handle(cx));
+            // Focus the search input inside the palette
+            let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
+            window.focus(&input_handle);
             
             Some(palette)
         } else {

@@ -83,7 +83,7 @@ pub struct CommandSelected {
 }
 
 pub struct CommandPalette {
-    search_input: Entity<InputState>,
+    pub search_input: Entity<InputState>,
     focus_handle: FocusHandle,
     commands: Vec<Command>,
     filtered_commands: Vec<Command>,
@@ -121,10 +121,16 @@ impl CommandPalette {
 
         // Subscribe to input changes to update the filter
         cx.subscribe(&search_input, |this, _input, event: &InputEvent, cx| {
-            if let InputEvent::Change = event {
-                let query = this.search_input.read(cx).text().to_string();
-                this.update_filter(&query, cx);
-                cx.notify();
+            match event {
+                InputEvent::Change => {
+                    let query = this.search_input.read(cx).text().to_string();
+                    this.update_filter(&query, cx);
+                    cx.notify();
+                }
+                InputEvent::PressEnter { .. } => {
+                    this.select_command(cx);
+                }
+                _ => {}
             }
         }).detach();
 
@@ -260,18 +266,19 @@ impl Render for CommandPalette {
                 cx.stop_propagation();
             })
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _window, cx| {
+                // Handle navigation keys that should not be processed by the input
                 match event.keystroke.key.as_str() {
-                    "down" => {
+                    "down" | "arrowdown" => {
                         this.move_selection(1, cx);
+                        cx.stop_propagation(); // Prevent input from handling this
                     }
-                    "up" => {
+                    "up" | "arrowup" => {
                         this.move_selection(-1, cx);
-                    }
-                    "enter" => {
-                        this.select_command(cx);
+                        cx.stop_propagation(); // Prevent input from handling this
                     }
                     "escape" => {
                         cx.emit(DismissEvent);
+                        cx.stop_propagation();
                     }
                     _ => {}
                 }
