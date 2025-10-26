@@ -3,7 +3,8 @@ use gpui_component::{
     button::{Button, ButtonVariants as _},
     dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
     notification::Notification,
-    h_flex, v_flex, ActiveTheme as _, ContextModal as _, IconName, Sizable as _, StyledExt,
+    tooltip::Tooltip,
+    h_flex, v_flex, ActiveTheme as _, ContextModal as _, Icon, IconName, Sizable as _, StyledExt,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -1146,7 +1147,7 @@ impl PulsarApp {
             AnalyzerStatus::Indexing { .. } | AnalyzerStatus::Starting => {
                 (cx.theme().warning, IconName::Loader)
             }
-            AnalyzerStatus::Error(_) => (cx.theme().danger, IconName::AlertCircle),
+            AnalyzerStatus::Error(_) => (cx.theme().danger, IconName::TriangleAlert),
             AnalyzerStatus::Stopped => (cx.theme().muted_foreground, IconName::Circle),
             AnalyzerStatus::Idle => (cx.theme().muted_foreground, IconName::Circle),
         };
@@ -1196,13 +1197,15 @@ impl PulsarApp {
                                     .child(
                                         Icon::new(IconName::Folder)
                                             .size(px(16.))
-                                            .color(if drawer_open {
+                                            .text_color(if drawer_open {
                                                 cx.theme().primary
                                             } else {
                                                 cx.theme().muted_foreground
                                             }),
                                     )
-                                    .tooltip("Toggle Files (Ctrl+B)")
+                                    .tooltip(move |window, cx| {
+                                        Tooltip::new("Toggle Files (Ctrl+B)").build(window, cx)
+                                    })
                                     .on_click(cx.listener(|app, _, window, cx| {
                                         app.toggle_drawer(window, cx);
                                     })),
@@ -1225,7 +1228,7 @@ impl PulsarApp {
                                             IconName::CheckCircle
                                         })
                                         .size(px(16.))
-                                        .color(if error_count > 0 {
+                                        .text_color(if error_count > 0 {
                                             cx.theme().danger
                                         } else if warning_count > 0 {
                                             cx.theme().warning
@@ -1261,10 +1264,12 @@ impl PulsarApp {
                                                 ),
                                         )
                                     })
-                                    .tooltip(format!(
-                                        "{} Errors, {} Warnings",
-                                        error_count, warning_count
-                                    ))
+                                    .tooltip(move |window, cx| {
+                                        Tooltip::new(format!(
+                                            "{} Errors, {} Warnings",
+                                            error_count, warning_count
+                                        )).build(window, cx)
+                                    })
                                     .on_click(cx.listener(|app, _, window, cx| {
                                         app.toggle_problems(window, cx);
                                     })),
@@ -1279,9 +1284,11 @@ impl PulsarApp {
                                     .child(
                                         Icon::new(IconName::Terminal)
                                             .size(px(16.))
-                                            .color(cx.theme().muted_foreground),
+                                            .text_color(cx.theme().muted_foreground),
                                     )
-                                    .tooltip("Terminal")
+                                    .tooltip(move |window, cx| {
+                                        Tooltip::new("Terminal").build(window, cx)
+                                    })
                                     .on_click(cx.listener(|app, _, window, cx| {
                                         app.toggle_terminal(window, cx);
                                     })),
@@ -1304,7 +1311,7 @@ impl PulsarApp {
                                 // Status icon with subtle glow
                                 Icon::new(status_icon)
                                     .size(px(14.))
-                                    .color(status_color),
+                                    .text_color(status_color),
                             )
                             .child(
                                 div()
@@ -1348,9 +1355,11 @@ impl PulsarApp {
                                                 .child(
                                                     Icon::new(IconName::X)
                                                         .size(px(12.))
-                                                        .color(cx.theme().muted_foreground),
+                                                        .text_color(cx.theme().muted_foreground),
                                                 )
-                                                .tooltip("Stop")
+                                                .tooltip(move |window, cx| {
+                                                    Tooltip::new("Stop").build(window, cx)
+                                                })
                                                 .on_click(cx.listener(|app, _, window, cx| {
                                                     app.rust_analyzer.update(cx, |analyzer, cx| {
                                                         analyzer.stop(window, cx);
@@ -1367,9 +1376,11 @@ impl PulsarApp {
                                             .child(
                                                 Icon::new(IconName::Undo)
                                                     .size(px(12.))
-                                                    .color(cx.theme().muted_foreground),
+                                                    .text_color(cx.theme().muted_foreground),
                                             )
-                                            .tooltip(if is_running { "Restart" } else { "Start" })
+                                            .tooltip(move |window, cx| {
+                                                Tooltip::new(if is_running { "Restart" } else { "Start" }).build(window, cx)
+                                            })
                                             .on_click(cx.listener(move |app, _, window, cx| {
                                                 if let Some(project) = app.project_path.clone() {
                                                     app.rust_analyzer.update(cx, |analyzer, cx| {
@@ -1399,7 +1410,7 @@ impl PulsarApp {
                             .child(
                                 Icon::new(IconName::Folder)
                                     .size(px(14.))
-                                    .color(cx.theme().muted_foreground),
+                                    .text_color(cx.theme().muted_foreground),
                             )
                             .child(
                                 div()
@@ -1679,5 +1690,6 @@ impl EditorPanel {
         )
     }
 }
+
 
 

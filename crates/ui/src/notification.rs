@@ -326,7 +326,7 @@ impl Render for Notification {
                     ),
             )
             .with_animation(
-                ElementId::NamedInteger("slide-down".into(), closing as u64),
+                ElementId::NamedInteger("slide-up".into(), closing as u64),
                 Animation::new(Duration::from_secs_f64(0.25))
                     .with_easing(cubic_bezier(0.4, 0., 0.2, 1.)),
                 move |this, delta| {
@@ -338,9 +338,9 @@ impl Render for Notification {
                             .opacity(opacity)
                             .when(opacity < 0.85, |this| this.shadow_none())
                     } else {
-                        let y_offset = px(-45.) + delta * px(45.);
+                        let y_offset = px(45.) - delta * px(45.);
                         let opacity = delta;
-                        this.top(px(0.) + y_offset)
+                        this.bottom(px(0.) + y_offset)
                             .opacity(opacity)
                             .when(opacity < 0.85, |this| this.shadow_none())
                     }
@@ -438,10 +438,11 @@ impl Render for NotificationList {
         let size = window.viewport_size();
         let items = self.notifications.iter().rev().take(10).rev().cloned();
 
-        div().absolute().top_4().right_4().child(
+        div().absolute().bottom_4().right_4().child(
             v_flex()
                 .id("notification-list")
-                .h(size.height - px(8.))
+                .flex_col_reverse()
+                .max_h(size.height - px(8.))
                 .on_hover(cx.listener(|view, hovered, _, cx| {
                     view.expanded = *hovered;
                     cx.notify()
