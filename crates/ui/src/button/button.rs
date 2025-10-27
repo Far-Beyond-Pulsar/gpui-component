@@ -418,6 +418,7 @@ impl RenderOnce for Button {
         let is_focused = focus_handle.is_focused(window);
 
         self.base
+            .refine_style(&self.style)
             .when(!self.disabled, |this| {
                 this.track_focus(
                     &focus_handle
@@ -493,7 +494,7 @@ impl RenderOnce for Button {
                         let hover_style = style.hovered(self.outline, cx);
                         this.bg(hover_style.bg)
                             .border_color(hover_style.border)
-                            .text_color(crate::red_400())
+                            .text_color(hover_style.fg)
                     })
                     .active(|this| {
                         let active_style = style.active(self.outline, cx);
@@ -509,7 +510,6 @@ impl RenderOnce for Button {
                     .border_color(disabled_style.border)
                     .shadow_none()
             })
-            .refine_style(&self.style)
             .on_mouse_down(gpui::MouseButton::Left, |_, window, _| {
                 // Avoid focus on mouse down.
                 window.prevent_default();
@@ -524,13 +524,6 @@ impl RenderOnce for Button {
                 .on_click(move |event, window, cx| {
                     (on_click)(event, window, cx);
                 })
-            })
-            .when(self.disabled, |this| {
-                let disabled_style = style.disabled(self.outline, cx);
-                this.bg(disabled_style.bg)
-                    .text_color(disabled_style.fg)
-                    .border_color(disabled_style.border)
-                    .shadow_none()
             })
             .child({
                 h_flex()

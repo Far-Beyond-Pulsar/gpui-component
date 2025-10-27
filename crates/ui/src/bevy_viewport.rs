@@ -37,63 +37,33 @@ impl BevyViewportState {
     }
 
     /// Initialize with shared texture handles from Bevy renderer
-    /// 
+    /// Universal zero-copy texture initialization (cross-platform!)
+    ///
     /// # Arguments
-    /// * `handle0` - NT handle (Windows) / IOSurface (macOS) / DMA-BUF fd (Linux) for buffer 0
-    /// * `handle1` - NT handle (Windows) / IOSurface (macOS) / DMA-BUF fd (Linux) for buffer 1
+    /// * `handle0` - Native GPU memory handle for buffer 0 (NT handle/IOSurface ID/dma-buf FD)
+    /// * `handle1` - Native GPU memory handle for buffer 1 (NT handle/IOSurface ID/dma-buf FD)
     /// * `width` - Texture width
     /// * `height` - Texture height
-    #[cfg(target_os = "windows")]
+    ///
+    /// All platforms use the same RGBA8 byte format - handles are just different OS-level
+    /// ways to reference the same GPU memory!
     pub fn initialize_shared_textures(&mut self, handle0: isize, handle1: isize, width: u32, height: u32) {
-        let buffer0 = GpuTextureHandle::Windows {
-            nt_handle: handle0,
-            width,
-            height,
-        };
-        let buffer1 = GpuTextureHandle::Windows {
-            nt_handle: handle1,
-            width,
-            height,
-        };
-        
+        // Create universal GPU texture handles
+        let buffer0 = GpuTextureHandle::new(handle0, width, height);
+        let buffer1 = GpuTextureHandle::new(handle1, width, height);
+
         self.canvas_source = Some(GpuCanvasSource::new(buffer0, buffer1));
         self.width = width;
         self.height = height;
-        
-        println!("[BEVY-VIEWPORT] ✅ Initialized with shared textures {}x{}", width, height);
-        println!("[BEVY-VIEWPORT] 🔥 Zero-copy GPU rendering enabled!");
-    }
 
-    #[cfg(target_os = "macos")]
-    pub fn initialize_shared_textures(&mut self, surface0: metal::IOSurface, surface1: metal::IOSurface) {
-        let buffer0 = GpuTextureHandle::Metal { io_surface: surface0 };
-        let buffer1 = GpuTextureHandle::Metal { io_surface: surface1 };
-        
-        self.canvas_source = Some(GpuCanvasSource::new(buffer0, buffer1));
-        
-        println!("[BEVY-VIEWPORT] ✅ Initialized with Metal IOSurfaces");
-        println!("[BEVY-VIEWPORT] 🔥 Zero-copy GPU rendering enabled!");
-    }
+        #[cfg(target_os = "windows")]
+        println!("[BEVY-VIEWPORT] ✅ Initialized with DirectX shared textures {}x{}", width, height);
+        #[cfg(target_os = "macos")]
+        println!("[BEVY-VIEWPORT] ✅ Initialized with Metal IOSurface {}x{}", width, height);
+        #[cfg(target_os = "linux")]
+        println!("[BEVY-VIEWPORT] ✅ Initialized with Vulkan dma-buf {}x{}", width, height);
 
-    #[cfg(target_os = "linux")]
-    pub fn initialize_shared_textures(&mut self, fd0: i32, fd1: i32, width: u32, height: u32) {
-        let buffer0 = GpuTextureHandle::Vulkan {
-            dma_buf_fd: fd0,
-            width,
-            height,
-        };
-        let buffer1 = GpuTextureHandle::Vulkan {
-            dma_buf_fd: fd1,
-            width,
-            height,
-        };
-        
-        self.canvas_source = Some(GpuCanvasSource::new(buffer0, buffer1));
-        self.width = width;
-        self.height = height;
-        
-        println!("[BEVY-VIEWPORT] ✅ Initialized with DMA-BUF file descriptors {}x{}", width, height);
-        println!("[BEVY-VIEWPORT] 🔥 Zero-copy GPU rendering enabled!");
+        println!("[BEVY-VIEWPORT] 🔥 Zero-copy GPU rendering enabled! (Universal RGBA8 format)");
     }
 
     /// Notify that Bevy has finished rendering a frame (swaps the active buffer)

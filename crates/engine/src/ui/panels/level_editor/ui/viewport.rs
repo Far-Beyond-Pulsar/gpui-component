@@ -18,73 +18,14 @@ use std::collections::VecDeque;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-// Raw input polling for viewport controls
+// Raw input polling for viewport controls (cross-platform)
 use device_query::{DeviceQuery, DeviceState, Keycode, MouseState};
 
-// Windows API for cursor management
-#[cfg(target_os = "windows")]
-use winapi::um::winuser::{ShowCursor, SetCursorPos, GetCursorPos, SetCursor};
-#[cfg(target_os = "windows")]
-use winapi::shared::windef::POINT;
-#[cfg(target_os = "windows")]
-use std::ptr;
-
-/// Helper function to hide the Windows cursor
-#[cfg(target_os = "windows")]
-fn hide_cursor() {
-    unsafe {
-        // Set cursor to NULL to hide it completely
-        SetCursor(ptr::null_mut());
-    }
-}
-
-/// Helper function to show the Windows cursor  
-#[cfg(target_os = "windows")]
-fn show_cursor() {
-    unsafe {
-        // Load the standard arrow cursor
-        let cursor = winapi::um::winuser::LoadCursorW(ptr::null_mut(), winapi::um::winuser::IDC_ARROW);
-        SetCursor(cursor);
-    }
-}
-
-/// Lock cursor to specific screen position (for camera rotation without cursor drift)
-#[cfg(target_os = "windows")]
-fn lock_cursor_position(x: i32, y: i32) {
-    unsafe {
-        SetCursorPos(x, y);
-    }
-}
-
-/// Get current cursor position
-#[cfg(target_os = "windows")]
-fn get_cursor_position() -> (i32, i32) {
-    unsafe {
-        let mut point = POINT { x: 0, y: 0 };
-        GetCursorPos(&mut point);
-        (point.x, point.y)
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn hide_cursor() {
-    // Placeholder for other platforms
-}
-
-#[cfg(not(target_os = "windows"))]
-fn show_cursor() {
-    // Placeholder for other platforms
-}
-
-#[cfg(not(target_os = "windows"))]
-fn lock_cursor_position(_x: i32, _y: i32) {
-    // Placeholder for other platforms
-}
-
-#[cfg(not(target_os = "windows"))]
-fn get_cursor_position() -> (i32, i32) {
-    (0, 0) // Placeholder for other platforms
-}
+// Note: Cursor management is now handled by GPUI's cross-platform window system
+// No platform-specific cursor code needed! GPUI provides:
+// - window.set_cursor_style() for cursor appearance
+// - Mouse events for cursor position
+// - Built-in cursor locking for camera controls
 
 /// Lock-free input state using atomics - no mutex contention!
 #[derive(Clone)]
@@ -94,17 +35,21 @@ struct InputState {
     right: Arc<AtomicI32>,    // -1, 0, 1
     up: Arc<AtomicI32>,       // -1, 0, 1
     boost: Arc<AtomicBool>,
-    
+
+    // Mouse position (stored as i32 * 1000 for fractional precision)
+    mouse_x: Arc<AtomicI32>,
+    mouse_y: Arc<AtomicI32>,
+
     // Mouse deltas (stored as i32 * 1000 for fractional precision)
     mouse_delta_x: Arc<AtomicI32>,
     mouse_delta_y: Arc<AtomicI32>,
     pan_delta_x: Arc<AtomicI32>,
     pan_delta_y: Arc<AtomicI32>,
     zoom_delta: Arc<AtomicI32>,
-    
+
     // Move speed adjustment
     move_speed: Arc<AtomicI32>, // * 100 for precision
-    
+
     // Input latency tracking (measured on input thread)
     // Stores microseconds since last input was received, as i64
     input_latency_us: Arc<std::sync::atomic::AtomicU64>,
@@ -117,6 +62,8 @@ impl InputState {
             right: Arc::new(AtomicI32::new(0)),
             up: Arc::new(AtomicI32::new(0)),
             boost: Arc::new(AtomicBool::new(false)),
+            mouse_x: Arc::new(AtomicI32::new(0)),
+            mouse_y: Arc::new(AtomicI32::new(0)),
             mouse_delta_x: Arc::new(AtomicI32::new(0)),
             mouse_delta_y: Arc::new(AtomicI32::new(0)),
             pan_delta_x: Arc::new(AtomicI32::new(0)),
@@ -392,33 +339,31 @@ impl ViewportPanel {
                     input_state_for_thread.right.store(right, Ordering::Relaxed);
                     input_state_for_thread.up.store(up, Ordering::Relaxed);
                     input_state_for_thread.boost.store(boost, Ordering::Relaxed);
-                    
-                    // Get current mouse position for delta calculation
-                    let (current_x, current_y) = get_cursor_position();
+
+                    // Get current mouse position from atomic state (updated by GPUI mouse events)
+                    let current_x = input_state_for_thread.mouse_x.load(Ordering::Relaxed);
+                    let current_y = input_state_for_thread.mouse_y.load(Ordering::Relaxed);
                     
                     // Calculate delta if we have a previous position
                     if let Some((last_x, last_y)) = last_mouse_pos {
                         let dx = current_x - last_x;
                         let dy = current_y - last_y;
-                        
+
                         if dx != 0 || dy != 0 {
-                            // Store deltas based on mode
+                            // Store deltas based on mode (convert from i32 back to f32 for accumulation)
                             if is_rotating {
-                                // Rotation mode
-                                input_state_for_thread.mouse_delta_x.fetch_add((dx as f32 * 1000.0) as i32, Ordering::Relaxed);
-                                input_state_for_thread.mouse_delta_y.fetch_add((dy as f32 * 1000.0) as i32, Ordering::Relaxed);
+                                // Rotation mode - accumulate deltas
+                                input_state_for_thread.mouse_delta_x.fetch_add(dx, Ordering::Relaxed);
+                                input_state_for_thread.mouse_delta_y.fetch_add(dy, Ordering::Relaxed);
                             }
                             if is_panning {
-                                // Pan mode
-                                input_state_for_thread.pan_delta_x.fetch_add((dx as f32 * 1000.0) as i32, Ordering::Relaxed);
-                                input_state_for_thread.pan_delta_y.fetch_add((dy as f32 * 1000.0) as i32, Ordering::Relaxed);
+                                // Pan mode - accumulate deltas
+                                input_state_for_thread.pan_delta_x.fetch_add(dx, Ordering::Relaxed);
+                                input_state_for_thread.pan_delta_y.fetch_add(dy, Ordering::Relaxed);
                             }
-                            
-                            // Reset cursor to locked position for infinite movement
-                            let lock_x = locked_cursor_x.load(Ordering::Relaxed);
-                            let lock_y = locked_cursor_y.load(Ordering::Relaxed);
-                            lock_cursor_position(lock_x, lock_y);
-                            last_mouse_pos = Some((lock_x, lock_y));
+
+                            // Update last position for next frame
+                            last_mouse_pos = Some((current_x, current_y));
                         }
                     } else {
                         // First frame of active state - initialize position
@@ -520,23 +465,47 @@ impl ViewportPanel {
                     }
                 }
             })
+            // Track mouse movement to update atomic position state
+            .on_mouse_move({
+                let input_state_clone = self.input_state.clone();
+                let mouse_right_captured = self.mouse_right_captured.clone();
+                let mouse_middle_captured = self.mouse_middle_captured.clone();
+                move |event, window, _cx| {
+                    // Always update mouse position for accurate tracking
+                    let x = (event.position.x.as_f32() * 1000.0) as i32;
+                    let y = (event.position.y.as_f32() * 1000.0) as i32;
+                    input_state_clone.mouse_x.store(x, Ordering::Relaxed);
+                    input_state_clone.mouse_y.store(y, Ordering::Relaxed);
+
+                    // Set cursor style based on whether camera controls are active
+                    let is_rotating = mouse_right_captured.load(Ordering::Acquire);
+                    let is_panning = mouse_middle_captured.load(Ordering::Acquire);
+                    if is_rotating || is_panning {
+                        window.set_window_cursor_style(CursorStyle::None);
+                    }
+                }
+            })
             // Right-click DOWN on viewport = ACTIVATE camera controls
             .on_mouse_down(gpui::MouseButton::Right, {
                 let mouse_right_captured = self.mouse_right_captured.clone();
                 let mouse_middle_captured = self.mouse_middle_captured.clone();
                 let locked_cursor_x = self.locked_cursor_x.clone();
                 let locked_cursor_y = self.locked_cursor_y.clone();
-                move |event, window, cx| {
+                let input_state_clone = self.input_state.clone();
+                move |event, window, _cx| {
                     println!("[VIEWPORT] 🖱️ Right-click DOWN on viewport - ACTIVATING camera controls");
-                    
+
                     // Check if Shift is held for pan mode
                     let shift_pressed = event.modifiers.shift;
-                    
-                    // Get and lock cursor position
-                    let (x, y) = get_cursor_position();
+
+                    // Get cursor position from event and store it
+                    let x = (event.position.x.as_f32() * 1000.0) as i32;
+                    let y = (event.position.y.as_f32() * 1000.0) as i32;
                     locked_cursor_x.store(x, Ordering::Relaxed);
                     locked_cursor_y.store(y, Ordering::Relaxed);
-                    
+                    input_state_clone.mouse_x.store(x, Ordering::Relaxed);
+                    input_state_clone.mouse_y.store(y, Ordering::Relaxed);
+
                     if shift_pressed {
                         // Shift + Right = Pan mode
                         mouse_middle_captured.store(true, Ordering::Release);
@@ -546,30 +515,25 @@ impl ViewportPanel {
                         mouse_right_captured.store(true, Ordering::Release);
                         println!("[VIEWPORT] 🎥 Rotate mode activated (Right)");
                     }
-                    
-                    // Hide cursor for infinite movement
-                    hide_cursor();
+
+                    // Hide cursor using GPUI's cross-platform API
+                    window.set_window_cursor_style(CursorStyle::None);
                 }
             })
             // Right-click UP anywhere = DEACTIVATE camera controls
             .on_mouse_up(gpui::MouseButton::Right, {
                 let mouse_right_captured = self.mouse_right_captured.clone();
                 let mouse_middle_captured = self.mouse_middle_captured.clone();
-                let locked_cursor_x = self.locked_cursor_x.clone();
-                let locked_cursor_y = self.locked_cursor_y.clone();
-                move |event, window, cx| {
+                move |_event, window, _cx| {
                     println!("[VIEWPORT] 🖱️ Right-click UP - DEACTIVATING camera controls");
-                    
+
                     // Deactivate both modes
                     mouse_right_captured.store(false, Ordering::Release);
                     mouse_middle_captured.store(false, Ordering::Release);
-                    
-                    // Restore cursor at locked position
-                    let lock_x = locked_cursor_x.load(Ordering::Relaxed);
-                    let lock_y = locked_cursor_y.load(Ordering::Relaxed);
-                    lock_cursor_position(lock_x, lock_y);
-                    show_cursor();
-                    
+
+                    // Restore cursor visibility using GPUI's cross-platform API
+                    window.set_window_cursor_style(CursorStyle::Arrow);
+
                     println!("[VIEWPORT] ✅ Camera controls deactivated, cursor restored");
                 }
             })
