@@ -15,14 +15,14 @@ resolver = "2"
 debug = true
 
 [workspace.dependencies]
-# gpui = { git = "https://github.com/tristanpoland/zed", rev="46babb764207e7184c8daef687b52bbe013c9a32", features = ["runtime_shaders", "macos-blade"] }
-# gpui_macros = { git = "https://github.com/tristanpoland/zed", rev="46babb764207e7184c8daef687b52bbe013c9a32" }
-# reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "46babb764207e7184c8daef687b52bbe013c9a32" }
-# sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "46babb764207e7184c8daef687b52bbe013c9a32" }
-gpui ={ path="../zed/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
-gpui_macros = { path="../zed/crates/gpui_macros" }
-reqwest_client = { path="../zed/crates/reqwest_client" }
-sum_tree = { path="../zed/crates/sum_tree" }
+gpui = { git = "https://github.com/tristanpoland/zed", rev="bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0", features = ["runtime_shaders", "macos-blade"] }
+gpui_macros = { git = "https://github.com/tristanpoland/zed", rev="bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0" }
+reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0" }
+sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0" }
+# gpui ={ path="../zed/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
+# gpui_macros = { path="../zed/crates/gpui_macros" }
+# reqwest_client = { path="../zed/crates/reqwest_client" }
+# sum_tree = { path="../zed/crates/sum_tree" }
 
 gpui-component = { path = "crates/ui" }
 gpui-component-macros = { path = "crates/macros" }
