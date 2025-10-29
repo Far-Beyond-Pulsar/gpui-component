@@ -41,6 +41,9 @@
                 alsa-lib
                 alsa-utils
                 libGL
+                vulkan-loader
+                vulkan-headers
+                vulkan-tools
                 wayland
                 wayland-protocols
                 wayland-scanner
@@ -57,12 +60,14 @@
                   pkgs.wayland
                   pkgs.libxkbcommon
                   pkgs.libGL
+                  pkgs.vulkan-loader
                   pkgs.xorg.libXcursor
                   pkgs.xorg.libXrandr
                   pkgs.xorg.libXi
                   pkgs.xorg.libX11
                   pkgs.xorg.libxcb
                 ]}:$LD_LIBRARY_PATH
+                export VK_LAYER_PATH=${pkgs.vulkan-validation-layers}/share/vulkan/explicit_layer.d
               '';
             };
         };
