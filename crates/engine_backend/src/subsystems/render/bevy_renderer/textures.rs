@@ -98,6 +98,82 @@ pub fn create_shared_textures_startup(
     println!("[BEVY] ✅ Placeholder render target Images created");
 }
 
+/// Create shared textures for non-Windows platforms (stub for now)
+#[cfg(not(target_os = "windows"))]
+pub fn create_shared_textures_startup(
+    shared_textures: Res<SharedTexturesResource>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    println!("[BEVY] 🔧 Creating shared textures (non-Windows)...");
+
+    // Check if already created
+    if let Ok(lock) = shared_textures.0.lock() {
+        if lock.is_some() {
+            println!("[BEVY] ⚠️ Textures already created");
+            return;
+        }
+    }
+
+    // Create placeholder render targets for Metal/Vulkan
+    let bytes_per_pixel = 4; // BGRA8
+    let texture_size = (RENDER_WIDTH * RENDER_HEIGHT * bytes_per_pixel) as usize;
+
+    let mut image_0 = Image {
+        texture_descriptor: bevy::render::render_resource::TextureDescriptor {
+            label: Some("Shared Render Target 0"),
+            size: bevy::render::render_resource::Extent3d {
+                width: RENDER_WIDTH,
+                height: RENDER_HEIGHT,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: bevy::render::render_resource::TextureDimension::D2,
+            format: bevy::render::render_resource::TextureFormat::Bgra8UnormSrgb,
+            usage: bevy::render::render_resource::TextureUsages::RENDER_ATTACHMENT | bevy::render::render_resource::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        },
+        ..default()
+    };
+    image_0.data = Some(vec![0u8; texture_size]);
+    let render_target_0 = images.add(image_0);
+
+    let mut image_1 = Image {
+        texture_descriptor: bevy::render::render_resource::TextureDescriptor {
+            label: Some("Shared Render Target 1"),
+            size: bevy::render::render_resource::Extent3d {
+                width: RENDER_WIDTH,
+                height: RENDER_HEIGHT,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: bevy::render::render_resource::TextureDimension::D2,
+            format: bevy::render::render_resource::TextureFormat::Bgra8UnormSrgb,
+            usage: bevy::render::render_resource::TextureUsages::RENDER_ATTACHMENT | bevy::render::render_resource::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        },
+        ..default()
+    };
+    image_1.data = Some(vec![0u8; texture_size]);
+    let render_target_1 = images.add(image_1);
+
+    // Store handles
+    if let Ok(mut lock) = shared_textures.0.lock() {
+        *lock = Some(SharedGpuTextures {
+            textures: std::sync::Arc::new([render_target_0.clone(), render_target_1.clone()]),
+            native_handles: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            write_index: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            read_index: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(1)),
+            frame_number: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            width: RENDER_WIDTH,
+            height: RENDER_HEIGHT,
+        });
+    }
+
+    println!("[BEVY] ✅ Render target Images created");
+}
+
 /// Create DXGI shared textures and inject them into Bevy's render pipeline
 /// This replaces the GPU backing texture of the render targets with DXGI shared textures
 #[cfg(target_os = "windows")]

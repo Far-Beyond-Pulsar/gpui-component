@@ -47,7 +47,11 @@
       "Bash(ls:*)",
       "Bash(timeout 90 cargo build:*)",
       "Bash(timeout 90 cargo run:*)",
-      "Bash(timeout 60 cargo run:*)"
+      "Bash(timeout 60 cargo run:*)",
+      "Bash(timeout 120 cargo check:*)",
+      "Bash(source $HOME/.cargo/env)",
+      "Read(//home/**)",
+      "Bash(nix develop:*)"
     ],
     "deny": [],
     "ask": []

@@ -220,6 +220,7 @@ impl BevyRenderer {
         }
     }
 
+    #[cfg(target_os = "windows")]
     pub fn get_shared_texture_handles(&self) -> Option<Vec<usize>> {
         // Read from global storage where Bevy stores the handles
         crate::subsystems::render::native_texture::get_shared_handles().map(|handles| {
@@ -229,6 +230,12 @@ impl BevyRenderer {
                 }
             }).collect()
         })
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    pub fn get_shared_texture_handles(&self) -> Option<Vec<usize>> {
+        // Non-Windows platforms don't support shared texture handles yet
+        None
     }
 
     pub fn get_read_index(&self) -> usize {

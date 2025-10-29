@@ -38,6 +38,16 @@
                 protobuf
                 rust-analyzer # Used when running
                 pkg-config
+                alsa-lib
+                alsa-utils
+                libGL
+                wayland
+                libxkbcommon
+                xorg.libXcursor
+                xorg.libXrandr
+                xorg.libXi
+                xorg.libX11
+                xorg.libxcb
               ];
             };
         };

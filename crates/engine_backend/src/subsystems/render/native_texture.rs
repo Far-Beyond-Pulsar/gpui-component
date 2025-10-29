@@ -141,16 +141,20 @@ impl NativeTextureHandle {
         #[cfg(target_os = "linux")]
         {
             use wgpu_hal::api::Vulkan;
-            
+            use ash::vk::Handle;
+
             // Get the HAL texture for Vulkan
             if let Some(hal_tex) = texture.as_hal::<Vulkan>() {
                 let vk_texture = &*hal_tex;
-                
-                // Get the raw VkImage handle
+
+                // Get the raw VkImage handle - this returns ash::vk::Image
+                // ash::vk::Image is a newtype wrapper around u64 that implements Handle trait
+                // as_raw() extracts the GPU handle (NOT copying texture data - zero-copy!)
                 let image_handle = vk_texture.raw_handle();
-                
-                println!("[NATIVE-TEXTURE] ✅ Extracted Vulkan image: 0x{:X}", image_handle);
-                Some(NativeTextureHandle::Vulkan(image_handle))
+                let image_handle_u64 = image_handle.as_raw();
+
+                println!("[NATIVE-TEXTURE] ✅ Extracted Vulkan image: 0x{:X}", image_handle_u64);
+                Some(NativeTextureHandle::Vulkan(image_handle_u64))
             } else {
                 println!("[NATIVE-TEXTURE] ❌ Failed to get HAL texture for Vulkan");
                 None
@@ -185,7 +189,6 @@ impl NativeTextureHandle {
     pub unsafe fn as_vulkan_image(self) -> Option<u64> {
         match self {
             NativeTextureHandle::Vulkan(img) => Some(img),
-            _ => None,
         }
     }
 }
