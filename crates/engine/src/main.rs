@@ -1,402 +1,211 @@
-use crate::settings::EngineSettings;
-use directories::ProjectDirs;
-use gpui::Action;
-use gpui::SharedString;
 use gpui::*;
-use gpui_component::scroll::ScrollbarShow;
-use gpui_component::Root;
-use gpui_component::TitleBar;
-use serde::Deserialize;
-use std::fs;
-use std::path::Path;
-use std::path::PathBuf;
-use ui::app::{PulsarApp, PulsarRoot, ToggleCommandPalette};
-use ui::entry_window::EntryWindow;
-use ui::loading_window::{LoadingWindow, LoadingComplete};
-use ui::project_selector::ProjectSelected;
-use ui::settings_window::SettingsWindow;
-
-mod assets;
-mod compiler;
-mod graph;
-mod recent_projects;
-pub mod settings;
-pub mod themes;
-mod ui;
-pub use assets::Assets;
-
-// +--------------------------------------------+
-// |  Compile-time engine info from Cargo.toml  |
-// +--------------------------------------------+
-
-pub const ENGINE_NAME: &str = env!("CARGO_PKG_NAME");
-pub const ENGINE_LICENSE: &str = env!("CARGO_PKG_LICENSE");
-pub const ENGINE_AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
-pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const ENGINE_HOMEPAGE: &str = env!("CARGO_PKG_HOMEPAGE");
-pub const ENGINE_REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
-pub const ENGINE_DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
-pub const ENGINE_LICENSE_FILE: &str = env!("CARGO_PKG_LICENSE_FILE");
-
-// +----------------------------------+
-// |   Actions for settings changes   |
-// +----------------------------------+
-
-#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
-#[action(namespace = story, no_json)]
-pub struct SelectScrollbarShow(ScrollbarShow);
-
-#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
-#[action(namespace = story, no_json)]
-pub struct SelectLocale(SharedString);
-
-#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
-#[action(namespace = story, no_json)]
-pub struct SelectFont(usize);
-
-#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
-#[action(namespace = story, no_json)]
-pub struct SelectRadius(usize);
-
-#[derive(Action, Clone, PartialEq, Eq)]
-#[action(namespace = pulsar, no_json)]
-pub struct OpenSettings;
+use raw_window_handle::{HasWindowHandle, HasDisplayHandle};
+use std::sync::Arc;
+use winit::application::ApplicationHandler;
+use winit::event::WindowEvent;
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::window::{Window as WinitWindow, WindowId};
 
 fn main() {
-    println!("{}", ENGINE_NAME);
-    println!("Version: {}", ENGINE_VERSION);
-    println!("Authors: {}", ENGINE_AUTHORS);
-    println!("Description: {}", ENGINE_DESCRIPTION);
+    println!("🚀 Starting Winit + GPUI External Surface Demo");
+    println!("This demonstrates GPUI rendering on top of a Winit window\n");
 
-    // Determine app data directory
-    let proj_dirs = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
-        .expect("Could not determine app data directory");
-    let appdata_dir = proj_dirs.data_dir();
-    let themes_dir = appdata_dir.join("themes");
-    let config_dir = appdata_dir.join("configs");
-    let config_file = config_dir.join("engine.toml");
+    let event_loop = EventLoop::new().expect("Failed to create event loop");
+    event_loop.set_control_flow(ControlFlow::Poll);
 
-    println!("App data directory: {:?}", appdata_dir);
-    println!("Themes directory: {:?}", themes_dir);
-    println!("Config directory: {:?}", config_dir);
-    println!("Config file: {:?}", config_file);
+    let mut app = WinitGpuiApp::new();
+    event_loop.run_app(&mut app).expect("Failed to run event loop");
+}
 
-    // Extract bundled themes if not present
-    if !themes_dir.exists() {
-        if let Err(e) = fs::create_dir_all(&themes_dir) {
-            eprintln!("Failed to create themes directory: {e}");
-        } else {
-            // Copy all themes from project themes/ to appdata_dir/themes/
-            let project_themes_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .unwrap()
-                .join("themes");
-            if let Ok(entries) = fs::read_dir(&project_themes_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_file() {
-                        if let Some(name) = path.file_name() {
-                            let dest = themes_dir.join(name);
-                            let _ = fs::copy(&path, &dest);
-                        }
-                    }
-                }
-            }
+struct WinitGpuiApp {
+    winit_window: Option<Arc<WinitWindow>>,
+    gpui_app: Option<Application>,
+}
+
+impl WinitGpuiApp {
+    fn new() -> Self {
+        Self {
+            winit_window: None,
+            gpui_app: None,
         }
     }
+}
 
-    // Create default config if not present
-    if !config_file.exists() {
-        if let Err(e) = fs::create_dir_all(&config_dir) {
-            eprintln!("Failed to create config directory: {e}");
-        }
-        let default_settings = EngineSettings::default();
-        default_settings.save(&config_file);
-    }
-
-    // Load settings
-    println!("Loading engine settings from {:?}", config_file);
-    let mut engine_settings = EngineSettings::load(&config_file);
-
-    let app = Application::new().with_assets(Assets);
-
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(8)
-        .thread_name("PulsarEngineRuntime")
-        .enable_all()
-        .build()
-        .unwrap();
-
-    // Init the Game engine backend (subsystems, etc)
-    rt.block_on(engine_backend::EngineBackend::init());
-
-    app.run(move |cx| {
-        // Load custom fonts first
-        if let Some(font_data) = Assets::get("fonts/JetBrainsMono-Regular.ttf") {
-            match cx.text_system().add_fonts(vec![font_data.data]) {
-                Ok(_) => println!("Successfully loaded JetBrains Mono font"),
-                Err(e) => println!("Failed to load JetBrains Mono font: {:?}", e),
-            }
-        } else {
-            println!("Could not find JetBrains Mono font file");
+impl ApplicationHandler for WinitGpuiApp {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        if self.winit_window.is_some() {
+            return;
         }
 
-        gpui_component::init(cx);
-        crate::themes::init(cx);
-        crate::ui::terminal::init(cx); // Initialize terminal keybindings (Tab handling)
+        println!("✅ Creating Winit window...");
 
-        cx.bind_keys([
-            KeyBinding::new("ctrl-,", OpenSettings, None),
-            KeyBinding::new("ctrl-space", ToggleCommandPalette, None),
-        ]);
-        cx.on_action(|_: &OpenSettings, cx| {
-            open_settings_window(cx);
-        });
+        let window_attributes = WinitWindow::default_attributes()
+            .with_title("Winit + GPUI Demo - Yellow Background")
+            .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
+            .with_transparent(false);
 
-        cx.activate(true);
+        let winit_window = Arc::new(
+            event_loop
+                .create_window(window_attributes)
+                .expect("Failed to create window"),
+        );
 
-        // Open the entry/launcher window first (appropriate size for studio-quality launcher)
-        let entry_window_size = size(px(1600.), px(900.));
-        let entry_window_bounds = Bounds::centered(None, entry_window_size, cx);
+        println!("✅ Winit window created");
 
-        let entry_options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(entry_window_bounds)),
-            titlebar: Some(TitleBar::title_bar_options()),
-            window_min_size: Some(gpui::Size {
-                width: px(1600.),
-                height: px(900.),
-            }),
-            kind: WindowKind::Normal,
-            is_resizable: true,
-            window_decorations: Some(gpui::WindowDecorations::Client),
-            #[cfg(target_os = "linux")]
-            window_background: gpui::WindowBackgroundAppearance::Transparent,
-            ..Default::default()
+        // Get window handle for GPUI
+        let raw_handle = winit_window
+            .window_handle()
+            .expect("Failed to get window handle")
+            .as_raw();
+
+        let scale_factor = winit_window.scale_factor() as f32;
+        let size = winit_window.inner_size();
+
+        let bounds = Bounds {
+            origin: point(px(0.0), px(0.0)),
+            size: size(px(size.width as f32), px(size.height as f32)),
         };
 
-        let entry_window_handle = cx
-            .open_window(entry_options, |window, cx| {
-                let entry_view = cx.new(|cx| EntryWindow::new(window, cx));
+        let external_handle = ExternalWindowHandle {
+            raw_handle,
+            bounds,
+            scale_factor,
+        };
 
-                // Capture the window handle BEFORE any async operations
-                let window_handle = window.window_handle();
+        println!("✅ Initializing GPUI...");
 
-                // Subscribe to project selection events inside the window
-                if let Some(entry_screen) = entry_view.read(cx).entry_screen().cloned() {
-                    cx.subscribe(&entry_screen, move |_entry, event: &ProjectSelected, cx| {
-                        let project_path = event.path.clone();
+        let app = Application::new();
 
-                        eprintln!("DEBUG: Subscription called with path: {:?}", project_path);
+        app.run(move |cx| {
+            println!("✅ Opening GPUI window on external surface...");
 
-                        // Open the loading window
-                        open_loading_window(project_path, cx);
+            // Try to open window with external handle
+            match cx.open_window_external(external_handle.clone(), |window, cx| {
+                println!("✅ GPUI window created successfully on external surface!");
+                println!("\n🎨 RENDERING STARTED!");
+                println!("You should see:");
+                println!("  • Yellow Winit window background");
+                println!("  • Small blue square with GPUI");
+                println!("  • Text overlay from GPUI\n");
 
-                        // Close the entry window using the captured window handle
-                        // This is reliable because we captured it when the window was created
-                        let _ = window_handle.update(cx, |_, window, _cx| {
-                            eprintln!("DEBUG: Closing entry window");
-                            window.remove_window();
-                        });
-                    })
-                    .detach();
+                cx.new(|cx| DemoView::new(window, cx))
+            }) {
+                Ok(window_handle) => {
+                    println!("✅ Successfully opened GPUI window");
                 }
+                Err(e) => {
+                    println!("❌ Failed to open GPUI window: {}", e);
+                    println!("Falling back to regular GPUI window...");
 
-                cx.new(|cx| Root::new(entry_view.clone().into(), window, cx))
-            })
-            .expect("failed to open entry window");
-    });
-}
+                    let window_options = WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(bounds)),
+                        titlebar: None,
+                        window_min_size: Some(Size {
+                            width: px(400.),
+                            height: px(300.),
+                        }),
+                        kind: WindowKind::Normal,
+                        is_resizable: true,
+                        window_background: WindowBackgroundAppearance::Transparent,
+                        ..Default::default()
+                    };
 
-fn open_loading_window(project_path: PathBuf, cx: &mut App) {
-    eprintln!("DEBUG: open_loading_window called with path: {:?}", project_path);
-    
-    // Create a smaller centered window for loading splash (16:9 aspect ratio)
-    let loading_window_size = size(px(960.), px(540.));
-    let loading_window_bounds = Bounds::centered(None, loading_window_size, cx);
+                    cx.open_window(window_options, |window, cx| {
+                        cx.new(|cx| DemoView::new(window, cx))
+                    }).expect("Failed to open fallback window");
+                }
+            }
+        });
 
-    let options = WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(loading_window_bounds)),
-        titlebar: Some(TitleBar::title_bar_options()),
-        window_min_size: Some(gpui::Size {
-            width: px(960.),
-            height: px(540.),
-        }),
-        kind: WindowKind::Normal,
-        is_resizable: false, // Loading window shouldn't be resizable
-        window_decorations: Some(gpui::WindowDecorations::Client),
-        #[cfg(target_os = "linux")]
-        window_background: gpui::WindowBackgroundAppearance::Transparent,
-        ..Default::default()
-    };
-
-    let loading_window_handle = cx.open_window(options, |window, cx| {
-        let loading_view = cx.new(|cx| LoadingWindow::new(project_path.clone(), window, cx));
-
-        // Capture the window handle BEFORE any async operations
-        // This ensures we have the correct window to close, regardless of focus changes
-        let window_handle = window.window_handle();
-
-        // Subscribe to loading complete event
-        cx.subscribe(&loading_view, move |_loading, event: &LoadingComplete, cx| {
-            let project_path = event.project_path.clone();
-            let rust_analyzer = event.rust_analyzer.clone();
-
-            eprintln!("DEBUG: Loading complete, opening engine window and closing loading window");
-
-            // Open the main engine window with pre-initialized resources
-            open_engine_window_with_analyzer(project_path, rust_analyzer, cx);
-
-            // Close the loading window using the captured window handle
-            // This is reliable because we captured it when the window was created,
-            // not after potentially async operations or focus changes
-            let _ = window_handle.update(cx, |_, window, _cx| {
-                eprintln!("DEBUG: Closing loading window");
-                window.remove_window();
-            });
-        })
-        .detach();
-
-        cx.new(|cx| Root::new(loading_view.into(), window, cx))
-    })
-    .expect("failed to open loading window");
-    
-    eprintln!("DEBUG: Loading window opened");
-}
-
-fn open_engine_window_with_analyzer(project_path: PathBuf, rust_analyzer: Entity<ui::rust_analyzer_manager::RustAnalyzerManager>, cx: &mut App) {
-    eprintln!(
-        "DEBUG: open_engine_window_with_analyzer called with path: {:?}",
-        project_path
-    );
-    let mut window_size = size(px(1200.), px(800.));
-    if let Some(display) = cx.primary_display() {
-        let display_size = display.bounds().size;
-        window_size.width = window_size.width.min(display_size.width * 0.85);
-        window_size.height = window_size.height.min(display_size.height * 0.85);
+        self.winit_window = Some(winit_window);
+        self.gpui_app = Some(app);
     }
 
-    let window_bounds = Bounds::centered(None, window_size, cx);
-
-    let options = WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-        titlebar: Some(TitleBar::title_bar_options()),
-        window_min_size: Some(gpui::Size {
-            width: px(1200.),
-            height: px(800.),
-        }),
-        kind: WindowKind::Normal,
-        is_resizable: true,
-        window_decorations: Some(gpui::WindowDecorations::Client),
-        #[cfg(target_os = "linux")]
-        window_background: gpui::WindowBackgroundAppearance::Transparent,
-        ..Default::default()
-    };
-
-    let window = cx
-        .open_window(options, |window, cx| {
-            eprintln!("DEBUG: Creating PulsarApp with pre-initialized analyzer");
-            let app = cx.new(|cx| PulsarApp::new_with_project_and_analyzer(project_path.clone(), rust_analyzer.clone(), window, cx));
-            let root = cx.new(|cx| PulsarRoot::new("Pulsar Engine", app, window, cx));
-            cx.new(|cx| Root::new(root.into(), window, cx))
-        })
-        .expect("failed to open engine window");
-
-    eprintln!("DEBUG: Engine window opened");
-
-    window
-        .update(cx, |_, window, _| {
-            window.activate_window();
-            window.set_window_title("Pulsar Engine");
-        })
-        .expect("failed to update engine window");
-
-    eprintln!("DEBUG: Engine window activated");
-}
-
-fn open_engine_window(project_path: PathBuf, cx: &mut App) {
-    eprintln!(
-        "DEBUG: open_engine_window called with path: {:?}",
-        project_path
-    );
-    let mut window_size = size(px(1200.), px(800.));
-    if let Some(display) = cx.primary_display() {
-        let display_size = display.bounds().size;
-        window_size.width = window_size.width.min(display_size.width * 0.85);
-        window_size.height = window_size.height.min(display_size.height * 0.85);
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        match event {
+            WindowEvent::CloseRequested => {
+                println!("\n👋 Closing application...");
+                event_loop.exit();
+            }
+            WindowEvent::RedrawRequested => {
+                if let Some(window) = &self.winit_window {
+                    // Here we would normally render the yellow background with wgpu/DirectX
+                    // For now, winit will handle the window background
+                    window.request_redraw();
+                }
+            }
+            _ => {}
+        }
     }
-
-    let window_bounds = Bounds::centered(None, window_size, cx);
-
-    let options = WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-        titlebar: Some(TitleBar::title_bar_options()),
-        window_min_size: Some(gpui::Size {
-            width: px(1200.),
-            height: px(800.),
-        }),
-        kind: WindowKind::Normal,
-        is_resizable: true,
-        window_decorations: Some(gpui::WindowDecorations::Client),
-        #[cfg(target_os = "linux")]
-        window_background: gpui::WindowBackgroundAppearance::Transparent,
-        ..Default::default()
-    };
-
-    let window = cx
-        .open_window(options, |window, cx| {
-            eprintln!("DEBUG: Creating PulsarApp");
-            let app = cx.new(|cx| PulsarApp::new_with_project(project_path.clone(), window, cx));
-            let root = cx.new(|cx| PulsarRoot::new("Pulsar Engine", app, window, cx));
-            cx.new(|cx| Root::new(root.into(), window, cx))
-        })
-        .expect("failed to open engine window");
-
-    eprintln!("DEBUG: Engine window opened");
-
-    window
-        .update(cx, |_, window, _| {
-            window.activate_window();
-            window.set_window_title("Pulsar Engine");
-        })
-        .expect("failed to update engine window");
-
-    eprintln!("DEBUG: Engine window activated");
 }
 
-fn open_settings_window(cx: &mut App) {
-    let proj_dirs = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
-        .expect("Could not determine app data directory");
-    let appdata_dir = proj_dirs.data_dir();
-    let config_dir = appdata_dir.join("configs");
-    let config_file = config_dir.join("engine.toml");
+pub struct DemoView {
+    counter: usize,
+}
 
-    let window_bounds = Bounds::centered(None, size(px(800.), px(600.)), cx);
+impl DemoView {
+    pub fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
+        Self { counter: 0 }
+    }
+}
 
-    let options = WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-        titlebar: Some(TitleBar::title_bar_options()),
-        window_min_size: Some(Size {
-            width: px(600.),
-            height: px(400.),
-        }),
-        kind: WindowKind::Normal,
-        is_resizable: true,
-        window_decorations: Some(gpui::WindowDecorations::Client),
-        #[cfg(target_os = "linux")]
-        window_background: gpui::WindowBackgroundAppearance::Transparent,
-        ..Default::default()
-    };
+impl Render for DemoView {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        self.counter += 1;
 
-    let window = cx
-        .open_window(options, |window, cx| {
-            cx.new(|cx| SettingsWindow::new(window, cx))
-        })
-        .expect("failed to open settings window");
-
-    window
-        .update(cx, |_, window, _| {
-            window.activate_window();
-            window.set_window_title("Pulsar - Settings");
-        })
-        .expect("failed to update settings window");
+        div()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .size_full()
+            .gap_4()
+            .child(
+                // Small blue square
+                div()
+                    .size(px(200.0))
+                    .bg(rgb(0x4A90E2))
+                    .rounded_lg()
+                    .shadow_lg()
+                    .border_2()
+                    .border_color(rgb(0xFFFFFF))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        div()
+                            .text_2xl()
+                            .font_bold()
+                            .text_color(rgb(0xFFFFFF))
+                            .child("GPUI"),
+                    ),
+            )
+            .child(
+                // Text overlay
+                div()
+                    .p_4()
+                    .bg(rgba(0x000000CC))
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(rgba(0xFFFFFF80))
+                    .child(
+                        div()
+                            .text_lg()
+                            .text_color(rgb(0xFFFFFF))
+                            .child("✅ GPUI rendering on Winit window!"),
+                    ),
+            )
+            .child(
+                div()
+                    .p_2()
+                    .text_sm()
+                    .text_color(rgba(0xFFFFFFDD))
+                    .child(format!("Frame: {}", self.counter)),
+            )
+    }
 }

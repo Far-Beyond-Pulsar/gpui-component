@@ -17,6 +17,8 @@ horizon.workspace = true
 anyhow.workspace = true
 gpui.workspace = true
 gpui-component = { workspace = true, features = ["tree-sitter-languages"] }
+winit.workspace = true
+raw-window-handle.workspace = true
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 schemars = "1.0"

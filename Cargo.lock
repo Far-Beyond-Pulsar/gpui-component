@@ -2431,7 +2431,6 @@ dependencies = [
 [[package]]
 name = "collections"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0#bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0"
 dependencies = [
  "indexmap",
  "rustc-hash 2.1.1",
@@ -3138,7 +3137,6 @@ dependencies = [
 [[package]]
 name = "derive_refineable"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0#bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4460,7 +4458,6 @@ dependencies = [
 [[package]]
 name = "gpui"
 version = "0.2.1"
-source = "git+https://github.com/tristanpoland/zed?rev=bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0#bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0"
 dependencies = [
  "anyhow",
  "as-raw-xcb-connection",
@@ -4643,7 +4640,6 @@ dependencies = [
 [[package]]
 name = "gpui_macros"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0#bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -5002,7 +4998,6 @@ dependencies = [
 [[package]]
 name = "http_client"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0#bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -6109,7 +6104,6 @@ dependencies = [
 [[package]]
 name = "media"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0#bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0"
 dependencies = [
  "anyhow",
  "bindgen 0.71.1",
@@ -7656,7 +7650,6 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "perf"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0#bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0"
 dependencies = [
  "collections",
  "serde",
@@ -8193,6 +8186,7 @@ dependencies = [
  "prettyplease",
  "pulsar_std",
  "quote",
+ "raw-window-handle",
  "regex",
  "reqwest",
  "rfd",
@@ -8216,6 +8210,7 @@ dependencies = [
  "which 6.0.3",
  "winapi",
  "windows 0.58.0",
+ "winit 0.30.12",
  "winresource",
 ]
 
@@ -8662,7 +8657,6 @@ dependencies = [
 [[package]]
 name = "refineable"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0#bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0"
 dependencies = [
  "derive_refineable",
  "workspace-hack",
@@ -9426,7 +9420,6 @@ checksum = "0f7d95a54511e0c7be3f51e8867aa8cf35148d7b9445d44de2f943e2b206e749"
 [[package]]
 name = "semantic_version"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0#bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0"
 dependencies = [
  "anyhow",
  "serde",
@@ -10139,7 +10132,6 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 [[package]]
 name = "sum_tree"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0#bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0"
 dependencies = [
  "arrayvec",
  "log",
@@ -11689,7 +11681,6 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 [[package]]
 name = "util"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0#bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0"
 dependencies = [
  "anyhow",
  "async-fs 2.2.0",
@@ -11725,7 +11716,6 @@ dependencies = [
 [[package]]
 name = "util_macros"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0#bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0"
 dependencies = [
  "perf",
  "quote",
