@@ -200,9 +200,9 @@ impl ApplicationHandler for WinitGpuiApp {
                                                 shared_texture.GetDesc(&mut desc);
 
                                                 // Create persistent texture (not shared, just ours)
-                                                desc.MiscFlags = D3D11_RESOURCE_MISC_FLAG(0).0; // Remove shared flag
+                                                desc.MiscFlags = D3D11_RESOURCE_MISC_FLAG(0).0 as u32; // Remove shared flag
                                                 desc.Usage = D3D11_USAGE_DEFAULT;
-                                                desc.BindFlags = D3D11_BIND_SHADER_RESOURCE.0;
+                                                desc.BindFlags = D3D11_BIND_SHADER_RESOURCE.0 as u32;
 
                                                 let mut persistent_texture: Option<ID3D11Texture2D> = None;
                                                 let create_result = device.CreateTexture2D(&desc, None, Some(&mut persistent_texture));
