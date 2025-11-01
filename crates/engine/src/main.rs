@@ -63,7 +63,7 @@ impl ApplicationHandler for WinitGpuiApp {
 
         let bounds = Bounds {
             origin: point(px(0.0), px(0.0)),
-            size: size(px(size.width as f32), px(size.height as f32)),
+            size: gpui::size(px(size.width as f32), px(size.height as f32)),
         };
 
         let external_handle = ExternalWindowHandle {
@@ -74,72 +74,103 @@ impl ApplicationHandler for WinitGpuiApp {
 
         println!("✅ Initializing GPUI...");
 
-        let app = Application::new();
-
-        app.run(move |cx| {
-            println!("✅ Opening GPUI window on external surface...");
-
-            // Try to open window with external handle
-            match cx.open_window_external(external_handle.clone(), |window, cx| {
-                println!("✅ GPUI window created successfully on external surface!");
-                println!("\n🎨 RENDERING STARTED!");
-                println!("You should see:");
-                println!("  • Yellow Winit window background");
-                println!("  • Small blue square with GPUI");
-                println!("  • Text overlay from GPUI\n");
-
-                cx.new(|cx| DemoView::new(window, cx))
-            }) {
-                Ok(window_handle) => {
-                    println!("✅ Successfully opened GPUI window");
-                }
-                Err(e) => {
-                    println!("❌ Failed to open GPUI window: {}", e);
-                    println!("Falling back to regular GPUI window...");
-
-                    let window_options = WindowOptions {
-                        window_bounds: Some(WindowBounds::Windowed(bounds)),
-                        titlebar: None,
-                        window_min_size: Some(Size {
-                            width: px(400.),
-                            height: px(300.),
-                        }),
-                        kind: WindowKind::Normal,
-                        is_resizable: true,
-                        window_background: WindowBackgroundAppearance::Transparent,
-                        ..Default::default()
-                    };
-
-                    cx.open_window(window_options, |window, cx| {
-                        cx.new(|cx| DemoView::new(window, cx))
-                    }).expect("Failed to open fallback window");
-                }
-            }
-        });
-
         self.winit_window = Some(winit_window);
+
+        let app = Application::new();
         self.gpui_app = Some(app);
     }
 
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        _window_id: WindowId,
+        window_id: WindowId,
         event: WindowEvent,
     ) {
-        match event {
-            WindowEvent::CloseRequested => {
-                println!("\n👋 Closing application...");
-                event_loop.exit();
+        // Only handle events for our winit window
+        if let Some(winit_window) = &self.winit_window {
+            if winit_window.id() != window_id {
+                return;
             }
-            WindowEvent::RedrawRequested => {
-                if let Some(window) = &self.winit_window {
-                    // Here we would normally render the yellow background with wgpu/DirectX
-                    // For now, winit will handle the window background
-                    window.request_redraw();
+
+            match event {
+                WindowEvent::CloseRequested => {
+                    println!("\n👋 Closing application...");
+                    event_loop.exit();
                 }
+                WindowEvent::RedrawRequested => {
+                    // Request redraw for next frame
+                    winit_window.request_redraw();
+                }
+                _ => {}
             }
-            _ => {}
+        }
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        // Start GPUI after the winit window is created and event loop is running
+        if self.winit_window.is_some() && self.gpui_app.is_some() {
+            let app = self.gpui_app.take().unwrap();
+            let winit_window = self.winit_window.as_ref().unwrap().clone();
+
+            let raw_handle = winit_window
+                .window_handle()
+                .expect("Failed to get window handle")
+                .as_raw();
+
+            let scale_factor = winit_window.scale_factor() as f32;
+            let size = winit_window.inner_size();
+
+            let bounds = Bounds {
+                origin: point(px(0.0), px(0.0)),
+                size: gpui::size(px(size.width as f32), px(size.height as f32)),
+            };
+
+            let external_handle = ExternalWindowHandle {
+                raw_handle,
+                bounds,
+                scale_factor,
+            };
+
+            println!("✅ Opening GPUI window on external surface...");
+
+            app.run(move |cx| {
+                // Try to open window with external handle
+                match cx.open_window_external(external_handle.clone(), |window, cx| {
+                    println!("✅ GPUI window created successfully on external surface!");
+                    println!("\n🎨 RENDERING STARTED!");
+                    println!("You should see:");
+                    println!("  • Yellow Winit window background");
+                    println!("  • Small blue square with GPUI");
+                    println!("  • Text overlay from GPUI\n");
+
+                    cx.new(|cx| DemoView::new(window, cx))
+                }) {
+                    Ok(_window_handle) => {
+                        println!("✅ Successfully opened GPUI window");
+                    }
+                    Err(e) => {
+                        println!("❌ Failed to open GPUI window: {}", e);
+                        println!("Falling back to regular GPUI window...");
+
+                        let window_options = WindowOptions {
+                            window_bounds: Some(WindowBounds::Windowed(bounds)),
+                            titlebar: None,
+                            window_min_size: Some(Size {
+                                width: px(400.),
+                                height: px(300.),
+                            }),
+                            kind: WindowKind::Normal,
+                            is_resizable: true,
+                            window_background: WindowBackgroundAppearance::Transparent,
+                            ..Default::default()
+                        };
+
+                        cx.open_window(window_options, |window, cx| {
+                            cx.new(|cx| DemoView::new(window, cx))
+                        }).expect("Failed to open fallback window");
+                    }
+                }
+            });
         }
     }
 }
@@ -180,7 +211,7 @@ impl Render for DemoView {
                     .child(
                         div()
                             .text_2xl()
-                            .font_bold()
+                            .font_weight(gpui::FontWeight::BOLD)
                             .text_color(rgb(0xFFFFFF))
                             .child("GPUI"),
                     ),
