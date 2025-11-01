@@ -290,13 +290,16 @@ impl ApplicationHandler for WinitGpuiApp {
                                 context.PSSetShaderResources(0, Some(&[Some(srv)]));
                                 context.PSSetSamplers(0, Some(&[Some(sampler_state.clone())]));
 
-                                // Set viewport
+                                // Set viewport - must use physical pixels
                                 let size = winit_window.inner_size();
+                                let scale_factor = winit_window.scale_factor();
+                                let physical_width = (size.width as f64 * scale_factor) as f32;
+                                let physical_height = (size.height as f64 * scale_factor) as f32;
                                 let viewport = D3D11_VIEWPORT {
                                     TopLeftX: 0.0,
                                     TopLeftY: 0.0,
-                                    Width: size.width as f32,
-                                    Height: size.height as f32,
+                                    Width: physical_width,
+                                    Height: physical_height,
                                     MinDepth: 0.0,
                                     MaxDepth: 1.0,
                                 };
@@ -418,9 +421,15 @@ impl ApplicationHandler for WinitGpuiApp {
                     let adapter = dxgi_device.GetAdapter().unwrap();
                     let dxgi_factory: IDXGIFactory2 = adapter.GetParent().unwrap();
 
+                    // Swap chain must use physical pixels (logical size * scale factor)
+                    let physical_width = (size.width as f64 * winit_window.scale_factor()) as u32;
+                    let physical_height = (size.height as f64 * winit_window.scale_factor()) as u32;
+                    println!("🎯 Creating swap chain: logical {}x{}, scale {}, physical {}x{}",
+                        size.width, size.height, winit_window.scale_factor(), physical_width, physical_height);
+
                     let swap_chain_desc = DXGI_SWAP_CHAIN_DESC1 {
-                        Width: size.width,
-                        Height: size.height,
+                        Width: physical_width,
+                        Height: physical_height,
                         Format: DXGI_FORMAT_B8G8R8A8_UNORM,
                         Stereo: FALSE,
                         SampleDesc: DXGI_SAMPLE_DESC {
