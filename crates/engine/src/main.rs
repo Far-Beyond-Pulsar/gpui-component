@@ -28,7 +28,8 @@ fn main() {
     println!("This demonstrates GPUI rendering to shared texture + winit GPU composition\n");
 
     let event_loop = EventLoop::new().expect("Failed to create event loop");
-    event_loop.set_control_flow(ControlFlow::Poll);
+    // Use Wait mode for event-driven rendering (only render when needed)
+    event_loop.set_control_flow(ControlFlow::Wait);
 
     let mut app = WinitGpuiApp::new();
     event_loop.run_app(&mut app).expect("Failed to run event loop");
@@ -39,6 +40,7 @@ struct WinitGpuiApp {
     gpui_app: Option<Application>,
     gpui_window: Option<WindowHandle<DemoView>>,
     gpui_window_initialized: bool,
+    needs_render: bool, // Flag to track if GPUI needs rendering
     #[cfg(target_os = "windows")]
     d3d_device: Option<ID3D11Device>,
     #[cfg(target_os = "windows")]
@@ -74,6 +76,7 @@ impl WinitGpuiApp {
             gpui_app: None,
             gpui_window: None,
             gpui_window_initialized: false,
+            needs_render: true, // Start with true to render initial frame
             #[cfg(target_os = "windows")]
             d3d_device: None,
             #[cfg(target_os = "windows")]
@@ -152,8 +155,8 @@ impl ApplicationHandler for WinitGpuiApp {
                 WindowEvent::RedrawRequested => {
                     #[cfg(target_os = "windows")]
                     unsafe {
-                        // Manually trigger GPUI rendering each frame
-                        if self.gpui_app.is_some() {
+                        // Only render if GPUI requested it or we need to render
+                        if self.needs_render && self.gpui_app.is_some() {
                             let gpui_app = self.gpui_app.as_mut().unwrap();
 
                             // First refresh windows (marks windows as dirty)
@@ -165,6 +168,9 @@ impl ApplicationHandler for WinitGpuiApp {
                             let _ = gpui_app.update(|app| {
                                 app.draw_windows();
                             });
+
+                            // Reset the flag after rendering
+                            self.needs_render = false;
                         }
 
                         // Lazy initialization of shared texture on first render
@@ -307,7 +313,31 @@ impl ApplicationHandler for WinitGpuiApp {
                         }
                     }
 
-                    winit_window.request_redraw();
+                    // Don't continuously request redraws - only render when events occur or GPUI requests it
+                }
+                // Handle mouse events - request redraw for interactivity
+                WindowEvent::CursorMoved { .. } |
+                WindowEvent::MouseInput { .. } |
+                WindowEvent::MouseWheel { .. } => {
+                    self.needs_render = true;
+                    if let Some(window) = &self.winit_window {
+                        window.request_redraw();
+                    }
+                }
+                // Handle keyboard events - request redraw
+                WindowEvent::KeyboardInput { .. } |
+                WindowEvent::ModifiersChanged { .. } => {
+                    self.needs_render = true;
+                    if let Some(window) = &self.winit_window {
+                        window.request_redraw();
+                    }
+                }
+                // Handle window resize - request redraw
+                WindowEvent::Resized(_) => {
+                    self.needs_render = true;
+                    if let Some(window) = &self.winit_window {
+                        window.request_redraw();
+                    }
                 }
                 _ => {}
             }
