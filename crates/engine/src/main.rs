@@ -239,6 +239,7 @@ impl ApplicationHandler for WinitGpuiApp {
                         // Note: We don't present here - we'll present once after compositing GPUI on top
 
                         // GPU-side zero-copy composition: Winit renders green, then GPUI texture on top
+                        // CRITICAL: Only present frames when we have valid GPUI content to avoid flickering
                         if let (Some(device), Some(context), Some(shared_texture), Some(persistent_texture), Some(swap_chain), Some(render_target_view), Some(blend_state), Some(vertex_shader), Some(pixel_shader), Some(vertex_buffer), Some(input_layout), Some(sampler_state)) =
                             (&self.d3d_device, &self.d3d_context, &self.shared_texture, &self.persistent_gpui_texture, &self.swap_chain, &self.render_target_view, &self.blend_state, &self.vertex_shader, &self.pixel_shader, &self.vertex_buffer, &self.input_layout, &self.sampler_state) {
 
@@ -303,14 +304,23 @@ impl ApplicationHandler for WinitGpuiApp {
                                 };
                                 context.RSSetViewports(Some(&[viewport]));
 
-                                // Draw fullscreen quad with GPUI texture on top of yellow
+                                // Draw fullscreen quad with GPUI texture on top of green
                                 context.Draw(4, 0);
-                            } else {
-                                eprintln!("⚠️  SRV is None - cannot draw GPUI texture!");
-                            }
 
-                            // Present to screen
-                            let _ = swap_chain.Present(1, DXGI_PRESENT(0));
+                                // ONLY present when we successfully composited GPUI content
+                                // This prevents flickering of green-only frames
+                                let _ = swap_chain.Present(1, DXGI_PRESENT(0));
+                            } else {
+                                eprintln!("⚠️  SRV is None - cannot draw GPUI texture, skipping present to avoid flicker!");
+                            }
+                        } else {
+                            // Don't present if we don't have GPUI texture ready yet
+                            // This shows the last valid frame instead of flickering
+                            static mut SKIP_COUNT: u32 = 0;
+                            SKIP_COUNT += 1;
+                            if SKIP_COUNT <= 3 || SKIP_COUNT % 60 == 0 {
+                                eprintln!("⏭️  Skipping frame {} - waiting for GPUI texture to be ready", SKIP_COUNT);
+                            }
                         }
                     }
 
@@ -362,6 +372,13 @@ impl ApplicationHandler for WinitGpuiApp {
                                         eprintln!("❌ Failed to resize GPUI renderer: {:?}", e);
                                     } else {
                                         println!("✅ Resized GPUI renderer to {:?}", physical_size);
+
+                                        // CRITICAL: GPUI recreates its texture when resizing, so we need to re-obtain the shared handle
+                                        // Mark for re-initialization on next frame
+                                        self.shared_texture_initialized = false;
+                                        self.shared_texture = None;
+                                        self.persistent_gpui_texture = None;
+                                        println!("🔄 Marked shared texture for re-initialization after GPUI resize");
                                     }
 
                                     // Update logical size (for UI layout)
