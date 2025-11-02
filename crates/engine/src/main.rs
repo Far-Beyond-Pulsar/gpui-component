@@ -291,15 +291,13 @@ impl ApplicationHandler for WinitGpuiApp {
                                 context.PSSetSamplers(0, Some(&[Some(sampler_state.clone())]));
 
                                 // Set viewport - must use physical pixels
+                                // inner_size() already returns physical pixels (logical × scale factor)
                                 let size = winit_window.inner_size();
-                                let scale_factor = winit_window.scale_factor();
-                                let physical_width = (size.width as f64 * scale_factor) as f32;
-                                let physical_height = (size.height as f64 * scale_factor) as f32;
                                 let viewport = D3D11_VIEWPORT {
                                     TopLeftX: 0.0,
                                     TopLeftY: 0.0,
-                                    Width: physical_width,
-                                    Height: physical_height,
+                                    Width: size.width as f32,
+                                    Height: size.height as f32,
                                     MinDepth: 0.0,
                                     MaxDepth: 1.0,
                                 };
@@ -335,8 +333,91 @@ impl ApplicationHandler for WinitGpuiApp {
                         window.request_redraw();
                     }
                 }
-                // Handle window resize - request redraw
-                WindowEvent::Resized(_) => {
+                // Handle window resize - resize GPUI renderer and request redraw
+                WindowEvent::Resized(new_size) => {
+                    // Tell GPUI to resize its internal rendering buffers AND update logical size
+                    if let (Some(gpui_app), Some(gpui_window), Some(winit_window)) =
+                        (&mut self.gpui_app, &self.gpui_window, &self.winit_window) {
+
+                        let scale_factor = winit_window.scale_factor() as f32;
+
+                        // Physical pixels for renderer (what GPU renders at)
+                        let physical_size = gpui::size(
+                            gpui::DevicePixels(new_size.width as i32),
+                            gpui::DevicePixels(new_size.height as i32),
+                        );
+
+                        // Logical pixels for GPUI layout (physical / scale)
+                        let logical_size = gpui::size(
+                            gpui::px(new_size.width as f32 / scale_factor),
+                            gpui::px(new_size.height as f32 / scale_factor),
+                        );
+
+                        let _ = gpui_app.update(|app| {
+                            gpui_window.update(app, |_view, window, _cx| {
+                                #[cfg(target_os = "windows")]
+                                {
+                                    // Resize renderer (GPU buffers)
+                                    if let Err(e) = window.resize_renderer(physical_size) {
+                                        eprintln!("❌ Failed to resize GPUI renderer: {:?}", e);
+                                    } else {
+                                        println!("✅ Resized GPUI renderer to {:?}", physical_size);
+                                    }
+
+                                    // Update logical size (for UI layout)
+                                    window.update_logical_size(logical_size);
+                                    println!("✅ Updated GPUI logical size to {:?} (scale {})", logical_size, scale_factor);
+
+                                    // CRITICAL: Mark window as dirty to trigger UI re-layout
+                                    // This is what GPUI's internal windows do in bounds_changed()
+                                    window.refresh();
+                                    println!("🎨 Marked window for refresh/re-layout");
+                                }
+                            });
+                        });
+                    }
+
+                    // CRITICAL: Resize the swap chain to match the new window size
+                    // This is why the green background was stuck at the original size!
+                    if let Some(swap_chain) = &self.swap_chain {
+                        unsafe {
+                            // Release the render target view before resizing
+                            self.render_target_view = None;
+
+                            // Resize swap chain buffers
+                            let resize_result = swap_chain.ResizeBuffers(
+                                0,  // Keep current buffer count
+                                new_size.width,
+                                new_size.height,
+                                DXGI_FORMAT_UNKNOWN,  // Keep current format
+                                DXGI_SWAP_CHAIN_FLAG(0),  // No flags
+                            );
+
+                            if let Err(e) = resize_result {
+                                eprintln!("❌ Failed to resize swap chain: {:?}", e);
+                            } else {
+                                println!("✅ Resized swap chain to {}x{}", new_size.width, new_size.height);
+
+                                // Recreate render target view
+                                if let Some(device) = &self.d3d_device {
+                                    let back_buffer: Option<ID3D11Texture2D> = swap_chain.GetBuffer(0).ok();
+                                    if let Some(back_buffer) = back_buffer {
+                                        let mut rtv: Option<ID3D11RenderTargetView> = None;
+                                        let result = device.CreateRenderTargetView(&back_buffer, None, Some(&mut rtv));
+                                        if result.is_ok() {
+                                            self.render_target_view = rtv;
+                                            println!("✅ Recreated render target view");
+                                        } else {
+                                            eprintln!("❌ Failed to create render target view: {:?}", result);
+                                        }
+                                    } else {
+                                        eprintln!("❌ Failed to get back buffer after resize");
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     self.needs_render = true;
                     if let Some(window) = &self.winit_window {
                         window.request_redraw();
@@ -354,10 +435,18 @@ impl ApplicationHandler for WinitGpuiApp {
             let scale_factor = winit_window.scale_factor() as f32;
             let size = winit_window.inner_size();
 
+            // GPUI bounds must be in LOGICAL pixels (physical / scale)
+            // inner_size() returns physical pixels
+            let logical_width = size.width as f32 / scale_factor;
+            let logical_height = size.height as f32 / scale_factor;
+
             let bounds = Bounds {
                 origin: point(px(0.0), px(0.0)),
-                size: gpui::size(px(size.width as f32), px(size.height as f32)),
+                size: gpui::size(px(logical_width), px(logical_height)),
             };
+
+            println!("🎯 Creating GPUI window: physical {}x{}, scale {}, logical {}x{}",
+                size.width, size.height, scale_factor, logical_width, logical_height);
 
             let gpui_raw_handle = winit_window
                 .window_handle()
@@ -421,11 +510,12 @@ impl ApplicationHandler for WinitGpuiApp {
                     let adapter = dxgi_device.GetAdapter().unwrap();
                     let dxgi_factory: IDXGIFactory2 = adapter.GetParent().unwrap();
 
-                    // Swap chain must use physical pixels (logical size * scale factor)
-                    let physical_width = (size.width as f64 * winit_window.scale_factor()) as u32;
-                    let physical_height = (size.height as f64 * winit_window.scale_factor()) as u32;
-                    println!("🎯 Creating swap chain: logical {}x{}, scale {}, physical {}x{}",
-                        size.width, size.height, winit_window.scale_factor(), physical_width, physical_height);
+                    // Swap chain must use physical pixels
+                    // inner_size() already returns physical pixels (logical × scale factor)
+                    let physical_width = size.width;
+                    let physical_height = size.height;
+                    println!("🎯 Creating swap chain: physical {}x{}, scale {}",
+                        physical_width, physical_height, winit_window.scale_factor());
 
                     let swap_chain_desc = DXGI_SWAP_CHAIN_DESC1 {
                         Width: physical_width,
