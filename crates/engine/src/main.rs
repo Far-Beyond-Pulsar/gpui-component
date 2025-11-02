@@ -1,10 +1,32 @@
+// Engine modules and imports
+use crate::settings::EngineSettings;
+use directories::ProjectDirs;
+use gpui::Action;
+use gpui::SharedString;
 use gpui::*;
+use gpui_component::scroll::ScrollbarShow;
+use gpui_component::Root;
+use gpui_component::TitleBar;
+use serde::Deserialize;
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+use ui::app::{PulsarApp, PulsarRoot, ToggleCommandPalette};
+use ui::entry_window::EntryWindow;
+use ui::loading_window::{LoadingWindow, LoadingComplete};
+use ui::project_selector::ProjectSelected;
+use ui::settings_window::SettingsWindow;
+
+// Winit imports
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Instant;
 use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
+use winit::event::{ElementState, MouseButton as WinitMouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window as WinitWindow, WindowId};
+use winit::keyboard::{PhysicalKey, KeyCode};
 
 #[cfg(target_os = "windows")]
 use windows::{
@@ -22,10 +44,184 @@ use windows::{
     },
 };
 
+// Engine modules
+mod assets;
+mod compiler;
+mod graph;
+mod recent_projects;
+pub mod settings;
+pub mod themes;
+mod ui;
+pub use assets::Assets;
+
+// Engine constants
+pub const ENGINE_NAME: &str = env!("CARGO_PKG_NAME");
+pub const ENGINE_LICENSE: &str = env!("CARGO_PKG_LICENSE");
+pub const ENGINE_AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
+pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const ENGINE_HOMEPAGE: &str = env!("CARGO_PKG_HOMEPAGE");
+pub const ENGINE_REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
+pub const ENGINE_DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
+pub const ENGINE_LICENSE_FILE: &str = env!("CARGO_PKG_LICENSE_FILE");
+
+// Engine actions
+#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
+#[action(namespace = story, no_json)]
+pub struct SelectScrollbarShow(ScrollbarShow);
+
+#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
+#[action(namespace = story, no_json)]
+pub struct SelectLocale(SharedString);
+
+#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
+#[action(namespace = story, no_json)]
+pub struct SelectFont(usize);
+
+#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
+#[action(namespace = story, no_json)]
+pub struct SelectRadius(usize);
+
+#[derive(Action, Clone, PartialEq, Eq)]
+#[action(namespace = pulsar, no_json)]
+pub struct OpenSettings;
+
+
+// Helper function to convert Winit MouseButton to GPUI MouseButton
+fn convert_mouse_button(button: WinitMouseButton) -> MouseButton {
+    match button {
+        WinitMouseButton::Left => MouseButton::Left,
+        WinitMouseButton::Right => MouseButton::Right,
+        WinitMouseButton::Middle => MouseButton::Middle,
+        WinitMouseButton::Back => MouseButton::Navigate(NavigationDirection::Back),
+        WinitMouseButton::Forward => MouseButton::Navigate(NavigationDirection::Forward),
+        WinitMouseButton::Other(_) => MouseButton::Left, // Fallback to left for unknown buttons
+    }
+}
+
+// Helper to convert winit modifiers to GPUI modifiers
+fn convert_modifiers(winit_mods: &winit::keyboard::ModifiersState) -> Modifiers {
+    Modifiers {
+        control: winit_mods.control_key(),
+        alt: winit_mods.alt_key(),
+        shift: winit_mods.shift_key(),
+        platform: winit_mods.super_key(), // Windows key on Windows, Command on Mac
+        function: false, // Winit doesn't track function key separately
+    }
+}
+
+// Simple click state tracking for double-click detection
+#[derive(Debug, Clone)]
+struct SimpleClickState {
+    last_button: MouseButton,
+    last_click_time: Instant,
+    last_click_position: Point<Pixels>,
+    current_count: usize,
+    double_click_distance: f32, // pixels
+    double_click_duration: std::time::Duration,
+}
+
+impl SimpleClickState {
+    fn new() -> Self {
+        Self {
+            last_button: MouseButton::Left,
+            last_click_time: Instant::now(),
+            last_click_position: point(px(0.0), px(0.0)),
+            current_count: 0,
+            double_click_distance: 4.0, // Standard double-click tolerance
+            double_click_duration: std::time::Duration::from_millis(500),
+        }
+    }
+
+    fn update(&mut self, button: MouseButton, position: Point<Pixels>) -> usize {
+        let now = Instant::now();
+        // Calculate distance using pixel operations
+        let dx = (position.x - self.last_click_position.x).abs();
+        let dy = (position.y - self.last_click_position.y).abs();
+        // Simple Manhattan distance to avoid accessing private fields
+        let distance = dx.max(dy);
+        
+        if button == self.last_button 
+            && now.duration_since(self.last_click_time) < self.double_click_duration
+            && distance < px(self.double_click_distance) {
+            self.current_count += 1;
+        } else {
+            self.current_count = 1;
+        }
+        
+        self.last_button = button;
+        self.last_click_time = now;
+        self.last_click_position = position;
+        self.current_count
+    }
+}
 
 fn main() {
-    println!("🚀 Starting Winit + GPUI Zero-Copy Composition Demo");
-    println!("This demonstrates GPUI rendering to shared texture + winit GPU composition\n");
+    println!("{}", ENGINE_NAME);
+    println!("Version: {}", ENGINE_VERSION);
+    println!("Authors: {}", ENGINE_AUTHORS);
+    println!("Description: {}", ENGINE_DESCRIPTION);
+    println!("🚀 Starting Pulsar Engine with Winit + GPUI Zero-Copy Composition\n");
+
+    // Determine app data directory
+    let proj_dirs = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
+        .expect("Could not determine app data directory");
+    let appdata_dir = proj_dirs.data_dir();
+    let themes_dir = appdata_dir.join("themes");
+    let config_dir = appdata_dir.join("configs");
+    let config_file = config_dir.join("engine.toml");
+
+    println!("App data directory: {:?}", appdata_dir);
+    println!("Themes directory: {:?}", themes_dir);
+    println!("Config directory: {:?}", config_dir);
+    println!("Config file: {:?}", config_file);
+
+    // Extract bundled themes if not present
+    if !themes_dir.exists() {
+        if let Err(e) = fs::create_dir_all(&themes_dir) {
+            eprintln!("Failed to create themes directory: {e}");
+        } else {
+            // Copy all themes from project themes/ to appdata_dir/themes/
+            let project_themes_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .unwrap()
+                .join("themes");
+            if let Ok(entries) = fs::read_dir(&project_themes_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_file() {
+                        if let Some(name) = path.file_name() {
+                            let dest = themes_dir.join(name);
+                            let _ = fs::copy(&path, &dest);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Create default config if not present
+    if !config_file.exists() {
+        if let Err(e) = fs::create_dir_all(&config_dir) {
+            eprintln!("Failed to create config directory: {e}");
+        }
+        let default_settings = EngineSettings::default();
+        default_settings.save(&config_file);
+    }
+
+    // Load settings
+    println!("Loading engine settings from {:?}", config_file);
+    let _engine_settings = EngineSettings::load(&config_file);
+
+    // Initialize Tokio runtime for engine backend
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(8)
+        .thread_name("PulsarEngineRuntime")
+        .enable_all()
+        .build()
+        .unwrap();
+
+    // Init the Game engine backend (subsystems, etc)
+    rt.block_on(engine_backend::EngineBackend::init());
 
     let event_loop = EventLoop::new().expect("Failed to create event loop");
     // Use Wait mode for event-driven rendering (only render when needed)
@@ -38,9 +234,16 @@ fn main() {
 struct WinitGpuiApp {
     winit_window: Option<Arc<WinitWindow>>,
     gpui_app: Option<Application>,
-    gpui_window: Option<WindowHandle<DemoView>>,
+    gpui_window: Option<WindowHandle<Root>>,
     gpui_window_initialized: bool,
     needs_render: bool, // Flag to track if GPUI needs rendering
+    
+    // State tracking for proper event forwarding to GPUI
+    last_cursor_position: Point<Pixels>,
+    current_modifiers: Modifiers,
+    pressed_mouse_buttons: HashSet<MouseButton>,
+    click_state: SimpleClickState,
+    
     #[cfg(target_os = "windows")]
     d3d_device: Option<ID3D11Device>,
     #[cfg(target_os = "windows")]
@@ -79,6 +282,10 @@ impl WinitGpuiApp {
             gpui_window: None,
             gpui_window_initialized: false,
             needs_render: true, // Start with true to render initial frame
+            last_cursor_position: point(px(0.0), px(0.0)),
+            current_modifiers: Modifiers::default(),
+            pressed_mouse_buttons: HashSet::new(),
+            click_state: SimpleClickState::new(),
             #[cfg(target_os = "windows")]
             d3d_device: None,
             #[cfg(target_os = "windows")]
@@ -133,7 +340,7 @@ impl ApplicationHandler for WinitGpuiApp {
         println!("✅ Winit window created");
         println!("✅ Initializing GPUI...");
 
-        let app = Application::new();
+        let app = Application::new().with_assets(Assets);
 
         self.winit_window = Some(winit_window);
         self.gpui_app = Some(app);
@@ -336,18 +543,70 @@ impl ApplicationHandler for WinitGpuiApp {
 
                     // Don't continuously request redraws - only render when events occur or GPUI requests it
                 }
-                // Handle mouse events - request redraw for interactivity
-                WindowEvent::CursorMoved { .. } |
-                WindowEvent::MouseInput { .. } |
-                WindowEvent::MouseWheel { .. } => {
+                // Handle keyboard events - request redraw
+                WindowEvent::KeyboardInput { event, .. } => {
+                    // Forward keyboard events to GPUI
+                    if let (Some(gpui_window), Some(gpui_app)) = (&self.gpui_window, &mut self.gpui_app) {
+                        // Store event and create keystroke before borrowing
+                        let current_modifiers = self.current_modifiers;
+                        
+                        // Get the key string
+                        let keystroke_opt = match &event.physical_key {
+                            PhysicalKey::Code(code) => {
+                                if let Some(key) = Self::keycode_to_string_static(*code) {
+                                    let key_char = match &event.text {
+                                        Some(text) if !text.is_empty() => Some(text.chars().next().map(|c| c.to_string()).unwrap_or_default()),
+                                        _ => None,
+                                    };
+                                    
+                                    Some(Keystroke {
+                                        modifiers: current_modifiers,
+                                        key,
+                                        key_char,
+                                    })
+                                } else {
+                                    None
+                                }
+                            }
+                            PhysicalKey::Unidentified(_) => None,
+                        };
+                        
+                        if let Some(keystroke) = keystroke_opt {
+                            let gpui_event = match event.state {
+                                ElementState::Pressed => {
+                                    PlatformInput::KeyDown(KeyDownEvent {
+                                        keystroke,
+                                        is_held: event.repeat,
+                                    })
+                                }
+                                ElementState::Released => {
+                                    PlatformInput::KeyUp(KeyUpEvent { keystroke })
+                                }
+                            };
+
+                            let _ = gpui_app.update(|cx| gpui_window.inject_input_event(cx, gpui_event));
+                        }
+                    }
+                    
                     self.needs_render = true;
                     if let Some(window) = &self.winit_window {
                         window.request_redraw();
                     }
                 }
-                // Handle keyboard events - request redraw
-                WindowEvent::KeyboardInput { .. } |
-                WindowEvent::ModifiersChanged { .. } => {
+                WindowEvent::ModifiersChanged(new_modifiers) => {
+                    // Update tracked modifiers
+                    self.current_modifiers = convert_modifiers(&new_modifiers.state());
+                    
+                    // Forward modifier changes to GPUI
+                    if let (Some(gpui_window), Some(gpui_app)) = (&self.gpui_window, &mut self.gpui_app) {
+                        let gpui_event = PlatformInput::ModifiersChanged(ModifiersChangedEvent {
+                            modifiers: self.current_modifiers,
+                            capslock: Capslock { on: false }, // TODO: Track capslock state
+                        });
+
+                        let _ = gpui_app.update(|cx| gpui_window.inject_input_event(cx, gpui_event));
+                    }
+                    
                     self.needs_render = true;
                     if let Some(window) = &self.winit_window {
                         window.request_redraw();
@@ -451,6 +710,143 @@ impl ApplicationHandler for WinitGpuiApp {
                         window.request_redraw();
                     }
                 }
+                WindowEvent::CursorMoved { position, .. } => {
+                    // Update cursor position tracking
+                    if let Some(winit_window) = &self.winit_window {
+                        let scale_factor = winit_window.scale_factor() as f32;
+                        let logical_x = position.x as f32 / scale_factor;
+                        let logical_y = position.y as f32 / scale_factor;
+                        self.last_cursor_position = point(px(logical_x), px(logical_y));
+                        
+                        // Debug output
+                        eprintln!("🖱️ CursorMoved: physical ({}, {}), logical ({}, {})", 
+                            position.x, position.y, logical_x, logical_y);
+                    }
+                    
+                    // Forward mouse move events to GPUI using inject_input_event
+                    if let (Some(gpui_window), Some(gpui_app)) = (&self.gpui_window, &mut self.gpui_app) {
+                        let winit_window = self.winit_window.as_ref().unwrap();
+                        let scale_factor = winit_window.scale_factor() as f32;
+
+                        // Convert physical position to logical position
+                        let logical_x = position.x as f32 / scale_factor;
+                        let logical_y = position.y as f32 / scale_factor;
+
+                        // Determine which button is pressed (if any)
+                        let pressed_button = if self.pressed_mouse_buttons.contains(&MouseButton::Left) {
+                            Some(MouseButton::Left)
+                        } else if self.pressed_mouse_buttons.contains(&MouseButton::Right) {
+                            Some(MouseButton::Right)
+                        } else if self.pressed_mouse_buttons.contains(&MouseButton::Middle) {
+                            Some(MouseButton::Middle)
+                        } else {
+                            None
+                        };
+
+                        let gpui_event = PlatformInput::MouseMove(MouseMoveEvent {
+                            position: point(px(logical_x), px(logical_y)),
+                            pressed_button,
+                            modifiers: self.current_modifiers,
+                        });
+
+                        eprintln!("📤 Injecting MouseMove event...");
+                        let result = gpui_app.update(|cx| gpui_window.inject_input_event(cx, gpui_event));
+                        eprintln!("📥 MouseMove result: {:?}", result);
+
+                        // Request redraw for cursor updates
+                        self.needs_render = true;
+                        winit_window.request_redraw();
+                    }
+                }
+                WindowEvent::MouseInput { state, button, .. } => {
+                    // Forward mouse button events to GPUI
+                    if let (Some(gpui_window), Some(gpui_app)) = (&self.gpui_window, &mut self.gpui_app) {
+                        let gpui_button = convert_mouse_button(button);
+                        let position = self.last_cursor_position;
+
+                        match state {
+                            ElementState::Pressed => {
+                                eprintln!("🖱️ MouseInput PRESSED: {:?} at {:?}", button, position);
+                                
+                                // Track pressed button
+                                self.pressed_mouse_buttons.insert(gpui_button);
+                                
+                                // Update click count
+                                let click_count = self.click_state.update(gpui_button, position);
+                                
+                                let gpui_event = PlatformInput::MouseDown(MouseDownEvent {
+                                    button: gpui_button,
+                                    position,
+                                    modifiers: self.current_modifiers,
+                                    click_count,
+                                    first_mouse: false,
+                                });
+
+                                eprintln!("📤 Injecting MouseDown event...");
+                                let result = gpui_app.update(|cx| gpui_window.inject_input_event(cx, gpui_event));
+                                eprintln!("📥 MouseDown result: {:?}", result);
+                            }
+                            ElementState::Released => {
+                                eprintln!("🖱️ MouseInput RELEASED: {:?}", button);
+                                
+                                // Remove pressed button
+                                self.pressed_mouse_buttons.remove(&gpui_button);
+                                
+                                let gpui_event = PlatformInput::MouseUp(MouseUpEvent {
+                                    button: gpui_button,
+                                    position,
+                                    modifiers: self.current_modifiers,
+                                    click_count: self.click_state.current_count,
+                                });
+
+                                eprintln!("📤 Injecting MouseUp event...");
+                                let result = gpui_app.update(|cx| gpui_window.inject_input_event(cx, gpui_event));
+                                eprintln!("📥 MouseUp result: {:?}", result);
+                            }
+                        }
+
+                        // Request redraw for click feedback
+                        self.needs_render = true;
+                        if let Some(window) = &self.winit_window {
+                            window.request_redraw();
+                        }
+                    }
+                }
+                WindowEvent::MouseWheel { delta, .. } => {
+                    // Forward mouse wheel events to GPUI
+                    if let (Some(gpui_window), Some(gpui_app)) = (&self.gpui_window, &mut self.gpui_app) {
+                        let winit_window = self.winit_window.as_ref().unwrap();
+
+                        // Convert delta
+                        let scroll_delta = match delta {
+                            winit::event::MouseScrollDelta::LineDelta(x, y) => {
+                                ScrollDelta::Lines(point(x, y))
+                            }
+                            winit::event::MouseScrollDelta::PixelDelta(pos) => {
+                                let scale_factor = winit_window.scale_factor() as f32;
+                                ScrollDelta::Pixels(point(
+                                    px(pos.x as f32 / scale_factor),
+                                    px(pos.y as f32 / scale_factor),
+                                ))
+                            }
+                        };
+
+                        let position = self.last_cursor_position;
+
+                        let gpui_event = PlatformInput::ScrollWheel(ScrollWheelEvent {
+                            position,
+                            delta: scroll_delta,
+                            modifiers: self.current_modifiers,
+                            touch_phase: TouchPhase::Moved,
+                        });
+
+                        let _ = gpui_app.update(|cx| gpui_window.inject_input_event(cx, gpui_event));
+
+                        // Request redraw for scroll updates
+                        self.needs_render = true;
+                        winit_window.request_redraw();
+                    }
+                }
                 _ => {}
             }
         }
@@ -490,10 +886,45 @@ impl ApplicationHandler for WinitGpuiApp {
 
             println!("✅ Opening GPUI window on external winit window...");
 
-            // Open GPUI window using external window API
+            // Initialize GPUI components (fonts, themes, keybindings)
             let app = self.gpui_app.as_mut().unwrap();
+
+            // Load custom fonts
+            app.update(|app| {
+                if let Some(font_data) = Assets::get("fonts/JetBrainsMono-Regular.ttf") {
+                    match app.text_system().add_fonts(vec![font_data.data]) {
+                        Ok(_) => println!("Successfully loaded JetBrains Mono font"),
+                        Err(e) => println!("Failed to load JetBrains Mono font: {:?}", e),
+                    }
+                } else {
+                    println!("Could not find JetBrains Mono font file");
+                }
+
+                // Initialize GPUI components
+                gpui_component::init(app);
+                crate::themes::init(app);
+                crate::ui::terminal::init(app);
+
+                // Setup keybindings
+                app.bind_keys([
+                    KeyBinding::new("ctrl-,", OpenSettings, None),
+                    KeyBinding::new("ctrl-space", ToggleCommandPalette, None),
+                ]);
+
+                app.on_action(|_: &OpenSettings, app_cx| {
+                    // TODO: Implement settings window opening for Winit
+                    println!("Settings window requested (not yet implemented for Winit)");
+                });
+
+                app.activate(true);
+            });
+
+            println!("✅ GPUI components initialized");
+
+            // Open GPUI window using external window API
             let gpui_window = app.open_window_external(external_handle.clone(), |window, cx| {
-                cx.new(|cx| DemoView::new(window, cx))
+                let entry_view = cx.new(|cx| EntryWindow::new(window, cx));
+                cx.new(|cx| Root::new(entry_view.clone().into(), window, cx))
             }).expect("Failed to open GPUI window");
 
             self.gpui_window = Some(gpui_window);
@@ -860,6 +1291,102 @@ float4 main(PS_INPUT input) : SV_TARGET {
             self.gpui_window_initialized = true;
             println!("✅ GPUI window opened! Ready for GPU composition!\n");
         }
+    }
+}
+
+impl WinitGpuiApp {
+    // Helper to convert KeyCode to string (static so it can be used without &self borrow)
+    fn keycode_to_string_static(code: KeyCode) -> Option<String> {
+        use KeyCode::*;
+        Some(match code {
+            // Letters
+            KeyA => "a",
+            KeyB => "b",
+            KeyC => "c",
+            KeyD => "d",
+            KeyE => "e",
+            KeyF => "f",
+            KeyG => "g",
+            KeyH => "h",
+            KeyI => "i",
+            KeyJ => "j",
+            KeyK => "k",
+            KeyL => "l",
+            KeyM => "m",
+            KeyN => "n",
+            KeyO => "o",
+            KeyP => "p",
+            KeyQ => "q",
+            KeyR => "r",
+            KeyS => "s",
+            KeyT => "t",
+            KeyU => "u",
+            KeyV => "v",
+            KeyW => "w",
+            KeyX => "x",
+            KeyY => "y",
+            KeyZ => "z",
+            
+            // Numbers
+            Digit0 => "0",
+            Digit1 => "1",
+            Digit2 => "2",
+            Digit3 => "3",
+            Digit4 => "4",
+            Digit5 => "5",
+            Digit6 => "6",
+            Digit7 => "7",
+            Digit8 => "8",
+            Digit9 => "9",
+            
+            // Special keys
+            Space => "space",
+            Enter => "enter",
+            Tab => "tab",
+            Backspace => "backspace",
+            Escape => "escape",
+            Delete => "delete",
+            Insert => "insert",
+            Home => "home",
+            End => "end",
+            PageUp => "pageup",
+            PageDown => "pagedown",
+            
+            // Arrow keys
+            ArrowUp => "up",
+            ArrowDown => "down",
+            ArrowLeft => "left",
+            ArrowRight => "right",
+            
+            // Function keys
+            F1 => "f1",
+            F2 => "f2",
+            F3 => "f3",
+            F4 => "f4",
+            F5 => "f5",
+            F6 => "f6",
+            F7 => "f7",
+            F8 => "f8",
+            F9 => "f9",
+            F10 => "f10",
+            F11 => "f11",
+            F12 => "f12",
+            
+            // Punctuation and symbols
+            Minus => "-",
+            Equal => "=",
+            BracketLeft => "[",
+            BracketRight => "]",
+            Backslash => "\\",
+            Semicolon => ";",
+            Quote => "'",
+            Comma => ",",
+            Period => ".",
+            Slash => "/",
+            Backquote => "`",
+            
+            _ => return None,
+        }.to_string())
     }
 }
 
