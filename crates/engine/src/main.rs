@@ -67,6 +67,8 @@ struct WinitGpuiApp {
     sampler_state: Option<ID3D11SamplerState>,
     #[cfg(target_os = "windows")]
     persistent_gpui_texture: Option<ID3D11Texture2D>, // Our copy of GPUI's texture that persists
+    #[cfg(target_os = "windows")]
+    persistent_gpui_srv: Option<ID3D11ShaderResourceView>, // Cached SRV for persistent texture (no per-frame alloc)
 }
 
 impl WinitGpuiApp {
@@ -103,6 +105,8 @@ impl WinitGpuiApp {
             sampler_state: None,
             #[cfg(target_os = "windows")]
             persistent_gpui_texture: None,
+            #[cfg(target_os = "windows")]
+            persistent_gpui_srv: None,
         }
     }
 }
@@ -214,6 +218,20 @@ impl ApplicationHandler for WinitGpuiApp {
                                                 let create_result = device.CreateTexture2D(&desc, None, Some(&mut persistent_texture));
 
                                                 if create_result.is_ok() && persistent_texture.is_some() {
+                                                    let tex = persistent_texture.as_ref().unwrap();
+
+                                                    // CRITICAL: Create SRV once here, not per-frame
+                                                    // This prevents memory leaks from allocating SRV every frame
+                                                    let mut srv: Option<ID3D11ShaderResourceView> = None;
+                                                    let srv_result = device.CreateShaderResourceView(tex, None, Some(&mut srv));
+
+                                                    if srv_result.is_ok() && srv.is_some() {
+                                                        self.persistent_gpui_srv = srv;
+                                                        println!("✅ Created cached SRV for persistent texture (no per-frame alloc)");
+                                                    } else {
+                                                        eprintln!("❌ Failed to create SRV: {:?}", srv_result);
+                                                    }
+
                                                     self.persistent_gpui_texture = persistent_texture;
                                                     println!("✅ Created persistent GPUI texture buffer!");
                                                 } else {
@@ -240,8 +258,8 @@ impl ApplicationHandler for WinitGpuiApp {
 
                         // GPU-side zero-copy composition: Winit renders green, then GPUI texture on top
                         // CRITICAL: Only present frames when we have valid GPUI content to avoid flickering
-                        if let (Some(device), Some(context), Some(shared_texture), Some(persistent_texture), Some(swap_chain), Some(render_target_view), Some(blend_state), Some(vertex_shader), Some(pixel_shader), Some(vertex_buffer), Some(input_layout), Some(sampler_state)) =
-                            (&self.d3d_device, &self.d3d_context, &self.shared_texture, &self.persistent_gpui_texture, &self.swap_chain, &self.render_target_view, &self.blend_state, &self.vertex_shader, &self.pixel_shader, &self.vertex_buffer, &self.input_layout, &self.sampler_state) {
+                        if let (Some(context), Some(shared_texture), Some(persistent_texture), Some(srv), Some(swap_chain), Some(render_target_view), Some(blend_state), Some(vertex_shader), Some(pixel_shader), Some(vertex_buffer), Some(input_layout), Some(sampler_state)) =
+                            (&self.d3d_context, &self.shared_texture, &self.persistent_gpui_texture, &self.persistent_gpui_srv, &self.swap_chain, &self.render_target_view, &self.blend_state, &self.vertex_shader, &self.pixel_shader, &self.vertex_buffer, &self.input_layout, &self.sampler_state) {
 
                             // Copy from GPUI's shared texture to our persistent buffer
                             // This preserves the last rendered frame even if GPUI doesn't re-render
@@ -258,14 +276,8 @@ impl ApplicationHandler for WinitGpuiApp {
                             let blend_factor = [0.0f32, 0.0, 0.0, 0.0];
                             context.OMSetBlendState(Some(blend_state), Some(&blend_factor), 0xffffffff);
 
-                            // Create SRV for our persistent GPUI texture (retained mode UI)
-                            let mut srv: Option<ID3D11ShaderResourceView> = None;
-                            let srv_result = device.CreateShaderResourceView(persistent_texture, None, Some(&mut srv));
-                            if srv_result.is_err() {
-                                eprintln!("❌ Failed to create SRV for GPUI texture: {:?}", srv_result);
-                            }
-
-                            if let Some(srv) = srv {
+                            // Use cached SRV (no per-frame allocation!)
+                            {
                                 static mut FRAME_COUNT: u32 = 0;
                                 FRAME_COUNT += 1;
                                 if FRAME_COUNT % 60 == 1 {
@@ -288,7 +300,7 @@ impl ApplicationHandler for WinitGpuiApp {
                                 context.IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 
                                 // Set GPUI texture and sampler
-                                context.PSSetShaderResources(0, Some(&[Some(srv)]));
+                                context.PSSetShaderResources(0, Some(&[Some(srv.clone())]));
                                 context.PSSetSamplers(0, Some(&[Some(sampler_state.clone())]));
 
                                 // Set viewport - must use physical pixels
@@ -310,8 +322,6 @@ impl ApplicationHandler for WinitGpuiApp {
                                 // ONLY present when we successfully composited GPUI content
                                 // This prevents flickering of green-only frames
                                 let _ = swap_chain.Present(1, DXGI_PRESENT(0));
-                            } else {
-                                eprintln!("⚠️  SRV is None - cannot draw GPUI texture, skipping present to avoid flicker!");
                             }
                         } else {
                             // Don't present if we don't have GPUI texture ready yet
@@ -378,6 +388,7 @@ impl ApplicationHandler for WinitGpuiApp {
                                         self.shared_texture_initialized = false;
                                         self.shared_texture = None;
                                         self.persistent_gpui_texture = None;
+                                        self.persistent_gpui_srv = None; // Also clear cached SRV
                                         println!("🔄 Marked shared texture for re-initialization after GPUI resize");
                                     }
 
