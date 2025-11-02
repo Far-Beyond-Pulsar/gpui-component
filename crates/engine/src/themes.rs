@@ -10,7 +10,6 @@ use gpui_component::{
     ActiveTheme, IconName, Sizable, Theme, ThemeRegistry,
 };
 use rust_embed::RustEmbed;
-use serde::{Deserialize, Serialize};
 
 #[derive(RustEmbed)]
 #[folder = "../../themes"]

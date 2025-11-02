@@ -4,9 +4,8 @@ use super::track_header;
 use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
-    button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme,
-    scroll::{Scrollbar, ScrollbarAxis, ScrollbarState}, PixelsExt, v_virtual_list, h_virtual_list, VirtualListScrollHandle};
-use std::path::PathBuf;
+    h_flex, v_flex, Icon, IconName, StyledExt, ActiveTheme,
+    scroll::{Scrollbar, ScrollbarAxis}, PixelsExt, h_virtual_list};
 use std::rc::Rc;
 use std::ops::Range;
 use crate::ui::panels::daw_editor::audio_types::SAMPLE_RATE;
@@ -514,7 +513,7 @@ fn render_drop_zone(
                 }
 
                 // Load audio file asynchronously to get real duration
-                cx.spawn(async move |this, mut cx| {
+                cx.spawn(async move |this, cx| {
                     eprintln!("🔄 Async task started for loading audio file");
 
                     // Get the audio service

@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 /// Re-export types from pulsar_std for compatibility
-pub use pulsar_std::{NodeMetadata, NodeParameter, NodeTypes, get_all_nodes, get_node_by_name};
+pub use pulsar_std::{NodeMetadata, NodeTypes};
 
 /// Extract all node metadata from the registry
 ///

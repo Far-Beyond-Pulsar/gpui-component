@@ -5,7 +5,7 @@ use alacritty_terminal::{
     event::{Event as AlacTermEvent, EventListener, Notify, WindowSize},
     event_loop::{EventLoop, Msg, Notifier},
     grid::Dimensions,
-    index::{Column, Line, Point as AlacPoint, Direction as AlacDirection},
+    index::{Column, Line, Point as AlacPoint},
     sync::FairMutex,
     term::{Config, TermMode, RenderableCursor, cell::Cell},
     tty,
@@ -478,7 +478,7 @@ impl Terminal {
         let events_rx = terminal.add_session(None, cx)?;
         
         // Subscribe to events (EXACT Zed pattern) - this is the key to real-time updates!
-        cx.spawn(async move |terminal, mut cx| {
+        cx.spawn(async move |terminal, cx| {
             use futures::StreamExt;
             use futures::FutureExt;
             let mut events_rx = events_rx;

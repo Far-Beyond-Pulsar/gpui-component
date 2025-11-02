@@ -7,10 +7,10 @@ pub use text_editor::{TextEditor, TextEditorEvent};
 pub use autocomplete_integration::*;
 
 use std::path::PathBuf;
-use gpui::{*, prelude::FluentBuilder};
+use gpui::*;
 use gpui_component::{
     dock::{Panel, PanelEvent},
-    resizable::{h_resizable, v_resizable, resizable_panel, ResizableState},
+    resizable::{h_resizable, resizable_panel, ResizableState},
     h_flex,
     ActiveTheme,
 };

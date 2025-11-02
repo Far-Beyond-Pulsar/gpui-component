@@ -6,7 +6,7 @@
 use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _, ButtonVariant},
-    h_flex, v_flex, ActiveTheme as _, IconName, StyledExt, Sizable as _,
+    h_flex, v_flex, ActiveTheme as _, IconName, Sizable as _,
     Selectable,
 };
 use std::path::PathBuf;

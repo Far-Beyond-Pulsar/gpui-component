@@ -1,7 +1,7 @@
 //! Complete terminal element with full interactivity
 //! Adapted from Zed's terminal_element.rs
 
-use super::terminal_core::{Terminal, TerminalBounds, TerminalContent};
+use super::terminal_core::{Terminal, TerminalBounds};
 use super::rendering::{layout_grid, BatchedTextRun, LayoutRect};
 use gpui::*;
 use gpui_component::ActiveTheme;

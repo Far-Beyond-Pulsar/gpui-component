@@ -2,7 +2,7 @@
 use super::audio_types::*;
 use anyhow::{Context as AnyhowContext, Result};
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// DAW project file format version
 const PROJECT_VERSION: u32 = 1;

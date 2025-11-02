@@ -1,6 +1,6 @@
 use gpui::*;
 use gpui_component::{
-    button::Button, h_flex, v_flex, scroll::ScrollbarAxis, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
+    button::Button, h_flex, v_flex, scroll::ScrollbarAxis, ActiveTheme, Sizable, StyledExt,
 };
 
 use super::state::{LevelEditorState, Transform};

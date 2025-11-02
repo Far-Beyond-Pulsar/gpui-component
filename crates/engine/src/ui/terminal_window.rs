@@ -2,7 +2,7 @@
 
 use gpui::*;
 use gpui_component::{
-    v_flex, ActiveTheme as _, StyledExt, TitleBar,
+    v_flex, ActiveTheme as _, TitleBar,
 };
 
 use super::terminal_drawer::TerminalDrawer;

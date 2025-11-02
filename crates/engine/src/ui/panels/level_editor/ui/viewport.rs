@@ -1,25 +1,25 @@
 use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
-    button::{Button, ButtonVariants as _, Toggle}, h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
-    chart::{LineChart, BarChart, AreaChart},
+    button::{Button, ButtonVariants as _}, h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
+    chart::{BarChart, AreaChart},
     PixelsExt,
 };
 // Zero-copy Bevy viewport for 3D rendering
-use gpui_component::bevy_viewport::{BevyViewport, BevyViewportState};
+use gpui_component::bevy_viewport::BevyViewport;
 
 use super::state::{CameraMode, LevelEditorState};
 use super::actions::*;
 use crate::ui::shared::ViewportControls;
 use engine_backend::GameThread;
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::collections::VecDeque;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 // Raw input polling for viewport controls (cross-platform)
-use device_query::{DeviceQuery, DeviceState, Keycode, MouseState};
+use device_query::{DeviceQuery, DeviceState, Keycode};
 
 // Note: Cursor management is now handled by GPUI's cross-platform window system
 // No platform-specific cursor code needed! GPUI provides:

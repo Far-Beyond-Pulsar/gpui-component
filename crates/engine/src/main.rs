@@ -6,16 +6,11 @@ use gpui::SharedString;
 use gpui::*;
 use gpui_component::scroll::ScrollbarShow;
 use gpui_component::Root;
-use gpui_component::TitleBar;
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;
-use std::path::PathBuf;
-use ui::app::{PulsarApp, PulsarRoot, ToggleCommandPalette};
+use ui::app::ToggleCommandPalette;
 use ui::entry_window::EntryWindow;
-use ui::loading_window::{LoadingWindow, LoadingComplete};
-use ui::project_selector::ProjectSelected;
-use ui::settings_window::SettingsWindow;
 
 // Winit imports
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -34,13 +29,11 @@ use windows::{
     Win32::{
         Foundation::*,
         Graphics::{
-            Gdi::*,
             Direct3D::*,
             Direct3D11::*,
             Direct3D::Fxc::*,
             Dxgi::{Common::*, *},
         },
-        UI::WindowsAndMessaging::*,
     },
 };
 
@@ -52,8 +45,6 @@ mod recent_projects;
 pub mod settings;
 pub mod themes;
 mod ui;
-mod window_system;
-
 pub use assets::Assets;
 
 // Engine constants
@@ -727,7 +718,7 @@ impl ApplicationHandler for WinitGpuiApp {
                         );
 
                         let _ = gpui_app.update(|app| {
-                            gpui_window.update(app, |_view, window, _cx| {
+                            let _ = gpui_window.update(app, |_view, window, _cx| {
                                 #[cfg(target_os = "windows")]
                                 {
                                     // Resize renderer (GPU buffers)

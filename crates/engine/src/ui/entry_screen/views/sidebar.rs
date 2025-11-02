@@ -1,7 +1,7 @@
 use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
-    v_flex, Icon, IconName, ActiveTheme as _,
+    v_flex, IconName, ActiveTheme as _,
 };
 use crate::ui::entry_screen::{EntryScreen, EntryScreenView};
 use crate::OpenSettings;

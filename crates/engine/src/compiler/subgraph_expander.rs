@@ -6,8 +6,7 @@
 
 use std::collections::{HashMap, HashSet};
 use crate::graph::{
-    GraphDescription, NodeInstance, Connection, ConnectionType, Position, Pin, PinInstance,
-    PinType, SubGraphDefinition, LibraryManager,
+    GraphDescription, NodeInstance, Connection, SubGraphDefinition, LibraryManager,
 };
 
 /// Expands all sub-graph instances in a graph recursively

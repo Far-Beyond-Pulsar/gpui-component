@@ -2,7 +2,6 @@
 use super::asset_manager::AssetManager;
 use super::audio_types::*;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 /// Audio graph node processor
 pub struct AudioGraph {

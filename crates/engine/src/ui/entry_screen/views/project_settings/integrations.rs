@@ -1,6 +1,6 @@
 use gpui::{prelude::*, *};
 use gpui_component::{
-    h_flex, v_flex, Icon, IconName, divider::Divider, ActiveTheme as _, StyledExt,
+    h_flex, v_flex, Icon, IconName, divider::Divider, ActiveTheme as _,
     button::{Button, ButtonVariants as _},
     indicator::Indicator,
     Sizable,
@@ -22,7 +22,7 @@ pub fn render_integrations_tab(settings: &ProjectSettings, cx: &mut Context<Entr
             // Update the cache in the background
             let tools_clone = cached_tools.clone();
             let cached_for_spawn = cached_tools.clone();
-            cx.spawn(async move |this, mut cx| {
+            cx.spawn(async move |this, cx| {
                 let _ = cx.update(|cx| {
                     let _ = this.update(cx, |screen, cx| {
                         if let Some(ref mut proj_settings) = screen.project_settings {
@@ -51,7 +51,7 @@ pub fn render_integrations_tab(settings: &ProjectSettings, cx: &mut Context<Entr
     // If we just loaded from cache or have no cache, trigger background detection
     if (settings.available_tools_cache.is_some() && is_updating) ||
        (settings.available_tools_cache.is_none() && !is_updating) {
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             // Mark as updating if not already
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |screen, cx| {

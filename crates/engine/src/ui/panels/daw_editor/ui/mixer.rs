@@ -8,7 +8,7 @@ use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, PixelsExt,
-    h_virtual_list, VirtualListScrollHandle, scroll::{Scrollbar, ScrollbarAxis},
+    h_virtual_list, scroll::{Scrollbar, ScrollbarAxis},
 };
 use crate::ui::panels::daw_editor::audio_types::{Track, TrackId};
 use std::rc::Rc;

@@ -6,7 +6,6 @@ use gpui_component::{
     ActiveTheme as _, StyledExt, IconName, Colorize,
 };
 
-use super::*;
 use super::panel::BlueprintEditorPanel;
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]

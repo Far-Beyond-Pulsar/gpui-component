@@ -3,8 +3,7 @@ use gpui_component::{
     button::{Button, ButtonVariants as _},
     dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
     notification::Notification,
-    tooltip::Tooltip,
-    h_flex, v_flex, ActiveTheme as _, ContextModal as _, Icon, IconName, Sizable as _, StyledExt,
+    h_flex, v_flex, ActiveTheme as _, ContextModal as _, Icon, IconName, StyledExt,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -213,7 +212,7 @@ impl PulsarApp {
         let _ = cx.open_window(window_options, move |window, cx| {
             // Create PulsarApp with shared rust analyzer
             let app = cx.new(|cx| {
-                let mut app = Self::new_with_shared_analyzer(
+                let app = Self::new_with_shared_analyzer(
                     project_path.clone(),
                     rust_analyzer.clone(),
                     window,

@@ -1,7 +1,7 @@
 use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, Icon, IconName, ActiveTheme as _, StyledExt,
+    h_flex, v_flex, Icon, IconName, ActiveTheme as _,
     divider::Divider, progress::Progress,
 };
 use crate::ui::entry_screen::EntryScreen;

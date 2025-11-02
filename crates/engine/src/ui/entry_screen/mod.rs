@@ -3,8 +3,8 @@ mod git_operations;
 mod integration_launcher;
 pub mod views;
 
-use types::{EntryScreenView, Template, CloneProgress, SharedCloneProgress, GitFetchStatus, ProjectWithGitStatus, get_default_templates};
-use git_operations::{clone_repository, setup_template_remotes, add_user_upstream, init_repository, is_git_repo, has_origin_remote, check_for_updates, pull_updates};
+use types::{EntryScreenView, Template, CloneProgress, SharedCloneProgress, GitFetchStatus, get_default_templates};
+use git_operations::{clone_repository, setup_template_remotes, add_user_upstream, init_repository, is_git_repo, check_for_updates, pull_updates};
 
 use gpui::{prelude::*, *};
 use gpui_component::{h_flex, v_flex, TitleBar, ActiveTheme as _};
@@ -74,7 +74,7 @@ impl EntryScreen {
         
         let statuses = self.git_fetch_statuses.clone();
         
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             for (path, _name) in git_projects {
                 let path_buf = PathBuf::from(&path);
                 let path_clone = path.clone();
@@ -129,7 +129,7 @@ impl EntryScreen {
         let path_buf = PathBuf::from(&path);
         let statuses = self.git_fetch_statuses.clone();
         
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             let result = std::thread::spawn(move || {
                 pull_updates(&path_buf)
             }).join();
@@ -181,7 +181,7 @@ impl EntryScreen {
         
         let recent_projects_path = self.recent_projects_path.clone();
         
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             if let Some(folder) = file_dialog.pick_folder().await {
                 let path = folder.path().to_path_buf();
                 let toml_path = path.join("Pulsar.toml");
@@ -228,7 +228,7 @@ impl EntryScreen {
         self.clone_progress = Some(progress.clone());
         let recent_projects_path = self.recent_projects_path.clone();
         
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             let file_dialog = rfd::AsyncFileDialog::new()
                 .set_title(format!("Choose location for {}", target_name))
                 .set_directory(std::env::current_dir().unwrap_or_default());
@@ -414,7 +414,7 @@ impl EntryScreen {
                 let tab_for_match = tab.clone();
                 
                 // Load ONLY this tab's data in background thread
-                cx.spawn(async move |this, mut cx| {
+                cx.spawn(async move |this, cx| {
                     let loaded_data = std::thread::spawn(move || {
                         let mut temp_settings = views::ProjectSettings::new(project_path.clone(), String::new());
                         temp_settings.load_tab_data_sync(&tab_for_load);
@@ -473,7 +473,7 @@ impl EntryScreen {
             let project_path = settings.project_path.clone();
             
             // Load all data asynchronously in background
-            cx.spawn(async move |this, mut cx| {
+            cx.spawn(async move |this, cx| {
                 // Run all data loading in a background thread
                 let loaded_settings = std::thread::spawn(move || {
                     views::ProjectSettings::load_all_data_async(project_path)
@@ -503,7 +503,7 @@ impl EntryScreen {
             .set_title("Choose Project Location")
             .set_directory(std::env::current_dir().unwrap_or_default());
         
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             if let Some(folder) = file_dialog.pick_folder().await {
                 cx.update(|cx| {
                     this.update(cx, |screen, cx| {
@@ -528,7 +528,7 @@ impl EntryScreen {
         let project_path = base_path.join(&name);
         let recent_projects_path = self.recent_projects_path.clone();
         
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             if let Err(e) = std::fs::create_dir_all(&project_path) {
                 eprintln!("Failed to create project directory: {}", e);
                 return;

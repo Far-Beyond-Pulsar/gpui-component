@@ -1,11 +1,8 @@
-use crate::settings::EngineSettings;
 use crate::ui::settings_screen::{SettingsScreen, SettingsScreenProps};
 use gpui::*;
 use gpui_component::{
-    button::{Button, ButtonVariants},
-    h_flex, v_flex, Icon, IconName, ActiveTheme, TitleBar,
+    v_flex, ActiveTheme, TitleBar,
 };
-use std::path::PathBuf;
 
 pub struct SettingsWindow {
     settings_screen: Option<Entity<SettingsScreen>>,

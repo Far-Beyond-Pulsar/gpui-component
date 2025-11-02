@@ -6,8 +6,7 @@ use super::panel::DawPanel;
 use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
-    button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, Disableable,
-    Selectable, divider::Divider, tooltip::Tooltip,
+    button::*, h_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, Disableable, divider::Divider,
 };
 
 pub fn render_toolbar(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {

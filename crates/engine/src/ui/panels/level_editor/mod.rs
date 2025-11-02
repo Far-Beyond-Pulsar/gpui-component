@@ -18,5 +18,5 @@ mod scene_database;
 mod gizmos;
 
 pub use ui::LevelEditorPanel;
-pub use scene_database::{SceneDatabase, SceneObjectData, ObjectType, Transform, Component};
-pub use gizmos::{GizmoState, GizmoType, GizmoAxis, GizmoRenderData};
+pub use scene_database::SceneDatabase;
+pub use gizmos::{GizmoState, GizmoType};

@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use gpui_component::{h_flex, v_flex, StyledExt};
+use gpui_component::{h_flex, v_flex};
 
 /// Render an info section with key-value pairs
 pub fn render_info_section(title: &str, items: Vec<(&str, String)>, theme: &gpui_component::theme::Theme) -> impl IntoElement {

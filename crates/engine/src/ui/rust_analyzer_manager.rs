@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use gpui::{App, Context, Entity, EventEmitter, Task, Window};
+use gpui::{Context, EventEmitter, Window};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio, ExitStatus};
@@ -604,7 +604,7 @@ impl RustAnalyzerManager {
         });
 
         {
-            let mut process_lock = process_arc.lock().unwrap();
+            let process_lock = process_arc.lock().unwrap();
             // Note: We can't store the child here since we already called wait() on it in another thread
             // This is intentional - the monitoring thread owns the child
         }

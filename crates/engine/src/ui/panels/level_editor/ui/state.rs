@@ -65,11 +65,8 @@ pub enum CameraMode {
 
 // Legacy types for backwards compatibility - now forwarded from scene_database
 pub use crate::ui::panels::level_editor::scene_database::{
-    ObjectType as SceneObjectType,
     Transform,
     SceneObjectData as SceneObject,
-    LightType,
-    MeshType,
 };
 
 impl Default for LevelEditorState {

@@ -3,11 +3,10 @@
 
 use gpui::*;
 use gpui_component::{
-    button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme as _, IconName, StyledExt, TitleBar,
+    v_flex, ActiveTheme as _, TitleBar,
 };
 
-use super::problems_drawer::{Diagnostic, DiagnosticSeverity, ProblemsDrawer, NavigateToDiagnostic};
+use super::problems_drawer::{ProblemsDrawer, NavigateToDiagnostic};
 
 pub struct ProblemsWindow {
     problems_drawer: Entity<ProblemsDrawer>,

@@ -1,8 +1,7 @@
 use gpui::*;
 use gpui_component::{
-    button::{Button, ButtonVariants as _},
     h_flex, v_flex,
-    ActiveTheme as _, StyledExt, IconName,
+    ActiveTheme as _, StyledExt,
 };
 
 use super::panel::BlueprintEditorPanel;

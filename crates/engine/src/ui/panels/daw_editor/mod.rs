@@ -15,9 +15,6 @@ mod real_time_audio;
 mod ui;
 
 pub use audio_service::AudioService;
-pub use audio_types::*;
-pub use ecs_integration::{AudioEvent, EcsAudioBridge, TrackState};
-pub use project::{DawProject, ExportFormat, create_demo_project};
 pub use ui::DawPanel;
 
 use gpui::*;
@@ -76,7 +73,7 @@ impl DawEditorPanel {
     fn initialize_audio_service(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let daw_panel = self.daw_panel.clone();
 
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             match AudioService::new().await {
                 Ok(service) => {
                     let service = Arc::new(service);

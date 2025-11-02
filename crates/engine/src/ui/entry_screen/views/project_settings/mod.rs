@@ -8,7 +8,7 @@ pub mod disk_info;
 pub mod performance;
 pub mod integrations;
 
-pub use types::{ProjectSettings, ProjectSettingsTab, AvailableTools};
+pub use types::{ProjectSettings, ProjectSettingsTab};
 use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},

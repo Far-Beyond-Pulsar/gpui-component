@@ -11,7 +11,6 @@ use gpui_component::{
     Selectable, input::*, divider::Divider, 
     badge::Badge,
 };
-use std::rc::Rc;
 
 const BROWSER_WIDTH: f32 = 280.0;
 
@@ -548,7 +547,7 @@ fn render_browser_footer(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl
 // Event handlers
 
 fn handle_import_audio(_state: &mut DawUiState, _window: &mut Window, cx: &mut Context<DawPanel>) {
-    cx.spawn(async move |this, mut cx| {
+    cx.spawn(async move |this, cx| {
         let files = rfd::AsyncFileDialog::new()
             .add_filter("Audio Files", &["wav", "mp3", "ogg", "flac", "aiff"])
             .set_title("Import Audio Files")

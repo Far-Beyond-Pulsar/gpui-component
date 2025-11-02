@@ -2,12 +2,10 @@
 //! Based on Zed's terminal architecture
 
 use gpui::*;
-use gpui::prelude::FluentBuilder;
 use gpui_component::{
-    button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme as _, IconName, StyledExt, Sizable as _,
+    v_flex, ActiveTheme as _,
 };
-use super::terminal::{Terminal, TerminalEvent};
+use super::terminal::Terminal;
 
 pub struct TerminalDrawer {
     focus_handle: FocusHandle,

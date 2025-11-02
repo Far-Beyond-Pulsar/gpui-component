@@ -6,8 +6,7 @@ use super::panel::DawPanel;
 use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
-    button::*, h_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme,
-    Selectable, divider::Divider, tooltip::Tooltip,
+    button::*, h_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, divider::Divider,
 };
 use crate::ui::panels::daw_editor::audio_types::SAMPLE_RATE;
 

@@ -9,7 +9,7 @@
 //! to ensure pure nodes are evaluated in the correct order before being used.
 
 use std::collections::{HashMap,HashSet,VecDeque};
-use crate::graph::{GraphDescription,NodeInstance,ConnectionType};
+use crate::graph::{GraphDescription,ConnectionType};
 use super::node_metadata::{NodeMetadata,NodeTypes};
 
 /// Resolves data flow for a graph

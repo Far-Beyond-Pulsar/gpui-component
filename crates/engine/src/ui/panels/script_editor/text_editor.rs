@@ -3,7 +3,6 @@ use gpui_component::{
     button::{Button, ButtonVariants as _},
     input::{InputState, TextInput, TabSize, InputEvent},
     tab::{Tab, TabBar},
-    text::TextView,
     resizable::{h_resizable, resizable_panel, ResizableState},
     v_flex, h_flex,
     ActiveTheme as _, StyledExt, Sizable as _,

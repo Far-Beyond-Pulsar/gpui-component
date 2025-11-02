@@ -5,7 +5,7 @@ use gpui_component::{Colorize, PixelsExt};
 use gpui_component::{button::{Button, ButtonVariants}, h_flex, v_flex, ActiveTheme as _, IconName, Sizable, StyledExt, tooltip::Tooltip};
 
 use super::panel::BlueprintEditorPanel;
-use super::{BlueprintNode, BlueprintGraph, Pin, PinType, NodeType, Connection, VirtualizationStats};
+use super::{BlueprintNode, BlueprintGraph, Pin, NodeType, Connection};
 use crate::graph::DataType;
 
 pub struct NodeGraphRenderer;

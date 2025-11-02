@@ -1,7 +1,7 @@
 use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
-    button::{Button, ButtonVariant, ButtonVariants as _},
+    button::{Button, ButtonVariants as _},
     context_menu::ContextMenuExt,
     h_flex,
     input::{InputState, TextInput},
@@ -9,7 +9,7 @@ use gpui_component::{
     v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
 };
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
 use gpui::Axis;

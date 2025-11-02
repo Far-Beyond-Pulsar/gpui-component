@@ -30,7 +30,7 @@ impl AssetManager {
             if let Some(loading) = self.loading.get(&path) {
                 let tx = loading.clone();
                 drop(loading);
-                let (_, mut rx) = channel::bounded::<()>(1);
+                let (_, rx) = channel::bounded::<()>(1);
                 // Wait for the loading to complete
                 let _ = rx.recv().await;
 

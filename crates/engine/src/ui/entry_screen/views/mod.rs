@@ -16,5 +16,5 @@ pub use project_settings::{
     render_project_settings, 
     ProjectSettings, 
     ProjectSettingsTab,
-    types::{format_size, load_project_tool_preferences},
+    types::load_project_tool_preferences,
 };

@@ -13,7 +13,7 @@ use super::{
     execution_routing::ExecutionRouting,
     node_metadata::{NodeMetadata, NodeTypes},
 };
-use crate::graph::{ConnectionType, GraphDescription, NodeInstance};
+use crate::graph::{GraphDescription, NodeInstance};
 use std::collections::{HashMap, HashSet};
 
 /// Variable metadata for code generation

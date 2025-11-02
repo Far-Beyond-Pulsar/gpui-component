@@ -126,7 +126,7 @@ impl RealTimeAudio {
         let mut callback_buffer_right = vec![0.0f32; BUFFER_SIZE];
         let mut buffer_position = 0;
         let mut callback_count = 0u64;
-        let mut underrun_count = 0u64;
+        let underrun_count = 0u64;
 
         let stream = device.build_output_stream(
             &config,

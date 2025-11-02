@@ -1,8 +1,7 @@
 use gpui::*;
 use gpui::Hsla;
-use gpui_component::{ActiveTheme, Colorize, ContextModal, Root};
+use gpui_component::{ActiveTheme, Colorize};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Duration;
 use super::rust_analyzer_manager::{RustAnalyzerManager, AnalyzerStatus, AnalyzerEvent};
 
@@ -117,7 +116,7 @@ impl LoadingWindow {
         // The rust analyzer manager receives events on a channel from its stdout reader thread
         // We must call update_progress_from_thread() to process those events which will emit
         // AnalyzerEvent events that our subscription (on_analyzer_event) will receive
-        cx.spawn_in(window, async move |this, mut cx| {
+        cx.spawn_in(window, async move |this, cx| {
             loop {
                 cx.background_executor().timer(Duration::from_millis(100)).await;
                 
@@ -147,7 +146,7 @@ impl LoadingWindow {
         self.analyzer_message = "Initializing renderer...".to_string();
         cx.notify();
         
-        cx.spawn_in(window, async move |this, mut cx| {
+        cx.spawn_in(window, async move |this, cx| {
             // Minimal delay just to show the task
             cx.background_executor().timer(Duration::from_millis(100)).await;
             let _ = this.update(cx, |this, cx| {

@@ -10,8 +10,7 @@ use gpui_component::{
 use gpui::div;
 use std::collections::HashMap;
 
-use super::{NodeDefinitions, NodeCategory, NodeDefinition, BlueprintNode};
-use crate::graph::Position;
+use super::{NodeDefinitions, NodeDefinition, BlueprintNode};
 
 
 /// Unreal-like node creation context menu
@@ -279,7 +278,7 @@ impl NodeCreationMenu {
                 if let Some(panel_entity) = panel.upgrade() {
                     let panel_read = panel_entity.read(cx);
                     let should_show = panel_read.hoverable_tooltip.is_none() && panel_read.pending_tooltip.is_none();
-                    drop(panel_read);
+                    let _ = panel_read;
 
                     if should_show {
                         // Position tooltip to the right of the menu item

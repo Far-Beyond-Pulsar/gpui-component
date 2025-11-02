@@ -445,7 +445,7 @@ impl BlueprintEditorPanel {
             virtualization_stats: super::VirtualizationStats::default(),
         };
 
-        let mut result = Self {
+        let result = Self {
             focus_handle: cx.focus_handle(),
             graph: main_graph.clone(), // Current active tab's graph
             resizable_state,
@@ -1806,12 +1806,12 @@ impl BlueprintEditorPanel {
             &self.graph,
         );
 
-        let mut new_comment = super::BlueprintComment::new(center_graph, window, cx);
+        let new_comment = super::BlueprintComment::new(center_graph, window, cx);
 
         // Subscribe to color picker changes for this comment
         if let Some(picker_state) = new_comment.color_picker_state.as_ref() {
             let comment_id = new_comment.id.clone();
-            cx.subscribe_in(
+            let _ = cx.subscribe_in(
                 picker_state,
                 window,
                 move |this: &mut BlueprintEditorPanel,
@@ -2157,13 +2157,13 @@ impl BlueprintEditorPanel {
         // Store pending tooltip and start timer
         self.pending_tooltip = Some((content.clone(), position));
 
-        cx.spawn(async move |view, mut cx| {
+        cx.spawn(async move |view, cx| {
             // Wait 2 seconds
             Timer::after(Duration::from_secs(2)).await;
 
             // Show tooltip if still pending
             cx.update(|cx| {
-                view.update(cx, |panel, cx| {
+                let _ = view.update(cx, |panel, cx| {
                     // Only show if we still have a pending tooltip (user hasn't moved away)
                     if let Some((pending_content, pending_pos)) = panel.pending_tooltip.take() {
                         let pixel_pos = Point::new(px(pending_pos.x), px(pending_pos.y));
@@ -3053,7 +3053,7 @@ impl BlueprintEditorPanel {
         cx.notify();
 
         // Spawn async compilation task
-        cx.spawn(async move |view, mut cx| {
+        cx.spawn(async move |view, cx| {
             // Phase 1: Validate blueprint
             cx.update(|cx| {
                 view.update(cx, |panel, cx| {

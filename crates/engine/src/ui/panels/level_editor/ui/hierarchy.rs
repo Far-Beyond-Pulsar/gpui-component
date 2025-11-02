@@ -2,7 +2,7 @@ use gpui::*;
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     context_menu::ContextMenuExt,
-    h_flex, v_flex, scroll::ScrollbarAxis, ActiveTheme, Icon, IconName, Selectable, Sizable, StyledExt,
+    h_flex, v_flex, scroll::ScrollbarAxis, ActiveTheme, Icon, IconName, Sizable, StyledExt,
 };
 
 use super::state::{LevelEditorState, SceneObject};

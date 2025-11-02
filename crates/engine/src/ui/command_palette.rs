@@ -1,10 +1,8 @@
-use gpui::{prelude::*, div, px, rgb, App, Context, DismissEvent, Entity, EventEmitter, KeyBinding, MouseButton, Render, SharedString, Window};
+use gpui::{prelude::*, div, px, Context, DismissEvent, Entity, EventEmitter, MouseButton, Render, Window};
 use gpui_component::{
-    button::{Button, ButtonVariants as _},
-    h_flex, input::{InputState, InputEvent}, input::TextInput, v_flex, ActiveTheme as _, Icon, IconName,
-    Sizable as _, StyledExt,
+    button::ButtonVariants as _,
+    h_flex, input::{InputState, InputEvent}, input::TextInput, v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
 };
-use std::sync::Arc;
 use std::path::PathBuf;
 use super::file_utils::{FileInfo, find_openable_files};
 

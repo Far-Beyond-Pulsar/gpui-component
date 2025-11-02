@@ -1,7 +1,6 @@
 use gpui::*;
 use gpui_component::{
-    button::{Button, ButtonVariant, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme as _, StyledExt,
+    button::{Button, ButtonVariants as _}, v_flex, ActiveTheme as _, StyledExt,
 };
 use std::path::PathBuf;
 
@@ -24,7 +23,7 @@ impl ProjectSelector {
             .set_title("Select Pulsar Project Folder")
             .set_directory(std::env::current_dir().unwrap_or_default());
 
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             if let Some(folder) = file_dialog.pick_folder().await {
                 let path = folder.path().to_path_buf();
 
@@ -37,7 +36,7 @@ impl ProjectSelector {
                 }
 
                 cx.update(|cx| {
-                    this.update(cx, |selector, cx| {
+                    let _ = this.update(cx, |selector, cx| {
                         selector.selected_path = Some(path.clone());
                         cx.notify();
                     });

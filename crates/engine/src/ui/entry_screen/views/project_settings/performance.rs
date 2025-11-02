@@ -1,7 +1,7 @@
 use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, Icon, IconName, divider::Divider, ActiveTheme as _, StyledExt,
+    h_flex, v_flex, Icon, IconName, divider::Divider, ActiveTheme as _,
 };
 use super::{types::{ProjectSettings, format_size}, helpers::render_info_section};
 use crate::ui::entry_screen::EntryScreen;
@@ -322,7 +322,7 @@ fn generate_optimization_recommendations(settings: &ProjectSettings, theme: &gpu
 }
 
 fn render_recommendation_card(title: &str, desc: &str, severity: &str, theme: &gpui_component::theme::Theme) -> gpui::AnyElement {
-    use gpui_component::StyledExt;
+    
     
     let (bg_color, border_color, icon_color) = match severity {
         "high" => (

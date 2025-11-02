@@ -1,15 +1,13 @@
 //! Professional terminal rendering with batched text runs
 //! Based on Zed's terminal_element.rs implementation
 
-use super::terminal_core::{Terminal, TerminalBounds};
+use super::terminal_core::TerminalBounds;
 use alacritty_terminal::{
-    grid::Dimensions,
     index::Point as AlacPoint,
     term::cell::{Cell, Flags},
     vte::ansi::{Color as AnsiColor, NamedColor},
 };
 use gpui::*;
-use std::ops::RangeInclusive;
 
 /// A batched text run combining multiple adjacent cells with the same style
 #[derive(Debug)]
@@ -126,7 +124,7 @@ fn convert_color(color: &AnsiColor, theme: &gpui_component::Theme) -> Hsla {
 }
 
 fn named_color(color: NamedColor, theme: &gpui_component::Theme) -> Hsla {
-    use gpui_component::ActiveTheme;
+    
     match color {
         NamedColor::Black => hsla(0.0, 0.0, 0.0, 1.0),
         NamedColor::Red => hsla(0.0, 1.0, 0.4, 1.0),

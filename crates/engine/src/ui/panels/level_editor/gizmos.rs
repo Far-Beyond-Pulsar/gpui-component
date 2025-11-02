@@ -12,7 +12,6 @@
 //! - Snapping to grid
 //! - Local vs World space modes
 
-use std::sync::{Arc, Mutex};
 
 /// Simple 2D vector
 #[derive(Clone, Copy, Debug)]

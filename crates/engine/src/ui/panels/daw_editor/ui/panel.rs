@@ -2,7 +2,7 @@
 /// Top-level container that assembles all UI components
 
 use super::state::*;
-use super::super::{audio_service::AudioService, audio_types::*, project::DawProject};
+use super::super::{audio_service::AudioService, audio_types::*};
 use gpui::*;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{v_flex, h_flex, StyledExt, ActiveTheme, PixelsExt};
@@ -171,7 +171,7 @@ impl DawPanel {
                 .detach();
 
             // Receive updates in UI thread
-            cx.spawn(async move |this, mut cx| {
+            cx.spawn(async move |this, cx| {
                 while let Some((position, is_playing)) = rx.next().await {
                     cx.update(|cx| {
                         this.update(cx, |this, cx| {
@@ -198,7 +198,7 @@ impl DawPanel {
             let service = service.clone();
 
             // Poll meters at 30 FPS (every ~33ms)
-            cx.spawn(async move |this, mut cx| {
+            cx.spawn(async move |this, cx| {
                 loop {
                     Timer::after(Duration::from_millis(33)).await;
 
@@ -539,7 +539,7 @@ impl DawPanel {
     }
 
     fn render_inspector(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        use gpui_component::{button::*, Icon, IconName, Sizable};
+        use gpui_component::{button::*, Sizable};
 
         let selected_track_id = self.state.selection.selected_track_ids.iter().next().copied();
 

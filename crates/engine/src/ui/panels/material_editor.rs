@@ -1,8 +1,7 @@
 use gpui::*;
 use gpui_component::{
     dock::{Panel, PanelEvent},
-    resizable::{h_resizable, resizable_panel, ResizableState},
-    h_flex, v_flex,
+    resizable::ResizableState, v_flex,
     ActiveTheme as _, StyledExt,
 };
 

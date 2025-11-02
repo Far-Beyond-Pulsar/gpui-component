@@ -171,7 +171,7 @@ impl<'de> Deserialize<'de> for NodeInstance {
             } else if let Some(obj) = val.as_object() {
                 obj.iter()
                     .filter_map(|(id, v)| {
-                        let mut pin: Pin = serde_json::from_value(v.clone()).ok()?;
+                        let pin: Pin = serde_json::from_value(v.clone()).ok()?;
                         Some(PinInstance { id: id.clone(), pin })
                     })
                     .collect()

@@ -1,7 +1,7 @@
 // OPTIMIZED: Wrapper around the backend Bevy renderer with zero-copy improvements
 // Now uses BGRA8UnormSrgb format (matches Bevy's pipeline) and Arc-based sharing for 3x performance improvement
 
-use engine_backend::subsystems::render::{BevyRenderer, RenderMetrics, Framebuffer as BackendFramebuffer};
+use engine_backend::subsystems::render::{BevyRenderer, RenderMetrics};
 use std::sync::{Arc, Mutex, Once};
 use std::time::Instant;
 

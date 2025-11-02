@@ -1,11 +1,10 @@
 use gpui::*;
 use gpui_component::{
-    button::{Button, ButtonVariants as _}, h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
+    button::{Button, ButtonVariants as _}, h_flex, ActiveTheme, IconName, Selectable, Sizable,
 };
 
 use super::state::{LevelEditorState, TransformTool};
 use super::actions::*;
-use crate::ui::shared::{Toolbar, ToolbarButton};
 
 /// Toolbar - Transform tools and quick actions
 pub struct ToolbarPanel;

@@ -1,11 +1,9 @@
 use gpui::*;
 use gpui_component::{
     dock::{Panel, PanelEvent},
-    h_flex,
     resizable::{h_resizable, v_resizable, resizable_panel, ResizableState},
     v_flex,
     ActiveTheme as _,
-    StyledExt,
 };
 // Zero-copy Bevy viewport for 3D rendering
 use gpui_component::bevy_viewport::{BevyViewport, BevyViewportState};
@@ -16,10 +14,8 @@ use crate::settings::EngineSettings;
 // use crate::ui::wgpu_3d_renderer::Wgpu3DRenderer;
 use crate::ui::gpu_renderer::GpuRenderer;
 use crate::ui::shared::StatusBar;
-use engine_backend::{GameThread, GameState};
+use engine_backend::GameThread;
 use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{Sender, Receiver, channel};
-use std::thread;
 use std::time::Duration;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -110,7 +106,7 @@ impl LevelEditorPanel {
         let viewport_entity_for_init = viewport.clone();
         let gpu_engine_for_init = gpu_engine.clone();
 
-        cx.spawn(async move |_this, mut cx| {
+        cx.spawn(async move |_this, cx| {
             // Try multiple times with increasing delays for Bevy to initialize
             for attempt in 1..=10 {
                 cx.background_executor().timer(Duration::from_millis(200 * attempt)).await;
@@ -213,7 +209,7 @@ impl LevelEditorPanel {
         self.state.set_tool(TransformTool::Select);
         
         // Update gizmo type in Bevy
-        if let Ok(mut engine) = self.gpu_engine.lock() {
+        if let Ok(engine) = self.gpu_engine.lock() {
             if let Some(ref bevy_renderer) = engine.bevy_renderer {
                 if let Ok(mut gizmo) = bevy_renderer.gizmo_state.lock() {
                     use engine_backend::subsystems::render::bevy_renderer::BevyGizmoType;
@@ -230,7 +226,7 @@ impl LevelEditorPanel {
         self.state.set_tool(TransformTool::Move);
         
         // Update gizmo type in Bevy
-        if let Ok(mut engine) = self.gpu_engine.lock() {
+        if let Ok(engine) = self.gpu_engine.lock() {
             if let Some(ref bevy_renderer) = engine.bevy_renderer {
                 if let Ok(mut gizmo) = bevy_renderer.gizmo_state.lock() {
                     use engine_backend::subsystems::render::bevy_renderer::BevyGizmoType;
@@ -247,7 +243,7 @@ impl LevelEditorPanel {
         self.state.set_tool(TransformTool::Rotate);
         
         // Update gizmo type in Bevy
-        if let Ok(mut engine) = self.gpu_engine.lock() {
+        if let Ok(engine) = self.gpu_engine.lock() {
             if let Some(ref bevy_renderer) = engine.bevy_renderer {
                 if let Ok(mut gizmo) = bevy_renderer.gizmo_state.lock() {
                     use engine_backend::subsystems::render::bevy_renderer::BevyGizmoType;
@@ -264,7 +260,7 @@ impl LevelEditorPanel {
         self.state.set_tool(TransformTool::Scale);
         
         // Update gizmo type in Bevy
-        if let Ok(mut engine) = self.gpu_engine.lock() {
+        if let Ok(engine) = self.gpu_engine.lock() {
             if let Some(ref bevy_renderer) = engine.bevy_renderer {
                 if let Ok(mut gizmo) = bevy_renderer.gizmo_state.lock() {
                     use engine_backend::subsystems::render::bevy_renderer::BevyGizmoType;
@@ -329,7 +325,7 @@ impl LevelEditorPanel {
             self.state.select_object(None);
             
             // Clear gizmo selection in Bevy
-            if let Ok(mut engine) = self.gpu_engine.lock() {
+            if let Ok(engine) = self.gpu_engine.lock() {
                 if let Some(ref bevy_renderer) = engine.bevy_renderer {
                     if let Ok(mut gizmo) = bevy_renderer.gizmo_state.lock() {
                         gizmo.selected_object_id = None;
@@ -354,7 +350,7 @@ impl LevelEditorPanel {
         
         // Update gizmo position and selection in Bevy when object is selected
         if let Some(obj) = self.state.get_selected_object() {
-            if let Ok(mut engine) = self.gpu_engine.lock() {
+            if let Ok(engine) = self.gpu_engine.lock() {
                 if let Some(ref bevy_renderer) = engine.bevy_renderer {
                     if let Ok(mut gizmo) = bevy_renderer.gizmo_state.lock() {
                         // Set selected object ID (String)
@@ -432,7 +428,7 @@ impl LevelEditorPanel {
         println!("[LEVEL-EDITOR] ✅ Game thread enabled - objects will move");
         
         // Hide gizmos in Bevy (Play mode)
-        if let Ok(mut engine) = self.gpu_engine.lock() {
+        if let Ok(engine) = self.gpu_engine.lock() {
             if let Some(ref bevy_renderer) = engine.bevy_renderer {
                 if let Ok(mut gizmo) = bevy_renderer.gizmo_state.lock() {
                     gizmo.enabled = false;
@@ -456,7 +452,7 @@ impl LevelEditorPanel {
         println!("[LEVEL-EDITOR] ✅ Scene restored to edit state");
         
         // Show gizmos in Bevy (Edit mode)
-        if let Ok(mut engine) = self.gpu_engine.lock() {
+        if let Ok(engine) = self.gpu_engine.lock() {
             if let Some(ref bevy_renderer) = engine.bevy_renderer {
                 if let Ok(mut gizmo) = bevy_renderer.gizmo_state.lock() {
                     gizmo.enabled = true;

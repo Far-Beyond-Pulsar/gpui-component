@@ -17,6 +17,4 @@ pub use scene_browser::SceneBrowser;
 pub use hierarchy::HierarchyPanel;
 pub use properties::PropertiesPanel;
 pub use viewport::ViewportPanel;
-pub use asset_browser::AssetBrowser;
 pub use toolbar::ToolbarPanel;
-pub use actions::*;

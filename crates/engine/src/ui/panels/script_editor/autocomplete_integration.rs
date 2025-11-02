@@ -1,7 +1,7 @@
 /// Autocomplete integration for the Script Editor with rust-analyzer support
 /// This module connects the global rust-analyzer instance to provide intelligent completions
 
-use gpui::{App, Context, Entity, Window};
+use gpui::{Context, Entity, Window};
 use gpui_component::input::{
     ComprehensiveCompletionProvider, 
     InputState,
