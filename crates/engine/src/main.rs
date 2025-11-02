@@ -52,6 +52,8 @@ mod recent_projects;
 pub mod settings;
 pub mod themes;
 mod ui;
+mod window_system;
+
 pub use assets::Assets;
 
 // Engine constants
