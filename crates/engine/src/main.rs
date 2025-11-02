@@ -21,7 +21,7 @@ use ui::settings_window::SettingsWindow;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton as WinitMouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -155,6 +155,96 @@ impl SimpleClickState {
     }
 }
 
+// Motion smoothing system for interpolated mouse movement  
+// Like client-side prediction in multiplayer games
+#[derive(Debug, Clone)]
+struct MotionSmoother {
+    interpolated_position: Point<Pixels>,
+    target_position: Point<Pixels>,
+    velocity: Point<Pixels>,
+    last_update: Instant,
+    smoothing_factor: f32,
+    min_delta: f32,
+    min_event_interval: Duration,
+    last_event_time: Instant,
+}
+
+impl MotionSmoother {
+    fn new() -> Self {
+        Self {
+            interpolated_position: point(px(0.0), px(0.0)),
+            target_position: point(px(0.0), px(0.0)),
+            velocity: point(px(0.0), px(0.0)),
+            last_update: Instant::now(),
+            smoothing_factor: 0.35,
+            min_delta: 0.5,
+            min_event_interval: Duration::from_micros(6944),
+            last_event_time: Instant::now(),
+        }
+    }
+    
+    fn update_target(&mut self, new_position: Point<Pixels>) {
+        let now = Instant::now();
+        let dt = now.duration_since(self.last_update).as_secs_f32();
+        
+        if dt > 0.0 {
+            let nx: f32 = new_position.x.into();
+            let tx: f32 = self.target_position.x.into();
+            let ny: f32 = new_position.y.into();
+            let ty: f32 = self.target_position.y.into();
+            
+            self.velocity = point(
+                px((nx - tx) / dt),
+                px((ny - ty) / dt),
+            );
+        }
+        
+        self.target_position = new_position;
+        self.last_update = now;
+    }
+    
+    fn interpolate(&mut self) -> Point<Pixels> {
+        let now = Instant::now();
+        let dt = now.duration_since(self.last_update).as_secs_f32().min(0.1);
+        
+        let alpha = 1.0 - (1.0 - self.smoothing_factor).powf(dt * 60.0);
+        
+        let x: f32 = self.interpolated_position.x.into();
+        let tx: f32 = self.target_position.x.into();
+        self.interpolated_position.x = px(x + (tx - x) * alpha);
+        
+        let y: f32 = self.interpolated_position.y.into();
+        let ty: f32 = self.target_position.y.into();
+        self.interpolated_position.y = px(y + (ty - y) * alpha);
+        
+        self.interpolated_position
+    }
+    
+    fn should_send_event(&mut self) -> bool {
+        let now = Instant::now();
+        let elapsed = now.duration_since(self.last_event_time);
+        
+        if elapsed < self.min_event_interval {
+            return false;
+        }
+        
+        let ix: f32 = self.interpolated_position.x.into();
+        let tx: f32 = self.target_position.x.into();
+        let iy: f32 = self.interpolated_position.y.into();
+        let ty: f32 = self.target_position.y.into();
+        
+        let dx = (ix - tx).abs();
+        let dy = (iy - ty).abs();
+        
+        if dx < self.min_delta && dy < self.min_delta {
+            return false;
+        }
+        
+        self.last_event_time = now;
+        true
+    }
+}
+
 fn main() {
     println!("{}", ENGINE_NAME);
     println!("Version: {}", ENGINE_VERSION);
@@ -240,6 +330,7 @@ struct WinitGpuiApp {
     
     // State tracking for proper event forwarding to GPUI
     last_cursor_position: Point<Pixels>,
+    motion_smoother: MotionSmoother,
     current_modifiers: Modifiers,
     pressed_mouse_buttons: HashSet<MouseButton>,
     click_state: SimpleClickState,
@@ -283,6 +374,7 @@ impl WinitGpuiApp {
             gpui_window_initialized: false,
             needs_render: true, // Start with true to render initial frame
             last_cursor_position: point(px(0.0), px(0.0)),
+            motion_smoother: MotionSmoother::new(),
             current_modifiers: Modifiers::default(),
             pressed_mouse_buttons: HashSet::new(),
             click_state: SimpleClickState::new(),
@@ -762,6 +854,7 @@ impl ApplicationHandler for WinitGpuiApp {
                     // Forward mouse button events to GPUI
                     if let (Some(gpui_window), Some(gpui_app)) = (&self.gpui_window, &mut self.gpui_app) {
                         let gpui_button = convert_mouse_button(button);
+                        // Use actual cursor position for clicks, not smoothed position!
                         let position = self.last_cursor_position;
 
                         match state {
@@ -831,7 +924,8 @@ impl ApplicationHandler for WinitGpuiApp {
                             }
                         };
 
-                        let position = self.last_cursor_position;
+                        // Use smoothed position for scroll events too
+                        let position = self.motion_smoother.interpolated_position;
 
                         let gpui_event = PlatformInput::ScrollWheel(ScrollWheelEvent {
                             position,
