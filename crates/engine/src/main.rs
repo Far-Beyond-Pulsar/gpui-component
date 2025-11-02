@@ -924,8 +924,8 @@ impl ApplicationHandler for WinitGpuiApp {
                             }
                         };
 
-                        // Use smoothed position for scroll events too
-                        let position = self.motion_smoother.interpolated_position;
+                        // Use actual cursor position for scroll events
+                        let position = self.last_cursor_position;
 
                         let gpui_event = PlatformInput::ScrollWheel(ScrollWheelEvent {
                             position,
