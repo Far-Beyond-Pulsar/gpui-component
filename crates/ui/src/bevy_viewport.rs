@@ -158,38 +158,24 @@ impl Render for BevyViewport {
         
         let state = self.state.read();
         
-        // Return a div that does NOT block mouse events - they bubble up to parent!
+        // Return a TRANSPARENT div so we can see through to the winit green background!
         div()
             .size_full()
             .flex()
             .items_center()
             .justify_center()
-            .bg(rgb(0x1a1a1a)) // Dark background so any gaps are visible
+            // TRANSPARENT - no background! This creates a "hole" to see winit's green bg
             .track_focus(&self.focus_handle)
             // Make this element explicitly focusable for keyboard input
             .id("bevy_viewport")
             // NO mouse event handlers here - let them pass through to parent div in viewport.rs!
             .child(
-                if let Some(ref source) = state.canvas_source {
-                    // Render the GPU canvas with zero-copy shared textures
-                    gpu_canvas_element(source.clone())
-                        .w_full()
-                        .h_full()
-                        .into_any_element()
-                } else {
-                    // Still initializing
-                    div()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            div()
-                                .text_color(rgb(0xcccccc))
-                                .text_size(px(16.0))
-                                .child("Initializing Bevy renderer...")
-                        )
-                        .into_any_element()
-                }
+                // DISCONNECTED - don't render Bevy textures, just show empty transparent buffer
+                // This way we see the winit green background through the "hole"
+                div()
+                    .size_full()
+                    // Completely transparent empty div
+                    .into_any_element()
             )
     }
 }
