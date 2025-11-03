@@ -9,7 +9,7 @@ use std::sync::mpsc::Sender;
 #[derive(Debug, Clone)]
 pub enum WindowRequest {
     Settings,
-    ProjectEditor,
+    ProjectEditor { project_path: String },
     ProjectSplash { project_path: String },
     CloseWindow { window_id: u64 },
 }

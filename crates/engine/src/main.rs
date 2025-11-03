@@ -442,7 +442,7 @@ impl WinitGpuiApp {
     fn create_window(&mut self, event_loop: &ActiveEventLoop, request: WindowRequest) {
         let (title, size, decorations) = match &request {
             WindowRequest::Settings => ("Settings", (800.0, 600.0), true),
-            WindowRequest::ProjectEditor => ("Pulsar Engine - Project Editor", (1280.0, 800.0), true),
+            WindowRequest::ProjectEditor { .. } => ("Pulsar Engine - Project Editor", (1280.0, 800.0), true),
             WindowRequest::ProjectSplash { .. } => ("Loading Project...", (600.0, 400.0), false),
             WindowRequest::CloseWindow { .. } => return, // Handled elsewhere
         };
@@ -1176,9 +1176,18 @@ impl ApplicationHandler for WinitGpuiApp {
                         ));
                         cx.new(|cx| Root::new(loading_view.clone().into(), window, cx))
                     }
-                    Some(WindowRequest::ProjectEditor) | Some(WindowRequest::CloseWindow { .. }) | None => {
-                        // Editor window or default entry window
-                        // TODO: Create actual editor window view with opened project
+                    Some(WindowRequest::ProjectEditor { project_path }) => {
+                        // Create the actual PulsarApp editor with the project
+                        let app = cx.new(|cx| crate::ui::app::PulsarApp::new_with_project(
+                            std::path::PathBuf::from(project_path),
+                            window,
+                            cx
+                        ));
+                        let pulsar_root = cx.new(|cx| crate::ui::app::PulsarRoot::new("Pulsar Engine", app, window, cx));
+                        cx.new(|cx| Root::new(pulsar_root.into(), window, cx))
+                    }
+                    Some(WindowRequest::CloseWindow { .. }) | None => {
+                        // Default to entry window for main window
                         let entry_view = cx.new(|cx| EntryWindow::new(window, cx));
                         cx.new(|cx| Root::new(entry_view.clone().into(), window, cx))
                     }

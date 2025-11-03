@@ -305,7 +305,9 @@ impl LoadingWindow {
             // Request editor window to be opened and close this splash
             if let Some(engine_state) = crate::EngineState::global() {
                 println!("📝 Requesting editor window for: {:?}", project_path);
-                engine_state.request_window(crate::WindowRequest::ProjectEditor);
+                engine_state.request_window(crate::WindowRequest::ProjectEditor {
+                    project_path: project_path.to_string_lossy().to_string(),
+                });
 
                 // Close this splash window
                 println!("🔚 Closing splash window (ID: {})", self.window_id);
