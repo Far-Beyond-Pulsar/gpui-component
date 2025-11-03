@@ -15,11 +15,12 @@ use ui::entry_window::EntryWindow;
 // Winit imports
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{channel, Sender, Receiver};
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton as WinitMouseButton, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::window::{Window as WinitWindow, WindowId};
 use winit::keyboard::{PhysicalKey, KeyCode};
 
@@ -40,12 +41,14 @@ use windows::{
 // Engine modules
 mod assets;
 mod compiler;
+mod engine_state;
 mod graph;
 mod recent_projects;
 pub mod settings;
 pub mod themes;
 mod ui;
 pub use assets::Assets;
+pub use engine_state::EngineState;
 
 // Engine constants
 pub const ENGINE_NAME: &str = env!("CARGO_PKG_NAME");
@@ -56,6 +59,9 @@ pub const ENGINE_HOMEPAGE: &str = env!("CARGO_PKG_HOMEPAGE");
 pub const ENGINE_REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 pub const ENGINE_DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 pub const ENGINE_LICENSE_FILE: &str = env!("CARGO_PKG_LICENSE_FILE");
+
+// Re-export WindowRequest from engine_state
+pub use crate::engine_state::WindowRequest;
 
 // Engine actions
 #[derive(Action, Clone, PartialEq, Eq, Deserialize)]
@@ -306,28 +312,39 @@ fn main() {
     // Init the Game engine backend (subsystems, etc)
     rt.block_on(engine_backend::EngineBackend::init());
 
+    // Create channel for window creation requests
+    let (window_tx, window_rx) = channel::<WindowRequest>();
+
+    // Create shared engine state with window sender
+    let engine_state = EngineState::new().with_window_sender(window_tx.clone());
+
+    // Set global engine state for access from GPUI views
+    engine_state.clone().set_global();
+
     let event_loop = EventLoop::new().expect("Failed to create event loop");
     // Use Wait mode for event-driven rendering (only render when needed)
     event_loop.set_control_flow(ControlFlow::Wait);
 
-    let mut app = WinitGpuiApp::new();
+    let mut app = WinitGpuiApp::new(engine_state, window_rx);
     event_loop.run_app(&mut app).expect("Failed to run event loop");
 }
 
-struct WinitGpuiApp {
-    winit_window: Option<Arc<WinitWindow>>,
-    gpui_app: Option<Application>,
+// Per-window state for each independent window
+struct WindowState {
+    winit_window: Arc<WinitWindow>,
+    gpui_app: Application,
     gpui_window: Option<WindowHandle<Root>>,
     gpui_window_initialized: bool,
-    needs_render: bool, // Flag to track if GPUI needs rendering
-    
-    // State tracking for proper event forwarding to GPUI
+    needs_render: bool,
+    window_type: Option<WindowRequest>,
+
+    // Event tracking state
     last_cursor_position: Point<Pixels>,
     motion_smoother: MotionSmoother,
     current_modifiers: Modifiers,
     pressed_mouse_buttons: HashSet<MouseButton>,
     click_state: SimpleClickState,
-    
+
     #[cfg(target_os = "windows")]
     d3d_device: Option<ID3D11Device>,
     #[cfg(target_os = "windows")]
@@ -353,19 +370,39 @@ struct WinitGpuiApp {
     #[cfg(target_os = "windows")]
     sampler_state: Option<ID3D11SamplerState>,
     #[cfg(target_os = "windows")]
-    persistent_gpui_texture: Option<ID3D11Texture2D>, // Our copy of GPUI's texture that persists
+    persistent_gpui_texture: Option<ID3D11Texture2D>,
     #[cfg(target_os = "windows")]
-    persistent_gpui_srv: Option<ID3D11ShaderResourceView>, // Cached SRV for persistent texture (no per-frame alloc)
+    persistent_gpui_srv: Option<ID3D11ShaderResourceView>,
+}
+
+use std::collections::HashMap;
+
+// Main application handler managing multiple windows
+struct WinitGpuiApp {
+    windows: HashMap<WindowId, WindowState>,
+    engine_state: EngineState,
+    window_request_rx: Receiver<WindowRequest>,
+    pending_window_requests: Vec<WindowRequest>,
 }
 
 impl WinitGpuiApp {
-    fn new() -> Self {
+    fn new(engine_state: EngineState, window_request_rx: Receiver<WindowRequest>) -> Self {
         Self {
-            winit_window: None,
-            gpui_app: None,
+            windows: HashMap::new(),
+            engine_state,
+            window_request_rx,
+            pending_window_requests: Vec::new(),
+        }
+    }
+
+    fn create_window_state(winit_window: Arc<WinitWindow>) -> WindowState {
+        WindowState {
+            winit_window,
+            gpui_app: Application::new().with_assets(Assets),
             gpui_window: None,
             gpui_window_initialized: false,
-            needs_render: true, // Start with true to render initial frame
+            needs_render: true,
+            window_type: None,
             last_cursor_position: point(px(0.0), px(0.0)),
             motion_smoother: MotionSmoother::new(),
             current_modifiers: Modifiers::default(),
@@ -401,18 +438,54 @@ impl WinitGpuiApp {
             persistent_gpui_srv: None,
         }
     }
+
+    fn create_window(&mut self, event_loop: &ActiveEventLoop, request: WindowRequest) {
+        let (title, size, decorations) = match &request {
+            WindowRequest::Settings => ("Settings", (800.0, 600.0), true),
+            WindowRequest::ProjectEditor => ("Pulsar Engine - Project Editor", (1280.0, 800.0), true),
+            WindowRequest::ProjectSplash { .. } => ("Loading Project...", (600.0, 400.0), false),
+            WindowRequest::CloseWindow { .. } => return, // Handled elsewhere
+        };
+
+        println!("🪟 Creating new window: {}", title);
+
+        let mut window_attributes = WinitWindow::default_attributes()
+            .with_title(title)
+            .with_inner_size(winit::dpi::LogicalSize::new(size.0, size.1))
+            .with_transparent(false)
+            .with_decorations(decorations);
+
+        // Splash window positioning (centered by default)
+        // Position::Automatic doesn't exist in winit, windows are centered by default
+
+        let winit_window = Arc::new(
+            event_loop
+                .create_window(window_attributes)
+                .expect("Failed to create window"),
+        );
+
+        let window_id = winit_window.id();
+        let mut window_state = Self::create_window_state(winit_window);
+        window_state.window_type = Some(request);
+
+        self.windows.insert(window_id, window_state);
+        self.engine_state.increment_window_count();
+
+        println!("✅ Window created: {} (total windows: {})", title, self.engine_state.window_count());
+    }
 }
 
 impl ApplicationHandler for WinitGpuiApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.winit_window.is_some() {
+        // Only create main window if no windows exist
+        if !self.windows.is_empty() {
             return;
         }
 
-        println!("✅ Creating Winit window...");
+        println!("✅ Creating main window...");
 
         let window_attributes = WinitWindow::default_attributes()
-            .with_title("Winit + GPUI Zero-Copy Demo")
+            .with_title("Pulsar Engine")
             .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
             .with_transparent(false);
 
@@ -422,13 +495,13 @@ impl ApplicationHandler for WinitGpuiApp {
                 .expect("Failed to create window"),
         );
 
-        println!("✅ Winit window created");
-        println!("✅ Initializing GPUI...");
+        let window_id = winit_window.id();
+        let window_state = Self::create_window_state(winit_window);
 
-        let app = Application::new().with_assets(Assets);
+        self.windows.insert(window_id, window_state);
+        self.engine_state.increment_window_count();
 
-        self.winit_window = Some(winit_window);
-        self.gpui_app = Some(app);
+        println!("✅ Main window created (total windows: {})", self.engine_state.window_count());
     }
 
     fn window_event(
@@ -437,24 +510,73 @@ impl ApplicationHandler for WinitGpuiApp {
         window_id: WindowId,
         event: WindowEvent,
     ) {
-        // Only handle events for our winit window
-        if let Some(winit_window) = &self.winit_window {
-            if winit_window.id() != window_id {
-                return;
-            }
+        match event {
+            WindowEvent::CloseRequested => {
+                println!("\n👋 Closing window...");
+                self.windows.remove(&window_id);
+                self.engine_state.decrement_window_count();
 
-            match event {
-                WindowEvent::CloseRequested => {
-                    println!("\n👋 Closing application...");
+                // Exit application if no windows remain
+                if self.windows.is_empty() {
+                    println!("👋 No windows remain, exiting application...");
                     event_loop.exit();
                 }
+            }
+            _ => {
+                // For all other events, we need the window state
+                let Some(window_state) = self.windows.get_mut(&window_id) else {
+                    return;
+                };
+
+                // Extract mutable references to avoid borrow checker issues
+                let WindowState {
+                    ref winit_window,
+                    ref mut gpui_app,
+                    ref mut gpui_window,
+                    ref mut gpui_window_initialized,
+                    ref mut needs_render,
+                    window_type: _,
+                    ref mut last_cursor_position,
+                    ref mut motion_smoother,
+                    ref mut current_modifiers,
+                    ref mut pressed_mouse_buttons,
+                    ref mut click_state,
+                    #[cfg(target_os = "windows")]
+                    ref mut d3d_device,
+                    #[cfg(target_os = "windows")]
+                    ref mut d3d_context,
+                    #[cfg(target_os = "windows")]
+                    ref mut shared_texture,
+                    #[cfg(target_os = "windows")]
+                    ref mut shared_texture_initialized,
+                    #[cfg(target_os = "windows")]
+                    ref mut swap_chain,
+                    #[cfg(target_os = "windows")]
+                    ref mut blend_state,
+                    #[cfg(target_os = "windows")]
+                    ref mut render_target_view,
+                    #[cfg(target_os = "windows")]
+                    ref mut vertex_shader,
+                    #[cfg(target_os = "windows")]
+                    ref mut pixel_shader,
+                    #[cfg(target_os = "windows")]
+                    ref mut vertex_buffer,
+                    #[cfg(target_os = "windows")]
+                    ref mut input_layout,
+                    #[cfg(target_os = "windows")]
+                    ref mut sampler_state,
+                    #[cfg(target_os = "windows")]
+                    ref mut persistent_gpui_texture,
+                    #[cfg(target_os = "windows")]
+                    ref mut persistent_gpui_srv,
+                } = window_state;
+
+                match event {
                 WindowEvent::RedrawRequested => {
                     #[cfg(target_os = "windows")]
                     unsafe {
                         // Only render if GPUI requested it or we need to render
-                        if self.needs_render && self.gpui_app.is_some() {
-                            let gpui_app = self.gpui_app.as_mut().unwrap();
-
+                        if *needs_render {
                             // First refresh windows (marks windows as dirty)
                             let _ = gpui_app.update(|app| {
                                 app.refresh_windows();
@@ -466,18 +588,17 @@ impl ApplicationHandler for WinitGpuiApp {
                             });
 
                             // Reset the flag after rendering
-                            self.needs_render = false;
+                            *needs_render = false;
                         }
 
                         // Lazy initialization of shared texture on first render
-                        if !self.shared_texture_initialized && self.gpui_window.is_some() && self.gpui_app.is_some() && self.d3d_device.is_some() {
-                            let gpui_window = self.gpui_window.as_ref().unwrap();
-                            let gpui_app = self.gpui_app.as_mut().unwrap();
-                            let device = self.d3d_device.as_ref().unwrap();
+                        if !*shared_texture_initialized && gpui_window.is_some() && d3d_device.is_some() {
+                            let gpui_window_ref = gpui_window.as_ref().unwrap();
+                            let device = d3d_device.as_ref().unwrap();
 
                             // Get the shared texture handle from GPUI using the new update method
                             let handle_result = gpui_app.update(|app| {
-                                gpui_window.update(app, |_view, window, _cx| {
+                                gpui_window_ref.update(app, |_view, window, _cx| {
                                     window.get_shared_texture_handle()
                                 })
                             });
@@ -496,10 +617,10 @@ impl ApplicationHandler for WinitGpuiApp {
 
                                     match result {
                                         Ok(_) => {
-                                            if let Some(shared_texture) = texture {
+                                            if let Some(shared_texture_val) = texture {
                                                 // Get texture description to create our persistent copy
                                                 let mut desc = D3D11_TEXTURE2D_DESC::default();
-                                                shared_texture.GetDesc(&mut desc);
+                                                shared_texture_val.GetDesc(&mut desc);
 
                                                 // Create persistent texture (not shared, just ours)
                                                 desc.MiscFlags = D3D11_RESOURCE_MISC_FLAG(0).0 as u32; // Remove shared flag
@@ -518,26 +639,26 @@ impl ApplicationHandler for WinitGpuiApp {
                                                     let srv_result = device.CreateShaderResourceView(tex, None, Some(&mut srv));
 
                                                     if srv_result.is_ok() && srv.is_some() {
-                                                        self.persistent_gpui_srv = srv;
+                                                        *persistent_gpui_srv = srv;
                                                         println!("✅ Created cached SRV for persistent texture (no per-frame alloc)");
                                                     } else {
                                                         eprintln!("❌ Failed to create SRV: {:?}", srv_result);
                                                     }
 
-                                                    self.persistent_gpui_texture = persistent_texture;
+                                                    *persistent_gpui_texture = persistent_texture;
                                                     println!("✅ Created persistent GPUI texture buffer!");
                                                 } else {
                                                     eprintln!("❌ Failed to create persistent texture: {:?}", create_result);
                                                 }
 
-                                                self.shared_texture = Some(shared_texture);
-                                                self.shared_texture_initialized = true;
+                                                *shared_texture = Some(shared_texture_val);
+                                                *shared_texture_initialized = true;
                                                 println!("✅ Opened shared texture in winit D3D11 device!");
                                             }
                                         }
                                         Err(e) => {
                                             println!("❌ Failed to open shared texture: {:?}", e);
-                                            self.shared_texture_initialized = true;
+                                            *shared_texture_initialized = true;
                                         }
                                     }
                                 } else {
@@ -551,7 +672,7 @@ impl ApplicationHandler for WinitGpuiApp {
                         // GPU-side zero-copy composition: Winit renders green, then GPUI texture on top
                         // CRITICAL: Only present frames when we have valid GPUI content to avoid flickering
                         if let (Some(context), Some(shared_texture), Some(persistent_texture), Some(srv), Some(swap_chain), Some(render_target_view), Some(blend_state), Some(vertex_shader), Some(pixel_shader), Some(vertex_buffer), Some(input_layout), Some(sampler_state)) =
-                            (&self.d3d_context, &self.shared_texture, &self.persistent_gpui_texture, &self.persistent_gpui_srv, &self.swap_chain, &self.render_target_view, &self.blend_state, &self.vertex_shader, &self.pixel_shader, &self.vertex_buffer, &self.input_layout, &self.sampler_state) {
+                            (d3d_context.as_ref(), &*shared_texture, &*persistent_gpui_texture, &*persistent_gpui_srv, swap_chain.as_ref(), render_target_view.as_ref(), blend_state.as_ref(), vertex_shader.as_ref(), pixel_shader.as_ref(), vertex_buffer.as_ref(), input_layout.as_ref(), sampler_state.as_ref()) {
 
                             // Copy from GPUI's shared texture to our persistent buffer
                             // This preserves the last rendered frame even if GPUI doesn't re-render
@@ -631,9 +752,9 @@ impl ApplicationHandler for WinitGpuiApp {
                 // Handle keyboard events - request redraw
                 WindowEvent::KeyboardInput { event, .. } => {
                     // Forward keyboard events to GPUI
-                    if let (Some(gpui_window), Some(gpui_app)) = (&self.gpui_window, &mut self.gpui_app) {
+                    if let Some(gpui_window_ref) = gpui_window.as_ref() {
                         // Store event and create keystroke before borrowing
-                        let current_modifiers = self.current_modifiers;
+                        let current_modifiers_val = *current_modifiers;
                         
                         // Get the key string
                         let keystroke_opt = match &event.physical_key {
@@ -645,7 +766,7 @@ impl ApplicationHandler for WinitGpuiApp {
                                     };
                                     
                                     Some(Keystroke {
-                                        modifiers: current_modifiers,
+                                        modifiers: current_modifiers_val,
                                         key,
                                         key_char,
                                     })
@@ -669,40 +790,38 @@ impl ApplicationHandler for WinitGpuiApp {
                                 }
                             };
 
-                            let _ = gpui_app.update(|cx| gpui_window.inject_input_event(cx, gpui_event));
+                            let _ = gpui_app.update(|cx| gpui_window_ref.inject_input_event(cx, gpui_event));
                         }
                     }
                     
-                    self.needs_render = true;
-                    if let Some(window) = &self.winit_window {
-                        window.request_redraw();
+                    *needs_render = true;
+                    /* winit_window already available */ {
+                        winit_window.request_redraw();
                     }
                 }
                 WindowEvent::ModifiersChanged(new_modifiers) => {
                     // Update tracked modifiers
-                    self.current_modifiers = convert_modifiers(&new_modifiers.state());
+                    *current_modifiers = convert_modifiers(&new_modifiers.state());
                     
                     // Forward modifier changes to GPUI
-                    if let (Some(gpui_window), Some(gpui_app)) = (&self.gpui_window, &mut self.gpui_app) {
+                    if let Some(gpui_window_ref) = gpui_window.as_ref() {
                         let gpui_event = PlatformInput::ModifiersChanged(ModifiersChangedEvent {
-                            modifiers: self.current_modifiers,
+                            modifiers: *current_modifiers,
                             capslock: Capslock { on: false }, // TODO: Track capslock state
                         });
 
-                        let _ = gpui_app.update(|cx| gpui_window.inject_input_event(cx, gpui_event));
+                        let _ = gpui_app.update(|cx| gpui_window_ref.inject_input_event(cx, gpui_event));
                     }
                     
-                    self.needs_render = true;
-                    if let Some(window) = &self.winit_window {
-                        window.request_redraw();
+                    *needs_render = true;
+                    /* winit_window already available */ {
+                        winit_window.request_redraw();
                     }
                 }
                 // Handle window resize - resize GPUI renderer and request redraw
                 WindowEvent::Resized(new_size) => {
                     // Tell GPUI to resize its internal rendering buffers AND update logical size
-                    if let (Some(gpui_app), Some(gpui_window), Some(winit_window)) =
-                        (&mut self.gpui_app, &self.gpui_window, &self.winit_window) {
-
+                    if let Some(gpui_window_ref) = gpui_window.as_ref() {
                         let scale_factor = winit_window.scale_factor() as f32;
 
                         // Physical pixels for renderer (what GPU renders at)
@@ -718,7 +837,7 @@ impl ApplicationHandler for WinitGpuiApp {
                         );
 
                         let _ = gpui_app.update(|app| {
-                            let _ = gpui_window.update(app, |_view, window, _cx| {
+                            let _ = gpui_window_ref.update(app, |_view, window, _cx| {
                                 #[cfg(target_os = "windows")]
                                 {
                                     // Resize renderer (GPU buffers)
@@ -729,10 +848,10 @@ impl ApplicationHandler for WinitGpuiApp {
 
                                         // CRITICAL: GPUI recreates its texture when resizing, so we need to re-obtain the shared handle
                                         // Mark for re-initialization on next frame
-                                        self.shared_texture_initialized = false;
-                                        self.shared_texture = None;
-                                        self.persistent_gpui_texture = None;
-                                        self.persistent_gpui_srv = None; // Also clear cached SRV
+                                        *shared_texture_initialized = false;
+                                        *shared_texture = None;
+                                        *persistent_gpui_texture = None;
+                                        *persistent_gpui_srv = None; // Also clear cached SRV
                                         println!("🔄 Marked shared texture for re-initialization after GPUI resize");
                                     }
 
@@ -751,13 +870,13 @@ impl ApplicationHandler for WinitGpuiApp {
 
                     // CRITICAL: Resize the swap chain to match the new window size
                     // This is why the green background was stuck at the original size!
-                    if let Some(swap_chain) = &self.swap_chain {
+                    if let Some(swap_chain_ref) = swap_chain.as_ref() {
                         unsafe {
                             // Release the render target view before resizing
-                            self.render_target_view = None;
+                            *render_target_view = None;
 
                             // Resize swap chain buffers
-                            let resize_result = swap_chain.ResizeBuffers(
+                            let resize_result = swap_chain_ref.ResizeBuffers(
                                 0,  // Keep current buffer count
                                 new_size.width,
                                 new_size.height,
@@ -771,13 +890,13 @@ impl ApplicationHandler for WinitGpuiApp {
                                 println!("✅ Resized swap chain to {}x{}", new_size.width, new_size.height);
 
                                 // Recreate render target view
-                                if let Some(device) = &self.d3d_device {
-                                    let back_buffer: Option<ID3D11Texture2D> = swap_chain.GetBuffer(0).ok();
+                                if let Some(device) = d3d_device.as_ref() {
+                                    let back_buffer: Option<ID3D11Texture2D> = swap_chain_ref.GetBuffer(0).ok();
                                     if let Some(back_buffer) = back_buffer {
-                                        let mut rtv: Option<ID3D11RenderTargetView> = None;
-                                        let result = device.CreateRenderTargetView(&back_buffer, None, Some(&mut rtv));
+                                        let mut new_rtv: Option<ID3D11RenderTargetView> = None;
+                                        let result = device.CreateRenderTargetView(&back_buffer, None, Some(&mut new_rtv));
                                         if result.is_ok() {
-                                            self.render_target_view = rtv;
+                                            *render_target_view = new_rtv;
                                             println!("✅ Recreated render target view");
                                         } else {
                                             eprintln!("❌ Failed to create render target view: {:?}", result);
@@ -790,18 +909,18 @@ impl ApplicationHandler for WinitGpuiApp {
                         }
                     }
 
-                    self.needs_render = true;
-                    if let Some(window) = &self.winit_window {
-                        window.request_redraw();
+                    *needs_render = true;
+                    /* winit_window already available */ {
+                        winit_window.request_redraw();
                     }
                 }
                 WindowEvent::CursorMoved { position, .. } => {
                     // Update cursor position tracking
-                    if let Some(winit_window) = &self.winit_window {
+                    /* winit_window already available */ {
                         let scale_factor = winit_window.scale_factor() as f32;
                         let logical_x = position.x as f32 / scale_factor;
                         let logical_y = position.y as f32 / scale_factor;
-                        self.last_cursor_position = point(px(logical_x), px(logical_y));
+                        *last_cursor_position = point(px(logical_x), px(logical_y));
                         
                         // Debug output
                         eprintln!("🖱️ CursorMoved: physical ({}, {}), logical ({}, {})", 
@@ -809,8 +928,8 @@ impl ApplicationHandler for WinitGpuiApp {
                     }
                     
                     // Forward mouse move events to GPUI using inject_input_event
-                    if let (Some(gpui_window), Some(gpui_app)) = (&self.gpui_window, &mut self.gpui_app) {
-                        let winit_window = self.winit_window.as_ref().unwrap();
+                    if let Some(gpui_window_ref) = gpui_window.as_ref() {
+                        /* winit_window already available */
                         let scale_factor = winit_window.scale_factor() as f32;
 
                         // Convert physical position to logical position
@@ -818,11 +937,11 @@ impl ApplicationHandler for WinitGpuiApp {
                         let logical_y = position.y as f32 / scale_factor;
 
                         // Determine which button is pressed (if any)
-                        let pressed_button = if self.pressed_mouse_buttons.contains(&MouseButton::Left) {
+                        let pressed_button = if pressed_mouse_buttons.contains(&MouseButton::Left) {
                             Some(MouseButton::Left)
-                        } else if self.pressed_mouse_buttons.contains(&MouseButton::Right) {
+                        } else if pressed_mouse_buttons.contains(&MouseButton::Right) {
                             Some(MouseButton::Right)
-                        } else if self.pressed_mouse_buttons.contains(&MouseButton::Middle) {
+                        } else if pressed_mouse_buttons.contains(&MouseButton::Middle) {
                             Some(MouseButton::Middle)
                         } else {
                             None
@@ -831,77 +950,77 @@ impl ApplicationHandler for WinitGpuiApp {
                         let gpui_event = PlatformInput::MouseMove(MouseMoveEvent {
                             position: point(px(logical_x), px(logical_y)),
                             pressed_button,
-                            modifiers: self.current_modifiers,
+                            modifiers: *current_modifiers,
                         });
 
                         eprintln!("📤 Injecting MouseMove event...");
-                        let result = gpui_app.update(|cx| gpui_window.inject_input_event(cx, gpui_event));
+                        let result = gpui_app.update(|cx| gpui_window_ref.inject_input_event(cx, gpui_event));
                         eprintln!("📥 MouseMove result: {:?}", result);
 
                         // Request redraw for cursor updates
-                        self.needs_render = true;
+                        *needs_render = true;
                         winit_window.request_redraw();
                     }
                 }
                 WindowEvent::MouseInput { state, button, .. } => {
                     // Forward mouse button events to GPUI
-                    if let (Some(gpui_window), Some(gpui_app)) = (&self.gpui_window, &mut self.gpui_app) {
+                    if let Some(gpui_window_ref) = gpui_window.as_ref() {
                         let gpui_button = convert_mouse_button(button);
                         // Use actual cursor position for clicks, not smoothed position!
-                        let position = self.last_cursor_position;
+                        let position = *last_cursor_position;
 
                         match state {
                             ElementState::Pressed => {
                                 eprintln!("🖱️ MouseInput PRESSED: {:?} at {:?}", button, position);
                                 
                                 // Track pressed button
-                                self.pressed_mouse_buttons.insert(gpui_button);
+                                pressed_mouse_buttons.insert(gpui_button);
                                 
                                 // Update click count
-                                let click_count = self.click_state.update(gpui_button, position);
+                                let click_count = click_state.update(gpui_button, position);
                                 
                                 let gpui_event = PlatformInput::MouseDown(MouseDownEvent {
                                     button: gpui_button,
                                     position,
-                                    modifiers: self.current_modifiers,
+                                    modifiers: *current_modifiers,
                                     click_count,
                                     first_mouse: false,
                                 });
 
                                 eprintln!("📤 Injecting MouseDown event...");
-                                let result = gpui_app.update(|cx| gpui_window.inject_input_event(cx, gpui_event));
+                                let result = gpui_app.update(|cx| gpui_window_ref.inject_input_event(cx, gpui_event));
                                 eprintln!("📥 MouseDown result: {:?}", result);
                             }
                             ElementState::Released => {
                                 eprintln!("🖱️ MouseInput RELEASED: {:?}", button);
                                 
                                 // Remove pressed button
-                                self.pressed_mouse_buttons.remove(&gpui_button);
+                                pressed_mouse_buttons.remove(&gpui_button);
                                 
                                 let gpui_event = PlatformInput::MouseUp(MouseUpEvent {
                                     button: gpui_button,
                                     position,
-                                    modifiers: self.current_modifiers,
-                                    click_count: self.click_state.current_count,
+                                    modifiers: *current_modifiers,
+                                    click_count: click_state.current_count,
                                 });
 
                                 eprintln!("📤 Injecting MouseUp event...");
-                                let result = gpui_app.update(|cx| gpui_window.inject_input_event(cx, gpui_event));
+                                let result = gpui_app.update(|cx| gpui_window_ref.inject_input_event(cx, gpui_event));
                                 eprintln!("📥 MouseUp result: {:?}", result);
                             }
                         }
 
                         // Request redraw for click feedback
-                        self.needs_render = true;
-                        if let Some(window) = &self.winit_window {
-                            window.request_redraw();
+                        *needs_render = true;
+                        /* winit_window already available */ {
+                            winit_window.request_redraw();
                         }
                     }
                 }
                 WindowEvent::MouseWheel { delta, .. } => {
                     // Forward mouse wheel events to GPUI
-                    if let (Some(gpui_window), Some(gpui_app)) = (&self.gpui_window, &mut self.gpui_app) {
-                        let winit_window = self.winit_window.as_ref().unwrap();
+                    if let Some(gpui_window_ref) = gpui_window.as_ref() {
+                        /* winit_window already available */
 
                         // Convert delta
                         let scroll_delta = match delta {
@@ -918,31 +1037,56 @@ impl ApplicationHandler for WinitGpuiApp {
                         };
 
                         // Use actual cursor position for scroll events
-                        let position = self.last_cursor_position;
+                        let position = *last_cursor_position;
 
                         let gpui_event = PlatformInput::ScrollWheel(ScrollWheelEvent {
                             position,
                             delta: scroll_delta,
-                            modifiers: self.current_modifiers,
+                            modifiers: *current_modifiers,
                             touch_phase: TouchPhase::Moved,
                         });
 
-                        let _ = gpui_app.update(|cx| gpui_window.inject_input_event(cx, gpui_event));
+                        let _ = gpui_app.update(|cx| gpui_window_ref.inject_input_event(cx, gpui_event));
 
                         // Request redraw for scroll updates
-                        self.needs_render = true;
+                        *needs_render = true;
                         winit_window.request_redraw();
                     }
                 }
                 _ => {}
             }
         }
+        }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        // Initialize GPUI window ONCE using external window API
-        if !self.gpui_window_initialized && self.winit_window.is_some() && self.gpui_app.is_some() {
-            let winit_window = self.winit_window.as_ref().unwrap().clone();
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // Check for window creation requests
+        while let Ok(request) = self.window_request_rx.try_recv() {
+            self.pending_window_requests.push(request);
+        }
+
+        // Process pending window requests (collect first to avoid borrow issues)
+        let requests: Vec<_> = self.pending_window_requests.drain(..).collect();
+        for request in requests {
+            match request {
+                WindowRequest::CloseWindow { window_id } => {
+                    // Find and close the window with this ID
+                    let window_id_native = unsafe { std::mem::transmute::<u64, WindowId>(window_id) };
+                    if self.windows.remove(&window_id_native).is_some() {
+                        println!("✅ Closed window with ID: {:?}", window_id);
+                        self.engine_state.decrement_window_count();
+                    }
+                }
+                _ => {
+                    self.create_window(event_loop, request);
+                }
+            }
+        }
+
+        // Initialize any uninitialized GPUI windows
+        for (_window_id, window_state) in self.windows.iter_mut() {
+        if !window_state.gpui_window_initialized {
+            let winit_window = window_state.winit_window.clone();
             let scale_factor = winit_window.scale_factor() as f32;
             let size = winit_window.inner_size();
 
@@ -974,7 +1118,10 @@ impl ApplicationHandler for WinitGpuiApp {
             println!("✅ Opening GPUI window on external winit window...");
 
             // Initialize GPUI components (fonts, themes, keybindings)
-            let app = self.gpui_app.as_mut().unwrap();
+            let app = &mut window_state.gpui_app;
+
+            // Clone engine_state for use in closures
+            let engine_state_for_actions = self.engine_state.clone();
 
             // Load custom fonts
             app.update(|app| {
@@ -998,9 +1145,10 @@ impl ApplicationHandler for WinitGpuiApp {
                     KeyBinding::new("ctrl-space", ToggleCommandPalette, None),
                 ]);
 
-                app.on_action(|_: &OpenSettings, app_cx| {
-                    // TODO: Implement settings window opening for Winit
-                    println!("Settings window requested (not yet implemented for Winit)");
+                let engine_state = engine_state_for_actions.clone();
+                app.on_action(move |_: &OpenSettings, _app_cx| {
+                    println!("⚙️  Settings window requested - creating new window!");
+                    engine_state.request_window(crate::engine_state::WindowRequest::Settings);
                 });
 
                 app.activate(true);
@@ -1008,13 +1156,36 @@ impl ApplicationHandler for WinitGpuiApp {
 
             println!("✅ GPUI components initialized");
 
-            // Open GPUI window using external window API
+            // Open GPUI window using external window API with appropriate view
             let gpui_window = app.open_window_external(external_handle.clone(), |window, cx| {
-                let entry_view = cx.new(|cx| EntryWindow::new(window, cx));
-                cx.new(|cx| Root::new(entry_view.clone().into(), window, cx))
+                match &window_state.window_type {
+                    Some(WindowRequest::Settings) => {
+                        let settings_view = cx.new(|cx| crate::ui::settings_window::SettingsWindow::new(window, cx));
+                        cx.new(|cx| Root::new(settings_view.clone().into(), window, cx))
+                    }
+                    Some(WindowRequest::ProjectSplash { project_path }) => {
+                        // Get the current window ID from winit_window
+                        let window_id = window_state.winit_window.id();
+                        let window_id_u64 = unsafe { std::mem::transmute::<_, u64>(window_id) };
+
+                        let loading_view = cx.new(|cx| crate::ui::loading_window::LoadingWindow::new_with_window_id(
+                            std::path::PathBuf::from(project_path),
+                            window_id_u64,
+                            window,
+                            cx
+                        ));
+                        cx.new(|cx| Root::new(loading_view.clone().into(), window, cx))
+                    }
+                    Some(WindowRequest::ProjectEditor) | Some(WindowRequest::CloseWindow { .. }) | None => {
+                        // Editor window or default entry window
+                        // TODO: Create actual editor window view with opened project
+                        let entry_view = cx.new(|cx| EntryWindow::new(window, cx));
+                        cx.new(|cx| Root::new(entry_view.clone().into(), window, cx))
+                    }
+                }
             }).expect("Failed to open GPUI window");
 
-            self.gpui_window = Some(gpui_window);
+            window_state.gpui_window = Some(gpui_window);
 
             // Initialize D3D11 for blitting on Windows
             #[cfg(target_os = "windows")]
@@ -1038,8 +1209,8 @@ impl ApplicationHandler for WinitGpuiApp {
                 );
 
                 if result.is_ok() && device.is_some() {
-                    self.d3d_device = device.clone();
-                    self.d3d_context = context;
+                    window_state.d3d_device = device.clone();
+                    window_state.d3d_context = context;
                     println!("✅ D3D11 device created successfully!");
 
                     // Create swap chain for the winit window
@@ -1088,14 +1259,14 @@ impl ApplicationHandler for WinitGpuiApp {
                         None,
                     );
                     if let Ok(swap_chain) = swap_chain {
-                        self.swap_chain = Some(swap_chain.clone());
+                        window_state.swap_chain = Some(swap_chain.clone());
                         println!("✅ Swap chain created for winit window!");
 
                         // Create render target view from swap chain back buffer
                         if let Ok(back_buffer) = swap_chain.GetBuffer::<ID3D11Texture2D>(0) {
                             let mut rtv: Option<ID3D11RenderTargetView> = None;
                             if device.as_ref().unwrap().CreateRenderTargetView(&back_buffer, None, Some(&mut rtv as *mut _)).is_ok() {
-                                self.render_target_view = rtv;
+                                window_state.render_target_view = rtv;
                                 println!("✅ Render target view created!");
                             }
                         }
@@ -1127,7 +1298,7 @@ impl ApplicationHandler for WinitGpuiApp {
 
                         let mut blend_state = None;
                         if device.as_ref().unwrap().CreateBlendState(&blend_desc, Some(&mut blend_state as *mut _)).is_ok() {
-                            self.blend_state = blend_state;
+                            window_state.blend_state = blend_state;
                             println!("✅ Blend state created for alpha composition!");
                         }
 
@@ -1268,14 +1439,14 @@ float4 main(PS_INPUT input) : SV_TARGET {
                         };
 
                         if vs_result.is_ok() && ps_result.is_ok() {
-                            self.vertex_shader = vertex_shader;
-                            self.pixel_shader = pixel_shader;
+                            window_state.vertex_shader = vertex_shader;
+                            window_state.pixel_shader = pixel_shader;
                             println!("✅ Shaders created from bytecode!");
                         } else {
                             println!("❌ Failed to create shaders - VS: {:?}, PS: {:?}", vs_result, ps_result);
                         }
 
-                        if self.vertex_shader.is_some() && self.pixel_shader.is_some() {
+                        if window_state.vertex_shader.is_some() && window_state.pixel_shader.is_some() {
 
                             // Create input layout that matches the vertex shader
                             // VS_INPUT has: float2 pos : POSITION; float2 tex : TEXCOORD0;
@@ -1302,7 +1473,7 @@ float4 main(PS_INPUT input) : SV_TARGET {
 
                             let mut input_layout = None;
                             if device.as_ref().unwrap().CreateInputLayout(&layout, vs_bytecode, Some(&mut input_layout as *mut _)).is_ok() {
-                                self.input_layout = input_layout;
+                                window_state.input_layout = input_layout;
                                 println!("✅ Input layout created!");
                             } else {
                                 println!("❌ Failed to create input layout");
@@ -1340,7 +1511,7 @@ float4 main(PS_INPUT input) : SV_TARGET {
 
                         let mut vertex_buffer = None;
                         if device.as_ref().unwrap().CreateBuffer(&vb_desc, Some(&vb_data), Some(&mut vertex_buffer as *mut _)).is_ok() {
-                            self.vertex_buffer = vertex_buffer;
+                            window_state.vertex_buffer = vertex_buffer;
                             println!("✅ Vertex buffer created!");
                         }
 
@@ -1360,7 +1531,7 @@ float4 main(PS_INPUT input) : SV_TARGET {
 
                         let mut sampler_state = None;
                         if device.as_ref().unwrap().CreateSamplerState(&sampler_desc, Some(&mut sampler_state as *mut _)).is_ok() {
-                            self.sampler_state = sampler_state;
+                            window_state.sampler_state = sampler_state;
                             println!("✅ Sampler state created!");
                         }
                     } else {
@@ -1375,8 +1546,9 @@ float4 main(PS_INPUT input) : SV_TARGET {
                 }
             }
 
-            self.gpui_window_initialized = true;
+            window_state.gpui_window_initialized = true;
             println!("✅ GPUI window opened! Ready for GPU composition!\n");
+        }
         }
     }
 }

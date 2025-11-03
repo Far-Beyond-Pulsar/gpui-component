@@ -17,6 +17,8 @@ pub struct LoadingWindow {
     _analyzer_subscription: Option<Subscription>,
     /// Current analyzer work message (shown at bottom left)
     analyzer_message: String,
+    /// Window ID for closing this window
+    window_id: u64,
 }
 
 #[derive(Clone)]
@@ -41,6 +43,10 @@ impl EventEmitter<LoadingComplete> for LoadingWindow {}
 
 impl LoadingWindow {
     pub fn new(project_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_with_window_id(project_path, 0, window, cx)
+    }
+
+    pub fn new_with_window_id(project_path: PathBuf, window_id: u64, window: &mut Window, cx: &mut Context<Self>) -> Self {
         // Extract project name from path
         let project_name = project_path
             .file_name()
@@ -79,6 +85,7 @@ impl LoadingWindow {
             initial_tasks_complete: false,
             _analyzer_subscription: None,
             analyzer_message: String::new(),
+            window_id,
         };
 
         // Initialize and start rust analyzer immediately (subscriptions will handle events)
@@ -291,15 +298,29 @@ impl LoadingWindow {
     fn check_completion(&mut self, cx: &mut Context<Self>) {
         // Only complete when initial tasks are done AND analyzer is ready
         if self.initial_tasks_complete && self.analyzer_ready {
-            println!("🎉 Loading complete! Opening main window...");
+            println!("🎉 Loading complete! Opening editor window...");
             let project_path = self.project_path.clone();
             let rust_analyzer = self.rust_analyzer.clone().expect("Rust Analyzer should be initialized");
-            cx.emit(LoadingComplete { 
+
+            // Request editor window to be opened and close this splash
+            if let Some(engine_state) = crate::EngineState::global() {
+                println!("📝 Requesting editor window for: {:?}", project_path);
+                engine_state.request_window(crate::WindowRequest::ProjectEditor);
+
+                // Close this splash window
+                println!("🔚 Closing splash window (ID: {})", self.window_id);
+                engine_state.request_window(crate::WindowRequest::CloseWindow {
+                    window_id: self.window_id,
+                });
+            }
+
+            // Emit completion event (in case anyone else needs it)
+            cx.emit(LoadingComplete {
                 project_path,
                 rust_analyzer,
             });
         } else {
-            println!("⏳ Waiting for completion - initial_tasks: {}, analyzer_ready: {}", 
+            println!("⏳ Waiting for completion - initial_tasks: {}, analyzer_ready: {}",
                 self.initial_tasks_complete, self.analyzer_ready);
         }
     }
