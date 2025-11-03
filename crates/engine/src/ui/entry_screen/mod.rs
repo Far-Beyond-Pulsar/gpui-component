@@ -350,24 +350,32 @@ impl EntryScreen {
             return;
         }
         self.launched = true;
-        
+
         let project_name = path.file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("Unknown")
             .to_string();
-        
+
         let is_git = is_git_repo(&path);
-        
+
         let recent_project = RecentProject {
             name: project_name,
             path: path.to_string_lossy().to_string(),
             last_opened: Some(chrono::Local::now().format("%Y-%m-%d %H:%M").to_string()),
             is_git,
         };
-        
+
         self.recent_projects.add_or_update(recent_project);
         self.recent_projects.save(&self.recent_projects_path);
-        
+
+        // Request splash window via multi-window system
+        if let Some(engine_state) = crate::EngineState::global() {
+            println!("🚀 Opening project splash for: {:?}", path);
+            engine_state.request_window(crate::WindowRequest::ProjectSplash {
+                project_path: path.to_string_lossy().to_string(),
+            });
+        }
+
         cx.emit(crate::ui::project_selector::ProjectSelected { path });
     }
     
