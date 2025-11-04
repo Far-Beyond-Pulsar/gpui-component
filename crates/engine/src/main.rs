@@ -778,9 +778,9 @@ impl ApplicationHandler for WinitGpuiApp {
                                                 if let Some(ref bevy_tex) = bevy_texture_local {
                                                     // Create or reuse SRV for Bevy texture
                                                     if bevy_texture.is_none() || bevy_texture.as_ref().map(|t| t.as_raw()) != Some(bevy_tex.as_raw()) {
-                                                        // Create new SRV
+                                                        // Create new SRV - MUST match Bevy's BGRA8UnormSrgb format!
                                                         let srv_desc = D3D11_SHADER_RESOURCE_VIEW_DESC {
-                                                            Format: DXGI_FORMAT_R8G8B8A8_UNORM,
+                                                            Format: DXGI_FORMAT_B8G8R8A8_UNORM,
                                                             ViewDimension: D3D11_SRV_DIMENSION_TEXTURE2D,
                                                             Anonymous: D3D11_SHADER_RESOURCE_VIEW_DESC_0 {
                                                                 Texture2D: D3D11_TEX2D_SRV {

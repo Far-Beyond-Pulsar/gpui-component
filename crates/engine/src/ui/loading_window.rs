@@ -199,9 +199,7 @@ impl LoadingWindow {
         _analyzer: Entity<RustAnalyzerManager>,
         event: &AnalyzerEvent,
         cx: &mut Context<Self>,
-    ) {
-        println!("🔔 LoadingWindow received analyzer event: {:?}", event);
-        
+    ) {        
         match event {
             AnalyzerEvent::StatusChanged(status) => {
                 println!("   Status changed to: {:?}", status);
@@ -242,7 +240,6 @@ impl LoadingWindow {
                 }
             }
             AnalyzerEvent::IndexingProgress { progress, message } => {
-                println!("   📈 Indexing progress: {:.1}% - {}", progress * 100.0, message);
                 // Update the indexing task status and detailed message
                 if !self.analyzer_ready {
                     self.loading_tasks[3].status = TaskStatus::InProgress;
