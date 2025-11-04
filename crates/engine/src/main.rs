@@ -1302,15 +1302,18 @@ impl ApplicationHandler for WinitGpuiApp {
             // Store window_id in EngineState metadata BEFORE opening GPUI window
             // so that views created during open_window_external can access it
             let window_id_u64 = unsafe { std::mem::transmute::<_, u64>(*window_id) };
+            println!("[WINDOW-INIT] 📍 Window ID for this window: {}", window_id_u64);
             self.engine_state.set_metadata("latest_window_id".to_string(), window_id_u64.to_string());
 
             // If this is a project editor window, also store it with a special key
             if matches!(&window_state.window_type, Some(WindowRequest::ProjectEditor { .. })) {
                 self.engine_state.set_metadata("current_project_window_id".to_string(), window_id_u64.to_string());
+                println!("[WINDOW-INIT] 🎯 This is a ProjectEditor window with ID: {}", window_id_u64);
             }
 
             // Capture window_id_u64 for use in the closure
             let captured_window_id = window_id_u64;
+            println!("[WINDOW-INIT] 📦 Captured window_id for closure: {}", captured_window_id);
 
             // Open GPUI window using external window API with appropriate view
             let gpui_window = app.open_window_external(external_handle.clone(), |window, cx| {
