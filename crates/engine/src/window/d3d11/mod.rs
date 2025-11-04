@@ -84,7 +84,10 @@ mod windows_impl {
         // Get window handle
         let window_handle = winit_window.window_handle().ok()?;
         let hwnd = match window_handle.as_raw() {
-            RawWindowHandle::Win32(handle) => HWND(handle.hwnd.get() as isize),
+            RawWindowHandle::Win32(handle) => {
+                // Get the window handle value - hwnd.get() returns isize
+                HWND(handle.hwnd.get() as isize as *mut _)
+            },
             _ => return None,
         };
 
@@ -227,12 +230,15 @@ mod windows_impl {
         let ps_bytecode = compile_shader(PIXEL_SHADER_SOURCE, "ps_5_0")?;
 
         // Create shader objects
-        let vertex_shader = device.CreateVertexShader(&vs_bytecode, None).ok()?;
-        let pixel_shader = device.CreatePixelShader(&ps_bytecode, None).ok()?;
+        let mut vertex_shader = None;
+        let mut pixel_shader = None;
+        
+        device.CreateVertexShader(&vs_bytecode, None, Some(&mut vertex_shader as *mut _)).ok()?;
+        device.CreatePixelShader(&ps_bytecode, None, Some(&mut pixel_shader as *mut _)).ok()?;
 
         println!("✅ Shaders compiled successfully");
 
-        Some((vertex_shader, pixel_shader, vs_bytecode))
+        Some((vertex_shader?, pixel_shader?, vs_bytecode))
     }
 
     /// Create input layout for vertex shader
@@ -274,7 +280,9 @@ mod windows_impl {
             },
         ];
 
-        device.CreateInputLayout(&layout, vs_bytecode).ok()
+        let mut input_layout = None;
+        device.CreateInputLayout(&layout, vs_bytecode, Some(&mut input_layout as *mut _)).ok()?;
+        input_layout
     }
 
     /// Create fullscreen quad vertex buffer
@@ -325,9 +333,9 @@ mod windows_impl {
         let buffer_desc = D3D11_BUFFER_DESC {
             ByteWidth: (vertices.len() * std::mem::size_of::<Vertex>()) as u32,
             Usage: D3D11_USAGE_IMMUTABLE,            // Static buffer
-            BindFlags: D3D11_BIND_VERTEX_BUFFER,     // Vertex buffer
-            CPUAccessFlags: D3D11_CPU_ACCESS_FLAG(0), // No CPU access needed
-            MiscFlags: D3D11_RESOURCE_MISC_FLAG(0),
+            BindFlags: D3D11_BIND_VERTEX_BUFFER.0 as u32,     // Vertex buffer
+            CPUAccessFlags: 0, // No CPU access needed
+            MiscFlags: 0,
             StructureByteStride: 0,
         };
 
@@ -337,7 +345,9 @@ mod windows_impl {
             SysMemSlicePitch: 0,
         };
 
-        device.CreateBuffer(&buffer_desc, Some(&init_data)).ok()
+        let mut buffer = None;
+        device.CreateBuffer(&buffer_desc, Some(&init_data), Some(&mut buffer as *mut _)).ok()?;
+        buffer
     }
 
     /// Create blend state for alpha compositing
@@ -379,7 +389,9 @@ mod windows_impl {
             ],
         };
 
-        device.CreateBlendState(&blend_desc).ok()
+        let mut blend_state = None;
+        device.CreateBlendState(&blend_desc, Some(&mut blend_state as *mut _)).ok()?;
+        blend_state
     }
 
     /// Create texture sampler state
@@ -410,7 +422,9 @@ mod windows_impl {
             MaxLOD: f32::MAX,
         };
 
-        device.CreateSamplerState(&sampler_desc).ok()
+        let mut sampler_state = None;
+        device.CreateSamplerState(&sampler_desc, Some(&mut sampler_state as *mut _)).ok()?;
+        sampler_state
     }
 }
 

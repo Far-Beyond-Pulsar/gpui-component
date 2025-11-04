@@ -10,8 +10,7 @@ use bevy::render::{
     texture::GpuImage,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
-use super::resources::SharedTexturesResource;
-use super::types::SharedGpuTextures;
+use super::core::{SharedTexturesResource, SharedGpuTextures};
 
 pub const RENDER_WIDTH: u32 = 1600;
 pub const RENDER_HEIGHT: u32 = 900;

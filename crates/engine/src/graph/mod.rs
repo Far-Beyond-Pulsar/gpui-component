@@ -125,7 +125,7 @@ pub struct GraphDescription {
     pub connections: Vec<Connection>,
     pub metadata: GraphMetadata,
     #[serde(default)]
-    pub comments: Vec<crate::ui::panels::blueprint_editor2::BlueprintComment>,
+    pub comments: Vec<crate::ui::windows::editor::tabs::blueprint_editor::BlueprintComment>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

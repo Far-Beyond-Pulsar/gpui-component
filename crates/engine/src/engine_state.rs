@@ -54,7 +54,7 @@ use std::sync::{Arc, RwLock, Mutex};
 use std::sync::mpsc::Sender;
 
 // Import GpuRenderer
-use crate::ui::gpu_renderer::GpuRenderer;
+use crate::ui::common::services::gpu_renderer::GpuRenderer;
 
 /// Window creation/management request
 ///

@@ -4,16 +4,27 @@ use bevy::prelude::*;
 use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use std::time::Duration;
 
-use super::types::{CameraInput, RenderMetrics, GpuProfilerData, SharedGpuTextures};
-use super::resources::*;
-use super::components::*;
-use super::camera::*;
-use super::sync::*;
-use super::metrics::*;
-use super::scene::*;
+use super::core::{
+    CameraInput, RenderMetrics, GpuProfilerData, SharedGpuTextures,
+    SharedTexturesResource, ShutdownFlag, GameThreadResource, CameraInputResource,
+    SharedGizmoStateResource, SharedViewportMouseInputResource, MetricsResource,
+    GpuProfilerResource, WgpuProfilerResource, MainCamera, GameObjectId,
+};
+use super::systems::{
+    sync_camera_input_system, camera_movement_system,
+    sync_gizmo_state_system, sync_viewport_mouse_input_system,
+    sync_game_objects_system, update_gizmo_target_system,
+    update_metrics_system, update_gpu_profiler_system,
+    setup_scene, animate_objects_system, swap_render_buffers_system, debug_rendering_system,
+};
 use super::textures::*;
-use super::gizmos_bevy::*;
-use super::viewport_interaction::*;
+use super::gizmos::rendering::{
+    GizmoStateResource, update_gizmo_visuals, update_selection_highlighting,
+};
+use super::interaction::viewport::{
+    ViewportMouseInput, GizmoInteractionState, ActiveRaycastTask,
+    viewport_click_initiate_raycast_system, viewport_poll_raycast_system, gizmo_drag_system,
+};
 
 /// Renderer state
 pub struct BevyRenderer {

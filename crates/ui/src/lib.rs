@@ -1,3 +1,5 @@
+#![allow(warnings)]
+
 mod event;
 mod global_state;
 mod icon;

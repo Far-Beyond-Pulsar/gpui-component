@@ -175,7 +175,7 @@ pub struct WindowState {
     // ===== 3D Rendering =====
     
     /// Bevy renderer for this window (if it has a 3D viewport)
-    pub bevy_renderer: Option<Arc<std::sync::Mutex<crate::ui::gpu_renderer::GpuRenderer>>>,
+    pub bevy_renderer: Option<Arc<std::sync::Mutex<crate::ui::common::services::gpu_renderer::GpuRenderer>>>,
 }
 
 impl WindowState {

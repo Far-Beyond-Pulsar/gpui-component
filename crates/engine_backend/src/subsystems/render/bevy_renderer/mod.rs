@@ -1,37 +1,71 @@
 //! Bevy Renderer with DIRECT rendering to DXGI shared textures
 //! Double-buffered implementation - write to one buffer while GPUI reads from the other
 //!
-//! This module is organized into logical submodules:
-//! - `types`: Core data structures (RenderMetrics, GpuProfilerData, CameraInput, etc.)
-//! - `components`: Bevy ECS components (MainCamera, GameObjectId, Selected, SelectionOutline)
-//! - `resources`: Bevy ECS resources (shared state between systems)
-//! - `camera`: Camera input synchronization and movement systems
-//! - `sync`: Game object synchronization between game and render threads
-//! - `metrics`: Performance metrics and GPU profiling systems
-//! - `scene`: Scene setup (objects, lights, camera spawning)
-//! - `textures`: CRITICAL - DXGI shared texture creation and management
-//! - `renderer`: Main BevyRenderer struct and initialization
-//! - `gizmos_bevy`: Gizmo rendering for level editor (translate/rotate/scale visuals)
-//! - `gizmo_interaction`: Gizmo mouse interaction and manipulation (DEPRECATED - use viewport_interaction)
-//! - `viewport_interaction`: Complete viewport interaction system (object selection, gizmo manipulation)
+//! ## Architecture
+//!
+//! This renderer is organized into logical modules for maintainability and clarity:
+//!
+//! ### Core (`core/`)
+//! Fundamental data structures with no rendering logic:
+//! - `types` - RenderMetrics, GpuProfilerData, CameraInput, SharedGpuTextures
+//! - `components` - Bevy ECS components (MainCamera, GameObjectId, Selected)
+//! - `resources` - Bevy ECS resources (shared state between systems)
+//!
+//! ### Systems (`systems/`)
+//! Bevy ECS systems that run every frame:
+//! - `camera` - Camera input synchronization and Unreal-style movement
+//! - `sync` - Thread synchronization (game state, gizmo state, input)
+//! - `metrics` - Performance tracking and GPU profiling
+//! - `scene` - Scene setup (objects, lights, camera spawning)
+//!
+//! ### Interaction (`interaction/`)
+//! User interaction with the viewport:
+//! - `viewport` - Object selection and gizmo manipulation (async raycasting)
+//! - `gizmo_interaction` - **DEPRECATED** - Legacy code kept for reference
+//!
+//! ### Gizmos (`gizmos/`)
+//! 3D manipulation visuals for the level editor:
+//! - `rendering` - Gizmo mesh generation and rendering systems
+//!
+//! ### Root Level
+//! Critical infrastructure kept at the root for clarity:
+//! - `textures` - **CRITICAL** - DXGI shared texture creation and management
+//! - `renderer` - Main BevyRenderer struct and initialization
+//!
+//! ## Double-Buffered Rendering
+//!
+//! The renderer uses two shared DXGI textures:
+//! 1. **Write Buffer** - Bevy renders to this buffer
+//! 2. **Read Buffer** - GPUI reads from this buffer for display
+//!
+//! Buffers are swapped atomically each frame to avoid tearing and blocking.
 
-pub mod types;
-pub mod components;
-pub mod resources;
-pub mod camera;
-pub mod sync;
-pub mod metrics;
-pub mod scene;
+// Core data structures
+pub mod core;
+
+// Bevy systems
+pub mod systems;
+
+// User interaction
+pub mod interaction;
+
+// Gizmo system
+pub mod gizmos;
+
+// Critical root-level modules
 pub mod textures;
 pub mod renderer;
-pub mod gizmos_bevy;
-pub mod gizmo_interaction;
-pub mod viewport_interaction;
 
 // Re-export public API
-pub use types::{RenderMetrics, GpuProfilerData, DiagnosticMetric, CameraInput, SharedGpuTextures};
+pub use core::{
+    RenderMetrics, GpuProfilerData, DiagnosticMetric, CameraInput, SharedGpuTextures,
+};
 pub use renderer::BevyRenderer;
 pub use textures::{RENDER_WIDTH, RENDER_HEIGHT};
-pub use gizmos_bevy::{GizmoType as BevyGizmoType, GizmoAxis as BevyGizmoAxis, GizmoStateResource};
-pub use viewport_interaction::{ViewportMouseInput, GizmoInteractionState, ActiveRaycastTask, RaycastResult};
-pub use sync::{sync_gizmo_state_system, sync_viewport_mouse_input_system};
+pub use gizmos::rendering::{
+    GizmoType as BevyGizmoType, GizmoAxis as BevyGizmoAxis, GizmoStateResource,
+};
+pub use interaction::viewport::{
+    ViewportMouseInput, GizmoInteractionState, ActiveRaycastTask, RaycastResult,
+};
+pub use systems::sync::{sync_gizmo_state_system, sync_viewport_mouse_input_system};
