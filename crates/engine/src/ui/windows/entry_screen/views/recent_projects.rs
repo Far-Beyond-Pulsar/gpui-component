@@ -113,7 +113,7 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
             .unwrap_or(GitFetchStatus::NotStarted);
         
         // Load tool preferences for this project
-        let (preferred_editor, preferred_git_tool) = crate::ui::common::entry_screen::views::load_project_tool_preferences(&std::path::PathBuf::from(&proj_path));
+        let (preferred_editor, preferred_git_tool) = crate::ui::windows::entry_screen::views::load_project_tool_preferences(&std::path::PathBuf::from(&proj_path));
         
         let card = v_flex()
             .id(SharedString::from(format!("project-{}", proj_path)))
