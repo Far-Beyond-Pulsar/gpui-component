@@ -858,7 +858,7 @@ impl PulsarApp {
     fn on_navigate_to_diagnostic(
         &mut self,
         _drawer: &Entity<ProblemsDrawer>,
-        event: &crate::ui::common::drawers::problems_drawer::NavigateToDiagnostic,
+        event: &crate::ui::windows::editor::drawers::problems_drawer::NavigateToDiagnostic,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1335,11 +1335,11 @@ impl PulsarApp {
         let error_count = self
             .problems_drawer
             .read(cx)
-            .count_by_severity(crate::ui::common::drawers::problems_drawer::DiagnosticSeverity::Error);
+            .count_by_severity(crate::ui::windows::editor::drawers::problems_drawer::DiagnosticSeverity::Error);
         let warning_count = self
             .problems_drawer
             .read(cx)
-            .count_by_severity(crate::ui::common::drawers::problems_drawer::DiagnosticSeverity::Warning);
+            .count_by_severity(crate::ui::windows::editor::drawers::problems_drawer::DiagnosticSeverity::Warning);
 
         // Get status colors
         let (status_color, status_icon) = match status {
