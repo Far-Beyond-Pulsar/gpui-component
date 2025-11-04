@@ -1,3 +1,36 @@
+//! Theme System
+//!
+//! This module provides theme management for the engine UI.
+//!
+//! ## Features
+//!
+//! - Load themes from embedded resources
+//! - Extract themes to application data directory
+//! - Theme switching with hot reload
+//! - Persistent theme selection
+//!
+//! ## Theme Storage
+//!
+//! Themes are stored in:
+//! - Embedded: `../../themes/*.json`
+//! - Runtime: `{appdata}/themes/*.json`
+//! - State: `{appdata}/state.json`
+//!
+//! ## Usage
+//!
+//! ```rust,ignore
+//! // Initialize themes in GPUI app
+//! crate::themes::init(cx);
+//! 
+//! // Theme will be loaded from last session
+//! // or default to "Default Light"
+//! ```
+//!
+//! ## Implementation
+//!
+//! Uses GPUI's ThemeRegistry to manage themes and integrates with
+//! the application's settings system.
+
 use std::path::PathBuf;
 
 use gpui::{

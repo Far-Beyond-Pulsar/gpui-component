@@ -47,6 +47,8 @@ mod recent_projects;
 pub mod settings;
 pub mod themes;
 mod ui;
+mod window;
+
 pub use assets::Assets;
 pub use engine_state::EngineState;
 

@@ -1,3 +1,35 @@
+//! Asset Loading and Embedding
+//!
+//! This module provides embedded asset loading using `rust-embed`.
+//! Assets are embedded into the binary at compile time for easy distribution.
+//!
+//! ## Embedded Assets
+//!
+//! - **Icons**: SVG files in `assets/icons/**/*.svg`
+//! - **Fonts**: TrueType fonts in `assets/fonts/**/*.ttf`
+//! - **Images**: PNG files in `assets/images/**/*.png`
+//!
+//! ## Usage
+//!
+//! ```rust,ignore
+//! use crate::assets::Assets;
+//!
+//! // Load an asset
+//! if let Some(font_data) = Assets::get("fonts/JetBrainsMono-Regular.ttf") {
+//!     // Use font_data.data
+//! }
+//!
+//! // List assets in a directory
+//! let icons = Assets::iter()
+//!     .filter(|p| p.starts_with("icons/"))
+//!     .collect::<Vec<_>>();
+//! ```
+//!
+//! ## Implementation
+//!
+//! Uses the `rust-embed` crate to embed assets at compile time.
+//! Implements the GPUI `AssetSource` trait for integration with the UI framework.
+
 use anyhow::anyhow;
 use gpui::{AssetSource, Result, SharedString};
 use rust_embed::RustEmbed;
