@@ -1508,7 +1508,7 @@ impl Render for TabPanel {
             .tab_group()
             .size_full()
             .overflow_hidden()
-            .bg(cx.theme().background)
+            // NO BACKGROUND - allow transparency for viewports
             .child(self.render_title_bar(&state, window, cx))
             .child(self.render_active_panel(&state, window, cx))
     }

@@ -170,11 +170,10 @@ impl Render for BevyViewport {
             .id("bevy_viewport")
             // NO mouse event handlers here - let them pass through to parent div in viewport.rs!
             .child(
-                // DISCONNECTED - don't render Bevy textures, just show empty transparent buffer
-                // This way we see the winit green background through the "hole"
+                // TRANSPARENT DIV - Bevy renders to winit back buffer BEHIND this layer
+                // This creates a "hole" in the GPUI UI to see through to Bevy's rendering
                 div()
                     .size_full()
-                    // Completely transparent empty div
                     .into_any_element()
             )
     }

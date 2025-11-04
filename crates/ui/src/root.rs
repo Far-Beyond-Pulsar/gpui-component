@@ -400,7 +400,7 @@ impl Render for Root {
                 .relative()
                 .size_full()
                 .font_family(".SystemUIFont")
-                .bg(cx.theme().background)
+                // NO BACKGROUND - allow transparency for viewports. Individual views add their own backgrounds.
                 .text_color(cx.theme().foreground)
                 .child(self.view.clone()),
         )

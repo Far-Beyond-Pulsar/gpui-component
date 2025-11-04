@@ -167,6 +167,30 @@ pub fn setup_scene(
     println!("[BEVY] 🟡 Gold metallic sphere (top)");
     println!("[BEVY] 🟢 Green metallic sphere (front)");
     println!("[BEVY] 💡 PBR lighting with 2-point lighting + ambient");
+    println!("[BEVY] 🔄 Animation enabled - objects will rotate smoothly");
+}
+
+/// Smooth rotation animation system - rotates all GameObjects
+/// This runs every frame to show real-time rendering performance
+pub fn animate_objects_system(
+    time: Res<Time>,
+    mut query: Query<(&mut Transform, &GameObjectId)>,
+) {
+    let delta = time.delta_secs();
+
+    for (mut transform, game_obj) in query.iter_mut() {
+        // Rotate each object at different speeds based on ID
+        let rotation_speed = match game_obj.0 {
+            1 => 0.5,  // Red cube - slow rotation
+            2 => 1.0,  // Blue sphere - medium rotation
+            3 => 1.5,  // Gold sphere - fast rotation
+            4 => 0.75, // Green sphere - medium-slow rotation
+            _ => 0.0,
+        };
+
+        // Rotate around Y axis (vertical)
+        transform.rotate_y(rotation_speed * delta);
+    }
 }
 
 /// System to swap render target buffers for double buffering

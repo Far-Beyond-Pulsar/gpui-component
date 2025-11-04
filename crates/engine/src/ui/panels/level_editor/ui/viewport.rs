@@ -422,7 +422,7 @@ impl ViewportPanel {
             .flex_1() // Allow growing to fill parent
             .size_full() // Take full size
             .relative()
-            .bg(cx.theme().muted.opacity(0.2))
+            // TRANSPARENT - no background! This creates the "hole" to see winit's green bg
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)

@@ -2,8 +2,11 @@
 /// This stores metadata and global state that needs to be shared between windows
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, Mutex};
 use std::sync::mpsc::Sender;
+
+// Import GpuRenderer
+use crate::ui::gpu_renderer::GpuRenderer;
 
 // Re-export WindowRequest from main
 #[derive(Debug, Clone)]
@@ -25,6 +28,8 @@ struct EngineStateInner {
     metadata: HashMap<String, String>,
     /// Number of open windows
     window_count: usize,
+    /// Map window IDs to their GPU renderers (for windows with 3D viewports)
+    window_renderers: HashMap<u64, Arc<Mutex<GpuRenderer>>>,
 }
 
 impl EngineState {
@@ -33,6 +38,7 @@ impl EngineState {
             inner: Arc::new(RwLock::new(EngineStateInner {
                 metadata: HashMap::new(),
                 window_count: 0,
+                window_renderers: HashMap::new(),
             })),
             window_request_tx: None,
         }
@@ -77,6 +83,25 @@ impl EngineState {
 
     pub fn remove_metadata(&self, key: &str) -> Option<String> {
         self.inner.write().ok()?.metadata.remove(key)
+    }
+
+    /// Set the GPU renderer for a specific window (for accessing Bevy textures from main render loop)
+    pub fn set_window_gpu_renderer(&self, window_id: u64, renderer: Arc<Mutex<GpuRenderer>>) {
+        if let Ok(mut state) = self.inner.write() {
+            state.window_renderers.insert(window_id, renderer);
+        }
+    }
+
+    /// Get the GPU renderer for a specific window
+    pub fn get_window_gpu_renderer(&self, window_id: u64) -> Option<Arc<Mutex<GpuRenderer>>> {
+        self.inner.read().ok()?.window_renderers.get(&window_id).cloned()
+    }
+
+    /// Remove the GPU renderer for a specific window (when window closes)
+    pub fn remove_window_gpu_renderer(&self, window_id: u64) {
+        if let Ok(mut state) = self.inner.write() {
+            state.window_renderers.remove(&window_id);
+        }
     }
 }
 

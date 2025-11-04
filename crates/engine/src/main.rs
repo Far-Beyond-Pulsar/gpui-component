@@ -373,6 +373,13 @@ struct WindowState {
     persistent_gpui_texture: Option<ID3D11Texture2D>,
     #[cfg(target_os = "windows")]
     persistent_gpui_srv: Option<ID3D11ShaderResourceView>,
+    #[cfg(target_os = "windows")]
+    bevy_texture: Option<ID3D11Texture2D>,
+    #[cfg(target_os = "windows")]
+    bevy_srv: Option<ID3D11ShaderResourceView>,
+
+    // Bevy renderer for this specific window (if it has a 3D viewport)
+    bevy_renderer: Option<Arc<std::sync::Mutex<crate::ui::gpu_renderer::GpuRenderer>>>,
 }
 
 use std::collections::HashMap;
@@ -436,14 +443,19 @@ impl WinitGpuiApp {
             persistent_gpui_texture: None,
             #[cfg(target_os = "windows")]
             persistent_gpui_srv: None,
+            #[cfg(target_os = "windows")]
+            bevy_texture: None,
+            #[cfg(target_os = "windows")]
+            bevy_srv: None,
+            bevy_renderer: None,
         }
     }
 
     fn create_window(&mut self, event_loop: &ActiveEventLoop, request: WindowRequest) {
-        let (title, size, decorations) = match &request {
-            WindowRequest::Settings => ("Settings", (800.0, 600.0), true),
-            WindowRequest::ProjectEditor { .. } => ("Pulsar Engine - Project Editor", (1280.0, 800.0), true),
-            WindowRequest::ProjectSplash { .. } => ("Loading Project...", (600.0, 400.0), false),
+        let (title, size) = match &request {
+            WindowRequest::Settings => ("Settings", (800.0, 600.0)),
+            WindowRequest::ProjectEditor { .. } => ("Pulsar Engine - Project Editor", (1280.0, 800.0)),
+            WindowRequest::ProjectSplash { .. } => ("Loading Project...", (960.0, 540.0)),
             WindowRequest::CloseWindow { .. } => return, // Handled elsewhere
         };
 
@@ -453,7 +465,7 @@ impl WinitGpuiApp {
             .with_title(title)
             .with_inner_size(winit::dpi::LogicalSize::new(size.0, size.1))
             .with_transparent(false)
-            .with_decorations(decorations);
+            .with_decorations(true); // Use OS window decorations for proper controls
 
         // Splash window positioning (centered by default)
         // Position::Automatic doesn't exist in winit, windows are centered by default
@@ -513,6 +525,10 @@ impl ApplicationHandler for WinitGpuiApp {
         match event {
             WindowEvent::CloseRequested => {
                 println!("\n👋 Closing window...");
+                // Clean up window-specific GPU renderer
+                let window_id_u64 = unsafe { std::mem::transmute::<_, u64>(window_id) };
+                self.engine_state.remove_window_gpu_renderer(window_id_u64);
+
                 self.windows.remove(&window_id);
                 self.engine_state.decrement_window_count();
 
@@ -569,7 +585,21 @@ impl ApplicationHandler for WinitGpuiApp {
                     ref mut persistent_gpui_texture,
                     #[cfg(target_os = "windows")]
                     ref mut persistent_gpui_srv,
+                    #[cfg(target_os = "windows")]
+                    ref mut bevy_texture,
+                    #[cfg(target_os = "windows")]
+                    ref mut bevy_srv,
+                    ref mut bevy_renderer,
                 } = window_state;
+
+                // Fetch the GPU renderer for this window from EngineState if not already set
+                if bevy_renderer.is_none() {
+                    let window_id_u64 = unsafe { std::mem::transmute::<_, u64>(window_id) };
+                    if let Some(gpu_renderer) = self.engine_state.get_window_gpu_renderer(window_id_u64) {
+                        *bevy_renderer = Some(gpu_renderer);
+                        println!("[RENDERER] 🎮 Loaded GPU renderer for window {}", window_id_u64);
+                    }
+                }
 
                 match event {
                 WindowEvent::RedrawRequested => {
@@ -667,9 +697,12 @@ impl ApplicationHandler for WinitGpuiApp {
                             }
                         }
 
-                        // Note: We don't present here - we'll present once after compositing GPUI on top
+                        // Note: We don't present here - we'll present once after compositing all layers
 
-                        // GPU-side zero-copy composition: Winit renders green, then GPUI texture on top
+                        // GPU-side zero-copy 3-layer composition:
+                        // Layer 0 (bottom): Green background (cleared)
+                        // Layer 1 (middle): Bevy 3D rendering (opaque, from shared D3D12 texture)
+                        // Layer 2 (top): GPUI UI (transparent, alpha-blended)
                         // CRITICAL: Only present frames when we have valid GPUI content to avoid flickering
                         if let (Some(context), Some(shared_texture), Some(persistent_texture), Some(srv), Some(swap_chain), Some(render_target_view), Some(blend_state), Some(vertex_shader), Some(pixel_shader), Some(vertex_buffer), Some(input_layout), Some(sampler_state)) =
                             (d3d_context.as_ref(), &*shared_texture, &*persistent_gpui_texture, &*persistent_gpui_srv, swap_chain.as_ref(), render_target_view.as_ref(), blend_state.as_ref(), vertex_shader.as_ref(), pixel_shader.as_ref(), vertex_buffer.as_ref(), input_layout.as_ref(), sampler_state.as_ref()) {
@@ -685,6 +718,107 @@ impl ApplicationHandler for WinitGpuiApp {
                             // Set render target
                             context.OMSetRenderTargets(Some(&[Some(render_target_view.clone())]), None);
 
+                            // LAYER 1: Draw Bevy texture to back buffer (BEHIND GPUI)
+                            // This window's own Bevy renderer (if it has a 3D viewport)
+                            if let Some(ref gpu_renderer_arc) = bevy_renderer {
+                                if let Ok(gpu_renderer) = gpu_renderer_arc.lock() {
+                                    if let Some(ref bevy_renderer_inst) = gpu_renderer.bevy_renderer {
+                                        // Get the current native handle from Bevy's read buffer
+                                        if let Some(native_handle) = bevy_renderer_inst.get_current_native_handle() {
+                                            static mut BEVY_FIRST_RENDER: bool = false;
+                                            if !BEVY_FIRST_RENDER {
+                                                eprintln!("🎮 First Bevy texture found for this window! Starting composition...");
+                                                BEVY_FIRST_RENDER = true;
+                                            }
+                                            // Extract D3D11 handle
+                                            if let engine_backend::subsystems::render::NativeTextureHandle::D3D11(handle_ptr) = native_handle {
+                                                // Open the shared texture from Bevy
+                                                let mut bevy_texture_local: Option<ID3D11Texture2D> = None;
+                                                let device = d3d_device.as_ref().unwrap();
+                                                let _ = device.OpenSharedResource(
+                                                    HANDLE(handle_ptr as *mut _),
+                                                    &mut bevy_texture_local
+                                                );
+
+                                                if let Some(ref bevy_tex) = bevy_texture_local {
+                                                    // Create or reuse SRV for Bevy texture
+                                                    if bevy_texture.is_none() || bevy_texture.as_ref().map(|t| t.as_raw()) != Some(bevy_tex.as_raw()) {
+                                                        // Create new SRV
+                                                        let srv_desc = D3D11_SHADER_RESOURCE_VIEW_DESC {
+                                                            Format: DXGI_FORMAT_R8G8B8A8_UNORM,
+                                                            ViewDimension: D3D11_SRV_DIMENSION_TEXTURE2D,
+                                                            Anonymous: D3D11_SHADER_RESOURCE_VIEW_DESC_0 {
+                                                                Texture2D: D3D11_TEX2D_SRV {
+                                                                    MostDetailedMip: 0,
+                                                                    MipLevels: 1,
+                                                                },
+                                                            },
+                                                        };
+
+                                                        let mut new_srv: Option<ID3D11ShaderResourceView> = None;
+                                                        let _ = device.CreateShaderResourceView(
+                                                            bevy_tex,
+                                                            Some(&srv_desc),
+                                                            Some(&mut new_srv)
+                                                        );
+
+                                                        *bevy_texture = Some(bevy_tex.clone());
+                                                        *bevy_srv = new_srv;
+                                                    }
+
+                                                    // Draw Bevy texture to back buffer (opaque, no blending)
+                                                    if let Some(ref bevy_shader_view) = &*bevy_srv {
+                                                        // Disable blending for opaque Bevy render
+                                                        context.OMSetBlendState(None, None, 0xffffffff);
+
+                                                        // Set shaders
+                                                        context.VSSetShader(vertex_shader, None);
+                                                        context.PSSetShader(pixel_shader, None);
+
+                                                        // Set input layout
+                                                        context.IASetInputLayout(input_layout);
+
+                                                        // Set vertex buffer (fullscreen quad)
+                                                        let stride = 16u32;
+                                                        let offset = 0u32;
+                                                        context.IASetVertexBuffers(0, 1, Some(&Some(vertex_buffer.clone())), Some(&stride), Some(&offset));
+
+                                                        // Set topology
+                                                        context.IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+
+                                                        // Set Bevy texture and sampler
+                                                        context.PSSetShaderResources(0, Some(&[Some(bevy_shader_view.clone())]));
+                                                        context.PSSetSamplers(0, Some(&[Some(sampler_state.clone())]));
+
+                                                        // Set viewport
+                                                        let size = winit_window.inner_size();
+                                                        let viewport = D3D11_VIEWPORT {
+                                                            TopLeftX: 0.0,
+                                                            TopLeftY: 0.0,
+                                                            Width: size.width as f32,
+                                                            Height: size.height as f32,
+                                                            MinDepth: 0.0,
+                                                            MaxDepth: 1.0,
+                                                        };
+                                                        context.RSSetViewports(Some(&[viewport]));
+
+                                                        // Draw Bevy's 3D rendering (opaque)
+                                                        context.Draw(4, 0);
+
+                                                        static mut BEVY_FRAME_COUNT: u32 = 0;
+                                                        BEVY_FRAME_COUNT += 1;
+                                                        if BEVY_FRAME_COUNT % 120 == 1 {
+                                                            eprintln!("🎮 Bevy layer composited to back buffer (frame {})", BEVY_FRAME_COUNT);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // LAYER 2: Draw GPUI texture with alpha blending (ON TOP of Bevy)
                             // Set blend state for alpha blending (top layer)
                             let blend_factor = [0.0f32, 0.0, 0.0, 0.0];
                             context.OMSetBlendState(Some(blend_state), Some(&blend_factor), 0xffffffff);
@@ -729,7 +863,7 @@ impl ApplicationHandler for WinitGpuiApp {
                                 };
                                 context.RSSetViewports(Some(&[viewport]));
 
-                                // Draw fullscreen quad with GPUI texture on top of green
+                                // Draw fullscreen quad with GPUI texture (transparent UI layer on top)
                                 context.Draw(4, 0);
 
                                 // ONLY present when we successfully composited GPUI content
@@ -921,10 +1055,6 @@ impl ApplicationHandler for WinitGpuiApp {
                         let logical_x = position.x as f32 / scale_factor;
                         let logical_y = position.y as f32 / scale_factor;
                         *last_cursor_position = point(px(logical_x), px(logical_y));
-                        
-                        // Debug output
-                        eprintln!("🖱️ CursorMoved: physical ({}, {}), logical ({}, {})", 
-                            position.x, position.y, logical_x, logical_y);
                     }
                     
                     // Forward mouse move events to GPUI using inject_input_event
@@ -953,9 +1083,7 @@ impl ApplicationHandler for WinitGpuiApp {
                             modifiers: *current_modifiers,
                         });
 
-                        eprintln!("📤 Injecting MouseMove event...");
                         let result = gpui_app.update(|cx| gpui_window_ref.inject_input_event(cx, gpui_event));
-                        eprintln!("📥 MouseMove result: {:?}", result);
 
                         // Request redraw for cursor updates
                         *needs_render = true;
@@ -1084,7 +1212,7 @@ impl ApplicationHandler for WinitGpuiApp {
         }
 
         // Initialize any uninitialized GPUI windows
-        for (_window_id, window_state) in self.windows.iter_mut() {
+        for (window_id, window_state) in self.windows.iter_mut() {
         if !window_state.gpui_window_initialized {
             let winit_window = window_state.winit_window.clone();
             let scale_factor = winit_window.scale_factor() as f32;
@@ -1156,6 +1284,16 @@ impl ApplicationHandler for WinitGpuiApp {
 
             println!("✅ GPUI components initialized");
 
+            // Store window_id in EngineState metadata BEFORE opening GPUI window
+            // so that views created during open_window_external can access it
+            let window_id_u64 = unsafe { std::mem::transmute::<_, u64>(*window_id) };
+            self.engine_state.set_metadata("latest_window_id".to_string(), window_id_u64.to_string());
+
+            // If this is a project editor window, also store it with a special key
+            if matches!(&window_state.window_type, Some(WindowRequest::ProjectEditor { .. })) {
+                self.engine_state.set_metadata("current_project_window_id".to_string(), window_id_u64.to_string());
+            }
+
             // Open GPUI window using external window API with appropriate view
             let gpui_window = app.open_window_external(external_handle.clone(), |window, cx| {
                 match &window_state.window_type {
@@ -1177,9 +1315,14 @@ impl ApplicationHandler for WinitGpuiApp {
                         cx.new(|cx| Root::new(loading_view.clone().into(), window, cx))
                     }
                     Some(WindowRequest::ProjectEditor { project_path }) => {
+                        // Get the window ID to pass to the editor
+                        let window_id = window_state.winit_window.id();
+                        let window_id_u64 = unsafe { std::mem::transmute::<_, u64>(window_id) };
+
                         // Create the actual PulsarApp editor with the project
-                        let app = cx.new(|cx| crate::ui::app::PulsarApp::new_with_project(
+                        let app = cx.new(|cx| crate::ui::app::PulsarApp::new_with_project_and_window_id(
                             std::path::PathBuf::from(project_path),
+                            window_id_u64,
                             window,
                             cx
                         ));

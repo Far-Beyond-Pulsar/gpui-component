@@ -105,6 +105,8 @@ pub struct PulsarApp {
     analyzer_status_text: String,
     analyzer_detail_message: String, // Detailed progress message (e.g., "Indexing workspace (50/200 crates)")
     analyzer_progress: f32, // 0.0 to 1.0 for progress bar
+    // Window identification for GPU renderer registration
+    window_id: Option<u64>,
     // Notification tracking
     shown_welcome_notification: bool,
     // Command Palette
@@ -116,7 +118,7 @@ pub struct PulsarApp {
 
 impl PulsarApp {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::new_internal(None, None, true, window, cx)
+        Self::new_internal(None, None, None, true, window, cx)
     }
 
     pub fn new_with_project(
@@ -128,9 +130,23 @@ impl PulsarApp {
             "DEBUG: PulsarApp::new_with_project called with path: {:?}",
             project_path
         );
-        Self::new_internal(Some(project_path), None, true, window, cx)
+        Self::new_internal(Some(project_path), None, None, true, window, cx)
     }
     
+    /// Create a new PulsarApp with window_id for GPU renderer registration
+    pub fn new_with_project_and_window_id(
+        project_path: PathBuf,
+        window_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        eprintln!(
+            "DEBUG: PulsarApp::new_with_project_and_window_id called with path: {:?}, window_id: {}",
+            project_path, window_id
+        );
+        Self::new_internal(Some(project_path), None, Some(window_id), true, window, cx)
+    }
+
     /// Create a new PulsarApp with a pre-initialized rust analyzer
     /// This is used when loading from the loading screen to avoid re-initializing
     pub fn new_with_project_and_analyzer(
@@ -143,7 +159,7 @@ impl PulsarApp {
             "DEBUG: PulsarApp::new_with_project_and_analyzer called with path: {:?}",
             project_path
         );
-        Self::new_internal(Some(project_path), Some(rust_analyzer), true, window, cx)
+        Self::new_internal(Some(project_path), Some(rust_analyzer), None, true, window, cx)
     }
 
     /// Create a new window that shares the rust analyzer from an existing window
@@ -154,7 +170,7 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::new_internal(project_path, Some(rust_analyzer), false, window, cx)
+        Self::new_internal(project_path, Some(rust_analyzer), None, false, window, cx)
     }
 
     /// Get the global rust analyzer manager
@@ -234,6 +250,7 @@ impl PulsarApp {
     fn new_internal(
         project_path: Option<PathBuf>,
         shared_rust_analyzer: Option<Entity<RustAnalyzerManager>>,
+        window_id: Option<u64>,
         create_level_editor: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -244,7 +261,12 @@ impl PulsarApp {
 
         // Create center dock item with level editor tab if requested
         let center_dock_item = if create_level_editor {
-            let level_editor = cx.new(|cx| LevelEditorPanel::new(window, cx));
+            // Pass window_id to LevelEditorPanel for GPU renderer registration
+            let level_editor = if let Some(wid) = window_id {
+                cx.new(|cx| LevelEditorPanel::new_with_window_id(wid, window, cx))
+            } else {
+                cx.new(|cx| LevelEditorPanel::new(window, cx))
+            };
             DockItem::tabs(
                 vec![Arc::new(level_editor.clone())],
                 Some(0),
@@ -352,6 +374,7 @@ impl PulsarApp {
             analyzer_status_text: "Idle".to_string(),
             analyzer_detail_message: String::new(),
             analyzer_progress: 0.0,
+            window_id,
             shown_welcome_notification: false,
             command_palette_open: false,
             command_palette: None,
@@ -1219,7 +1242,7 @@ impl Render for PulsarApp {
 
         v_flex()
             .size_full()
-            .bg(cx.theme().background)
+            // NO BACKGROUND - allow viewport transparency
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_toggle_file_manager))
             .on_action(cx.listener(Self::on_toggle_problems))
