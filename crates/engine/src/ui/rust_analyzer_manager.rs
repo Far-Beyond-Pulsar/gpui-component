@@ -732,7 +732,6 @@ impl RustAnalyzerManager {
                                     match kind {
                                         "begin" => {
                                             let title = value.get("title").and_then(|t| t.as_str()).unwrap_or("Processing");
-                                            println!("📊 Progress started [{}]: {}", token, title);
                                             
                                             // Extract meaningful information from the title
                                             let message = if title.contains("Fetching") || title.contains("Loading") {
@@ -763,9 +762,7 @@ impl RustAnalyzerManager {
                                             } else {
                                                 format!("{}%", percentage)
                                             };
-                                            
-                                            println!("📊 Progress [{}]: {} ({}%)", token, display_message, percentage);
-                                            
+                                                                                        
                                             let _ = progress_tx.send(ProgressUpdate::Progress {
                                                 progress: (percentage as f32) / 100.0,
                                                 message: display_message,
@@ -773,7 +770,6 @@ impl RustAnalyzerManager {
                                         }
                                         "end" => {
                                             let message = value.get("message").and_then(|m| m.as_str()).unwrap_or("");
-                                            println!("✅ Progress complete [{}]: {}", token, message);
                                             
                                             // DON'T mark as ready here - cachePriming can complete and restart multiple times!
                                             // Instead, wait for the rust-analyzer/serverStatus notification with quiescent: true

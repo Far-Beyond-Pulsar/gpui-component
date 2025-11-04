@@ -107,22 +107,14 @@ impl LevelEditorPanel {
         println!("[LEVEL-EDITOR] ✅ GPU renderer initialized (Edit mode)");
         println!("[LEVEL-EDITOR] 📝 Editor ready in EDIT MODE - objects frozen");
 
-        // Store GPU renderer in global EngineState for THIS window's render loop access
+        // Store GPU renderer in global EngineState using a marker that the render loop will pick up
+        // The render loop will associate it with the correct window when it first renders
         if let Some(engine_state) = crate::EngineState::global() {
-            if let Some(wid) = window_id {
-                engine_state.set_window_gpu_renderer(wid, gpu_engine.clone());
-                println!("[LEVEL-EDITOR] 🔗 GPU renderer linked to window {} for back buffer rendering", wid);
-
-                // Verify it was set
-                if engine_state.get_window_gpu_renderer(wid).is_some() {
-                    println!("[LEVEL-EDITOR] ✅ Verified: GPU renderer is accessible for window {}", wid);
-                } else {
-                    println!("[LEVEL-EDITOR] ❌ ERROR: GPU renderer not accessible after setting for window {}!", wid);
-                }
-            } else {
-                println!("[LEVEL-EDITOR] ⚠️  No window_id provided - GPU renderer will not be registered for back buffer rendering");
-                println!("[LEVEL-EDITOR] 💡 This is expected for windows without 3D viewports");
-            }
+            // Use a sentinel value (0) to mark this renderer as pending association with a window
+            // The main render loop will detect windows with viewports and claim this renderer
+            engine_state.set_window_gpu_renderer(0, gpu_engine.clone());
+            engine_state.set_metadata("has_pending_viewport_renderer".to_string(), "true".to_string());
+            println!("[LEVEL-EDITOR] 📦 GPU renderer created and ready for window association by render loop");
         } else {
             println!("[LEVEL-EDITOR] ❌ ERROR: No global EngineState found!");
         }

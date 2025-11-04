@@ -593,26 +593,33 @@ impl ApplicationHandler for WinitGpuiApp {
                 } = window_state;
 
                 // Fetch the GPU renderer for this window from EngineState if not already set
-                // Check on every frame until we find it (in case it's registered later)
+                // If there's a pending renderer (marked with window_id 0), claim it for this window
                 if bevy_renderer.is_none() {
                     let window_id_u64 = unsafe { std::mem::transmute::<_, u64>(window_id) };
+
+                    static mut CLAIM_CHECK_COUNT: u32 = 0;
+                    unsafe {
+                        CLAIM_CHECK_COUNT += 1;
+                        if CLAIM_CHECK_COUNT % 60 == 0 {
+                            println!("[RENDERER] 🔍 Checking for renderer for window {} (attempt {})...", window_id_u64, CLAIM_CHECK_COUNT);
+                        }
+                    }
+
+                    // First check if this window already has a renderer
                     if let Some(gpu_renderer) = self.engine_state.get_window_gpu_renderer(window_id_u64) {
                         *bevy_renderer = Some(gpu_renderer);
-                        println!("[RENDERER] 🎮 Loaded GPU renderer for window {}", window_id_u64);
-                    } else {
-                        // Debug: Print once per second
-                        static mut LAST_CHECK: std::time::Instant = unsafe { std::mem::zeroed() };
-                        static mut FIRST_CHECK: bool = false;
-                        unsafe {
-                            if !FIRST_CHECK {
-                                LAST_CHECK = std::time::Instant::now();
-                                FIRST_CHECK = true;
-                            }
-                            if LAST_CHECK.elapsed().as_secs() >= 1 {
-                                println!("[RENDERER] ⏳ Waiting for GPU renderer for window {}...", window_id_u64);
-                                LAST_CHECK = std::time::Instant::now();
-                            }
-                        }
+                        println!("[RENDERER] 🎮 ✅ Loaded GPU renderer for window {}!", window_id_u64);
+                    }
+                    // Otherwise, check if there's a pending renderer we can claim
+                    else if let Some(pending_renderer) = self.engine_state.get_window_gpu_renderer(0) {
+                        // Claim the pending renderer for this window
+                        self.engine_state.set_window_gpu_renderer(window_id_u64, pending_renderer.clone());
+                        self.engine_state.remove_window_gpu_renderer(0); // Remove the sentinel
+                        self.engine_state.set_metadata("has_pending_viewport_renderer".to_string(), "false".to_string());
+
+                        *bevy_renderer = Some(pending_renderer);
+                        println!("[RENDERER] 🎯 Claimed pending GPU renderer for window {}!", window_id_u64);
+                        println!("[RENDERER] ✅ Bevy will now render to this window's back buffer");
                     }
                 }
 
@@ -735,6 +742,19 @@ impl ApplicationHandler for WinitGpuiApp {
 
                             // LAYER 1: Draw Bevy texture to back buffer (BEHIND GPUI)
                             // This window's own Bevy renderer (if it has a 3D viewport)
+                            // Debug: Check if we have a renderer
+                            static mut CHECK_COUNT: u32 = 0;
+                            unsafe {
+                                CHECK_COUNT += 1;
+                                if CHECK_COUNT % 60 == 0 {
+                                    let window_id_u64 = std::mem::transmute::<_, u64>(window_id);
+                                    if bevy_renderer.is_none() {
+                                        println!("[RENDERER] ⏳ No Bevy renderer for window {} (checked {} times)...", window_id_u64, CHECK_COUNT);
+                                    } else {
+                                        println!("[RENDERER] ✅ Have Bevy renderer for window {} (frame {})", window_id_u64, CHECK_COUNT);
+                                    }
+                                }
+                            }
                             if let Some(ref gpu_renderer_arc) = bevy_renderer {
                                 if let Ok(gpu_renderer) = gpu_renderer_arc.lock() {
                                     if let Some(ref bevy_renderer_inst) = gpu_renderer.bevy_renderer {
