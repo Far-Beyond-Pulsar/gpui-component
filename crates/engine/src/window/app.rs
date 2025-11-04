@@ -1019,13 +1019,13 @@ impl ApplicationHandler for WinitGpuiApp {
                     Some(WindowRequest::ProjectEditor { project_path }) => {
                         // Use the captured window_id to ensure consistency
                         // Create the actual PulsarApp editor with the project
-                        let app = cx.new(|cx| crate::ui::common::core::app::PulsarApp::new_with_project_and_window_id(
+                        let app = cx.new(|cx| crate::ui::core::app::PulsarApp::new_with_project_and_window_id(
                             std::path::PathBuf::from(project_path),
                             captured_window_id,
                             window,
                             cx
                         ));
-                        let pulsar_root = cx.new(|cx| crate::ui::common::core::app::PulsarRoot::new("Pulsar Engine", app, window, cx));
+                        let pulsar_root = cx.new(|cx| crate::ui::core::app::PulsarRoot::new("Pulsar Engine", app, window, cx));
                         cx.new(|cx| Root::new(pulsar_root.into(), window, cx))
                     }
                     Some(WindowRequest::CloseWindow { .. }) | None => {
