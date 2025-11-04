@@ -593,11 +593,26 @@ impl ApplicationHandler for WinitGpuiApp {
                 } = window_state;
 
                 // Fetch the GPU renderer for this window from EngineState if not already set
+                // Check on every frame until we find it (in case it's registered later)
                 if bevy_renderer.is_none() {
                     let window_id_u64 = unsafe { std::mem::transmute::<_, u64>(window_id) };
                     if let Some(gpu_renderer) = self.engine_state.get_window_gpu_renderer(window_id_u64) {
                         *bevy_renderer = Some(gpu_renderer);
                         println!("[RENDERER] 🎮 Loaded GPU renderer for window {}", window_id_u64);
+                    } else {
+                        // Debug: Print once per second
+                        static mut LAST_CHECK: std::time::Instant = unsafe { std::mem::zeroed() };
+                        static mut FIRST_CHECK: bool = false;
+                        unsafe {
+                            if !FIRST_CHECK {
+                                LAST_CHECK = std::time::Instant::now();
+                                FIRST_CHECK = true;
+                            }
+                            if LAST_CHECK.elapsed().as_secs() >= 1 {
+                                println!("[RENDERER] ⏳ Waiting for GPU renderer for window {}...", window_id_u64);
+                                LAST_CHECK = std::time::Instant::now();
+                            }
+                        }
                     }
                 }
 
@@ -1294,6 +1309,9 @@ impl ApplicationHandler for WinitGpuiApp {
                 self.engine_state.set_metadata("current_project_window_id".to_string(), window_id_u64.to_string());
             }
 
+            // Capture window_id_u64 for use in the closure
+            let captured_window_id = window_id_u64;
+
             // Open GPUI window using external window API with appropriate view
             let gpui_window = app.open_window_external(external_handle.clone(), |window, cx| {
                 match &window_state.window_type {
@@ -1302,27 +1320,20 @@ impl ApplicationHandler for WinitGpuiApp {
                         cx.new(|cx| Root::new(settings_view.clone().into(), window, cx))
                     }
                     Some(WindowRequest::ProjectSplash { project_path }) => {
-                        // Get the current window ID from winit_window
-                        let window_id = window_state.winit_window.id();
-                        let window_id_u64 = unsafe { std::mem::transmute::<_, u64>(window_id) };
-
                         let loading_view = cx.new(|cx| crate::ui::loading_window::LoadingWindow::new_with_window_id(
                             std::path::PathBuf::from(project_path),
-                            window_id_u64,
+                            captured_window_id,
                             window,
                             cx
                         ));
                         cx.new(|cx| Root::new(loading_view.clone().into(), window, cx))
                     }
                     Some(WindowRequest::ProjectEditor { project_path }) => {
-                        // Get the window ID to pass to the editor
-                        let window_id = window_state.winit_window.id();
-                        let window_id_u64 = unsafe { std::mem::transmute::<_, u64>(window_id) };
-
+                        // Use the captured window_id to ensure consistency
                         // Create the actual PulsarApp editor with the project
                         let app = cx.new(|cx| crate::ui::app::PulsarApp::new_with_project_and_window_id(
                             std::path::PathBuf::from(project_path),
-                            window_id_u64,
+                            captured_window_id,
                             window,
                             cx
                         ));
