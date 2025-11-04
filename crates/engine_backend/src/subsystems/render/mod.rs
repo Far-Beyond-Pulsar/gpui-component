@@ -75,14 +75,3 @@ fn should_use_pulsar_from_exec() -> bool {
     }
     false
 }
-
-/// Initialize whichever rederer is selected for this run
-pub fn init_renderer_from_exec() {
-    let want_pulsar = should_use_pulsar_from_exec();
-    #[cfg(feature = "pulsar_native_renderer")]
-    {
-        if want_pulsar { return puslar_native_renderer::init_for_testing(); }
-    }
-    // Fallback/default = Bevy
-    bevy_renderer::BevyRenderer::init();
-}
