@@ -8,7 +8,7 @@ members = [
     "crates/pulsar_std",
 ]
 
-default-members = ["crates/engine"] 
+default-members = ["crates/engine"]
 resolver = "2"
 
 [profile.release]
@@ -19,10 +19,16 @@ debug = true
 # gpui_macros = { git = "https://github.com/tristanpoland/zed", rev="bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0" }
 # reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0" }
 # sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "bbbe5e70eab379c6ccc07eac3e1b76261c3e89b0" }
-gpui ={ path="../zed/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
-gpui_macros = { path="../zed/crates/gpui_macros" }
-reqwest_client = { path="../zed/crates/reqwest_client" }
-sum_tree = { path="../zed/crates/sum_tree" }
+
+# gpui ={ path="../zed/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
+# gpui_macros = { path="../zed/crates/gpui_macros" }
+# reqwest_client = { path="../zed/crates/reqwest_client" }
+# sum_tree = { path="../zed/crates/sum_tree" }
+
+gpui ={ path="../../../zed/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
+gpui_macros = { path="../../../zed/crates/gpui_macros" }
+reqwest_client = { path="../../../zed/crates/reqwest_client" }
+sum_tree = { path="../../../zed/crates/sum_tree" }
 
 gpui-component = { path = "crates/ui" }
 gpui-component-macros = { path = "crates/macros" }
