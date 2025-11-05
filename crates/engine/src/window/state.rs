@@ -86,6 +86,10 @@ pub struct WindowState {
     /// Whether this window needs to render on next frame
     pub needs_render: bool,
     
+    /// Whether the external window has been properly configured (Linux/Wayland)
+    #[cfg(not(target_os = "windows"))]
+    pub window_configured: bool,
+    
     /// Type of window (Settings, ProjectEditor, etc.)
     pub window_type: Option<WindowRequest>,
 
@@ -276,6 +280,8 @@ impl WindowState {
             gpui_window: None,
             gpui_window_initialized: false,
             needs_render: true,
+            #[cfg(not(target_os = "windows"))]
+            window_configured: false,
             window_type: None,
 
             // Event tracking

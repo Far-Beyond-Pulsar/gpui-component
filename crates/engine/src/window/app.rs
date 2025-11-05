@@ -58,6 +58,9 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window as WinitWindow, WindowId};
 
+#[cfg(not(target_os = "windows"))]
+use ash::vk::Handle;  // For SurfaceKHR.as_raw() method
+
 #[cfg(target_os = "windows")]
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
@@ -265,6 +268,8 @@ impl ApplicationHandler for WinitGpuiApp {
                     ref mut bevy_texture,
                     #[cfg(target_os = "windows")]
                     ref mut bevy_srv,
+                    #[cfg(not(target_os = "windows"))]
+                    ref mut window_configured,
                     #[cfg(not(target_os = "windows"))]
                     ref mut vk_state,
                     ref mut bevy_renderer,
@@ -597,15 +602,33 @@ impl ApplicationHandler for WinitGpuiApp {
                     // Vulkan rendering for Linux/macOS
                     #[cfg(not(target_os = "windows"))]
                     unsafe {
-                        // Trigger GPUI rendering
-                        if *needs_render {
+                        // Only render if the window has been properly configured (to avoid Wayland errors)
+                        if *window_configured && *needs_render {
+                            println!("🔵 [Linux] Triggering GPUI render (window configured)...");
+                            
+                            // First, ensure the window is active and visible
+                            if let Some(gpui_window_ref) = gpui_window.as_ref() {
+                                let _ = gpui_app.update(|app| {
+                                    gpui_window_ref.update(app, |_view, window, cx| {
+                                        // Force window refresh and mark as dirty
+                                        window.refresh();
+                                        cx.notify();
+                                        println!("🔵 [Linux] Forced window refresh and notify");
+                                    });
+                                });
+                            }
+                            
                             let _ = gpui_app.update(|app| {
                                 app.refresh_windows();
+                                println!("🔵 [Linux] Called refresh_windows");
                             });
                             let _ = gpui_app.update(|app| {
                                 app.draw_windows();
+                                println!("🔵 [Linux] Called draw_windows");
                             });
                             *needs_render = false;
+                        } else if !*window_configured {
+                            println!("🔵 [Linux] Skipping render - window not yet configured");
                         }
 
                         // Render Vulkan frame
@@ -699,6 +722,13 @@ impl ApplicationHandler for WinitGpuiApp {
                 }
                 // Handle window resize - resize GPUI renderer and request redraw
                 WindowEvent::Resized(new_size) => {
+                    // Mark window as configured on first resize (Linux/Wayland)
+                    #[cfg(not(target_os = "windows"))]
+                    if !*window_configured {
+                        *window_configured = true;
+                        println!("🔵 [Linux] Window configured after resize - enabling rendering");
+                    }
+                    
                     // Tell GPUI to resize its internal rendering buffers AND update logical size (Windows only)
                     #[cfg(target_os = "windows")]
                     if let Some(gpui_window_ref) = gpui_window.as_ref() {
@@ -1212,6 +1242,10 @@ impl ApplicationHandler for WinitGpuiApp {
                 }).expect("Failed to open GPUI window");
 
                 window_state.gpui_window = Some(gpui_window);
+                
+                // On Linux, delay the initial render to allow the window to be properly configured
+                // This fixes the "attached a buffer before configure event" Wayland error
+                println!("🔵 [Linux] External window created, will render after configuration");
             }
 
             // Initialize D3D11 for blitting on Windows
