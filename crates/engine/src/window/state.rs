@@ -86,6 +86,10 @@ pub struct WindowState {
     /// Whether this window needs to render on next frame
     pub needs_render: bool,
     
+    /// Whether the external window has been properly configured (Linux/Wayland)
+    #[cfg(not(target_os = "windows"))]
+    pub window_configured: bool,
+    
     /// Type of window (Settings, ProjectEditor, etc.)
     pub window_type: Option<WindowRequest>,
 
@@ -172,10 +176,87 @@ pub struct WindowState {
     /// Shader resource view for Bevy texture
     pub bevy_srv: Option<ID3D11ShaderResourceView>,
 
+    // ===== Vulkan Rendering State (Linux/macOS) =====
+
+    #[cfg(not(target_os = "windows"))]
+    /// Vulkan rendering state
+    pub vk_state: Option<VulkanState>,
+
     // ===== 3D Rendering =====
-    
+
     /// Bevy renderer for this window (if it has a 3D viewport)
     pub bevy_renderer: Option<Arc<std::sync::Mutex<crate::ui::common::services::gpu_renderer::GpuRenderer>>>,
+}
+
+#[cfg(not(target_os = "windows"))]
+/// Vulkan rendering state for Linux/macOS
+pub struct VulkanState {
+    /// Vulkan entry point
+    pub entry: ash::Entry,
+    /// Vulkan instance
+    pub instance: ash::Instance,
+    /// Physical device
+    pub physical_device: ash::vk::PhysicalDevice,
+    /// Logical device
+    pub device: ash::Device,
+    /// Graphics queue
+    pub graphics_queue: ash::vk::Queue,
+    /// Graphics queue family index
+    pub graphics_queue_family: u32,
+    /// Surface
+    pub surface: ash::vk::SurfaceKHR,
+    /// Surface loader
+    pub surface_loader: ash::khr::surface::Instance,
+    /// Swapchain
+    pub swapchain: Option<ash::vk::SwapchainKHR>,
+    /// Swapchain loader
+    pub swapchain_loader: ash::khr::swapchain::Device,
+    /// Swapchain images
+    pub swapchain_images: Vec<ash::vk::Image>,
+    /// Swapchain image views
+    pub swapchain_image_views: Vec<ash::vk::ImageView>,
+    /// Swapchain framebuffers
+    pub swapchain_framebuffers: Vec<ash::vk::Framebuffer>,
+    /// Render pass
+    pub render_pass: ash::vk::RenderPass,
+    /// Graphics pipeline
+    pub graphics_pipeline: ash::vk::Pipeline,
+    /// Pipeline layout
+    pub pipeline_layout: ash::vk::PipelineLayout,
+    /// Vertex buffer
+    pub vertex_buffer: ash::vk::Buffer,
+    /// Vertex buffer memory
+    pub vertex_buffer_memory: ash::vk::DeviceMemory,
+    /// Command pool
+    pub command_pool: ash::vk::CommandPool,
+    /// Command buffers
+    pub command_buffers: Vec<ash::vk::CommandBuffer>,
+    /// Descriptor set layout
+    pub descriptor_set_layout: ash::vk::DescriptorSetLayout,
+    /// Descriptor pool
+    pub descriptor_pool: ash::vk::DescriptorPool,
+    /// Descriptor sets
+    pub descriptor_sets: Vec<ash::vk::DescriptorSet>,
+    /// GPUI texture (shared from GPUI)
+    pub gpui_texture: Option<ash::vk::Image>,
+    /// GPUI texture view
+    pub gpui_texture_view: Option<ash::vk::ImageView>,
+    /// GPUI texture memory
+    pub gpui_texture_memory: Option<ash::vk::DeviceMemory>,
+    /// Sampler for texture filtering
+    pub sampler: ash::vk::Sampler,
+    /// Semaphore for image available
+    pub image_available_semaphore: ash::vk::Semaphore,
+    /// Semaphore for render finished
+    pub render_finished_semaphore: ash::vk::Semaphore,
+    /// Fence for frame synchronization
+    pub in_flight_fence: ash::vk::Fence,
+    /// Swapchain format
+    pub swapchain_format: ash::vk::Format,
+    /// Swapchain extent
+    pub swapchain_extent: ash::vk::Extent2D,
+    /// GPU allocator for memory management
+    pub allocator: Option<std::sync::Arc<std::sync::Mutex<gpu_allocator::vulkan::Allocator>>>,
 }
 
 impl WindowState {
@@ -199,6 +280,8 @@ impl WindowState {
             gpui_window: None,
             gpui_window_initialized: false,
             needs_render: true,
+            #[cfg(not(target_os = "windows"))]
+            window_configured: false,
             window_type: None,
 
             // Event tracking
@@ -241,6 +324,10 @@ impl WindowState {
             bevy_texture: None,
             #[cfg(target_os = "windows")]
             bevy_srv: None,
+
+            // Vulkan rendering state (Linux/macOS)
+            #[cfg(not(target_os = "windows"))]
+            vk_state: None,
 
             // Bevy renderer
             bevy_renderer: None,
