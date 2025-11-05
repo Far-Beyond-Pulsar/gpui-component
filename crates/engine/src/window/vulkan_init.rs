@@ -642,3 +642,227 @@ pub unsafe fn cleanup_vulkan(vk_state: &mut VulkanState) {
 
     println!("✅ Cleaned up Vulkan resources");
 }
+
+/// Render a frame using Vulkan
+pub unsafe fn render_frame(
+    vk_state: &mut VulkanState,
+    clear_color: [f32; 4],
+) -> Result<()> {
+    let device = &vk_state.device;
+
+    // Wait for previous frame to finish
+    device.wait_for_fences(
+        &[vk_state.in_flight_fence],
+        true,
+        u64::MAX,
+    )?;
+    device.reset_fences(&[vk_state.in_flight_fence])?;
+
+    // Acquire next swapchain image
+    let swapchain = vk_state.swapchain.ok_or_else(|| anyhow::anyhow!("No swapchain"))?;
+
+    let (image_index, _is_suboptimal) = vk_state.swapchain_loader.acquire_next_image(
+        swapchain,
+        u64::MAX,
+        vk_state.image_available_semaphore,
+        vk::Fence::null(),
+    )?;
+
+    // Reset and begin recording command buffer
+    let command_buffer = vk_state.command_buffers[image_index as usize];
+    device.reset_command_buffer(command_buffer, vk::CommandBufferResetFlags::empty())?;
+
+    let begin_info = vk::CommandBufferBeginInfo::default()
+        .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+
+    device.begin_command_buffer(command_buffer, &begin_info)?;
+
+    // Begin render pass
+    let clear_value = vk::ClearValue {
+        color: vk::ClearColorValue {
+            float32: clear_color,
+        },
+    };
+
+    let render_pass_begin_info = vk::RenderPassBeginInfo::default()
+        .render_pass(vk_state.render_pass)
+        .framebuffer(vk_state.swapchain_framebuffers[image_index as usize])
+        .render_area(vk::Rect2D {
+            offset: vk::Offset2D { x: 0, y: 0 },
+            extent: vk_state.swapchain_extent,
+        })
+        .clear_values(std::slice::from_ref(&clear_value));
+
+    device.cmd_begin_render_pass(
+        command_buffer,
+        &render_pass_begin_info,
+        vk::SubpassContents::INLINE,
+    );
+
+    // Bind pipeline
+    device.cmd_bind_pipeline(
+        command_buffer,
+        vk::PipelineBindPoint::GRAPHICS,
+        vk_state.graphics_pipeline,
+    );
+
+    // Bind vertex buffer
+    device.cmd_bind_vertex_buffers(
+        command_buffer,
+        0,
+        &[vk_state.vertex_buffer],
+        &[0],
+    );
+
+    // If we have a GPUI texture, bind its descriptor set and draw
+    if vk_state.gpui_texture_view.is_some() {
+        device.cmd_bind_descriptor_sets(
+            command_buffer,
+            vk::PipelineBindPoint::GRAPHICS,
+            vk_state.pipeline_layout,
+            0,
+            &[vk_state.descriptor_sets[image_index as usize]],
+            &[],
+        );
+
+        // Draw fullscreen quad (4 vertices, triangle strip)
+        device.cmd_draw(command_buffer, 4, 1, 0, 0);
+    }
+
+    // End render pass
+    device.cmd_end_render_pass(command_buffer);
+
+    // End command buffer
+    device.end_command_buffer(command_buffer)?;
+
+    // Submit command buffer
+    let wait_semaphores = [vk_state.image_available_semaphore];
+    let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+    let signal_semaphores = [vk_state.render_finished_semaphore];
+    let command_buffers = [command_buffer];
+
+    let submit_info = vk::SubmitInfo::default()
+        .wait_semaphores(&wait_semaphores)
+        .wait_dst_stage_mask(&wait_stages)
+        .command_buffers(&command_buffers)
+        .signal_semaphores(&signal_semaphores);
+
+    device.queue_submit(
+        vk_state.graphics_queue,
+        &[submit_info],
+        vk_state.in_flight_fence,
+    )?;
+
+    // Present
+    let swapchains = [swapchain];
+    let image_indices = [image_index];
+
+    let present_info = vk::PresentInfoKHR::default()
+        .wait_semaphores(&signal_semaphores)
+        .swapchains(&swapchains)
+        .image_indices(&image_indices);
+
+    vk_state.swapchain_loader.queue_present(vk_state.graphics_queue, &present_info)?;
+
+    Ok(())
+}
+
+/// Recreate swapchain (for window resize)
+pub unsafe fn recreate_swapchain(
+    vk_state: &mut VulkanState,
+    width: u32,
+    height: u32,
+) -> Result<()> {
+    let device = &vk_state.device;
+
+    // Wait for device to be idle
+    device.device_wait_idle()?;
+
+    // Clean up old swapchain resources
+    for &framebuffer in &vk_state.swapchain_framebuffers {
+        device.destroy_framebuffer(framebuffer, None);
+    }
+    vk_state.swapchain_framebuffers.clear();
+
+    for &image_view in &vk_state.swapchain_image_views {
+        device.destroy_image_view(image_view, None);
+    }
+    vk_state.swapchain_image_views.clear();
+
+    if let Some(old_swapchain) = vk_state.swapchain.take() {
+        vk_state.swapchain_loader.destroy_swapchain(old_swapchain, None);
+    }
+
+    // Get new surface capabilities
+    let surface_capabilities = vk_state.surface_loader
+        .get_physical_device_surface_capabilities(vk_state.physical_device, vk_state.surface)?;
+
+    let swapchain_extent = vk::Extent2D { width, height };
+
+    let image_count = (surface_capabilities.min_image_count + 1)
+        .min(if surface_capabilities.max_image_count > 0 {
+            surface_capabilities.max_image_count
+        } else {
+            u32::MAX
+        });
+
+    // Create new swapchain
+    let swapchain_create_info = vk::SwapchainCreateInfoKHR::default()
+        .surface(vk_state.surface)
+        .min_image_count(image_count)
+        .image_format(vk_state.swapchain_format)
+        .image_color_space(vk::ColorSpaceKHR::SRGB_NONLINEAR)
+        .image_extent(swapchain_extent)
+        .image_array_layers(1)
+        .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+        .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+        .pre_transform(surface_capabilities.current_transform)
+        .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+        .present_mode(vk::PresentModeKHR::FIFO)
+        .clipped(true);
+
+    let swapchain = vk_state.swapchain_loader.create_swapchain(&swapchain_create_info, None)?;
+    vk_state.swapchain = Some(swapchain);
+    vk_state.swapchain_extent = swapchain_extent;
+
+    // Get new swapchain images
+    vk_state.swapchain_images = vk_state.swapchain_loader.get_swapchain_images(swapchain)?;
+
+    // Recreate image views
+    vk_state.swapchain_image_views = vk_state.swapchain_images
+        .iter()
+        .map(|&image| {
+            let create_info = vk::ImageViewCreateInfo::default()
+                .image(image)
+                .view_type(vk::ImageViewType::TYPE_2D)
+                .format(vk_state.swapchain_format)
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                });
+            device.create_image_view(&create_info, None)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // Recreate framebuffers
+    vk_state.swapchain_framebuffers = vk_state.swapchain_image_views
+        .iter()
+        .map(|&image_view| {
+            let attachments = [image_view];
+            let framebuffer_create_info = vk::FramebufferCreateInfo::default()
+                .render_pass(vk_state.render_pass)
+                .attachments(&attachments)
+                .width(swapchain_extent.width)
+                .height(swapchain_extent.height)
+                .layers(1);
+            device.create_framebuffer(&framebuffer_create_info, None)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    println!("✅ Recreated swapchain: {}x{}", width, height);
+
+    Ok(())
+}
