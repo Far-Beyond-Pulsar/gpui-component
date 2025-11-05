@@ -585,11 +585,12 @@ impl ApplicationHandler for WinitGpuiApp {
                 }
                 // Handle keyboard events - request redraw
                 WindowEvent::KeyboardInput { event, .. } => {
-                    // Forward keyboard events to GPUI
+                    // Forward keyboard events to GPUI (Windows only - Linux GPUI integration TODO)
+                    #[cfg(target_os = "windows")]
                     if let Some(gpui_window_ref) = gpui_window.as_ref() {
                         // Store event and create keystroke before borrowing
                         let current_modifiers_val = *current_modifiers;
-                        
+
                         // Get the key string
                         let keystroke_opt = match &event.physical_key {
                             PhysicalKey::Code(code) => {
@@ -598,7 +599,7 @@ impl ApplicationHandler for WinitGpuiApp {
                                         Some(text) if !text.is_empty() => Some(text.chars().next().map(|c| c.to_string()).unwrap_or_default()),
                                         _ => None,
                                     };
-                                    
+
                                     Some(Keystroke {
                                         modifiers: current_modifiers_val,
                                         key,
@@ -610,7 +611,7 @@ impl ApplicationHandler for WinitGpuiApp {
                             }
                             PhysicalKey::Unidentified(_) => None,
                         };
-                        
+
                         if let Some(keystroke) = keystroke_opt {
                             let gpui_event = match event.state {
                                 ElementState::Pressed => {
@@ -636,8 +637,9 @@ impl ApplicationHandler for WinitGpuiApp {
                 WindowEvent::ModifiersChanged(new_modifiers) => {
                     // Update tracked modifiers
                     *current_modifiers = convert_modifiers(&new_modifiers.state());
-                    
-                    // Forward modifier changes to GPUI
+
+                    // Forward modifier changes to GPUI (Windows only)
+                    #[cfg(target_os = "windows")]
                     if let Some(gpui_window_ref) = gpui_window.as_ref() {
                         let gpui_event = PlatformInput::ModifiersChanged(ModifiersChangedEvent {
                             modifiers: *current_modifiers,
@@ -654,7 +656,8 @@ impl ApplicationHandler for WinitGpuiApp {
                 }
                 // Handle window resize - resize GPUI renderer and request redraw
                 WindowEvent::Resized(new_size) => {
-                    // Tell GPUI to resize its internal rendering buffers AND update logical size
+                    // Tell GPUI to resize its internal rendering buffers AND update logical size (Windows only)
+                    #[cfg(target_os = "windows")]
                     if let Some(gpui_window_ref) = gpui_window.as_ref() {
                         let scale_factor = winit_window.scale_factor() as f32;
 
@@ -672,38 +675,36 @@ impl ApplicationHandler for WinitGpuiApp {
 
                         let _ = gpui_app.update(|app| {
                             let _ = gpui_window_ref.update(app, |_view, window, _cx| {
-                                #[cfg(target_os = "windows")]
-                                {
-                                    // Resize renderer (GPU buffers)
-                                    if let Err(e) = window.resize_renderer(physical_size) {
-                                        eprintln!("Γ¥î Failed to resize GPUI renderer: {:?}", e);
-                                    } else {
-                                        println!("Γ£à Resized GPUI renderer to {:?}", physical_size);
+                                // Resize renderer (GPU buffers)
+                                if let Err(e) = window.resize_renderer(physical_size) {
+                                    eprintln!("Γ¥î Failed to resize GPUI renderer: {:?}", e);
+                                } else {
+                                    println!("Γ£à Resized GPUI renderer to {:?}", physical_size);
 
-                                        // CRITICAL: GPUI recreates its texture when resizing, so we need to re-obtain the shared handle
-                                        // Mark for re-initialization on next frame
-                                        *shared_texture_initialized = false;
-                                        *shared_texture = None;
-                                        *persistent_gpui_texture = None;
-                                        *persistent_gpui_srv = None; // Also clear cached SRV
-                                        println!("≡ƒöä Marked shared texture for re-initialization after GPUI resize");
-                                    }
-
-                                    // Update logical size (for UI layout)
-                                    window.update_logical_size(logical_size);
-                                    println!("Γ£à Updated GPUI logical size to {:?} (scale {})", logical_size, scale_factor);
-
-                                    // CRITICAL: Mark window as dirty to trigger UI re-layout
-                                    // This is what GPUI's internal windows do in bounds_changed()
-                                    window.refresh();
-                                    println!("≡ƒÄ¿ Marked window for refresh/re-layout");
+                                    // CRITICAL: GPUI recreates its texture when resizing, so we need to re-obtain the shared handle
+                                    // Mark for re-initialization on next frame
+                                    *shared_texture_initialized = false;
+                                    *shared_texture = None;
+                                    *persistent_gpui_texture = None;
+                                    *persistent_gpui_srv = None; // Also clear cached SRV
+                                    println!("≡ƒöä Marked shared texture for re-initialization after GPUI resize");
                                 }
+
+                                // Update logical size (for UI layout)
+                                window.update_logical_size(logical_size);
+                                println!("Γ£à Updated GPUI logical size to {:?} (scale {})", logical_size, scale_factor);
+
+                                // CRITICAL: Mark window as dirty to trigger UI re-layout
+                                // This is what GPUI's internal windows do in bounds_changed()
+                                window.refresh();
+                                println!("≡ƒÄ¿ Marked window for refresh/re-layout");
                             });
                         });
                     }
 
                     // CRITICAL: Resize the swap chain to match the new window size
                     // This is why the green background was stuck at the original size!
+                    #[cfg(target_os = "windows")]
                     if let Some(swap_chain_ref) = swap_chain.as_ref() {
                         unsafe {
                             // Release the render target view before resizing
@@ -756,8 +757,9 @@ impl ApplicationHandler for WinitGpuiApp {
                         let logical_y = position.y as f32 / scale_factor;
                         *last_cursor_position = point(px(logical_x), px(logical_y));
                     }
-                    
-                    // Forward mouse move events to GPUI using inject_input_event
+
+                    // Forward mouse move events to GPUI using inject_input_event (Windows only)
+                    #[cfg(target_os = "windows")]
                     if let Some(gpui_window_ref) = gpui_window.as_ref() {
                         /* winit_window already available */
                         let scale_factor = winit_window.scale_factor() as f32;
@@ -791,7 +793,8 @@ impl ApplicationHandler for WinitGpuiApp {
                     }
                 }
                 WindowEvent::MouseInput { state, button, .. } => {
-                    // Forward mouse button events to GPUI
+                    // Forward mouse button events to GPUI (Windows only)
+                    #[cfg(target_os = "windows")]
                     if let Some(gpui_window_ref) = gpui_window.as_ref() {
                         let gpui_button = convert_mouse_button(button);
                         // Use actual cursor position for clicks, not smoothed position!
@@ -846,7 +849,8 @@ impl ApplicationHandler for WinitGpuiApp {
                     }
                 }
                 WindowEvent::MouseWheel { delta, .. } => {
-                    // Forward mouse wheel events to GPUI
+                    // Forward mouse wheel events to GPUI (Windows only)
+                    #[cfg(target_os = "windows")]
                     if let Some(gpui_window_ref) = gpui_window.as_ref() {
                         /* winit_window already available */
 
@@ -931,28 +935,33 @@ impl ApplicationHandler for WinitGpuiApp {
             println!("≡ƒÄ» Creating GPUI window: physical {}x{}, scale {}, logical {}x{}",
                 size.width, size.height, scale_factor, logical_width, logical_height);
 
-            let gpui_raw_handle = winit_window
-                .window_handle()
-                .expect("Failed to get window handle")
-                .as_raw();
+            #[cfg(target_os = "windows")]
+            let external_handle = {
+                let gpui_raw_handle = winit_window
+                    .window_handle()
+                    .expect("Failed to get window handle")
+                    .as_raw();
 
-            let external_handle = ExternalWindowHandle {
-                raw_handle: gpui_raw_handle,
-                bounds,
-                scale_factor,
-                surface_handle: None,
+                ExternalWindowHandle {
+                    raw_handle: gpui_raw_handle,
+                    bounds,
+                    scale_factor,
+                    surface_handle: None,
+                }
             };
 
             println!("Γ£à Opening GPUI window on external winit window...");
 
-            // Initialize GPUI components (fonts, themes, keybindings)
-            let app = &mut window_state.gpui_app;
+            // Initialize GPUI components (fonts, themes, keybindings) - Windows only
+            #[cfg(target_os = "windows")]
+            {
+                let app = &mut window_state.gpui_app;
 
-            // Clone engine_state for use in closures
-            let engine_state_for_actions = self.engine_state.clone();
+                // Clone engine_state for use in closures
+                let engine_state_for_actions = self.engine_state.clone();
 
-            // Load custom fonts
-            app.update(|app| {
+                // Load custom fonts
+                app.update(|app| {
                 if let Some(font_data) = Assets::get("fonts/JetBrainsMono-Regular.ttf") {
                     match app.text_system().add_fonts(vec![font_data.data]) {
                         Ok(_) => println!("Successfully loaded JetBrains Mono font"),
@@ -982,26 +991,26 @@ impl ApplicationHandler for WinitGpuiApp {
                 app.activate(true);
             });
 
-            println!("Γ£à GPUI components initialized");
+                println!("Γ£à GPUI components initialized");
 
-            // Store window_id in EngineState metadata BEFORE opening GPUI window
-            // so that views created during open_window_external can access it
-            let window_id_u64 = unsafe { std::mem::transmute::<_, u64>(*window_id) };
-            println!("[WINDOW-INIT] ≡ƒôì Window ID for this window: {}", window_id_u64);
-            self.engine_state.set_metadata("latest_window_id".to_string(), window_id_u64.to_string());
+                // Store window_id in EngineState metadata BEFORE opening GPUI window
+                // so that views created during open_window_external can access it
+                let window_id_u64 = unsafe { std::mem::transmute::<_, u64>(*window_id) };
+                println!("[WINDOW-INIT] ≡ƒôì Window ID for this window: {}", window_id_u64);
+                self.engine_state.set_metadata("latest_window_id".to_string(), window_id_u64.to_string());
 
-            // If this is a project editor window, also store it with a special key
-            if matches!(&window_state.window_type, Some(WindowRequest::ProjectEditor { .. })) {
-                self.engine_state.set_metadata("current_project_window_id".to_string(), window_id_u64.to_string());
-                println!("[WINDOW-INIT] ≡ƒÄ» This is a ProjectEditor window with ID: {}", window_id_u64);
-            }
+                // If this is a project editor window, also store it with a special key
+                if matches!(&window_state.window_type, Some(WindowRequest::ProjectEditor { .. })) {
+                    self.engine_state.set_metadata("current_project_window_id".to_string(), window_id_u64.to_string());
+                    println!("[WINDOW-INIT] ≡ƒÄ» This is a ProjectEditor window with ID: {}", window_id_u64);
+                }
 
-            // Capture window_id_u64 for use in the closure
-            let captured_window_id = window_id_u64;
-            println!("[WINDOW-INIT] ≡ƒôª Captured window_id for closure: {}", captured_window_id);
+                // Capture window_id_u64 for use in the closure
+                let captured_window_id = window_id_u64;
+                println!("[WINDOW-INIT] ≡ƒôª Captured window_id for closure: {}", captured_window_id);
 
-            // Open GPUI window using external window API with appropriate view
-            let gpui_window = app.open_window_external(external_handle.clone(), |window, cx| {
+                // Open GPUI window using external window API with appropriate view
+                let gpui_window = app.open_window_external(external_handle.clone(), |window, cx| {
                 match &window_state.window_type {
                     Some(WindowRequest::Settings) => {
                         let settings_view = cx.new(|cx| crate::ui::windows::settings_window::SettingsWindow::new(window, cx));
@@ -1034,9 +1043,18 @@ impl ApplicationHandler for WinitGpuiApp {
                         cx.new(|cx| Root::new(entry_view.clone().into(), window, cx))
                     }
                 }
-            }).expect("Failed to open GPUI window");
+                }).expect("Failed to open GPUI window");
 
-            window_state.gpui_window = Some(gpui_window);
+                window_state.gpui_window = Some(gpui_window);
+            } // End of Windows-specific GPUI initialization
+
+            #[cfg(not(target_os = "windows"))]
+            {
+                // TODO: Implement Linux window creation using standard GPUI open_window API
+                // For now, we skip GPUI window creation on Linux
+                println!("⚠️ GPUI window creation not yet implemented for Linux");
+                window_state.gpui_window = None;
+            }
 
             // Initialize D3D11 for blitting on Windows
             #[cfg(target_os = "windows")]
