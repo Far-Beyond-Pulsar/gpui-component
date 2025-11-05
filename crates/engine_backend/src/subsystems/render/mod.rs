@@ -10,6 +10,24 @@ pub use zero_copy_buffer::{ZeroCopyFrameBuffer, PersistentMappedBuffer};
 pub use native_texture::{NativeTextureHandle, SharedTextureInfo, TextureFormat};
 pub use dxgi_shared_texture::*;
 
+// Optional Pulsar_Native renderer (only compiled when feature is present)
+#[cfg(feature = "pulsar_native_renderer")]
+pub mod pulsar_native_renderer {
+    // Reuse the native DX12/Vulkan backend from this crate \
+    pub use crate::renderer as native;
+    pub use crate::win_host;
+
+    pub fn init_for_testing() {
+        unsafe {
+            let hwnd = win_host::create_window(1280, 720, "Pulsar_Native Test");
+            let mut r = native::Renderer::new(hwnd, 1280, 720, 4);
+            while win_host::pump_messages() {
+                r.render_frame(|_, _| {});
+            }
+        }
+    }
+}
+
 // Stub for compatibility
 pub struct WgpuRenderer;
 
@@ -42,4 +60,18 @@ impl Framebuffer {
             chunk.copy_from_slice(&color);
         }
     }
+}
+
+fn should_use_pulsar_from_exec() -> bool {
+    // Env override first
+    if std::env::var("PULSAR_RENDERER").map(|v| v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("pulsar")).unwrap_or(false) {
+        return true;
+    }
+
+    // CLI Flags: --renderer=pulsar | --pulsar-native
+    for arg in std::env::args() {
+        let a = arg.to_ascii_lowercase();
+        if a == "--pulsar-native" || a == "--renderer=pulsar" || a == "--renderer=pulsar_native" { return true; }
+    }
+    false
 }
