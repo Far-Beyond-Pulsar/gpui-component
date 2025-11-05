@@ -71,11 +71,6 @@ winapi = { version = "0.3", features = ["winuser"] }  # Windows API for keyboard
 sysinfo = "0.30"  # System information
 reqwest = { version = "0.12", features = ["json"] }  # HTTP client for GitHub API
 
-[target.'cfg(not(target_os = "windows"))'.dependencies]
-ash = "0.38"  # Vulkan bindings for Linux/macOS
-ash-window = "0.13"  # Platform-specific Vulkan surface creation
-gpu-allocator = "0.27"  # GPU memory allocator for Vulkan
-
 [build-dependencies]
 winresource = "0.1"
 

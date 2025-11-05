@@ -56,9 +56,6 @@ pub mod d3d11;
 pub mod events;
 pub mod state;
 
-#[cfg(not(target_os = "windows"))]
-pub mod vulkan_init;
-
 pub use app::WinitGpuiApp;
 pub use events::{convert_modifiers, convert_mouse_button, MotionSmoother, SimpleClickState};
 pub use state::WindowState;
