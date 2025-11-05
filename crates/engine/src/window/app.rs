@@ -47,6 +47,7 @@ use crate::ui::windows::settings_window::SettingsWindow;
 use crate::window::{convert_modifiers, convert_mouse_button, WindowState};
 use gpui::*;
 use gpui_component::Root;
+use raw_window_handle::HasWindowHandle;
 use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
@@ -194,6 +195,16 @@ impl ApplicationHandler for WinitGpuiApp {
                 let window_id_u64 = unsafe { std::mem::transmute::<_, u64>(window_id) };
                 self.engine_state.remove_window_gpu_renderer(window_id_u64);
 
+                // Clean up Vulkan resources on Linux/macOS
+                #[cfg(not(target_os = "windows"))]
+                if let Some(window_state) = self.windows.get_mut(&window_id) {
+                    if let Some(mut vk_state) = window_state.vk_state.take() {
+                        unsafe {
+                            crate::window::vulkan_init::cleanup_vulkan(&mut vk_state);
+                        }
+                    }
+                }
+
                 self.windows.remove(&window_id);
                 self.engine_state.decrement_window_count();
 
@@ -254,6 +265,8 @@ impl ApplicationHandler for WinitGpuiApp {
                     ref mut bevy_texture,
                     #[cfg(target_os = "windows")]
                     ref mut bevy_srv,
+                    #[cfg(not(target_os = "windows"))]
+                    ref mut vk_state,
                     ref mut bevy_renderer,
                 } = window_state;
 
@@ -581,6 +594,36 @@ impl ApplicationHandler for WinitGpuiApp {
                         }
                     }
 
+                    // Vulkan rendering for Linux/macOS
+                    #[cfg(not(target_os = "windows"))]
+                    unsafe {
+                        // Trigger GPUI rendering
+                        if *needs_render {
+                            let _ = gpui_app.update(|app| {
+                                app.refresh_windows();
+                            });
+                            let _ = gpui_app.update(|app| {
+                                app.draw_windows();
+                            });
+                            *needs_render = false;
+                        }
+
+                        // Render Vulkan frame
+                        if let Some(vk) = vk_state.as_mut() {
+                            // Render frame with green clear color (matches Windows background)
+                            let clear_color = [0.0f32, 1.0, 0.0, 1.0]; // Green
+
+                            match crate::window::vulkan_init::render_frame(vk, clear_color) {
+                                Ok(_) => {
+                                    // Frame rendered successfully
+                                }
+                                Err(e) => {
+                                    eprintln!("❌ Vulkan render error: {:?}", e);
+                                }
+                            }
+                        }
+                    }
+
                     // Don't continuously request redraws - only render when events occur or GPUI requests it
                 }
                 // Handle keyboard events - request redraw
@@ -739,6 +782,25 @@ impl ApplicationHandler for WinitGpuiApp {
                                     } else {
                                         eprintln!("Γ¥î Failed to get back buffer after resize");
                                     }
+                                }
+                            }
+                        }
+                    }
+
+                    // Resize Vulkan swapchain on Linux/macOS
+                    #[cfg(not(target_os = "windows"))]
+                    if let Some(vk) = vk_state.as_mut() {
+                        unsafe {
+                            match crate::window::vulkan_init::recreate_swapchain(
+                                vk,
+                                new_size.width,
+                                new_size.height,
+                            ) {
+                                Ok(_) => {
+                                    println!("✅ Vulkan swapchain resized to {}x{}", new_size.width, new_size.height);
+                                }
+                                Err(e) => {
+                                    eprintln!("❌ Failed to resize Vulkan swapchain: {:?}", e);
                                 }
                             }
                         }
@@ -1050,10 +1112,106 @@ impl ApplicationHandler for WinitGpuiApp {
 
             #[cfg(not(target_os = "windows"))]
             {
-                // TODO: Implement Linux window creation using standard GPUI open_window API
-                // For now, we skip GPUI window creation on Linux
-                println!("⚠️ GPUI window creation not yet implemented for Linux");
-                window_state.gpui_window = None;
+                // Linux/macOS: Use external window API (matching Windows behavior)
+                println!("🔵 Creating GPUI external window on Linux/macOS...");
+
+                let app = &mut window_state.gpui_app;
+
+                // Clone engine_state for use in closures
+                let engine_state_for_actions = self.engine_state.clone();
+
+                // Load custom fonts and initialize GPUI components
+                app.update(|app| {
+                    if let Some(font_data) = Assets::get("fonts/JetBrainsMono-Regular.ttf") {
+                        match app.text_system().add_fonts(vec![font_data.data]) {
+                            Ok(_) => println!("Successfully loaded JetBrains Mono font"),
+                            Err(e) => println!("Failed to load JetBrains Mono font: {:?}", e),
+                        }
+                    } else {
+                        println!("Could not find JetBrains Mono font file");
+                    }
+
+                    // Initialize GPUI components
+                    gpui_component::init(app);
+                    crate::themes::init(app);
+                    crate::ui::windows::terminal::init(app);
+
+                    // Setup keybindings
+                    app.bind_keys([
+                        KeyBinding::new("ctrl-,", OpenSettings, None),
+                        KeyBinding::new("ctrl-space", ToggleCommandPalette, None),
+                    ]);
+
+                    let engine_state = engine_state_for_actions.clone();
+                    app.on_action(move |_: &OpenSettings, _app_cx| {
+                        println!("⚙️  Settings window requested - creating new window!");
+                        engine_state.request_window(crate::engine_state::WindowRequest::Settings);
+                    });
+
+                    app.activate(true);
+                });
+
+                println!("✅ GPUI components initialized");
+
+                // Create external handle for Linux/macOS
+                let external_handle = {
+                    let gpui_raw_handle = winit_window
+                        .window_handle()
+                        .expect("Failed to get window handle")
+                        .as_raw();
+
+                    ExternalWindowHandle {
+                        raw_handle: gpui_raw_handle,
+                        bounds,
+                        scale_factor,
+                        surface_handle: None,
+                    }
+                };
+
+                // Store window_id in EngineState metadata
+                let window_id_u64 = unsafe { std::mem::transmute::<_, u64>(*window_id) };
+                self.engine_state.set_metadata("latest_window_id".to_string(), window_id_u64.to_string());
+
+                if matches!(&window_state.window_type, Some(WindowRequest::ProjectEditor { .. })) {
+                    self.engine_state.set_metadata("current_project_window_id".to_string(), window_id_u64.to_string());
+                }
+
+                let captured_window_id = window_id_u64;
+
+                // Open GPUI window using external window API with appropriate view
+                let gpui_window = window_state.gpui_app.open_window_external(external_handle.clone(), |window, cx| {
+                    match &window_state.window_type {
+                        Some(WindowRequest::Settings) => {
+                            let settings_view = cx.new(|cx| crate::ui::windows::settings_window::SettingsWindow::new(window, cx));
+                            cx.new(|cx| Root::new(settings_view.clone().into(), window, cx))
+                        }
+                        Some(WindowRequest::ProjectSplash { project_path }) => {
+                            let loading_view = cx.new(|cx| crate::ui::windows::loading_window::LoadingWindow::new_with_window_id(
+                                std::path::PathBuf::from(project_path),
+                                captured_window_id,
+                                window,
+                                cx
+                            ));
+                            cx.new(|cx| Root::new(loading_view.clone().into(), window, cx))
+                        }
+                        Some(WindowRequest::ProjectEditor { project_path }) => {
+                            let app = cx.new(|cx| crate::ui::core::app::PulsarApp::new_with_project_and_window_id(
+                                std::path::PathBuf::from(project_path),
+                                captured_window_id,
+                                window,
+                                cx
+                            ));
+                            let pulsar_root = cx.new(|cx| crate::ui::core::app::PulsarRoot::new("Pulsar Engine", app, window, cx));
+                            cx.new(|cx| Root::new(pulsar_root.into(), window, cx))
+                        }
+                        Some(WindowRequest::CloseWindow { .. }) | None => {
+                            let entry_view = cx.new(|cx| EntryWindow::new(window, cx));
+                            cx.new(|cx| Root::new(entry_view.clone().into(), window, cx))
+                        }
+                    }
+                }).expect("Failed to open GPUI window");
+
+                window_state.gpui_window = Some(gpui_window);
             }
 
             // Initialize D3D11 for blitting on Windows
@@ -1412,6 +1570,26 @@ float4 main(PS_INPUT input) : SV_TARGET {
                     println!("≡ƒÆí Shared texture will be retrieved on first render");
                 } else {
                     println!("Γ¥î Failed to create D3D11 device: {:?}", result);
+                }
+            }
+
+            // Initialize Vulkan for rendering on Linux/macOS
+            #[cfg(not(target_os = "windows"))]
+            unsafe {
+                println!("🔵 Initializing Vulkan for GPU rendering...");
+
+                match crate::window::vulkan_init::init_vulkan(
+                    &window_state.winit_window,
+                    size.width,
+                    size.height,
+                ) {
+                    Ok(vk_state_init) => {
+                        window_state.vk_state = Some(vk_state_init);
+                        println!("✅ Vulkan initialized successfully!");
+                    }
+                    Err(e) => {
+                        eprintln!("❌ Failed to initialize Vulkan: {:?}", e);
+                    }
                 }
             }
 

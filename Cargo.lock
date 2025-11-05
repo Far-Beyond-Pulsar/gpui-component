@@ -4429,6 +4429,7 @@ version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c151a2a5ef800297b4e79efa4f4bec035c5f51d5ae587287c9b952bdf734cacd"
 dependencies = [
+ "ash 0.38.0+1.3.281",
  "log",
  "presser",
  "thiserror 1.0.69",
@@ -8160,6 +8161,8 @@ version = "0.1.44"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
+ "ash 0.38.0+1.3.281",
+ "ash-window",
  "bytemuck",
  "chrono",
  "claxon",
@@ -8172,6 +8175,7 @@ dependencies = [
  "flume",
  "futures",
  "git2",
+ "gpu-allocator 0.27.0",
  "gpui",
  "gpui-component",
  "horizon",
