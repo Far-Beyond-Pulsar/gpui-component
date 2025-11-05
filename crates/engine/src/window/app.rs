@@ -254,6 +254,8 @@ impl ApplicationHandler for WinitGpuiApp {
                     ref mut bevy_texture,
                     #[cfg(target_os = "windows")]
                     ref mut bevy_srv,
+                    #[cfg(not(target_os = "windows"))]
+                    ref mut vk_state,
                     ref mut bevy_renderer,
                 } = window_state;
 

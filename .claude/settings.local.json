@@ -65,7 +65,9 @@
       "Bash(grep:*)",
       "Bash(timeout 120 cargo run:*)",
       "Bash(taskkill:*)",
-      "Bash(nul)"
+      "Bash(nul)",
+      "Bash(chmod:*)",
+      "Bash(nix-shell:*)"
     ],
     "deny": [],
     "ask": []
