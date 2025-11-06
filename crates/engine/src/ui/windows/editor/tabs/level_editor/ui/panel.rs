@@ -110,11 +110,17 @@ impl LevelEditorPanel {
         // Store GPU renderer in global EngineState using a marker that the render loop will pick up
         // The render loop will associate it with the correct window when it first renders
         if let Some(engine_state) = crate::EngineState::global() {
-            // Use a sentinel value (0) to mark this renderer as pending association with a window
-            // The main render loop will detect windows with viewports and claim this renderer
-            engine_state.set_window_gpu_renderer(0, gpu_engine.clone());
-            engine_state.set_metadata("has_pending_viewport_renderer".to_string(), "true".to_string());
-            println!("[LEVEL-EDITOR] 📦 GPU renderer created and ready for window association by render loop");
+            if let Some(wid) = window_id {
+                // We have the actual window ID - register directly!
+                engine_state.set_window_gpu_renderer(wid, gpu_engine.clone());
+                println!("[LEVEL-EDITOR] ✅ GPU renderer registered directly for window {}!", wid);
+            } else {
+                // Fallback: Use a sentinel value (0) to mark this renderer as pending association with a window
+                // The main render loop will detect windows with viewports and claim this renderer
+                engine_state.set_window_gpu_renderer(0, gpu_engine.clone());
+                engine_state.set_metadata("has_pending_viewport_renderer".to_string(), "true".to_string());
+                println!("[LEVEL-EDITOR] 📦 GPU renderer created and ready for window association by render loop");
+            }
         } else {
             println!("[LEVEL-EDITOR] ❌ ERROR: No global EngineState found!");
         }
