@@ -411,6 +411,24 @@ impl ApplicationHandler for WinitGpuiApp {
                         if let (Some(context), Some(shared_texture), Some(persistent_texture), Some(srv), Some(swap_chain), Some(render_target_view), Some(blend_state), Some(vertex_shader), Some(pixel_shader), Some(vertex_buffer), Some(input_layout), Some(sampler_state)) =
                             (d3d_context.as_ref(), &*shared_texture, &*persistent_gpui_texture, &*persistent_gpui_srv, swap_chain.as_ref(), render_target_view.as_ref(), blend_state.as_ref(), vertex_shader.as_ref(), pixel_shader.as_ref(), vertex_buffer.as_ref(), input_layout.as_ref(), sampler_state.as_ref()) {
 
+                            // Periodically check D3D11 device status
+                            static mut DEVICE_CHECK_COUNTER: u32 = 0;
+                            unsafe {
+                                DEVICE_CHECK_COUNTER += 1;
+                                if DEVICE_CHECK_COUNTER % 300 == 0 {
+                                    if let Some(device) = d3d_device.as_ref() {
+                                        let device_reason = device.GetDeviceRemovedReason();
+                                        if device_reason.is_err() {
+                                            eprintln!("[COMPOSITOR] ⚠️  D3D11 device has been removed! Reason: {:?}", device_reason);
+                                            eprintln!("[COMPOSITOR] 🔄 Device recreation would be needed for full recovery");
+                                            // Clear Bevy texture cache to prevent using stale handles
+                                            *bevy_texture = None;
+                                            *bevy_srv = None;
+                                        }
+                                    }
+                                }
+                            }
+
                             // Copy from GPUI's shared texture to our persistent buffer ONLY if GPUI rendered this frame
                             // This preserves the last rendered frame even if GPUI doesn't re-render
                             if should_render_gpui {
@@ -494,11 +512,37 @@ impl ApplicationHandler for WinitGpuiApp {
                                                 };
                                                 
                                                 if let Err(e) = open_result {
+                                                    // Check for device removed/suspended errors
+                                                    let hresult = e.code().0;
+                                                    let is_device_error = hresult == 0x887A0005_u32 as i32 || // DXGI_ERROR_DEVICE_REMOVED
+                                                                         hresult == 0x887A0006_u32 as i32 || // DXGI_ERROR_DEVICE_HUNG
+                                                                         hresult == 0x887A0007_u32 as i32 || // DXGI_ERROR_DEVICE_RESET
+                                                                         hresult == 0x887A0020_u32 as i32;   // DXGI_ERROR_DRIVER_INTERNAL_ERROR
+                                                    
                                                     static mut OPEN_ERROR_COUNT: u32 = 0;
+                                                    static mut LAST_WAS_DEVICE_ERROR: bool = false;
                                                     unsafe {
                                                         OPEN_ERROR_COUNT += 1;
-                                                        if OPEN_ERROR_COUNT == 1 || OPEN_ERROR_COUNT % 60 == 0 {
-                                                            eprintln!("[COMPOSITOR] ❌ Failed to open Bevy shared resource: {:?} (error count: {})", e, OPEN_ERROR_COUNT);
+                                                        
+                                                        if is_device_error {
+                                                            if !LAST_WAS_DEVICE_ERROR || OPEN_ERROR_COUNT % 600 == 1 {
+                                                                eprintln!("[COMPOSITOR] ❌ GPU DEVICE REMOVED/SUSPENDED: {:?}", e);
+                                                                eprintln!("[COMPOSITOR] 💡 This is usually caused by:");
+                                                                eprintln!("[COMPOSITOR]    - GPU driver crash/timeout (TDR)");
+                                                                eprintln!("[COMPOSITOR]    - GPU overheating");
+                                                                eprintln!("[COMPOSITOR]    - Power management suspending GPU");
+                                                                eprintln!("[COMPOSITOR]    - Display driver update in progress");
+                                                                eprintln!("[COMPOSITOR] 🔄 Continuing with GPUI-only rendering...");
+                                                                LAST_WAS_DEVICE_ERROR = true;
+                                                            }
+                                                            // Invalidate Bevy texture cache to force retry after device recovery
+                                                            *bevy_texture = None;
+                                                            *bevy_srv = None;
+                                                        } else {
+                                                            LAST_WAS_DEVICE_ERROR = false;
+                                                            if OPEN_ERROR_COUNT == 1 || OPEN_ERROR_COUNT % 60 == 0 {
+                                                                eprintln!("[COMPOSITOR] ❌ Failed to open Bevy shared resource: {:?} (error count: {})", e, OPEN_ERROR_COUNT);
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -532,10 +576,24 @@ impl ApplicationHandler for WinitGpuiApp {
                                                         );
                                                         
                                                         if let Err(e) = srv_result {
+                                                            // Check for device removed errors
+                                                            let hresult = e.code().0;
+                                                            let is_device_error = hresult == 0x887A0005_u32 as i32 || 
+                                                                                 hresult == 0x887A0006_u32 as i32 ||
+                                                                                 hresult == 0x887A0007_u32 as i32;
+                                                            
                                                             static mut SRV_ERROR_COUNT: u32 = 0;
                                                             unsafe {
                                                                 SRV_ERROR_COUNT += 1;
-                                                                if SRV_ERROR_COUNT == 1 || SRV_ERROR_COUNT % 60 == 0 {
+                                                                if is_device_error {
+                                                                    if SRV_ERROR_COUNT == 1 || SRV_ERROR_COUNT % 600 == 0 {
+                                                                        eprintln!("[COMPOSITOR] ❌ GPU device error creating SRV: {:?}", e);
+                                                                        eprintln!("[COMPOSITOR] 🔄 Falling back to GPUI-only rendering");
+                                                                    }
+                                                                    // Clear cache
+                                                                    *bevy_texture = None;
+                                                                    *bevy_srv = None;
+                                                                } else if SRV_ERROR_COUNT == 1 || SRV_ERROR_COUNT % 60 == 0 {
                                                                     eprintln!("[COMPOSITOR] ❌ Failed to create SRV for Bevy texture: {:?} (error count: {})", e, SRV_ERROR_COUNT);
                                                                 }
                                                             }
@@ -682,7 +740,22 @@ impl ApplicationHandler for WinitGpuiApp {
 
                                 // ONLY present when we successfully composited GPUI content
                                 // This prevents flickering of green-only frames
-                                let _ = swap_chain.Present(1, DXGI_PRESENT(0));
+                                let present_result = swap_chain.Present(1, DXGI_PRESENT(0));
+                                
+                                // Handle present failures gracefully  
+                                if present_result.is_err() {
+                                    let e = present_result.unwrap();
+                                    // The error type is (), so we can't get an HRESULT.
+                                    // Instead, just log the error and continue.
+                                    static mut PRESENT_ERROR_COUNT: u32 = 0;
+                                    unsafe {
+                                        PRESENT_ERROR_COUNT += 1;
+                                        if PRESENT_ERROR_COUNT == 1 || PRESENT_ERROR_COUNT % 600 == 0 {
+                                            eprintln!("[COMPOSITOR] ❌ Present failed - error: {:?}", e);
+                                            eprintln!("[COMPOSITOR] 🔄 Continuing (device may recover)...");
+                                        }
+                                    }
+                                }
                             }
                         } else {
                             // Don't present if we don't have GPUI texture ready yet
