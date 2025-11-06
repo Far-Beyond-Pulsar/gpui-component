@@ -48,6 +48,7 @@ pub struct OpenFile {
 
 pub struct TextEditor {
     focus_handle: FocusHandle,
+    /// A list of currently open files in this script editor
     open_files: Vec<OpenFile>,
     current_file_index: Option<usize>,
     /// Performance monitoring

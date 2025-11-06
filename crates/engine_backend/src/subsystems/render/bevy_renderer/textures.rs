@@ -22,22 +22,22 @@ pub fn create_shared_textures_startup(
     shared_textures: Res<SharedTexturesResource>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    println!("[BEVY] 🔧 Creating DXGI shared textures...");
+    println!("[BEVY] 🔧 create_shared_textures_startup() CALLED - Creating placeholder Images...");
+    println!("[BEVY] 📍 This runs in STARTUP schedule (main world) BEFORE rendering begins");
 
     // Check if already created
     if let Ok(lock) = shared_textures.0.lock() {
         if let Some(ref textures) = *lock {
             if let Ok(native_lock) = textures.native_handles.lock() {
                 if native_lock.is_some() {
-                    println!("[BEVY] ⚠️ Textures already created");
+                    println!("[BEVY] ⚠️  Textures already created, skipping");
                     return;
                 }
             }
         }
     }
 
-    // Get D3D12 device - we need wgpu device for this
-    // For now, create placeholder Images that will be replaced in render world
+    println!("[BEVY] 📦 Creating placeholder Images (actual DXGI textures created in render world)...");
     let bytes_per_pixel = 4; // BGRA8
     let texture_size = (RENDER_WIDTH * RENDER_HEIGHT * bytes_per_pixel) as usize;
     
@@ -184,7 +184,8 @@ pub fn create_shared_textures(
     use wgpu_hal::api::Dx12;
     use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
 
-    println!("[BEVY] 🔧 Replacing render targets with DXGI shared textures...");
+    println!("[BEVY] 🔧 create_shared_textures() CALLED - Replacing render targets with DXGI shared textures...");
+    println!("[BEVY] 📍 This should only run ONCE on the first render cycle");
 
     let texture_handles = match shared_textures.0.lock().ok().and_then(|l| l.as_ref().map(|t| t.textures.clone())) {
         Some(handles) => handles,
@@ -242,6 +243,7 @@ pub fn create_shared_textures(
     let handle_1 = tex_1.handle_value();
 
     println!("[BEVY] ✅ Created DXGI textures: 0x{:X}, 0x{:X}", handle_0, handle_1);
+    println!("[BEVY] 🎯 Handles will now be stored for GPUI compositor access");
 
     // Store handles for GPUI - both in global storage and in SharedGpuTextures
     crate::subsystems::render::native_texture::store_shared_handles(vec![handle_0, handle_1]);

@@ -292,8 +292,25 @@ impl ApplicationHandler for WinitGpuiApp {
                 WindowEvent::RedrawRequested => {
                     #[cfg(target_os = "windows")]
                     unsafe {
-                        // Only render if GPUI requested it or we need to render
-                        if *needs_render {
+                        // ALWAYS run compositor if we have D3D11 set up (for continuous Bevy rendering)
+                        // GPUI only re-renders when needs_render is true
+                        let should_render_gpui = *needs_render;
+                        
+                        // Diagnostic: Show decoupled rendering rates
+                        static mut COMPOSITOR_FRAME_COUNT: u32 = 0;
+                        static mut GPUI_FRAME_COUNT: u32 = 0;
+                        COMPOSITOR_FRAME_COUNT += 1;
+                        if should_render_gpui {
+                            GPUI_FRAME_COUNT += 1;
+                            if GPUI_FRAME_COUNT % 60 == 1 {
+                                println!("[DECOUPLED-RENDER] 🎨 GPUI frame {} (compositor frame {})", GPUI_FRAME_COUNT, COMPOSITOR_FRAME_COUNT);
+                                println!("[DECOUPLED-RENDER] 📊 Compositor: {} fps, GPUI: {} fps (estimated)", 
+                                    COMPOSITOR_FRAME_COUNT / (GPUI_FRAME_COUNT / 60).max(1),
+                                    60);
+                            }
+                        }
+                        
+                        if should_render_gpui {
                             // First refresh windows (marks windows as dirty)
                             let _ = gpui_app.update(|app| {
                                 app.refresh_windows();
@@ -394,9 +411,12 @@ impl ApplicationHandler for WinitGpuiApp {
                         if let (Some(context), Some(shared_texture), Some(persistent_texture), Some(srv), Some(swap_chain), Some(render_target_view), Some(blend_state), Some(vertex_shader), Some(pixel_shader), Some(vertex_buffer), Some(input_layout), Some(sampler_state)) =
                             (d3d_context.as_ref(), &*shared_texture, &*persistent_gpui_texture, &*persistent_gpui_srv, swap_chain.as_ref(), render_target_view.as_ref(), blend_state.as_ref(), vertex_shader.as_ref(), pixel_shader.as_ref(), vertex_buffer.as_ref(), input_layout.as_ref(), sampler_state.as_ref()) {
 
-                            // Copy from GPUI's shared texture to our persistent buffer
+                            // Copy from GPUI's shared texture to our persistent buffer ONLY if GPUI rendered this frame
                             // This preserves the last rendered frame even if GPUI doesn't re-render
-                            context.CopyResource(persistent_texture, shared_texture);
+                            if should_render_gpui {
+                                context.CopyResource(persistent_texture, shared_texture);
+                            }
+                            // If GPUI didn't render, we just reuse the last frame from persistent_texture
 
                             // Clear to green (bottom layer) - immediate mode background
                             let green = [0.0f32, 1.0, 0.0, 1.0];
@@ -420,6 +440,7 @@ impl ApplicationHandler for WinitGpuiApp {
                                     }
                                 }
                             }
+
                             if let Some(ref gpu_renderer_arc) = bevy_renderer {
                                 if let Ok(gpu_renderer) = gpu_renderer_arc.lock() {
                                     if let Some(ref bevy_renderer_inst) = gpu_renderer.bevy_renderer {
@@ -432,15 +453,63 @@ impl ApplicationHandler for WinitGpuiApp {
                                             }
                                             // Extract D3D11 handle
                                             if let engine_backend::subsystems::render::NativeTextureHandle::D3D11(handle_ptr) = native_handle {
-                                                // Open the shared texture from Bevy
+                                                // Open the shared texture from Bevy using D3D11.1 API (supports NT handles)
                                                 let mut bevy_texture_local: Option<ID3D11Texture2D> = None;
                                                 let device = d3d_device.as_ref().unwrap();
-                                                let _ = device.OpenSharedResource(
-                                                    HANDLE(handle_ptr as *mut _),
-                                                    &mut bevy_texture_local
-                                                );
+                                                
+                                                // DIAGNOSTIC: Log handle opening
+                                                static mut OPEN_ATTEMPT: u32 = 0;
+                                                unsafe {
+                                                    OPEN_ATTEMPT += 1;
+                                                    if OPEN_ATTEMPT == 1 || OPEN_ATTEMPT % 120 == 0 {
+                                                        eprintln!("[COMPOSITOR] 🔓 Attempting to open Bevy shared texture handle: 0x{:X} (attempt {})", handle_ptr, OPEN_ATTEMPT);
+                                                    }
+                                                }
+                                                
+                                                // Try to cast to ID3D11Device1 for OpenSharedResource1 (supports NT handles)
+                                                let open_result: std::result::Result<(), windows::core::Error> = unsafe {
+                                                    match device.cast::<ID3D11Device1>() {
+                                                        Ok(device1) => {
+                                                            // Use OpenSharedResource1 which supports NT handles from CreateSharedHandle
+                                                            let result: std::result::Result<ID3D11Texture2D, windows::core::Error> = device1.OpenSharedResource1(
+                                                                HANDLE(handle_ptr as *mut _)
+                                                            );
+                                                            match result {
+                                                                Ok(tex) => {
+                                                                    bevy_texture_local = Some(tex);
+                                                                    Ok(())
+                                                                }
+                                                                Err(e) => Err(e)
+                                                            }
+                                                        }
+                                                        Err(cast_err) => {
+                                                            // Fallback to legacy OpenSharedResource (won't work with NT handles but try anyway)
+                                                            eprintln!("[COMPOSITOR] ⚠️  Failed to cast to ID3D11Device1: {:?}, using legacy OpenSharedResource", cast_err);
+                                                            device.OpenSharedResource(
+                                                                HANDLE(handle_ptr as *mut _),
+                                                                &mut bevy_texture_local
+                                                            )
+                                                        }
+                                                    }
+                                                };
+                                                
+                                                if let Err(e) = open_result {
+                                                    static mut OPEN_ERROR_COUNT: u32 = 0;
+                                                    unsafe {
+                                                        OPEN_ERROR_COUNT += 1;
+                                                        if OPEN_ERROR_COUNT == 1 || OPEN_ERROR_COUNT % 60 == 0 {
+                                                            eprintln!("[COMPOSITOR] ❌ Failed to open Bevy shared resource: {:?} (error count: {})", e, OPEN_ERROR_COUNT);
+                                                        }
+                                                    }
+                                                }
 
                                                 if let Some(ref bevy_tex) = bevy_texture_local {
+                                                    unsafe {
+                                                        if OPEN_ATTEMPT == 1 || OPEN_ATTEMPT % 120 == 0 {
+                                                            eprintln!("[COMPOSITOR] ✅ Successfully opened Bevy texture");
+                                                        }
+                                                    }
+                                                    
                                                     // Create or reuse SRV for Bevy texture
                                                     if bevy_texture.is_none() || bevy_texture.as_ref().map(|t| t.as_raw()) != Some(bevy_tex.as_raw()) {
                                                         // Create new SRV - MUST match Bevy's BGRA8UnormSrgb format!
@@ -456,11 +525,27 @@ impl ApplicationHandler for WinitGpuiApp {
                                                         };
 
                                                         let mut new_srv: Option<ID3D11ShaderResourceView> = None;
-                                                        let _ = device.CreateShaderResourceView(
+                                                        let srv_result = device.CreateShaderResourceView(
                                                             bevy_tex,
                                                             Some(&srv_desc),
                                                             Some(&mut new_srv)
                                                         );
+                                                        
+                                                        if let Err(e) = srv_result {
+                                                            static mut SRV_ERROR_COUNT: u32 = 0;
+                                                            unsafe {
+                                                                SRV_ERROR_COUNT += 1;
+                                                                if SRV_ERROR_COUNT == 1 || SRV_ERROR_COUNT % 60 == 0 {
+                                                                    eprintln!("[COMPOSITOR] ❌ Failed to create SRV for Bevy texture: {:?} (error count: {})", e, SRV_ERROR_COUNT);
+                                                                }
+                                                            }
+                                                        } else {
+                                                            unsafe {
+                                                                if OPEN_ATTEMPT == 1 || OPEN_ATTEMPT % 120 == 0 {
+                                                                    eprintln!("[COMPOSITOR] ✅ Created SRV for Bevy texture");
+                                                                }
+                                                            }
+                                                        }
 
                                                         *bevy_texture = Some(bevy_tex.clone());
                                                         *bevy_srv = new_srv;
@@ -513,6 +598,35 @@ impl ApplicationHandler for WinitGpuiApp {
                                                     }
                                                 }
                                             }
+                                        } else {
+                                            // DIAGNOSTIC: Texture handle not available yet
+                                            static mut HANDLE_CHECK_COUNT: u32 = 0;
+                                            unsafe {
+                                                HANDLE_CHECK_COUNT += 1;
+                                                if HANDLE_CHECK_COUNT % 120 == 1 {
+                                                    eprintln!("[RENDERER] ⚠️  Bevy renderer exists but texture handle is None (checked {} times)", HANDLE_CHECK_COUNT);
+                                                    eprintln!("[RENDERER] 💡 This means Bevy hasn't created shared textures yet - waiting for first render...");
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        // DIAGNOSTIC: GpuRenderer has no bevy_renderer
+                                        static mut NO_BEVY_COUNT: u32 = 0;
+                                        unsafe {
+                                            NO_BEVY_COUNT += 1;
+                                            if NO_BEVY_COUNT % 120 == 1 {
+                                                eprintln!("[RENDERER] ⚠️  GpuRenderer exists but bevy_renderer is None (checked {} times)", NO_BEVY_COUNT);
+                                                eprintln!("[RENDERER] 💡 This means BevyRenderer initialization failed or timed out");
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // DIAGNOSTIC: Failed to lock GpuRenderer
+                                    static mut LOCK_FAIL_COUNT: u32 = 0;
+                                    unsafe {
+                                        LOCK_FAIL_COUNT += 1;
+                                        if LOCK_FAIL_COUNT % 120 == 1 {
+                                            eprintln!("[RENDERER] ⚠️  Failed to lock GpuRenderer (contended {} times)", LOCK_FAIL_COUNT);
                                         }
                                     }
                                 }
@@ -581,10 +695,16 @@ impl ApplicationHandler for WinitGpuiApp {
                         }
                     }
 
-                    // Don't continuously request redraws - only render when events occur or GPUI requests it
+                    // Request continuous redraws if we have a Bevy renderer (for max FPS viewport)
+                    // GPUI will only re-render when needed, but Bevy layer updates continuously
+                    if bevy_renderer.is_some() {
+                        winit_window.request_redraw();
+                    }
                 }
                 // Handle keyboard events - request redraw
                 WindowEvent::KeyboardInput { event, .. } => {
+                    println!("≡ƒ¬ƒ Keyboard event: {:?}, repeat: {}", event.physical_key, event.repeat);
+
                     // Forward keyboard events to GPUI
                     if let Some(gpui_window_ref) = gpui_window.as_ref() {
                         // Store event and create keystroke before borrowing
@@ -614,12 +734,16 @@ impl ApplicationHandler for WinitGpuiApp {
                         if let Some(keystroke) = keystroke_opt {
                             let gpui_event = match event.state {
                                 ElementState::Pressed => {
+                                    println!("≡ƒôñ KeyDown: {:?}", keystroke);
+
                                     PlatformInput::KeyDown(KeyDownEvent {
                                         keystroke,
                                         is_held: event.repeat,
                                     })
                                 }
                                 ElementState::Released => {
+                                    println!("≡ƒôñ KeyUp: {:?}", keystroke);
+
                                     PlatformInput::KeyUp(KeyUpEvent { keystroke })
                                 }
                             };

@@ -223,7 +223,10 @@ impl BevyRenderer {
         }
 
         println!("[BEVY] ✅ Starting render loop...");
+        println!("[BEVY] 🎯 Note: Render loop will block this thread until shutdown");
+        println!("[BEVY] 📊 Shared textures will be created on first render cycle");
         app.run();
+        println!("[BEVY] 🛑 Render loop ended");
     }
 
     pub fn update_camera_input(&mut self, input: CameraInput) {
@@ -262,12 +265,51 @@ impl BevyRenderer {
 
     pub fn get_current_native_handle(&self) -> Option<crate::subsystems::render::NativeTextureHandle> {
         let read_idx = self.get_read_index();
+        
+        // Diagnostic logging (only occasionally to avoid spam)
+        static mut CHECK_COUNT: u32 = 0;
+        unsafe {
+            CHECK_COUNT += 1;
+            if CHECK_COUNT == 1 || CHECK_COUNT % 300 == 0 {
+                println!("[BEVY] 🔍 get_current_native_handle() call #{}, read_idx={}", CHECK_COUNT, read_idx);
+            }
+        }
+        
         if let Ok(lock) = self.shared_textures.lock() {
             if let Some(ref textures) = *lock {
                 if let Ok(handles_lock) = textures.native_handles.lock() {
                     if let Some(ref handles) = *handles_lock {
+                        unsafe {
+                            if CHECK_COUNT == 1 || CHECK_COUNT % 300 == 0 {
+                                println!("[BEVY] ✅ Returning handle for buffer {}", read_idx);
+                            }
+                        }
                         return Some(handles[read_idx].clone());
+                    } else {
+                        unsafe {
+                            if CHECK_COUNT == 1 || CHECK_COUNT % 300 == 0 {
+                                println!("[BEVY] ⚠️  native_handles is None - textures not created yet");
+                            }
+                        }
                     }
+                } else {
+                    unsafe {
+                        if CHECK_COUNT == 1 || CHECK_COUNT % 300 == 0 {
+                            println!("[BEVY] ⚠️  Failed to lock native_handles");
+                        }
+                    }
+                }
+            } else {
+                unsafe {
+                    if CHECK_COUNT == 1 || CHECK_COUNT % 300 == 0 {
+                        println!("[BEVY] ⚠️  shared_textures is None - SharedGpuTextures not initialized");
+                    }
+                }
+            }
+        } else {
+            unsafe {
+                if CHECK_COUNT == 1 || CHECK_COUNT % 300 == 0 {
+                    println!("[BEVY] ⚠️  Failed to lock shared_textures");
                 }
             }
         }
