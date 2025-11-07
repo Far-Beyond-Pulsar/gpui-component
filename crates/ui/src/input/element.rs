@@ -1302,8 +1302,8 @@ impl Element for TextElement {
                 .map(|t| t.tab_size)
                 .unwrap_or(4); // Default to 4 if not available
             
-            // Make guides clearly visible - 50% opacity for good visibility
-            let indent_guide_color = cx.theme().border.opacity(1);
+            // Make guides clearly visible
+            let indent_guide_color = cx.theme().border.opacity(1.0);
             
             // Get actual font metrics for accurate positioning
             let text_style = window.text_style();
@@ -1340,7 +1340,7 @@ impl Element for TextElement {
                 let line_str = line_text.as_str().unwrap_or("");
                 let indent_level = calculate_indent_level(line_str, tab_size);
                 
-                // Draw a vertical line at each indent level (1.5px for better visibility)
+                // Draw a vertical line at each indent level
                 for level in 0..indent_level {
                     let x_offset = prepaint.last_layout.line_number_width + (tab_pixel_width * (level + 1) as f32);
                     let guide_x = origin.x + x_offset;
@@ -1349,7 +1349,7 @@ impl Element for TextElement {
                     window.paint_quad(fill(
                         Bounds::new(
                             point(guide_x, guide_y),
-                            size(px(1), line_height)
+                            size(px(1.0), line_height)
                         ),
                         indent_guide_color,
                     ));
