@@ -1303,7 +1303,7 @@ impl Element for TextElement {
                 .unwrap_or(4); // Default to 4 if not available
             
             // Make guides clearly visible - 50% opacity for good visibility
-            let indent_guide_color = cx.theme().border.opacity(0.5);
+            let indent_guide_color = cx.theme().border.opacity(1);
             
             // Get actual font metrics for accurate positioning
             let text_style = window.text_style();
@@ -1349,7 +1349,7 @@ impl Element for TextElement {
                     window.paint_quad(fill(
                         Bounds::new(
                             point(guide_x, guide_y),
-                            size(px(1.5), line_height)
+                            size(px(1), line_height)
                         ),
                         indent_guide_color,
                     ));
