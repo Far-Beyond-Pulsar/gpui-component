@@ -1302,11 +1302,30 @@ impl Element for TextElement {
                 .map(|t| t.tab_size)
                 .unwrap_or(4); // Default to 4 if not available
             
-            // Use very subtle color for indent guides (12% opacity of border color)
-            let indent_guide_color = cx.theme().border.opacity(0.12);
+            // Make guides more visible - 25% opacity instead of 12%
+            let indent_guide_color = cx.theme().border.opacity(0.25);
             
-            // Estimate monospace character width
-            let char_width = line_height * 0.6;
+            // Get actual font metrics for accurate positioning
+            let text_style = window.text_style();
+            let font_size = text_style.font_size.to_pixels(window.rem_size());
+            
+            // Measure actual space character width using the text system
+            let space_text: SharedString = " ".into();
+            let space_run = TextRun {
+                len: 1,
+                font: text_style.font(),
+                color: gpui::black(),
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+            };
+            let shaped_space = window.text_system().shape_line(
+                space_text,
+                font_size,
+                &[space_run],
+                None,
+            );
+            let char_width = shaped_space.width;
             let tab_pixel_width = char_width * tab_size as f32;
             
             let mut offset_y = invisible_top_padding;
@@ -1321,9 +1340,9 @@ impl Element for TextElement {
                 let line_str = line_text.as_str().unwrap_or("");
                 let indent_level = calculate_indent_level(line_str, tab_size);
                 
-                // Draw a thin vertical line (1px wide) at each indent level
+                // Draw a vertical line at each indent level
                 for level in 0..indent_level {
-                    let x_offset = prepaint.last_layout.line_number_width + (tab_pixel_width * level as f32);
+                    let x_offset = prepaint.last_layout.line_number_width + (tab_pixel_width * (level + 1) as f32);
                     let guide_x = origin.x + x_offset;
                     let guide_y = origin.y + offset_y;
                     
