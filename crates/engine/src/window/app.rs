@@ -531,6 +531,7 @@ impl ApplicationHandler for WinitGpuiApp {
                                                                 eprintln!("[COMPOSITOR]    - GPU driver crash/timeout (TDR)");
                                                                 eprintln!("[COMPOSITOR]    - GPU overheating");
                                                                 eprintln!("[COMPOSITOR]    - Power management suspending GPU");
+                                                                eprintln!("[COMPOSITOR]    - Unexpected power dip to the GPU");
                                                                 eprintln!("[COMPOSITOR]    - Display driver update in progress");
                                                                 eprintln!("[COMPOSITOR] 🔄 Continuing with GPUI-only rendering...");
                                                                 LAST_WAS_DEVICE_ERROR = true;
