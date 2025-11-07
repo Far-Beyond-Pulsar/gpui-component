@@ -24,6 +24,19 @@ const BOTTOM_MARGIN_ROWS: usize = 3;
 pub(super) const RIGHT_MARGIN: Pixels = px(10.);
 pub(super) const LINE_NUMBER_RIGHT_MARGIN: Pixels = px(10.);
 
+/// Calculate the indent level of a line (in tab stops)
+fn calculate_indent_level(line_text: &str, tab_size: usize) -> usize {
+    let mut indent_spaces = 0;
+    for ch in line_text.chars() {
+        match ch {
+            ' ' => indent_spaces += 1,
+            '\t' => indent_spaces += tab_size,
+            _ => break, // Stop at first non-whitespace character
+        }
+    }
+    indent_spaces / tab_size
+}
+
 pub(super) struct TextElement {
     pub(crate) state: Entity<InputState>,
     placeholder: SharedString,
@@ -1278,6 +1291,52 @@ impl Element for TextElement {
             // Paint hover highlight
             if let Some(path) = prepaint.hover_highlight_path.take() {
                 window.paint_path(path, secondary_selection);
+            }
+        }
+
+        // Paint indent guides (vertical lines showing tab stops)
+        // This provides visual structure for indented code
+        {
+            let state = self.state.read(cx);
+            let tab_size = state.mode.tab_size()
+                .map(|t| t.tab_size)
+                .unwrap_or(4); // Default to 4 if not available
+            
+            // Use very subtle color for indent guides (12% opacity of border color)
+            let indent_guide_color = cx.theme().border.opacity(0.12);
+            
+            // Estimate monospace character width
+            let char_width = line_height * 0.6;
+            let tab_pixel_width = char_width * tab_size as f32;
+            
+            let mut offset_y = invisible_top_padding;
+            let rope = &state.text;
+            
+            // Paint indent guides for each visible line
+            for (ix, line_layout) in prepaint.last_layout.lines.iter().enumerate() {
+                let row = visible_range.start + ix;
+                
+                // Get the actual line text from the rope
+                let line_text = rope.slice_line(row);
+                let line_str = line_text.as_str().unwrap_or("");
+                let indent_level = calculate_indent_level(line_str, tab_size);
+                
+                // Draw a thin vertical line (1px wide) at each indent level
+                for level in 0..indent_level {
+                    let x_offset = prepaint.last_layout.line_number_width + (tab_pixel_width * level as f32);
+                    let guide_x = origin.x + x_offset;
+                    let guide_y = origin.y + offset_y;
+                    
+                    window.paint_quad(fill(
+                        Bounds::new(
+                            point(guide_x, guide_y),
+                            size(px(1.0), line_height)
+                        ),
+                        indent_guide_color,
+                    ));
+                }
+                
+                offset_y += line_layout.size(line_height).height;
             }
         }
 
