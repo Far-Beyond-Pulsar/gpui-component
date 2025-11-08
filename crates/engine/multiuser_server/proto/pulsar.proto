@@ -1,0 +1,121 @@
+syntax = "proto3";
+
+package pulsar;
+
+// Candidate represents a network candidate for connection establishment
+message Candidate {
+    string ip = 1;
+    uint32 port = 2;
+    string proto = 3; // "udp", "tcp", "quic"
+    uint32 priority = 4;
+    string candidate_type = 5; // "host", "srflx", "relay"
+}
+
+// PunchCoord coordinates NAT hole punching between peers
+message PunchCoord {
+    string session_id = 1;
+    string peer_id = 2;
+    bytes token = 3;
+    int64 start_ts = 4;
+    int64 expires = 5;
+    repeated Candidate candidates = 6;
+}
+
+// Handshake represents initial peer-to-peer handshake
+message Handshake {
+    bytes pubkey = 1;
+    bytes sig = 2;
+    bytes nonce = 3;
+    string session_id = 4;
+    int64 timestamp = 5;
+}
+
+// Operation represents a CRDT operation
+message Operation {
+    string op_id = 1;
+    string entity_id = 2;
+    string op_type = 3; // "insert", "delete", "update", "add", "remove"
+    bytes payload = 4;
+    int64 timestamp = 5;
+    string actor_id = 6;
+}
+
+// OpBatch represents a batch of operations
+message OpBatch {
+    uint64 seq = 1;
+    repeated Operation ops = 2;
+    uint64 ack = 3;
+    string session_id = 4;
+}
+
+// SnapshotPointer represents a reference to a snapshot in object storage
+message SnapshotPointer {
+    string snapshot_id = 1;
+    string url = 2;
+    bytes hash = 3;
+    bool compressed = 4;
+    int64 timestamp = 5;
+    uint64 size = 6;
+}
+
+// SignalingMessage for WebSocket rendezvous
+message SignalingMessage {
+    string message_type = 1; // "offer", "answer", "candidate", "ice"
+    string session_id = 2;
+    string peer_id = 3;
+    bytes payload = 4;
+    int64 timestamp = 5;
+}
+
+// RelayFrame for encrypted relay forwarding
+message RelayFrame {
+    string session_id = 1;
+    string from_peer_id = 2;
+    string to_peer_id = 3;
+    bytes encrypted_payload = 4;
+    uint64 seq = 5;
+}
+
+// SessionInfo represents session metadata
+message SessionInfo {
+    string session_id = 1;
+    string host_id = 2;
+    repeated string participant_ids = 3;
+    int64 created_at = 4;
+    int64 expires_at = 5;
+    bytes session_key = 6;
+}
+
+// AuthToken for API authentication
+message AuthToken {
+    string token_id = 1;
+    string subject = 2;
+    repeated string capabilities = 3;
+    int64 issued_at = 4;
+    int64 expires_at = 5;
+}
+
+// JoinRequest for joining a session
+message JoinRequest {
+    string session_id = 1;
+    string join_token = 2;
+    repeated Candidate candidates = 3;
+    bytes pubkey = 4;
+}
+
+// JoinResponse for join request
+message JoinResponse {
+    bool success = 1;
+    string peer_id = 2;
+    repeated Candidate relay_candidates = 3;
+    repeated PeerInfo peers = 4;
+    bytes session_metadata = 5;
+}
+
+// PeerInfo represents information about a peer
+message PeerInfo {
+    string peer_id = 1;
+    repeated Candidate candidates = 2;
+    bytes pubkey = 3;
+    string role = 4; // "host", "editor", "observer"
+}
