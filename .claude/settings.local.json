@@ -67,7 +67,8 @@
       "Bash(taskkill:*)",
       "Bash(nul)",
       "Bash(timeout 120 cargo test:*)",
-      "Bash(timeout 180 cargo build:*)"
+      "Bash(timeout 180 cargo build:*)",
+      "Bash(cp:*)"
     ],
     "deny": [],
     "ask": []
