@@ -6,7 +6,7 @@ members = [
     "crates/ui",
     "crates/pulsar_macros",
     "crates/pulsar_std",
-    "crates/engine/multiuser_server",
+    "crates/multiuser_server",
 ]
 
 default-members = ["crates/engine"] 
