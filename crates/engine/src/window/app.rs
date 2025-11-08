@@ -1086,6 +1086,23 @@ impl ApplicationHandler for WinitGpuiApp {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // LAZY CHECK: If GPUI windows need rendering, request redraw
+        // This happens once per event loop iteration, not blocking
+        for (_window_id, window_state) in &mut self.windows {
+            if let Some(gpui_window_ref) = &window_state.gpui_window {
+                // Only check if we're not already waiting for a redraw
+                if !window_state.needs_render {
+                    let gpui_needs_render = window_state.gpui_app.update(|cx| {
+                        gpui_window_ref.needs_render(cx)
+                    });
+                    if gpui_needs_render {
+                        window_state.needs_render = true;
+                        window_state.winit_window.request_redraw();
+                    }
+                }
+            }
+        }
+        
         // Check for window creation requests
         while let Ok(request) = self.window_request_rx.try_recv() {
             self.pending_window_requests.push(request);
