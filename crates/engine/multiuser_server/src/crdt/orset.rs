@@ -51,9 +51,27 @@ impl<T: Clone + Eq + Hash + Debug> ORSet<T> {
 
     /// Remove an element from the set
     pub fn remove(&mut self, element: &T) -> Option<ORSetOp<T>> {
-        if let Some(tags) = self.elements.get(element) {
-            let tags_to_remove = tags.clone();
-            self.elements.remove(element);
+        if let Some(tags) = self.elements.get_mut(element) {
+            // Only remove tags that this actor added
+            let tags_to_remove: HashSet<_> = tags
+                .iter()
+                .filter(|(actor, _)| actor == &self.actor_id)
+                .cloned()
+                .collect();
+
+            if tags_to_remove.is_empty() {
+                return None;
+            }
+
+            // Remove those tags from the local set
+            for tag in &tags_to_remove {
+                tags.remove(tag);
+            }
+
+            // If no tags remain, remove the element entry
+            if tags.is_empty() {
+                self.elements.remove(element);
+            }
 
             Some(ORSetOp::Remove {
                 element: element.clone(),

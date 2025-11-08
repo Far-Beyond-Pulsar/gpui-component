@@ -28,3 +28,12 @@ pub use metrics::METRICS;
 pub use persistence::PersistenceLayer;
 pub use session::SessionStore;
 pub use transport::{QuicServer, TcpSimultaneousOpen, UdpHolePuncher};
+
+#[cfg(test)]
+pub(crate) fn init_test_crypto() {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    });
+}

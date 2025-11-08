@@ -134,10 +134,11 @@ impl NatOrchestrator {
     /// Create a new NAT orchestrator
     pub fn new(config: Config) -> Self {
         // Default STUN servers for NAT detection
+        // Note: Using IP addresses here. In production, you'd want to resolve DNS names.
         let stun_servers = vec![
-            "stun.l.google.com:19302".parse().unwrap(),
-            "stun1.l.google.com:19302".parse().unwrap(),
-            "stun2.l.google.com:19302".parse().unwrap(),
+            "74.125.250.129:19302".parse().unwrap(), // stun.l.google.com
+            "74.125.250.130:19302".parse().unwrap(), // stun1.l.google.com
+            "74.125.250.131:19302".parse().unwrap(), // stun2.l.google.com
         ];
 
         Self {

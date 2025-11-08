@@ -456,6 +456,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_server_creation() {
+        crate::init_test_crypto();
         let mut config = Config::default();
         config.quic_bind = "127.0.0.1:0".parse().unwrap();
 
@@ -465,6 +466,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_server_stats() {
+        crate::init_test_crypto();
         let mut config = Config::default();
         config.quic_bind = "127.0.0.1:0".parse().unwrap();
 
@@ -479,6 +481,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_p2p_endpoint_creation() {
+        crate::init_test_crypto();
         let bind_addr = "127.0.0.1:0".parse().unwrap();
         let endpoint = QuicServer::create_p2p_endpoint(bind_addr).await;
         assert!(endpoint.is_ok());
@@ -486,6 +489,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_server_shutdown() {
+        crate::init_test_crypto();
         let mut config = Config::default();
         config.quic_bind = "127.0.0.1:0".parse().unwrap();
 

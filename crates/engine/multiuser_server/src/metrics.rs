@@ -1,8 +1,8 @@
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use prometheus::{
-    register_counter_vec, register_gauge, register_gauge_vec, register_histogram_vec,
-    CounterVec, Encoder, Gauge, GaugeVec, HistogramVec, Registry, TextEncoder,
+    CounterVec, Encoder, Gauge, GaugeVec, HistogramOpts, HistogramVec, Opts, Registry,
+    TextEncoder,
 };
 use std::sync::Arc;
 
@@ -55,152 +55,129 @@ impl Metrics {
     pub fn new() -> Self {
         let registry = Registry::new();
 
-        let sessions_total = register_counter_vec!(
-            "pulsar_sessions_total",
-            "Total number of sessions created",
-            &["host_id"]
-        )
-        .unwrap();
+        let sessions_total =
+            CounterVec::new(Opts::new("pulsar_sessions_total", "Total number of sessions created"), &["host_id"])
+                .unwrap();
         registry.register(Box::new(sessions_total.clone())).unwrap();
 
-        let sessions_active = register_gauge!(
-            "pulsar_sessions_active",
-            "Number of currently active sessions"
-        )
-        .unwrap();
+        let sessions_active = Gauge::new("pulsar_sessions_active", "Number of currently active sessions").unwrap();
         registry.register(Box::new(sessions_active.clone())).unwrap();
 
-        let sessions_closed = register_counter_vec!(
-            "pulsar_sessions_closed",
-            "Total number of sessions closed",
-            &["reason"]
+        let sessions_closed = CounterVec::new(
+            Opts::new("pulsar_sessions_closed", "Total number of sessions closed"),
+            &["reason"],
         )
         .unwrap();
         registry.register(Box::new(sessions_closed.clone())).unwrap();
 
-        let connections_total = register_counter_vec!(
-            "pulsar_connections_total",
-            "Total number of connection attempts",
-            &["proto", "type"]
+        let connections_total = CounterVec::new(
+            Opts::new("pulsar_connections_total", "Total number of connection attempts"),
+            &["proto", "type"],
         )
         .unwrap();
         registry.register(Box::new(connections_total.clone())).unwrap();
 
-        let connection_failures = register_counter_vec!(
-            "pulsar_connection_failures_total",
-            "Total number of connection failures",
-            &["proto", "reason"]
+        let connection_failures = CounterVec::new(
+            Opts::new("pulsar_connection_failures_total", "Total number of connection failures"),
+            &["proto", "reason"],
         )
         .unwrap();
         registry.register(Box::new(connection_failures.clone())).unwrap();
 
-        let p2p_success_ratio = register_gauge!(
-            "pulsar_p2p_success_ratio",
-            "Ratio of successful P2P connections"
-        )
-        .unwrap();
+        let p2p_success_ratio =
+            Gauge::new("pulsar_p2p_success_ratio", "Ratio of successful P2P connections").unwrap();
         registry.register(Box::new(p2p_success_ratio.clone())).unwrap();
 
-        let relay_bytes_total = register_counter_vec!(
-            "pulsar_relay_bytes_total",
-            "Total bytes relayed",
-            &["session_id", "direction"]
+        let relay_bytes_total = CounterVec::new(
+            Opts::new("pulsar_relay_bytes_total", "Total bytes relayed"),
+            &["session_id", "direction"],
         )
         .unwrap();
         registry.register(Box::new(relay_bytes_total.clone())).unwrap();
 
-        let relay_connections_active = register_gauge!(
-            "pulsar_relay_connections_active",
-            "Number of active relay connections"
-        )
-        .unwrap();
+        let relay_connections_active =
+            Gauge::new("pulsar_relay_connections_active", "Number of active relay connections").unwrap();
         registry.register(Box::new(relay_connections_active.clone())).unwrap();
 
-        let relay_bandwidth_usage = register_gauge_vec!(
-            "pulsar_relay_bandwidth_usage_bytes_per_sec",
-            "Current relay bandwidth usage per session",
-            &["session_id"]
+        let relay_bandwidth_usage = GaugeVec::new(
+            Opts::new(
+                "pulsar_relay_bandwidth_usage_bytes_per_sec",
+                "Current relay bandwidth usage per session",
+            ),
+            &["session_id"],
         )
         .unwrap();
         registry.register(Box::new(relay_bandwidth_usage.clone())).unwrap();
 
-        let hole_punch_attempts = register_counter_vec!(
-            "pulsar_hole_punch_attempts_total",
-            "Total number of hole punch attempts",
-            &["nat_type"]
+        let hole_punch_attempts = CounterVec::new(
+            Opts::new("pulsar_hole_punch_attempts_total", "Total number of hole punch attempts"),
+            &["nat_type"],
         )
         .unwrap();
         registry.register(Box::new(hole_punch_attempts.clone())).unwrap();
 
-        let hole_punch_success = register_counter_vec!(
-            "pulsar_hole_punch_success_total",
-            "Total number of successful hole punches",
-            &["nat_type"]
+        let hole_punch_success = CounterVec::new(
+            Opts::new("pulsar_hole_punch_success_total", "Total number of successful hole punches"),
+            &["nat_type"],
         )
         .unwrap();
         registry.register(Box::new(hole_punch_success.clone())).unwrap();
 
-        let hole_punch_duration = register_histogram_vec!(
-            "pulsar_hole_punch_duration_seconds",
-            "Time taken for hole punching",
+        let hole_punch_duration = HistogramVec::new(
+            HistogramOpts::new("pulsar_hole_punch_duration_seconds", "Time taken for hole punching")
+                .buckets(vec![0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0]),
             &["nat_type"],
-            vec![0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0]
         )
         .unwrap();
         registry.register(Box::new(hole_punch_duration.clone())).unwrap();
 
-        let nat_type_detected = register_counter_vec!(
-            "pulsar_nat_type_detected_total",
-            "Total NAT types detected",
-            &["nat_type"]
+        let nat_type_detected = CounterVec::new(
+            Opts::new("pulsar_nat_type_detected_total", "Total NAT types detected"),
+            &["nat_type"],
         )
         .unwrap();
         registry.register(Box::new(nat_type_detected.clone())).unwrap();
 
-        let signaling_messages = register_counter_vec!(
-            "pulsar_signaling_messages_total",
-            "Total signaling messages processed",
-            &["message_type"]
+        let signaling_messages = CounterVec::new(
+            Opts::new("pulsar_signaling_messages_total", "Total signaling messages processed"),
+            &["message_type"],
         )
         .unwrap();
         registry.register(Box::new(signaling_messages.clone())).unwrap();
 
-        let rendezvous_latency = register_histogram_vec!(
-            "pulsar_rendezvous_latency_seconds",
-            "Rendezvous message latency",
+        let rendezvous_latency = HistogramVec::new(
+            HistogramOpts::new("pulsar_rendezvous_latency_seconds", "Rendezvous message latency")
+                .buckets(vec![0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]),
             &["operation"],
-            vec![0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]
         )
         .unwrap();
         registry.register(Box::new(rendezvous_latency.clone())).unwrap();
 
-        let http_requests = register_counter_vec!(
-            "pulsar_http_requests_total",
-            "Total HTTP requests",
-            &["method", "path", "status"]
+        let http_requests = CounterVec::new(
+            Opts::new("pulsar_http_requests_total", "Total HTTP requests"),
+            &["method", "path", "status"],
         )
         .unwrap();
         registry.register(Box::new(http_requests.clone())).unwrap();
 
-        let http_request_duration = register_histogram_vec!(
-            "pulsar_http_request_duration_seconds",
-            "HTTP request duration",
+        let http_request_duration = HistogramVec::new(
+            HistogramOpts::new("pulsar_http_request_duration_seconds", "HTTP request duration")
+                .buckets(vec![0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0]),
             &["method", "path"],
-            vec![0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0]
         )
         .unwrap();
         registry.register(Box::new(http_request_duration.clone())).unwrap();
 
-        let database_health = register_gauge!(
+        let database_health = Gauge::new(
             "pulsar_database_health",
-            "Database health status (1 = healthy, 0 = unhealthy)"
+            "Database health status (1 = healthy, 0 = unhealthy)",
         )
         .unwrap();
         registry.register(Box::new(database_health.clone())).unwrap();
 
-        let s3_health = register_gauge!(
+        let s3_health = Gauge::new(
             "pulsar_s3_health",
-            "S3 health status (1 = healthy, 0 = unhealthy)"
+            "S3 health status (1 = healthy, 0 = unhealthy)",
         )
         .unwrap();
         registry.register(Box::new(s3_health.clone())).unwrap();
