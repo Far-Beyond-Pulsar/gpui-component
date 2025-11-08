@@ -352,9 +352,4 @@ See root LICENSE file.
 
 ## Support
 
-- Issues: https://github.com/yourorg/pulsar/issues
-- Documentation: https://docs.pulsar.dev
-
----
-
-**Generated with Claude Code** 🤖
+- Issues: https://github.com/Far-Beyond-Pulsar/Pulsar-Native/issues
