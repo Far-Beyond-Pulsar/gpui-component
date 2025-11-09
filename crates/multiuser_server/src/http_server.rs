@@ -417,10 +417,46 @@ async fn handle_websocket_connection(socket: axum::extract::ws::WebSocket, state
                                         }
                                     }
                                     ClientMessageWs::Leave { session_id, peer_id } => {
-                                        // Handle leave
-                                        if let Some(mut session) = state.sessions.get_session(&session_id) {
-                                            session.participants.retain(|p| p.peer_id != peer_id);
+                                        // Handle leave - use session store's leave_session method
+                                        if let Ok(()) = state.sessions.leave_session(&session_id, &peer_id) {
                                             info!("Peer {} left session {}", peer_id, session_id);
+
+                                            // Broadcast PeerLeft to remaining participants
+                                            if let Some(broadcast_tx) = state.session_broadcasts.get(&session_id) {
+                                                let peer_left_msg = ServerMessageWs::PeerLeft {
+                                                    session_id: session_id.clone(),
+                                                    peer_id: peer_id.clone(),
+                                                };
+                                                let _ = broadcast_tx.send(peer_left_msg);
+                                            }
+                                        }
+                                    }
+                                    ClientMessageWs::ChatMessage { session_id, peer_id, message } => {
+                                        // Broadcast chat message to all participants
+                                        info!("Received chat message from {}: {}", peer_id, message);
+                                        if let Some(broadcast_tx) = state.session_broadcasts.get(&session_id) {
+                                            let now = std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap_or_default()
+                                                .as_secs();
+
+                                            let chat_msg = ServerMessageWs::ChatMessage {
+                                                session_id: session_id.clone(),
+                                                peer_id: peer_id.clone(),
+                                                message: message.clone(),
+                                                timestamp: now,
+                                            };
+
+                                            match broadcast_tx.send(chat_msg) {
+                                                Ok(receivers) => {
+                                                    info!("Broadcasted chat message to {} receivers", receivers);
+                                                }
+                                                Err(e) => {
+                                                    error!("Failed to broadcast chat message: {:?}", e);
+                                                }
+                                            }
+                                        } else {
+                                            warn!("No broadcast channel found for session {}", session_id);
                                         }
                                     }
                                     ClientMessageWs::Ping => {
@@ -459,8 +495,12 @@ async fn handle_websocket_connection(socket: axum::extract::ws::WebSocket, state
                 }
             } => {
                 // Forward broadcast to this WebSocket connection
+                info!("Received broadcast message: {:?}", broadcast_msg);
                 if let Ok(json) = serde_json::to_string(&broadcast_msg) {
-                    let _ = sender.send(Message::Text(json)).await;
+                    info!("Sending broadcast to WebSocket client");
+                    if let Err(e) = sender.send(Message::Text(json)).await {
+                        error!("Failed to send broadcast to client: {}", e);
+                    }
                 }
             }
         }
@@ -482,6 +522,11 @@ enum ClientMessageWs {
         session_id: String,
         peer_id: String,
     },
+    ChatMessage {
+        session_id: String,
+        peer_id: String,
+        message: String,
+    },
     Ping,
 }
 
@@ -501,6 +546,12 @@ enum ServerMessageWs {
     PeerLeft {
         session_id: String,
         peer_id: String,
+    },
+    ChatMessage {
+        session_id: String,
+        peer_id: String,
+        message: String,
+        timestamp: u64,
     },
     Pong,
     Error {

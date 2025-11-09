@@ -32,6 +32,11 @@ pub enum ClientMessage {
         session_id: String,
         peer_id: String,
     },
+    ChatMessage {
+        session_id: String,
+        peer_id: String,
+        message: String,
+    },
     Ping,
 }
 
@@ -51,6 +56,12 @@ pub enum ServerMessage {
     PeerLeft {
         session_id: String,
         peer_id: String,
+    },
+    ChatMessage {
+        session_id: String,
+        peer_id: String,
+        message: String,
+        timestamp: u64,
     },
     Pong,
     Error {

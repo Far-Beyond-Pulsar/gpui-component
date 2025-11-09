@@ -11,15 +11,40 @@ use tokio::sync::RwLock;
 
 use crate::ui::multiuser_client::{MultiuserClient, ServerMessage};
 
+/// Format a Unix timestamp as HH:MM
+fn format_timestamp(timestamp: u64) -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let diff = if now > timestamp { now - timestamp } else { 0 };
+
+    if diff < 60 {
+        "Just now".to_string()
+    } else if diff < 3600 {
+        format!("{}m ago", diff / 60)
+    } else if diff < 86400 {
+        format!("{}h ago", diff / 3600)
+    } else {
+        format!("{}d ago", diff / 86400)
+    }
+}
+
 /// Multiplayer collaboration window for connecting to multiuser servers
 pub struct MultiplayerWindow {
     server_address_input: Entity<InputState>,
     session_id_input: Entity<InputState>,
     session_password_input: Entity<InputState>,
+    chat_input: Entity<InputState>,
     connection_status: ConnectionStatus,
     active_session: Option<ActiveSession>,
     client: Option<Arc<RwLock<MultiuserClient>>>,
     current_peer_id: Option<String>,
+    current_tab: SessionTab,
+    chat_messages: Vec<ChatMessage>,
     focus_handle: FocusHandle,
 }
 
@@ -31,12 +56,26 @@ enum ConnectionStatus {
     Error(String),
 }
 
+#[derive(Clone, Debug, PartialEq)]
+enum SessionTab {
+    Info,
+    Chat,
+}
+
 #[derive(Clone, Debug)]
 struct ActiveSession {
     session_id: String,
     join_token: String,
     server_address: String,
     connected_users: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+struct ChatMessage {
+    peer_id: String,
+    message: String,
+    timestamp: u64,
+    is_self: bool,
 }
 
 impl MultiplayerWindow {
@@ -83,14 +122,23 @@ impl MultiplayerWindow {
             state
         });
 
+        let chat_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx);
+            state.set_placeholder("Type a message...", window, cx);
+            state
+        });
+
         Self {
             server_address_input,
             session_id_input,
             session_password_input,
+            chat_input,
             connection_status: ConnectionStatus::Disconnected,
             active_session: None,
             client: None,
             current_peer_id: None,
+            current_tab: SessionTab::Info,
+            chat_messages: Vec::new(),
             focus_handle: cx.focus_handle(),
         }
     }
@@ -142,8 +190,12 @@ impl MultiplayerWindow {
                     }).ok();
 
                     // Now connect via WebSocket
-                    let mut client_guard = client.write().await;
-                    match client_guard.connect(session_id.clone(), join_token).await {
+                    let event_rx_result = {
+                        let mut client_guard = client.write().await;
+                        client_guard.connect(session_id.clone(), join_token).await
+                    }; // client_guard dropped here, releasing the lock
+
+                    match event_rx_result {
                         Ok(mut event_rx) => {
                             // Wait for the initial response (Joined or Error)
                             match event_rx.recv().await {
@@ -169,6 +221,18 @@ impl MultiplayerWindow {
 
                                     // Continue listening for PeerJoined/PeerLeft events
                                     while let Some(msg) = event_rx.recv().await {
+                                        // Check if we're still connected - break if disconnected
+                                        let still_connected = cx.update(|cx| {
+                                            this.update(cx, |this, _cx| {
+                                                this.active_session.is_some()
+                                            }).unwrap_or(false)
+                                        }).unwrap_or(false);
+
+                                        if !still_connected {
+                                            tracing::info!("CREATE_SESSION: Session disconnected, stopping event loop");
+                                            break;
+                                        }
+
                                         match msg {
                                             ServerMessage::PeerJoined { peer_id: joined_peer_id, .. } => {
                                                 cx.update(|cx| {
@@ -209,6 +273,29 @@ impl MultiplayerWindow {
                                                             session.connected_users.retain(|p| p != &left_peer_id);
                                                             cx.notify();
                                                         }
+                                                    }).ok();
+                                                }).ok();
+                                            }
+                                            ServerMessage::ChatMessage { peer_id: sender_peer_id, message, timestamp, .. } => {
+                                                tracing::info!(
+                                                    "CREATE_SESSION: Received ChatMessage from {} at {}: {}",
+                                                    sender_peer_id, timestamp, message
+                                                );
+                                                cx.update(|cx| {
+                                                    this.update(cx, |this, cx| {
+                                                        let is_self = this.current_peer_id.as_ref() == Some(&sender_peer_id);
+                                                        tracing::info!(
+                                                            "CREATE_SESSION: Adding chat message. is_self: {}, current chat count: {}",
+                                                            is_self, this.chat_messages.len()
+                                                        );
+                                                        this.chat_messages.push(ChatMessage {
+                                                            peer_id: sender_peer_id,
+                                                            message,
+                                                            timestamp,
+                                                            is_self,
+                                                        });
+                                                        tracing::info!("CREATE_SESSION: Chat messages now: {}", this.chat_messages.len());
+                                                        cx.notify();
                                                     }).ok();
                                                 }).ok();
                                             }
@@ -300,10 +387,14 @@ impl MultiplayerWindow {
         self.client = Some(client.clone());
 
         cx.spawn(async move |this, mut cx| {
-            let mut client_guard = client.write().await;
             let join_token_clone = join_token.clone();
 
-            match client_guard.connect(session_id.clone(), join_token_clone).await {
+            let event_rx_result = {
+                let mut client_guard = client.write().await;
+                client_guard.connect(session_id.clone(), join_token_clone).await
+            }; // client_guard dropped here, releasing the lock
+
+            match event_rx_result {
                 Ok(mut event_rx) => {
                     // Wait for the initial response (Joined or Error)
                     match event_rx.recv().await {
@@ -333,6 +424,18 @@ impl MultiplayerWindow {
 
                             // Continue listening for PeerJoined/PeerLeft events
                             while let Some(msg) = event_rx.recv().await {
+                                // Check if we're still connected - break if disconnected
+                                let still_connected = cx.update(|cx| {
+                                    this.update(cx, |this, _cx| {
+                                        this.active_session.is_some()
+                                    }).unwrap_or(false)
+                                }).unwrap_or(false);
+
+                                if !still_connected {
+                                    tracing::info!("JOIN_SESSION: Session disconnected, stopping event loop");
+                                    break;
+                                }
+
                                 match msg {
                                     ServerMessage::PeerJoined { peer_id: joined_peer_id, .. } => {
                                         cx.update(|cx| {
@@ -373,6 +476,29 @@ impl MultiplayerWindow {
                                                     session.connected_users.retain(|p| p != &left_peer_id);
                                                     cx.notify();
                                                 }
+                                            }).ok();
+                                        }).ok();
+                                    }
+                                    ServerMessage::ChatMessage { peer_id: sender_peer_id, message, timestamp, .. } => {
+                                        tracing::info!(
+                                            "JOIN_SESSION: Received ChatMessage from {} at {}: {}",
+                                            sender_peer_id, timestamp, message
+                                        );
+                                        cx.update(|cx| {
+                                            this.update(cx, |this, cx| {
+                                                let is_self = this.current_peer_id.as_ref() == Some(&sender_peer_id);
+                                                tracing::info!(
+                                                    "JOIN_SESSION: Adding chat message. is_self: {}, current chat count: {}",
+                                                    is_self, this.chat_messages.len()
+                                                );
+                                                this.chat_messages.push(ChatMessage {
+                                                    peer_id: sender_peer_id,
+                                                    message,
+                                                    timestamp,
+                                                    is_self,
+                                                });
+                                                tracing::info!("JOIN_SESSION: Chat messages now: {}", this.chat_messages.len());
+                                                cx.notify();
                                             }).ok();
                                         }).ok();
                                     }
@@ -442,6 +568,8 @@ impl MultiplayerWindow {
                         this.active_session = None;
                         this.client = None;
                         this.current_peer_id = None;
+                        this.chat_messages.clear();
+                        this.current_tab = SessionTab::Info;
                         cx.notify();
                     }).ok();
                 }).ok();
@@ -451,7 +579,53 @@ impl MultiplayerWindow {
             self.active_session = None;
             self.client = None;
             self.current_peer_id = None;
+            self.chat_messages.clear();
+            self.current_tab = SessionTab::Info;
             cx.notify();
+        }
+    }
+
+    fn send_chat_message(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let message = self.chat_input.read(cx).text().to_string();
+        if message.trim().is_empty() {
+            tracing::warn!("Attempted to send empty chat message");
+            return;
+        }
+
+        tracing::info!("Preparing to send chat message: {}", message);
+
+        if let (Some(client), Some(session), Some(peer_id)) = (&self.client, &self.active_session, &self.current_peer_id) {
+            let client = client.clone();
+            let session_id = session.session_id.clone();
+            let peer_id = peer_id.clone();
+            let message_to_send = message.clone();
+
+            tracing::info!("Sending chat message from peer {} in session {}", peer_id, session_id);
+
+            // Clear input immediately
+            self.chat_input.update(cx, |state, cx| {
+                state.set_value("".to_string(), window, cx);
+            });
+
+            cx.spawn(async move |_this, _cx| {
+                use crate::ui::multiuser_client::ClientMessage;
+
+                let client_guard = client.read().await;
+                match client_guard.send(ClientMessage::ChatMessage {
+                    session_id: session_id.clone(),
+                    peer_id: peer_id.clone(),
+                    message: message_to_send.clone(),
+                }).await {
+                    Ok(_) => {
+                        tracing::info!("Successfully sent chat message to server");
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to send chat message: {}", e);
+                    }
+                }
+            }).detach();
+        } else {
+            tracing::error!("Cannot send chat message - client, session, or peer_id is None");
         }
     }
 
@@ -616,47 +790,80 @@ impl MultiplayerWindow {
             )
     }
 
-    fn render_active_session(&self, session: &ActiveSession, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .gap_4()
-            .p_4()
+    fn render_tab_buttons(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        h_flex()
+            .gap_1()
+            .p_1()
+            .rounded(px(6.))
+            .bg(cx.theme().muted.opacity(0.3))
             .child(
-                // Session Header
-                v_flex()
-                    .gap_2()
-                    .child(
-                        h_flex()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .w(px(8.))
-                                    .h(px(8.))
-                                    .rounded(px(4.))
-                                    .bg(cx.theme().success)
-                            )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_bold()
-                                    .text_color(cx.theme().success)
-                                    .child("CONNECTED")
-                            )
-                    )
-                    .child(
-                        div()
-                            .text_lg()
-                            .font_bold()
-                            .text_color(cx.theme().foreground)
-                            .child(format!("Session: {}", session.session_id))
-                    )
+                div()
+                    .px_3()
+                    .py_2()
+                    .rounded(px(4.))
+                    .when(self.current_tab == SessionTab::Info, |this| {
+                        this.bg(cx.theme().background)
+                    })
+                    .cursor_pointer()
+                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _window, cx| {
+                        this.current_tab = SessionTab::Info;
+                        cx.notify();
+                    }))
                     .child(
                         div()
                             .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("Server: {}", session.server_address))
+                            .font_medium()
+                            .text_color(cx.theme().foreground)
+                            .child("Session Info")
                     )
             )
+            .child(
+                div()
+                    .px_3()
+                    .py_2()
+                    .rounded(px(4.))
+                    .when(self.current_tab == SessionTab::Chat, |this| {
+                        this.bg(cx.theme().background)
+                    })
+                    .cursor_pointer()
+                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _window, cx| {
+                        this.current_tab = SessionTab::Chat;
+                        cx.notify();
+                    }))
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_medium()
+                                    .text_color(cx.theme().foreground)
+                                    .child("Chat")
+                            )
+                            .when(!self.chat_messages.is_empty(), |this| {
+                                this.child(
+                                    div()
+                                        .px_2()
+                                        .py_0p5()
+                                        .rounded(px(10.))
+                                        .bg(cx.theme().accent)
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .font_bold()
+                                                .text_color(cx.theme().accent_foreground)
+                                                .child(self.chat_messages.len().to_string())
+                                        )
+                                )
+                            })
+                    )
+            )
+    }
+
+    fn render_session_info_tab(&self, session: &ActiveSession, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .gap_4()
             .child(
                 // Session Info Box
                 v_flex()
@@ -729,6 +936,170 @@ impl MultiplayerWindow {
                                 })
                             )
                     )
+            )
+    }
+
+    fn render_chat_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .gap_2()
+            .flex_1()
+            .child(
+                // Chat messages area
+                div()
+                    .flex_1()
+                    .p_2()
+                    .rounded(px(6.))
+                    .bg(cx.theme().muted.opacity(0.2))
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .when(self.chat_messages.is_empty(), |this| {
+                                this.child(
+                                    div()
+                                        .p_4()
+                                        .text_center()
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child("No messages yet. Start the conversation!")
+                                        )
+                                )
+                            })
+                            .children(
+                                self.chat_messages.iter().map(|msg| {
+                                    let display_name = if msg.is_self {
+                                        "You".to_string()
+                                    } else {
+                                        msg.peer_id.clone()
+                                    };
+
+                                    v_flex()
+                                        .gap_1()
+                                        .when(msg.is_self, |this| this.items_end())
+                                        .child(
+                                            h_flex()
+                                                .gap_2()
+                                                .items_baseline()
+                                                .when(msg.is_self, |this| this.flex_row_reverse())
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        .font_bold()
+                                                        .text_color(if msg.is_self {
+                                                            cx.theme().accent
+                                                        } else {
+                                                            cx.theme().muted_foreground
+                                                        })
+                                                        .child(display_name)
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        .text_color(cx.theme().muted_foreground)
+                                                        .child(format_timestamp(msg.timestamp))
+                                                )
+                                        )
+                                        .child(
+                                            div()
+                                                .px_3()
+                                                .py_2()
+                                                .rounded(px(8.))
+                                                .max_w(px(300.))
+                                                .bg(if msg.is_self {
+                                                    cx.theme().accent
+                                                } else {
+                                                    cx.theme().muted
+                                                })
+                                                .child(
+                                                    div()
+                                                        .text_sm()
+                                                        .text_color(if msg.is_self {
+                                                            cx.theme().accent_foreground
+                                                        } else {
+                                                            cx.theme().foreground
+                                                        })
+                                                        .child(msg.message.clone())
+                                                )
+                                        )
+                                        .into_any_element()
+                                })
+                            )
+                    )
+            )
+            .child(
+                // Chat input
+                h_flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .flex_1()
+                            .child(TextInput::new(&self.chat_input))
+                    )
+                    .child(
+                        Button::new("send-chat")
+                            .label("Send")
+                            .icon(IconName::Send)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.send_chat_message(window, cx);
+                            }))
+                    )
+            )
+    }
+
+    fn render_active_session(&self, session: &ActiveSession, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .gap_4()
+            .p_4()
+            .child(
+                // Session Header
+                v_flex()
+                    .gap_2()
+                    .child(
+                        h_flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .w(px(8.))
+                                    .h(px(8.))
+                                    .rounded(px(4.))
+                                    .bg(cx.theme().success)
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_bold()
+                                    .text_color(cx.theme().success)
+                                    .child("CONNECTED")
+                            )
+                    )
+                    .child(
+                        div()
+                            .text_lg()
+                            .font_bold()
+                            .text_color(cx.theme().foreground)
+                            .child(format!("Session: {}", session.session_id))
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("Server: {}", session.server_address))
+                    )
+            )
+            .child(
+                // Tab buttons
+                self.render_tab_buttons(cx)
+            )
+            .child(
+                // Tab content
+                match self.current_tab {
+                    SessionTab::Info => self.render_session_info_tab(session, cx).into_any_element(),
+                    SessionTab::Chat => self.render_chat_tab(cx).into_any_element(),
+                }
             )
             .child(
                 // Disconnect Button
