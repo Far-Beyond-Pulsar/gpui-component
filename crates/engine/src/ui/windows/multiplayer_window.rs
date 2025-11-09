@@ -34,6 +34,7 @@ enum ConnectionStatus {
 #[derive(Clone, Debug)]
 struct ActiveSession {
     session_id: String,
+    join_token: String,
     server_address: String,
     connected_users: Vec<String>,
 }
@@ -98,12 +99,17 @@ impl MultiplayerWindow {
 
             match result {
                 Ok((session_id, join_token)) => {
-                    // Update UI with generated credentials and session
+                    // Store credentials for later display
+                    let session_id_for_display = session_id.clone();
+                    let join_token_for_display = join_token.clone();
+
+                    // Update UI state
                     cx.update(|cx| {
                         this.update(cx, |this, cx| {
                             this.connection_status = ConnectionStatus::Connected;
                             this.active_session = Some(ActiveSession {
-                                session_id: session_id.clone(),
+                                session_id: session_id_for_display.clone(),
+                                join_token: join_token_for_display.clone(),
                                 server_address: server_address.clone(),
                                 connected_users: vec!["You (Host)".to_string()],
                             });
@@ -166,14 +172,16 @@ impl MultiplayerWindow {
 
         cx.spawn(async move |this, mut cx| {
             let mut client_guard = client.write().await;
+            let join_token_clone = join_token.clone();
 
-            match client_guard.connect(session_id.clone(), join_token).await {
+            match client_guard.connect(session_id.clone(), join_token_clone).await {
                 Ok(_event_rx) => {
                     cx.update(|cx| {
                         this.update(cx, |this, cx| {
                             this.connection_status = ConnectionStatus::Connected;
                             this.active_session = Some(ActiveSession {
                                 session_id: session_id.clone(),
+                                join_token: join_token.clone(),
                                 server_address: server_address.clone(),
                                 connected_users: vec!["You".to_string()],
                             });
@@ -447,7 +455,7 @@ impl MultiplayerWindow {
                                 div()
                                     .text_sm()
                                     .text_color(cx.theme().foreground)
-                                    .child(format!("ID: {}", self.session_id_input.read(cx).text()))
+                                    .child(format!("ID: {}", session.session_id))
                             )
                     )
                     .child(
@@ -457,7 +465,7 @@ impl MultiplayerWindow {
                                 div()
                                     .text_sm()
                                     .text_color(cx.theme().foreground)
-                                    .child(format!("Password: {}", self.session_password_input.read(cx).text()))
+                                    .child(format!("Password: {}", session.join_token))
                             )
                     )
             )

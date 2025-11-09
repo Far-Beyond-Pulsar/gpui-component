@@ -18,7 +18,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use crate::auth::{AuthService, Role};
 use crate::config::Config;
@@ -119,6 +119,7 @@ fn create_router(state: AppState) -> Router {
         .route("/v1/sessions/:id", get(get_session))
         // WebSocket signaling
         .route("/v1/signaling", get(websocket_handler))
+        .route("/ws", get(websocket_handler))  // Simple /ws endpoint for client compatibility
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -267,13 +268,177 @@ async fn get_session(
 
 async fn websocket_handler(
     ws: WebSocketUpgrade,
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(|socket| async move {
-        // WebSocket handling would go here
-        // For now, just close
-        info!("WebSocket connection established");
-    })
+    ws.on_upgrade(move |socket| handle_websocket_connection(socket, state))
+}
+
+async fn handle_websocket_connection(socket: axum::extract::ws::WebSocket, state: AppState) {
+    use axum::extract::ws::Message;
+    use futures::{SinkExt, StreamExt};
+
+    let (mut sender, mut receiver) = socket.split();
+
+    info!("WebSocket connection established");
+
+    // Handle incoming messages
+    while let Some(msg) = receiver.next().await {
+        match msg {
+            Ok(Message::Text(text)) => {
+                // Parse incoming message
+                match serde_json::from_str::<ClientMessageWs>(&text) {
+                    Ok(client_msg) => {
+                        info!("Received client message: {:?}", client_msg);
+
+                        // Handle different message types
+                        match client_msg {
+                            ClientMessageWs::Join { session_id, peer_id, join_token } => {
+                                // For stateless sessions, we accept the client-generated session ID and token
+                                // Create session if it doesn't exist (first peer becomes host)
+                                let session_result = if state.sessions.get_session(&session_id).is_none() {
+                                    // Session doesn't exist - create it with the peer as host
+                                    info!("Creating new session {} for host {}", session_id, peer_id);
+                                    state.sessions.create_session(peer_id.clone(), serde_json::json!({
+                                        "join_token": join_token.clone()
+                                    }))
+                                } else {
+                                    // Session exists - verify join token matches
+                                    state.sessions.get_session(&session_id).ok_or(anyhow::anyhow!("Session not found"))
+                                };
+
+                                match session_result {
+                                    Ok(mut session) => {
+                                        // Verify the join token from metadata
+                                        let stored_token = session.metadata.get("join_token")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("");
+
+                                        if stored_token == join_token || session.host_id == peer_id {
+                                            // Token matches or this is the host - allow join
+                                            let role = if session.host_id == peer_id {
+                                                Role::Host
+                                            } else {
+                                                Role::Editor
+                                            };
+
+                                            match state.sessions.join_session(&session_id, peer_id.clone(), role) {
+                                                Ok(session) => {
+                                                    let response = ServerMessageWs::Joined {
+                                                        session_id: session.id.clone(),
+                                                        peer_id: peer_id.clone(),
+                                                        participants: session.participants.iter().map(|p| p.peer_id.clone()).collect(),
+                                                    };
+
+                                                    if let Ok(json) = serde_json::to_string(&response) {
+                                                        let _ = sender.send(Message::Text(json)).await;
+                                                    }
+
+                                                    info!("Peer {} joined session {}", peer_id, session_id);
+                                                }
+                                                Err(e) => {
+                                                    let error_msg = ServerMessageWs::Error {
+                                                        message: format!("Failed to join session: {}", e),
+                                                    };
+                                                    if let Ok(json) = serde_json::to_string(&error_msg) {
+                                                        let _ = sender.send(Message::Text(json)).await;
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            let error_msg = ServerMessageWs::Error {
+                                                message: "Invalid join token".to_string(),
+                                            };
+                                            if let Ok(json) = serde_json::to_string(&error_msg) {
+                                                let _ = sender.send(Message::Text(json)).await;
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        let error_msg = ServerMessageWs::Error {
+                                            message: format!("Failed to create/get session: {}", e),
+                                        };
+                                        if let Ok(json) = serde_json::to_string(&error_msg) {
+                                            let _ = sender.send(Message::Text(json)).await;
+                                        }
+                                    }
+                                }
+                            }
+                            ClientMessageWs::Leave { session_id, peer_id } => {
+                                // Handle leave
+                                if let Some(mut session) = state.sessions.get_session(&session_id) {
+                                    session.participants.retain(|p| p.peer_id != peer_id);
+                                    info!("Peer {} left session {}", peer_id, session_id);
+                                }
+                            }
+                            ClientMessageWs::Ping => {
+                                // Send pong
+                                let pong = ServerMessageWs::Pong;
+                                if let Ok(json) = serde_json::to_string(&pong) {
+                                    let _ = sender.send(Message::Text(json)).await;
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to parse client message: {}", e);
+                    }
+                }
+            }
+            Ok(Message::Close(_)) => {
+                info!("WebSocket closed by client");
+                break;
+            }
+            Ok(Message::Ping(_)) => {
+                // Pings are handled automatically
+            }
+            Ok(_) => {}
+            Err(e) => {
+                error!("WebSocket error: {}", e);
+                break;
+            }
+        }
+    }
+
+    info!("WebSocket connection closed");
+}
+
+// Client messages (from engine)
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum ClientMessageWs {
+    Join {
+        session_id: String,
+        peer_id: String,
+        join_token: String,
+    },
+    Leave {
+        session_id: String,
+        peer_id: String,
+    },
+    Ping,
+}
+
+// Server messages (to engine)
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum ServerMessageWs {
+    Joined {
+        session_id: String,
+        peer_id: String,
+        participants: Vec<String>,
+    },
+    PeerJoined {
+        session_id: String,
+        peer_id: String,
+    },
+    PeerLeft {
+        session_id: String,
+        peer_id: String,
+    },
+    Pong,
+    Error {
+        message: String,
+    },
 }
 
 async fn shutdown_signal(mut shutdown: mpsc::Receiver<()>) {
