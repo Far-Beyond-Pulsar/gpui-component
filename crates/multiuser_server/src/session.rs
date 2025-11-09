@@ -42,14 +42,14 @@ impl SessionStore {
         }
     }
 
-    /// Create a new session
-    pub fn create_session(
+    /// Create a new session with a specific ID (for client-generated sessions)
+    pub fn create_session_with_id(
         &self,
+        session_id: String,
         host_id: String,
         metadata: serde_json::Value,
     ) -> Result<Session> {
         let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-        let session_id = Uuid::new_v4().to_string();
 
         // Generate session key (random 32 bytes)
         let session_key: Vec<u8> = (0..32).map(|_| rand::random()).collect();
@@ -81,6 +81,16 @@ impl SessionStore {
         );
 
         Ok(session)
+    }
+
+    /// Create a new session (generates a random UUID for session ID)
+    pub fn create_session(
+        &self,
+        host_id: String,
+        metadata: serde_json::Value,
+    ) -> Result<Session> {
+        let session_id = Uuid::new_v4().to_string();
+        self.create_session_with_id(session_id, host_id, metadata)
     }
 
     /// Get a session by ID

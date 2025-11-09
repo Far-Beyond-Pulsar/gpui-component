@@ -296,11 +296,15 @@ async fn handle_websocket_connection(socket: axum::extract::ws::WebSocket, state
                                 // For stateless sessions, we accept the client-generated session ID and token
                                 // Create session if it doesn't exist (first peer becomes host)
                                 let session_result = if state.sessions.get_session(&session_id).is_none() {
-                                    // Session doesn't exist - create it with the peer as host
+                                    // Session doesn't exist - create it with the peer as host using client-provided ID
                                     info!("Creating new session {} for host {}", session_id, peer_id);
-                                    state.sessions.create_session(peer_id.clone(), serde_json::json!({
-                                        "join_token": join_token.clone()
-                                    }))
+                                    state.sessions.create_session_with_id(
+                                        session_id.clone(),
+                                        peer_id.clone(),
+                                        serde_json::json!({
+                                            "join_token": join_token.clone()
+                                        })
+                                    )
                                 } else {
                                     // Session exists - verify join token matches
                                     state.sessions.get_session(&session_id).ok_or(anyhow::anyhow!("Session not found"))

@@ -121,28 +121,57 @@ impl MultiplayerWindow {
                     let mut client_guard = client.write().await;
                     match client_guard.connect(session_id.clone(), join_token).await {
                         Ok(mut event_rx) => {
-                            // Wait for the initial Joined message
-                            if let Some(ServerMessage::Joined { peer_id, participants, .. }) = event_rx.recv().await {
-                                cx.update(|cx| {
-                                    this.update(cx, |this, cx| {
-                                        if let Some(session) = &mut this.active_session {
-                                            // Update with real participant data
-                                            session.connected_users = participants.iter().map(|p| {
-                                                if p == &peer_id {
-                                                    if participants.len() == 1 {
-                                                        "You (Host)".to_string()
+                            // Wait for the initial response (Joined or Error)
+                            match event_rx.recv().await {
+                                Some(ServerMessage::Joined { peer_id, participants, .. }) => {
+                                    cx.update(|cx| {
+                                        this.update(cx, |this, cx| {
+                                            if let Some(session) = &mut this.active_session {
+                                                // Update with real participant data
+                                                session.connected_users = participants.iter().map(|p| {
+                                                    if p == &peer_id {
+                                                        if participants.len() == 1 {
+                                                            "You (Host)".to_string()
+                                                        } else {
+                                                            "You".to_string()
+                                                        }
                                                     } else {
-                                                        "You".to_string()
+                                                        p.clone()
                                                     }
-                                                } else {
-                                                    p.clone()
-                                                }
-                                            }).collect();
-                                            this.current_peer_id = Some(peer_id);
-                                        }
-                                        cx.notify();
+                                                }).collect();
+                                                this.current_peer_id = Some(peer_id);
+                                            }
+                                            cx.notify();
+                                        }).ok();
                                     }).ok();
-                                }).ok();
+                                }
+                                Some(ServerMessage::Error { message }) => {
+                                    cx.update(|cx| {
+                                        this.update(cx, |this, cx| {
+                                            this.connection_status = ConnectionStatus::Error(format!("Server error: {}", message));
+                                            this.active_session = None;
+                                            cx.notify();
+                                        }).ok();
+                                    }).ok();
+                                }
+                                Some(_) => {
+                                    cx.update(|cx| {
+                                        this.update(cx, |this, cx| {
+                                            this.connection_status = ConnectionStatus::Error("Unexpected server response".to_string());
+                                            this.active_session = None;
+                                            cx.notify();
+                                        }).ok();
+                                    }).ok();
+                                }
+                                None => {
+                                    cx.update(|cx| {
+                                        this.update(cx, |this, cx| {
+                                            this.connection_status = ConnectionStatus::Error("Connection closed before response".to_string());
+                                            this.active_session = None;
+                                            cx.notify();
+                                        }).ok();
+                                    }).ok();
+                                }
                             }
                         }
                         Err(e) => {
@@ -197,31 +226,57 @@ impl MultiplayerWindow {
 
             match client_guard.connect(session_id.clone(), join_token_clone).await {
                 Ok(mut event_rx) => {
-                    // Wait for the initial Joined message
-                    if let Some(ServerMessage::Joined { peer_id, participants, .. }) = event_rx.recv().await {
-                        cx.update(|cx| {
-                            this.update(cx, |this, cx| {
-                                this.connection_status = ConnectionStatus::Connected;
-                                this.active_session = Some(ActiveSession {
-                                    session_id: session_id.clone(),
-                                    join_token: join_token.clone(),
-                                    server_address: server_address.clone(),
-                                    connected_users: participants.iter().map(|p| {
-                                        if p == &peer_id {
-                                            if participants.len() == 1 {
-                                                "You (Host)".to_string()
+                    // Wait for the initial response (Joined or Error)
+                    match event_rx.recv().await {
+                        Some(ServerMessage::Joined { peer_id, participants, .. }) => {
+                            cx.update(|cx| {
+                                this.update(cx, |this, cx| {
+                                    this.connection_status = ConnectionStatus::Connected;
+                                    this.active_session = Some(ActiveSession {
+                                        session_id: session_id.clone(),
+                                        join_token: join_token.clone(),
+                                        server_address: server_address.clone(),
+                                        connected_users: participants.iter().map(|p| {
+                                            if p == &peer_id {
+                                                if participants.len() == 1 {
+                                                    "You (Host)".to_string()
+                                                } else {
+                                                    "You".to_string()
+                                                }
                                             } else {
-                                                "You".to_string()
+                                                p.clone()
                                             }
-                                        } else {
-                                            p.clone()
-                                        }
-                                    }).collect(),
-                                });
-                                this.current_peer_id = Some(peer_id);
-                                cx.notify();
+                                        }).collect(),
+                                    });
+                                    this.current_peer_id = Some(peer_id);
+                                    cx.notify();
+                                }).ok();
                             }).ok();
-                        }).ok();
+                        }
+                        Some(ServerMessage::Error { message }) => {
+                            cx.update(|cx| {
+                                this.update(cx, |this, cx| {
+                                    this.connection_status = ConnectionStatus::Error(format!("Server error: {}", message));
+                                    cx.notify();
+                                }).ok();
+                            }).ok();
+                        }
+                        Some(_) => {
+                            cx.update(|cx| {
+                                this.update(cx, |this, cx| {
+                                    this.connection_status = ConnectionStatus::Error("Unexpected server response".to_string());
+                                    cx.notify();
+                                }).ok();
+                            }).ok();
+                        }
+                        None => {
+                            cx.update(|cx| {
+                                this.update(cx, |this, cx| {
+                                    this.connection_status = ConnectionStatus::Error("Connection closed before response".to_string());
+                                    cx.notify();
+                                }).ok();
+                            }).ok();
+                        }
                     }
                 }
                 Err(e) => {
