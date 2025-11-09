@@ -40,6 +40,30 @@ struct ActiveSession {
 }
 
 impl MultiplayerWindow {
+    /// Format participant list for display, replacing our peer_id with "You" or "You (Host)"
+    fn format_participants(&self, participants: &[String]) -> Vec<String> {
+        let our_peer_id = match &self.current_peer_id {
+            Some(id) => id,
+            None => return participants.to_vec(),
+        };
+
+        let is_host = self.active_session.as_ref()
+            .map(|s| participants.first() == Some(our_peer_id))
+            .unwrap_or(false);
+
+        participants.iter().map(|p| {
+            if p == our_peer_id {
+                if is_host {
+                    "You (Host)".to_string()
+                } else {
+                    "You".to_string()
+                }
+            } else {
+                p.clone()
+            }
+        }).collect()
+    }
+
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let server_address_input = cx.new(|cx| {
             let mut state = InputState::new(window, cx);
@@ -126,24 +150,79 @@ impl MultiplayerWindow {
                                 Some(ServerMessage::Joined { peer_id, participants, .. }) => {
                                     cx.update(|cx| {
                                         this.update(cx, |this, cx| {
+                                            // Store our peer_id first
+                                            this.current_peer_id = Some(peer_id.clone());
+
+                                            tracing::info!(
+                                                "CREATE_SESSION: Received Joined - our peer_id: {}, participants: {:?}",
+                                                peer_id,
+                                                participants
+                                            );
+
                                             if let Some(session) = &mut this.active_session {
-                                                // Update with real participant data
-                                                session.connected_users = participants.iter().map(|p| {
-                                                    if p == &peer_id {
-                                                        if participants.len() == 1 {
-                                                            "You (Host)".to_string()
-                                                        } else {
-                                                            "You".to_string()
-                                                        }
-                                                    } else {
-                                                        p.clone()
-                                                    }
-                                                }).collect();
-                                                this.current_peer_id = Some(peer_id);
+                                                // Store raw participant list
+                                                session.connected_users = participants.clone();
                                             }
                                             cx.notify();
                                         }).ok();
                                     }).ok();
+
+                                    // Continue listening for PeerJoined/PeerLeft events
+                                    while let Some(msg) = event_rx.recv().await {
+                                        match msg {
+                                            ServerMessage::PeerJoined { peer_id: joined_peer_id, .. } => {
+                                                cx.update(|cx| {
+                                                    this.update(cx, |this, cx| {
+                                                        tracing::info!(
+                                                            "CREATE_SESSION: Received PeerJoined - joined_peer_id: {}, our peer_id: {:?}",
+                                                            joined_peer_id,
+                                                            this.current_peer_id
+                                                        );
+
+                                                        // Ignore PeerJoined about ourselves
+                                                        if this.current_peer_id.as_ref() == Some(&joined_peer_id) {
+                                                            tracing::info!("CREATE_SESSION: Ignoring PeerJoined about ourselves");
+                                                            return;
+                                                        }
+
+                                                        if let Some(session) = &mut this.active_session {
+                                                            // Add raw peer_id if not already present
+                                                            if !session.connected_users.contains(&joined_peer_id) {
+                                                                tracing::info!(
+                                                                    "CREATE_SESSION: Adding peer {} to list. List before: {:?}",
+                                                                    joined_peer_id,
+                                                                    session.connected_users
+                                                                );
+                                                                session.connected_users.push(joined_peer_id.clone());
+                                                                cx.notify();
+                                                            } else {
+                                                                tracing::info!("CREATE_SESSION: Peer {} already in list", joined_peer_id);
+                                                            }
+                                                        }
+                                                    }).ok();
+                                                }).ok();
+                                            }
+                                            ServerMessage::PeerLeft { peer_id: left_peer_id, .. } => {
+                                                cx.update(|cx| {
+                                                    this.update(cx, |this, cx| {
+                                                        if let Some(session) = &mut this.active_session {
+                                                            session.connected_users.retain(|p| p != &left_peer_id);
+                                                            cx.notify();
+                                                        }
+                                                    }).ok();
+                                                }).ok();
+                                            }
+                                            ServerMessage::Error { message } => {
+                                                cx.update(|cx| {
+                                                    this.update(cx, |this, cx| {
+                                                        this.connection_status = ConnectionStatus::Error(format!("Server error: {}", message));
+                                                        cx.notify();
+                                                    }).ok();
+                                                }).ok();
+                                            }
+                                            _ => {}
+                                        }
+                                    }
                                 }
                                 Some(ServerMessage::Error { message }) => {
                                     cx.update(|cx| {
@@ -232,26 +311,82 @@ impl MultiplayerWindow {
                             cx.update(|cx| {
                                 this.update(cx, |this, cx| {
                                     this.connection_status = ConnectionStatus::Connected;
+                                    // Store our peer_id first
+                                    this.current_peer_id = Some(peer_id.clone());
+
+                                    tracing::info!(
+                                        "JOIN_SESSION: Received Joined - our peer_id: {}, participants: {:?}",
+                                        peer_id,
+                                        participants
+                                    );
+
                                     this.active_session = Some(ActiveSession {
                                         session_id: session_id.clone(),
                                         join_token: join_token.clone(),
                                         server_address: server_address.clone(),
-                                        connected_users: participants.iter().map(|p| {
-                                            if p == &peer_id {
-                                                if participants.len() == 1 {
-                                                    "You (Host)".to_string()
-                                                } else {
-                                                    "You".to_string()
-                                                }
-                                            } else {
-                                                p.clone()
-                                            }
-                                        }).collect(),
+                                        // Store raw participant list
+                                        connected_users: participants.clone(),
                                     });
-                                    this.current_peer_id = Some(peer_id);
                                     cx.notify();
                                 }).ok();
                             }).ok();
+
+                            // Continue listening for PeerJoined/PeerLeft events
+                            while let Some(msg) = event_rx.recv().await {
+                                match msg {
+                                    ServerMessage::PeerJoined { peer_id: joined_peer_id, .. } => {
+                                        cx.update(|cx| {
+                                            this.update(cx, |this, cx| {
+                                                tracing::info!(
+                                                    "JOIN_SESSION: Received PeerJoined - joined_peer_id: {}, our peer_id: {:?}",
+                                                    joined_peer_id,
+                                                    this.current_peer_id
+                                                );
+
+                                                // Ignore PeerJoined about ourselves
+                                                if this.current_peer_id.as_ref() == Some(&joined_peer_id) {
+                                                    tracing::info!("JOIN_SESSION: Ignoring PeerJoined about ourselves");
+                                                    return;
+                                                }
+
+                                                if let Some(session) = &mut this.active_session {
+                                                    // Add raw peer_id if not already present
+                                                    if !session.connected_users.contains(&joined_peer_id) {
+                                                        tracing::info!(
+                                                            "JOIN_SESSION: Adding peer {} to list. List before: {:?}",
+                                                            joined_peer_id,
+                                                            session.connected_users
+                                                        );
+                                                        session.connected_users.push(joined_peer_id);
+                                                        cx.notify();
+                                                    } else {
+                                                        tracing::info!("JOIN_SESSION: Peer {} already in list", joined_peer_id);
+                                                    }
+                                                }
+                                            }).ok();
+                                        }).ok();
+                                    }
+                                    ServerMessage::PeerLeft { peer_id: left_peer_id, .. } => {
+                                        cx.update(|cx| {
+                                            this.update(cx, |this, cx| {
+                                                if let Some(session) = &mut this.active_session {
+                                                    session.connected_users.retain(|p| p != &left_peer_id);
+                                                    cx.notify();
+                                                }
+                                            }).ok();
+                                        }).ok();
+                                    }
+                                    ServerMessage::Error { message } => {
+                                        cx.update(|cx| {
+                                            this.update(cx, |this, cx| {
+                                                this.connection_status = ConnectionStatus::Error(format!("Server error: {}", message));
+                                                cx.notify();
+                                            }).ok();
+                                        }).ok();
+                                    }
+                                    _ => {}
+                                }
+                            }
                         }
                         Some(ServerMessage::Error { message }) => {
                             cx.update(|cx| {
@@ -574,7 +709,7 @@ impl MultiplayerWindow {
                         v_flex()
                             .gap_1()
                             .children(
-                                session.connected_users.iter().map(|user| {
+                                self.format_participants(&session.connected_users).iter().map(|user| {
                                     h_flex()
                                         .gap_2()
                                         .p_2()

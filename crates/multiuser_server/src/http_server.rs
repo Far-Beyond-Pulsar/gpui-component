@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{error, info, warn};
@@ -32,6 +32,7 @@ pub struct AppState {
     pub auth: Arc<AuthService>,
     pub sessions: Arc<SessionStore>,
     pub health: Arc<HealthChecker>,
+    pub session_broadcasts: Arc<dashmap::DashMap<String, broadcast::Sender<ServerMessageWs>>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -89,6 +90,7 @@ pub async fn run_server(
         auth,
         sessions,
         health,
+        session_broadcasts: Arc::new(dashmap::DashMap::new()),
     };
 
     let app = create_router(state);
@@ -278,127 +280,188 @@ async fn handle_websocket_connection(socket: axum::extract::ws::WebSocket, state
     use futures::{SinkExt, StreamExt};
 
     let (mut sender, mut receiver) = socket.split();
+    let mut current_session_id: Option<String> = None;
+    let mut broadcast_rx: Option<broadcast::Receiver<ServerMessageWs>> = None;
 
     info!("WebSocket connection established");
 
-    // Handle incoming messages
-    while let Some(msg) = receiver.next().await {
-        match msg {
-            Ok(Message::Text(text)) => {
-                // Parse incoming message
-                match serde_json::from_str::<ClientMessageWs>(&text) {
-                    Ok(client_msg) => {
-                        info!("Received client message: {:?}", client_msg);
+    // Handle incoming messages and broadcasts
+    loop {
+        tokio::select! {
+            // Handle incoming WebSocket messages
+            Some(msg) = receiver.next() => {
+                match msg {
+                    Ok(Message::Text(text)) => {
+                        // Parse incoming message
+                        match serde_json::from_str::<ClientMessageWs>(&text) {
+                            Ok(client_msg) => {
+                                info!("Received client message: {:?}", client_msg);
 
-                        // Handle different message types
-                        match client_msg {
-                            ClientMessageWs::Join { session_id, peer_id, join_token } => {
-                                // For stateless sessions, we accept the client-generated session ID and token
-                                // Create session if it doesn't exist (first peer becomes host)
-                                let session_result = if state.sessions.get_session(&session_id).is_none() {
-                                    // Session doesn't exist - create it with the peer as host using client-provided ID
-                                    info!("Creating new session {} for host {}", session_id, peer_id);
-                                    state.sessions.create_session_with_id(
-                                        session_id.clone(),
-                                        peer_id.clone(),
-                                        serde_json::json!({
-                                            "join_token": join_token.clone()
-                                        })
-                                    )
-                                } else {
-                                    // Session exists - verify join token matches
-                                    state.sessions.get_session(&session_id).ok_or(anyhow::anyhow!("Session not found"))
-                                };
+                                // Handle different message types
+                                match client_msg {
+                                    ClientMessageWs::Join { session_id, peer_id, join_token } => {
+                                        // For stateless sessions, we accept the client-generated session ID and token
+                                        // Create session if it doesn't exist (first peer becomes host)
+                                        let session_result = if state.sessions.get_session(&session_id).is_none() {
+                                            // Session doesn't exist - create it with the peer as host using client-provided ID
+                                            info!("Creating new session {} for host {}", session_id, peer_id);
+                                            state.sessions.create_session_with_id(
+                                                session_id.clone(),
+                                                peer_id.clone(),
+                                                serde_json::json!({
+                                                    "join_token": join_token.clone()
+                                                })
+                                            )
+                                        } else {
+                                            // Session exists - verify join token matches
+                                            state.sessions.get_session(&session_id).ok_or(anyhow::anyhow!("Session not found"))
+                                        };
 
-                                match session_result {
-                                    Ok(mut session) => {
-                                        // Verify the join token from metadata
-                                        let stored_token = session.metadata.get("join_token")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("");
+                                        match session_result {
+                                            Ok(session) => {
+                                                // Verify the join token from metadata
+                                                let stored_token = session.metadata.get("join_token")
+                                                    .and_then(|v| v.as_str())
+                                                    .unwrap_or("");
 
-                                        if stored_token == join_token || session.host_id == peer_id {
-                                            // Token matches or this is the host - allow join
-                                            let role = if session.host_id == peer_id {
-                                                Role::Host
-                                            } else {
-                                                Role::Editor
-                                            };
-
-                                            match state.sessions.join_session(&session_id, peer_id.clone(), role) {
-                                                Ok(session) => {
-                                                    let response = ServerMessageWs::Joined {
-                                                        session_id: session.id.clone(),
-                                                        peer_id: peer_id.clone(),
-                                                        participants: session.participants.iter().map(|p| p.peer_id.clone()).collect(),
+                                                if stored_token == join_token || session.host_id == peer_id {
+                                                    // Token matches or this is the host - allow join
+                                                    let role = if session.host_id == peer_id {
+                                                        Role::Host
+                                                    } else {
+                                                        Role::Editor
                                                     };
 
-                                                    if let Ok(json) = serde_json::to_string(&response) {
-                                                        let _ = sender.send(Message::Text(json)).await;
-                                                    }
+                                                    // Check if peer is already in the session
+                                                    let already_joined = session.participants.iter().any(|p| p.peer_id == peer_id);
 
-                                                    info!("Peer {} joined session {}", peer_id, session_id);
-                                                }
-                                                Err(e) => {
+                                                    info!(
+                                                        "Join check - session: {}, peer: {}, already_joined: {}, participant_count: {}",
+                                                        session_id, peer_id, already_joined, session.participants.len()
+                                                    );
+
+                                                    let final_session = if already_joined {
+                                                        // Already in session, just return current state
+                                                        info!("Peer {} already in session {}, returning current state", peer_id, session_id);
+                                                        Ok(session)
+                                                    } else {
+                                                        // Not in session yet, add them
+                                                        info!("Peer {} not in session {}, calling join_session", peer_id, session_id);
+                                                        state.sessions.join_session(&session_id, peer_id.clone(), role)
+                                                    };
+
+                                                    match final_session {
+                                                        Ok(session) => {
+                                                            // Send Joined message to the connecting peer
+                                                            let response = ServerMessageWs::Joined {
+                                                                session_id: session.id.clone(),
+                                                                peer_id: peer_id.clone(),
+                                                                participants: session.participants.iter().map(|p| p.peer_id.clone()).collect(),
+                                                            };
+
+                                                            if let Ok(json) = serde_json::to_string(&response) {
+                                                                let _ = sender.send(Message::Text(json)).await;
+                                                            }
+
+                                                            // Get or create broadcast channel for this session
+                                                            let broadcast_tx = state.session_broadcasts
+                                                                .entry(session_id.clone())
+                                                                .or_insert_with(|| {
+                                                                    let (tx, _rx) = broadcast::channel(100);
+                                                                    tx
+                                                                })
+                                                                .clone();
+
+                                                            // Broadcast PeerJoined to existing session members FIRST (if not already in session)
+                                                            // This ensures the new peer doesn't receive their own join notification
+                                                            if !already_joined && session.participants.len() > 1 {
+                                                                let peer_joined_msg = ServerMessageWs::PeerJoined {
+                                                                    session_id: session_id.clone(),
+                                                                    peer_id: peer_id.clone(),
+                                                                };
+                                                                let _ = broadcast_tx.send(peer_joined_msg);
+                                                            }
+
+                                                            // Subscribe to broadcasts for this session AFTER sending our join notification
+                                                            current_session_id = Some(session_id.clone());
+                                                            broadcast_rx = Some(broadcast_tx.subscribe());
+
+                                                            info!("Peer {} joined session {}", peer_id, session_id);
+                                                        }
+                                                        Err(e) => {
+                                                            let error_msg = ServerMessageWs::Error {
+                                                                message: format!("Failed to join session: {}", e),
+                                                            };
+                                                            if let Ok(json) = serde_json::to_string(&error_msg) {
+                                                                let _ = sender.send(Message::Text(json)).await;
+                                                            }
+                                                        }
+                                                    }
+                                                } else {
                                                     let error_msg = ServerMessageWs::Error {
-                                                        message: format!("Failed to join session: {}", e),
+                                                        message: "Invalid join token".to_string(),
                                                     };
                                                     if let Ok(json) = serde_json::to_string(&error_msg) {
                                                         let _ = sender.send(Message::Text(json)).await;
                                                     }
                                                 }
                                             }
-                                        } else {
-                                            let error_msg = ServerMessageWs::Error {
-                                                message: "Invalid join token".to_string(),
-                                            };
-                                            if let Ok(json) = serde_json::to_string(&error_msg) {
-                                                let _ = sender.send(Message::Text(json)).await;
+                                            Err(e) => {
+                                                let error_msg = ServerMessageWs::Error {
+                                                    message: format!("Failed to create/get session: {}", e),
+                                                };
+                                                if let Ok(json) = serde_json::to_string(&error_msg) {
+                                                    let _ = sender.send(Message::Text(json)).await;
+                                                }
                                             }
                                         }
                                     }
-                                    Err(e) => {
-                                        let error_msg = ServerMessageWs::Error {
-                                            message: format!("Failed to create/get session: {}", e),
-                                        };
-                                        if let Ok(json) = serde_json::to_string(&error_msg) {
+                                    ClientMessageWs::Leave { session_id, peer_id } => {
+                                        // Handle leave
+                                        if let Some(mut session) = state.sessions.get_session(&session_id) {
+                                            session.participants.retain(|p| p.peer_id != peer_id);
+                                            info!("Peer {} left session {}", peer_id, session_id);
+                                        }
+                                    }
+                                    ClientMessageWs::Ping => {
+                                        // Send pong
+                                        let pong = ServerMessageWs::Pong;
+                                        if let Ok(json) = serde_json::to_string(&pong) {
                                             let _ = sender.send(Message::Text(json)).await;
                                         }
                                     }
                                 }
                             }
-                            ClientMessageWs::Leave { session_id, peer_id } => {
-                                // Handle leave
-                                if let Some(mut session) = state.sessions.get_session(&session_id) {
-                                    session.participants.retain(|p| p.peer_id != peer_id);
-                                    info!("Peer {} left session {}", peer_id, session_id);
-                                }
-                            }
-                            ClientMessageWs::Ping => {
-                                // Send pong
-                                let pong = ServerMessageWs::Pong;
-                                if let Ok(json) = serde_json::to_string(&pong) {
-                                    let _ = sender.send(Message::Text(json)).await;
-                                }
+                            Err(e) => {
+                                warn!("Failed to parse client message: {}", e);
                             }
                         }
                     }
+                    Ok(Message::Close(_)) => {
+                        info!("WebSocket closed by client");
+                        break;
+                    }
+                    Ok(Message::Ping(_)) => {
+                        // Pings are handled automatically
+                    }
+                    Ok(_) => {}
                     Err(e) => {
-                        warn!("Failed to parse client message: {}", e);
+                        error!("WebSocket error: {}", e);
+                        break;
                     }
                 }
             }
-            Ok(Message::Close(_)) => {
-                info!("WebSocket closed by client");
-                break;
-            }
-            Ok(Message::Ping(_)) => {
-                // Pings are handled automatically
-            }
-            Ok(_) => {}
-            Err(e) => {
-                error!("WebSocket error: {}", e);
-                break;
+            // Handle broadcast messages
+            Ok(broadcast_msg) = async {
+                match &mut broadcast_rx {
+                    Some(rx) => rx.recv().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                // Forward broadcast to this WebSocket connection
+                if let Ok(json) = serde_json::to_string(&broadcast_msg) {
+                    let _ = sender.send(Message::Text(json)).await;
+                }
             }
         }
     }
@@ -423,7 +486,7 @@ enum ClientMessageWs {
 }
 
 // Server messages (to engine)
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ServerMessageWs {
     Joined {
