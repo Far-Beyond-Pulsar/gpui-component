@@ -11,6 +11,7 @@ pub enum CommandType {
     Files,
     OpenSettings,
     ToggleTerminal,
+    ToggleMultiplayer,
     ToggleProblems,
     ToggleFileManager,
     BuildProject,
@@ -181,6 +182,13 @@ impl CommandPalette {
                 CommandType::ToggleTerminal,
             )
             .with_keywords(vec!["console", "shell", "cmd"]),
+            Command::new(
+                "Toggle Multiplayer",
+                "Open multiplayer collaboration panel",
+                IconName::User,
+                CommandType::ToggleMultiplayer,
+            )
+            .with_keywords(vec!["collaboration", "collab", "share", "multi", "peer"]),
             Command::new(
                 "Toggle Problems",
                 "Show or hide the problems panel",

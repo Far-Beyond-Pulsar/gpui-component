@@ -27,6 +27,7 @@ use crate::ui::{
         },
 
         file_manager_window::FileManagerWindow,
+        multiplayer_window::MultiplayerWindow,
         problems_window::ProblemsWindow,
         terminal_window::TerminalWindow,
         entry_screen::{EntryScreen, project_selector::ProjectSelected},
@@ -47,6 +48,11 @@ pub struct ToggleProblems;
 #[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[action(namespace = pulsar_app)]
 pub struct ToggleTerminal;
+
+// Action to toggle multiplayer collaboration
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = pulsar_app)]
+pub struct ToggleMultiplayer;
 
 // Action to toggle the command palette
 #[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -704,6 +710,41 @@ impl PulsarApp {
         );
     }
 
+    fn toggle_multiplayer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
+        use gpui_component::Root;
+
+        // Open multiplayer window
+        let _ = cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds {
+                    origin: Point {
+                        x: px(200.0),
+                        y: px(200.0),
+                    },
+                    size: size(px(500.0), px(600.0)),
+                })),
+                titlebar: Some(gpui::TitlebarOptions {
+                    title: None,
+                    appears_transparent: true,
+                    traffic_light_position: None,
+                }),
+                kind: WindowKind::Normal,
+                is_resizable: true,
+                window_decorations: Some(gpui::WindowDecorations::Client),
+                window_min_size: Some(gpui::Size {
+                    width: px(400.),
+                    height: px(500.),
+                }),
+                ..Default::default()
+            },
+            |window, cx| {
+                let multiplayer_window = cx.new(|cx| MultiplayerWindow::new(window, cx));
+                cx.new(|cx| Root::new(multiplayer_window.into(), window, cx))
+            },
+        );
+    }
+
     fn on_toggle_file_manager(
         &mut self,
         _: &ToggleFileManager,
@@ -729,6 +770,15 @@ impl PulsarApp {
         cx: &mut Context<Self>,
     ) {
         self.toggle_terminal(window, cx);
+    }
+
+    fn on_toggle_multiplayer(
+        &mut self,
+        _: &ToggleMultiplayer,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.toggle_multiplayer(window, cx);
     }
 
     fn on_toggle_command_palette(
@@ -800,6 +850,9 @@ impl PulsarApp {
             }
             CommandType::ToggleTerminal => {
                 self.toggle_terminal(window, cx);
+            }
+            CommandType::ToggleMultiplayer => {
+                self.toggle_multiplayer(window, cx);
             }
             CommandType::ToggleProblems => {
                 self.toggle_problems(window, cx);
@@ -1482,6 +1535,22 @@ impl PulsarApp {
                                     .tooltip("Terminal")
                                     .on_click(cx.listener(|app, _, window, cx| {
                                         app.toggle_terminal(window, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("toggle-multiplayer")
+                                    .ghost()
+                                    .icon(
+                                        Icon::new(IconName::User)
+                                            .size(px(16.))
+                                            .text_color(cx.theme().muted_foreground)
+                                    )
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.))
+                                    .tooltip("Multiplayer Collaboration")
+                                    .on_click(cx.listener(|app, _, window, cx| {
+                                        app.toggle_multiplayer(window, cx);
                                     })),
                             )
                             .child(

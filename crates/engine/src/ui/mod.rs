@@ -56,6 +56,7 @@
 pub mod common;
 pub mod core;
 pub mod editors;
+pub mod multiuser_client;
 pub mod windows;
 
 // Re-export core types for backward compatibility and convenience
