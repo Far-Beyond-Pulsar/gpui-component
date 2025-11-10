@@ -942,16 +942,17 @@ impl MultiplayerWindow {
     fn render_chat_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .gap_2()
-            .flex_1()
             .child(
-                // Chat messages area
+                // Chat messages area (scrollable container with fixed height)
                 div()
-                    .flex_1()
-                    .p_2()
+                    .id("chat-messages-container")
+                    .h(px(300.))
+                    .overflow_y_scroll()
                     .rounded(px(6.))
                     .bg(cx.theme().muted.opacity(0.2))
                     .border_1()
                     .border_color(cx.theme().border)
+                    .p_2()
                     .child(
                         v_flex()
                             .gap_2()
