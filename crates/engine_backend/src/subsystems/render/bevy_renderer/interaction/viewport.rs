@@ -175,9 +175,11 @@ pub fn viewport_poll_raycast_system(
 }
 
 /// System to handle gizmo dragging for object manipulation
+/// Updates both Bevy ECS transforms AND syncs back to SharedGizmoStateResource for GPUI
 pub fn gizmo_drag_system(
     mouse_input: Res<ViewportMouseInput>,
     gizmo_state: Res<GizmoStateResource>,
+    shared_gizmo_state: Res<SharedGizmoStateResource>,
     mut interaction_state: ResMut<GizmoInteractionState>,
     camera_query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
     gizmo_query: Query<(&GizmoVisual, &GlobalTransform)>,
@@ -255,14 +257,41 @@ pub fn gizmo_drag_system(
                         mouse_input.mouse_delta,
                         camera_transform,
                     );
+
+                    // CRITICAL: Sync transform back to GPUI via SharedGizmoStateResource
+                    // This allows GPUI to update its scene database
+                    if let Ok(mut shared) = shared_gizmo_state.0.try_lock() {
+                        // Convert numeric ID to string ID for GPUI
+                        let string_id = match obj_id {
+                            1 => "red_cube".to_string(),
+                            2 => "blue_sphere".to_string(),
+                            3 => "gold_sphere".to_string(),
+                            _ => format!("object_{}", obj_id),
+                        };
+
+                        // Write updated transform to shared state
+                        shared.updated_object_id = Some(string_id);
+                        shared.updated_transform = Some(crate::subsystems::render::bevy_renderer::gizmos::SharedTransform {
+                            position: [transform.translation.x, transform.translation.y, transform.translation.z],
+                            rotation: [
+                                transform.rotation.x,
+                                transform.rotation.y,
+                                transform.rotation.z,
+                                transform.rotation.w,
+                            ],
+                            scale: [transform.scale.x, transform.scale.y, transform.scale.z],
+                        });
+                    }
+
                     break;
                 }
             }
         }
     }
-    
+
     // End drag
     if !mouse_input.left_down && interaction_state.is_dragging {
+        println!("[BEVY-GIZMO] ✅ Gizmo drag ended - transform changes synced to GPUI");
         interaction_state.is_dragging = false;
         interaction_state.drag_axis = None;
         interaction_state.drag_start_transform = None;

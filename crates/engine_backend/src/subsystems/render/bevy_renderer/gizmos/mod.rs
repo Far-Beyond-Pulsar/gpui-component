@@ -43,6 +43,6 @@ pub mod rendering;
 
 // Re-export gizmo types
 pub use rendering::{
-    GizmoType, GizmoAxis, GizmoVisual, GizmoStateResource,
+    GizmoType, GizmoAxis, GizmoVisual, GizmoStateResource, SharedTransform,
     update_gizmo_visuals, update_selection_highlighting,
 };

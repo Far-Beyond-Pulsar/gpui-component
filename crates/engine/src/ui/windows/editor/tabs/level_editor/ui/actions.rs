@@ -7,10 +7,10 @@ actions!(
     level_editor,
     [
         // Transform tools
-        SelectTool,
-        MoveTool,
-        RotateTool,
-        ScaleTool,
+        SelectTool,        // Keyboard: Q
+        MoveTool,          // Keyboard: W
+        RotateTool,        // Keyboard: E
+        ScaleTool,         // Keyboard: R
 
         // Scene operations
         NewScene,
@@ -23,10 +23,17 @@ actions!(
         DeleteObject,
         DuplicateObject,
         RenameObject,
+        FocusSelected,     // Keyboard: F - Frame selected object
 
         // Hierarchy operations
         ExpandAll,
         CollapseAll,
+
+        // Gizmo operations
+        ToggleSnapping,          // Keyboard: G - Toggle grid snapping
+        ToggleLocalSpace,        // Keyboard: L - Toggle local/world space
+        IncreaseSnapIncrement,   // Keyboard: ] - Increase snap grid size
+        DecreaseSnapIncrement,   // Keyboard: [ - Decrease snap grid size
 
         // View operations
         ToggleGrid,

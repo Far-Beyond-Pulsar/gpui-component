@@ -456,6 +456,62 @@ impl LevelEditorPanel {
         self.state.set_camera_mode(CameraMode::Side);
         cx.notify();
     }
+
+    fn on_toggle_snapping(&mut self, _: &ToggleSnapping, _: &mut Window, cx: &mut Context<Self>) {
+        // Toggle snapping in gizmo state
+        let mut gizmo_state = self.state.gizmo_state.write();
+        gizmo_state.toggle_snap();
+        let enabled = gizmo_state.snap_enabled;
+        let increment = gizmo_state.snap_increment;
+        drop(gizmo_state);
+
+        println!("[LEVEL-EDITOR] {} Grid snapping: increment = {}",
+            if enabled { "✅ Enabled" } else { "🚫 Disabled" },
+            increment);
+        cx.notify();
+    }
+
+    fn on_toggle_local_space(&mut self, _: &ToggleLocalSpace, _: &mut Window, cx: &mut Context<Self>) {
+        // Toggle local/world space in gizmo state
+        let mut gizmo_state = self.state.gizmo_state.write();
+        gizmo_state.toggle_space();
+        let is_local = gizmo_state.local_space;
+        drop(gizmo_state);
+
+        println!("[LEVEL-EDITOR] 🌍 Space mode: {}", if is_local { "LOCAL" } else { "WORLD" });
+        cx.notify();
+    }
+
+    fn on_increase_snap_increment(&mut self, _: &IncreaseSnapIncrement, _: &mut Window, cx: &mut Context<Self>) {
+        let mut gizmo_state = self.state.gizmo_state.write();
+        // Double the snap increment (0.25, 0.5, 1.0, 2.0, 4.0, etc.)
+        gizmo_state.snap_increment = (gizmo_state.snap_increment * 2.0).min(10.0);
+        let increment = gizmo_state.snap_increment;
+        drop(gizmo_state);
+
+        println!("[LEVEL-EDITOR] ⬆️ Snap increment increased to {}", increment);
+        cx.notify();
+    }
+
+    fn on_decrease_snap_increment(&mut self, _: &DecreaseSnapIncrement, _: &mut Window, cx: &mut Context<Self>) {
+        let mut gizmo_state = self.state.gizmo_state.write();
+        // Halve the snap increment (10.0, 5.0, 2.5, 1.0, 0.5, 0.25, etc.)
+        gizmo_state.snap_increment = (gizmo_state.snap_increment / 2.0).max(0.1);
+        let increment = gizmo_state.snap_increment;
+        drop(gizmo_state);
+
+        println!("[LEVEL-EDITOR] ⬇️ Snap increment decreased to {}", increment);
+        cx.notify();
+    }
+
+    fn on_focus_selected(&mut self, _: &FocusSelected, window: &mut Window, cx: &mut Context<Self>) {
+        // TODO: Frame selected object in viewport (move camera to focus on selection)
+        if let Some(obj) = self.state.get_selected_object() {
+            println!("[LEVEL-EDITOR] 📹 Focus on object: '{}'", obj.name);
+            // For now just log - implementing camera movement would require Bevy camera manipulation
+        }
+        cx.notify();
+    }
 }
 
 impl Panel for LevelEditorPanel {
@@ -537,7 +593,8 @@ impl Render for LevelEditorPanel {
             .size_full()
             // NO BACKGROUND - allow transparency for viewport
             .key_context("LevelEditor")
-            // Transform tools
+            .track_focus(&self.focus_handle)
+            // Transform tools - KEYBOARD: Q/W/E/R
             .on_action(cx.listener(Self::on_select_tool))
             .on_action(cx.listener(Self::on_move_tool))
             .on_action(cx.listener(Self::on_rotate_tool))
@@ -549,6 +606,12 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_duplicate_object))
             .on_action(cx.listener(Self::on_select_object))
             .on_action(cx.listener(Self::on_toggle_object_expanded))
+            .on_action(cx.listener(Self::on_focus_selected))
+            // Gizmo operations - KEYBOARD: G/L/[/]
+            .on_action(cx.listener(Self::on_toggle_snapping))
+            .on_action(cx.listener(Self::on_toggle_local_space))
+            .on_action(cx.listener(Self::on_increase_snap_increment))
+            .on_action(cx.listener(Self::on_decrease_snap_increment))
             // View operations
             .on_action(cx.listener(Self::on_toggle_grid))
             .on_action(cx.listener(Self::on_toggle_wireframe))
@@ -567,6 +630,29 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_top_view))
             .on_action(cx.listener(Self::on_front_view))
             .on_action(cx.listener(Self::on_side_view))
+            // Keyboard shortcuts - LETTER KEYS for fast workflow
+            .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
+                // Only respond to unmodified key presses (no Ctrl/Alt/Shift/etc.)
+                if !event.keystroke.modifiers.control
+                    && !event.keystroke.modifiers.alt
+                    && !event.keystroke.modifiers.shift
+                    && !event.keystroke.modifiers.platform
+                    && !event.keystroke.modifiers.function
+                {
+                    match event.keystroke.key.as_ref() {
+                        "q" => cx.dispatch_action(&SelectTool),
+                        "w" => cx.dispatch_action(&MoveTool),
+                        "e" => cx.dispatch_action(&RotateTool),
+                        "r" => cx.dispatch_action(&ScaleTool),
+                        "g" => cx.dispatch_action(&ToggleSnapping),
+                        "l" => cx.dispatch_action(&ToggleLocalSpace),
+                        "f" => cx.dispatch_action(&FocusSelected),
+                        "[" => cx.dispatch_action(&DecreaseSnapIncrement),
+                        "]" => cx.dispatch_action(&IncreaseSnapIncrement),
+                        _ => {}
+                    }
+                }
+            }))
             .child(
                 // Toolbar at the top
                 self.toolbar.render(&self.state, cx)

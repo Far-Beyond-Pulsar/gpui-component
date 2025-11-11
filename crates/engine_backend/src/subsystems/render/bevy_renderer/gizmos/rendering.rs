@@ -32,6 +32,14 @@ pub struct GizmoVisual {
     pub axis: GizmoAxis,
 }
 
+/// Simple transform for sharing between Bevy and GPUI
+#[derive(Clone, Copy, Debug)]
+pub struct SharedTransform {
+    pub position: [f32; 3],
+    pub rotation: [f32; 4], // Quaternion [x, y, z, w]
+    pub scale: [f32; 3],
+}
+
 /// Resource holding gizmo state from the editor
 #[derive(Resource, Clone)]
 pub struct GizmoStateResource {
@@ -40,6 +48,10 @@ pub struct GizmoStateResource {
     pub target_position: Vec3,
     pub enabled: bool, // False in Play mode
     pub selected_object_id: Option<String>, // ID of currently selected object (None = no selection, no gizmo)
+
+    // Transform updates from Bevy → GPUI (set by gizmo drag system)
+    pub updated_object_id: Option<String>,  // Object that was just moved
+    pub updated_transform: Option<SharedTransform>, // New transform after gizmo manipulation
 }
 
 impl Default for GizmoStateResource {
@@ -50,6 +62,8 @@ impl Default for GizmoStateResource {
             target_position: Vec3::ZERO,
             enabled: true, // Start enabled (Edit mode)
             selected_object_id: None, // No object selected initially
+            updated_object_id: None,
+            updated_transform: None,
         }
     }
 }
