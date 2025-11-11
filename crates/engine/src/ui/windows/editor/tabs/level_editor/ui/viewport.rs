@@ -21,11 +21,79 @@ use std::rc::Rc;
 // Raw input polling for viewport controls (cross-platform)
 use device_query::{DeviceQuery, DeviceState, Keycode};
 
-// Note: Cursor management is now handled by GPUI's cross-platform window system
-// No platform-specific cursor code needed! GPUI provides:
-// - window.set_cursor_style() for cursor appearance
-// - Mouse events for cursor position
-// - Built-in cursor locking for camera controls
+// Windows API for cursor locking (confining cursor to window bounds)
+#[cfg(target_os = "windows")]
+use winapi::um::winuser::{ClipCursor, GetClientRect, ClientToScreen};
+#[cfg(target_os = "windows")]
+use winapi::shared::windef::{RECT, POINT};
+
+// Windows-specific cursor locking functions
+#[cfg(target_os = "windows")]
+fn lock_cursor_to_window(window: &Window) {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    // Get the window handle from GPUI Window directly
+    match HasWindowHandle::window_handle(window) {
+        Ok(handle) => {
+            match handle.as_raw() {
+                RawWindowHandle::Win32(win32_handle) => {
+                    unsafe {
+                        let hwnd = win32_handle.hwnd.get() as *mut winapi::shared::windef::HWND__;
+
+                        // Get client rect
+                        let mut client_rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                        if GetClientRect(hwnd, &mut client_rect) != 0 {
+                            // Convert client coordinates to screen coordinates
+                            let mut top_left = POINT { x: client_rect.left, y: client_rect.top };
+                            let mut bottom_right = POINT { x: client_rect.right, y: client_rect.bottom };
+
+                            ClientToScreen(hwnd, &mut top_left);
+                            ClientToScreen(hwnd, &mut bottom_right);
+
+                            // Create screen rect
+                            let screen_rect = RECT {
+                                left: top_left.x,
+                                top: top_left.y,
+                                right: bottom_right.x,
+                                bottom: bottom_right.y,
+                            };
+
+                            // Confine cursor to window bounds
+                            ClipCursor(&screen_rect);
+                            tracing::info!("[VIEWPORT] 🔒 Cursor locked to window bounds");
+                        }
+                    }
+                }
+                _ => {
+                    tracing::warn!("[VIEWPORT] Not a Win32 window handle");
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("[VIEWPORT] Failed to get window handle: {:?}", e);
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn unlock_cursor() {
+    unsafe {
+        // Pass NULL to release cursor confinement
+        ClipCursor(std::ptr::null());
+        tracing::info!("[VIEWPORT] 🔓 Cursor unlocked");
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn lock_cursor_to_window(_window: &Window) {
+    // No-op on non-Windows platforms
+    tracing::warn!("[VIEWPORT] Cursor locking not implemented for this platform");
+}
+
+#[cfg(not(target_os = "windows"))]
+fn unlock_cursor() {
+    // No-op on non-Windows platforms
+}
 
 /// Lock-free input state using atomics - no mutex contention!
 #[derive(Clone)]
@@ -516,8 +584,9 @@ impl ViewportPanel {
                         println!("[VIEWPORT] 🎥 Rotate mode activated (Right)");
                     }
 
-                    // Hide cursor using GPUI's cross-platform API
+                    // Hide cursor and lock it to window bounds
                     window.set_window_cursor_style(CursorStyle::None);
+                    lock_cursor_to_window(window);
                 }
             })
             // Right-click UP anywhere = DEACTIVATE camera controls
@@ -531,8 +600,9 @@ impl ViewportPanel {
                     mouse_right_captured.store(false, Ordering::Release);
                     mouse_middle_captured.store(false, Ordering::Release);
 
-                    // Restore cursor visibility using GPUI's cross-platform API
+                    // Restore cursor visibility and unlock from window bounds
                     window.set_window_cursor_style(CursorStyle::Arrow);
+                    unlock_cursor();
 
                     println!("[VIEWPORT] ✅ Camera controls deactivated, cursor restored");
                 }
