@@ -4,7 +4,8 @@ use gpui_component::{
     button::Button,
     h_flex, v_flex,
     input::{InputState, TextInput},
-    ActiveTheme as _, Disableable as _, Icon, IconName, StyledExt,
+    tab::{Tab, TabBar},
+    ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, StyledExt, TitleBar,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -45,6 +46,8 @@ pub struct MultiplayerWindow {
     current_peer_id: Option<String>,
     current_tab: SessionTab,
     chat_messages: Vec<ChatMessage>,
+    file_assets: Vec<FileAssetStatus>, // Project assets with sync status
+    user_presences: Vec<UserPresence>, // Real-time user presence data
     focus_handle: FocusHandle,
 }
 
@@ -60,6 +63,8 @@ enum ConnectionStatus {
 enum SessionTab {
     Info,
     Chat,
+    FileSync,
+    Presence, // Who's editing what - VSCode LiveShare style
 }
 
 #[derive(Clone, Debug)]
@@ -76,6 +81,38 @@ struct ChatMessage {
     message: String,
     timestamp: u64,
     is_self: bool,
+}
+
+#[derive(Clone, Debug)]
+struct FileAsset {
+    path: String,
+    hash: String, // SHA-256 hash for verification
+    size: u64,
+    last_modified: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum FileSyncStatus {
+    Synced,
+    OutOfSync,
+    Missing,
+    Checking,
+}
+
+#[derive(Clone, Debug)]
+struct FileAssetStatus {
+    asset: FileAsset,
+    status: FileSyncStatus,
+    peers_with_file: Vec<String>, // Which peers have this file
+}
+
+#[derive(Clone, Debug)]
+struct UserPresence {
+    peer_id: String,
+    editing_file: Option<String>, // What file they're editing
+    selected_object: Option<String>, // What object they have selected in scene
+    cursor_position: Option<(f32, f32, f32)>, // 3D cursor position in scene
+    color: [f32; 3], // RGB color to identify this user
 }
 
 impl MultiplayerWindow {
@@ -139,6 +176,8 @@ impl MultiplayerWindow {
             current_peer_id: None,
             current_tab: SessionTab::Info,
             chat_messages: Vec::new(),
+            file_assets: Vec::new(),
+            user_presences: Vec::new(),
             focus_handle: cx.focus_handle(),
         }
     }
@@ -790,148 +829,114 @@ impl MultiplayerWindow {
             )
     }
 
-    fn render_tab_buttons(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        h_flex()
-            .gap_1()
-            .p_1()
-            .rounded(px(6.))
-            .bg(cx.theme().muted.opacity(0.3))
-            .child(
-                div()
-                    .px_3()
-                    .py_2()
-                    .rounded(px(4.))
-                    .when(self.current_tab == SessionTab::Info, |this| {
-                        this.bg(cx.theme().background)
-                    })
-                    .cursor_pointer()
-                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _window, cx| {
-                        this.current_tab = SessionTab::Info;
-                        cx.notify();
-                    }))
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_medium()
-                            .text_color(cx.theme().foreground)
-                            .child("Session Info")
-                    )
-            )
-            .child(
-                div()
-                    .px_3()
-                    .py_2()
-                    .rounded(px(4.))
-                    .when(self.current_tab == SessionTab::Chat, |this| {
-                        this.bg(cx.theme().background)
-                    })
-                    .cursor_pointer()
-                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _window, cx| {
-                        this.current_tab = SessionTab::Chat;
-                        cx.notify();
-                    }))
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_medium()
-                                    .text_color(cx.theme().foreground)
-                                    .child("Chat")
-                            )
-                            .when(!self.chat_messages.is_empty(), |this| {
-                                this.child(
-                                    div()
-                                        .px_2()
-                                        .py_0p5()
-                                        .rounded(px(10.))
-                                        .bg(cx.theme().accent)
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .font_bold()
-                                                .text_color(cx.theme().accent_foreground)
-                                                .child(self.chat_messages.len().to_string())
-                                        )
-                                )
-                            })
-                    )
-            )
+    fn render_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let selected_index = match self.current_tab {
+            SessionTab::Info => 0,
+            SessionTab::Presence => 1,
+            SessionTab::FileSync => 2,
+            SessionTab::Chat => 3,
+        };
+
+        let out_of_sync_count = self.file_assets.iter()
+            .filter(|a| a.status != FileSyncStatus::Synced)
+            .count();
+
+        TabBar::new("multiplayer-tabs")
+            .w_full()
+            .bg(cx.theme().secondary)
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .selected_index(selected_index)
+            .on_click(cx.listener(|this, ix: &usize, _window, cx| {
+                this.current_tab = match ix {
+                    0 => SessionTab::Info,
+                    1 => SessionTab::Presence,
+                    2 => SessionTab::FileSync,
+                    3 => SessionTab::Chat,
+                    _ => SessionTab::Info,
+                };
+                cx.notify();
+            }))
+            .child(Tab::new("Info"))
+            .child(Tab::new("Presence"))
+            .child(Tab::new(if out_of_sync_count > 0 {
+                format!("Files ({})", out_of_sync_count)
+            } else {
+                "Files".to_string()
+            }))
+            .child(Tab::new(if !self.chat_messages.is_empty() {
+                format!("Chat ({})", self.chat_messages.len())
+            } else {
+                "Chat".to_string()
+            }))
     }
 
     fn render_session_info_tab(&self, session: &ActiveSession, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
-            .gap_4()
+            .gap_3()
+            .p_4()
             .child(
-                // Session Info Box
+                // Credentials
                 v_flex()
                     .gap_2()
-                    .p_3()
-                    .rounded(px(6.))
-                    .bg(cx.theme().accent.opacity(0.1))
-                    .border_1()
-                    .border_color(cx.theme().border)
                     .child(
                         div()
                             .text_xs()
-                            .font_bold()
                             .text_color(cx.theme().muted_foreground)
-                            .child("SESSION CREDENTIALS")
+                            .child("SESSION ID")
                     )
                     .child(
-                        h_flex()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().foreground)
-                                    .child(format!("ID: {}", session.session_id))
-                            )
-                    )
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().foreground)
-                                    .child(format!("Password: {}", session.join_token))
-                            )
+                        div()
+                            .text_sm()
+                            
+                            .text_color(cx.theme().foreground)
+                            .child(session.session_id.clone())
                     )
             )
             .child(
-                // Connected Users
                 v_flex()
                     .gap_2()
                     .child(
                         div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("PASSWORD")
+                    )
+                    .child(
+                        div()
                             .text_sm()
-                            .font_bold()
+                            
                             .text_color(cx.theme().foreground)
-                            .child(format!("Connected Users ({})", session.connected_users.len()))
+                            .child(session.join_token.clone())
+                    )
+            )
+            .child(
+                div()
+                    .h(px(1.))
+                    .w_full()
+                    .bg(cx.theme().border)
+            )
+            .child(
+                // Users list
+                v_flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("{} CONNECTED", session.connected_users.len()))
                     )
                     .child(
                         v_flex()
                             .gap_1()
                             .children(
                                 self.format_participants(&session.connected_users).iter().map(|user| {
-                                    h_flex()
-                                        .gap_2()
-                                        .p_2()
-                                        .rounded(px(4.))
-                                        .child(
-                                            Icon::new(IconName::User)
-                                                .size(px(16.))
-                                                .text_color(cx.theme().muted_foreground)
-                                        )
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(cx.theme().foreground)
-                                                .child(user.clone())
-                                        )
+                                    div()
+                                        .px_2()
+                                        .py_1()
+                                        .text_sm()
+                                        .text_color(cx.theme().foreground)
+                                        .child(user.clone())
                                         .into_any_element()
                                 })
                             )
@@ -941,89 +946,53 @@ impl MultiplayerWindow {
 
     fn render_chat_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
-            .gap_2()
+            .size_full()
             .child(
-                // Chat messages area (scrollable container with fixed height)
+                // Messages
                 div()
-                    .id("chat-messages-container")
-                    .h(px(300.))
-                    .overflow_y_scroll()
-                    .rounded(px(6.))
-                    .bg(cx.theme().muted.opacity(0.2))
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .p_2()
+                    .flex_1()
+                    .p_4()
                     .child(
                         v_flex()
-                            .gap_2()
+                            .gap_3()
                             .when(self.chat_messages.is_empty(), |this| {
                                 this.child(
                                     div()
-                                        .p_4()
+                                        .text_sm()
                                         .text_center()
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child("No messages yet. Start the conversation!")
-                                        )
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("No messages")
                                 )
                             })
                             .children(
                                 self.chat_messages.iter().map(|msg| {
-                                    let display_name = if msg.is_self {
-                                        "You".to_string()
-                                    } else {
-                                        msg.peer_id.clone()
-                                    };
-
+                                    let peer_name = if msg.is_self { "You".to_string() } else { msg.peer_id.clone() };
                                     v_flex()
-                                        .gap_1()
+                                        .gap_0p5()
                                         .when(msg.is_self, |this| this.items_end())
                                         .child(
-                                            h_flex()
-                                                .gap_2()
-                                                .items_baseline()
-                                                .when(msg.is_self, |this| this.flex_row_reverse())
-                                                .child(
-                                                    div()
-                                                        .text_xs()
-                                                        .font_bold()
-                                                        .text_color(if msg.is_self {
-                                                            cx.theme().accent
-                                                        } else {
-                                                            cx.theme().muted_foreground
-                                                        })
-                                                        .child(display_name)
-                                                )
-                                                .child(
-                                                    div()
-                                                        .text_xs()
-                                                        .text_color(cx.theme().muted_foreground)
-                                                        .child(format_timestamp(msg.timestamp))
-                                                )
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child(peer_name)
                                         )
                                         .child(
                                             div()
                                                 .px_3()
                                                 .py_2()
-                                                .rounded(px(8.))
-                                                .max_w(px(300.))
+                                                .rounded(px(6.))
                                                 .bg(if msg.is_self {
                                                     cx.theme().accent
                                                 } else {
-                                                    cx.theme().muted
+                                                    cx.theme().secondary
                                                 })
-                                                .child(
-                                                    div()
-                                                        .text_sm()
-                                                        .text_color(if msg.is_self {
-                                                            cx.theme().accent_foreground
-                                                        } else {
-                                                            cx.theme().foreground
-                                                        })
-                                                        .child(msg.message.clone())
-                                                )
+                                                .text_sm()
+                                                .text_color(if msg.is_self {
+                                                    cx.theme().accent_foreground
+                                                } else {
+                                                    cx.theme().foreground
+                                                })
+                                                .child(msg.message.clone())
                                         )
                                         .into_any_element()
                                 })
@@ -1031,18 +1000,16 @@ impl MultiplayerWindow {
                     )
             )
             .child(
-                // Chat input
+                // Input
                 h_flex()
                     .gap_2()
+                    .p_4()
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .child(TextInput::new(&self.chat_input).flex_1())
                     .child(
-                        div()
-                            .flex_1()
-                            .child(TextInput::new(&self.chat_input))
-                    )
-                    .child(
-                        Button::new("send-chat")
+                        Button::new("send")
                             .label("Send")
-                            .icon(IconName::Send)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.send_chat_message(window, cx);
                             }))
@@ -1050,67 +1017,160 @@ impl MultiplayerWindow {
             )
     }
 
-    fn render_active_session(&self, session: &ActiveSession, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_file_sync_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
-            .gap_4()
+            .size_full()
+            .child(
+                // Toolbar
+                h_flex()
+                    .px_4()
+                    .py_2()
+                    .items_center()
+                    .justify_between()
+                    .bg(cx.theme().secondary)
+                    .border_b_1()
+                    .border_color(cx.theme().border)
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("{} assets", self.file_assets.len()))
+                    )
+                    .child(
+                        Button::new("scan")
+                            .label("Scan")
+                            .xsmall()
+                            .on_click(cx.listener(|_this, _, _window, cx| {
+                                println!("Scanning...");
+                                cx.notify();
+                            }))
+                    )
+            )
+            .child(
+                // Content
+                div()
+                    .flex_1()
+                    .p_4()
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .when(self.file_assets.is_empty(), |this| {
+                                this.child(
+                                    div()
+                                        .text_sm()
+                                        .text_center()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("No assets scanned")
+                                )
+                            })
+                            .children(
+                                self.file_assets.iter().map(|asset| {
+                                    h_flex()
+                                        .gap_2()
+                                        .px_2()
+                                        .py_1()
+                                        .items_center()
+                                        .child(
+                                            div()
+                                                .w(px(4.))
+                                                .h(px(4.))
+                                                .rounded(px(2.))
+                                                .bg(match asset.status {
+                                                    FileSyncStatus::Synced => cx.theme().success,
+                                                    FileSyncStatus::OutOfSync => cx.theme().warning,
+                                                    FileSyncStatus::Missing => cx.theme().danger,
+                                                    FileSyncStatus::Checking => cx.theme().muted_foreground,
+                                                })
+                                        )
+                                        .child(
+                                            div()
+                                                .flex_1()
+                                                .text_sm()
+                                                .text_color(cx.theme().foreground)
+                                                .child(asset.asset.path.clone())
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child(format!("{}/{}",
+                                                    asset.peers_with_file.len(),
+                                                    self.active_session.as_ref().map(|s| s.connected_users.len()).unwrap_or(0)
+                                                ))
+                                        )
+                                        .into_any_element()
+                                })
+                            )
+                    )
+            )
+    }
+
+    fn render_presence_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
             .p_4()
             .child(
-                // Session Header
                 v_flex()
                     .gap_2()
-                    .child(
-                        h_flex()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .w(px(8.))
-                                    .h(px(8.))
-                                    .rounded(px(4.))
-                                    .bg(cx.theme().success)
-                            )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_bold()
-                                    .text_color(cx.theme().success)
-                                    .child("CONNECTED")
-                            )
-                    )
-                    .child(
-                        div()
-                            .text_lg()
-                            .font_bold()
-                            .text_color(cx.theme().foreground)
-                            .child(format!("Session: {}", session.session_id))
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("Server: {}", session.server_address))
+                    .when(self.user_presences.is_empty(), |this| {
+                        this.child(
+                            div()
+                                .text_sm()
+                                .text_center()
+                                .text_color(cx.theme().muted_foreground)
+                                .child("No active users")
+                        )
+                    })
+                    .children(
+                        self.user_presences.iter().map(|presence| {
+                            v_flex()
+                                .gap_1()
+                                .px_3()
+                                .py_2()
+                                .rounded(px(4.))
+                                .bg(cx.theme().secondary)
+                                .border_l(px(2.))
+                                .border_color(cx.theme().accent)
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .font_medium()
+                                        .text_color(cx.theme().foreground)
+                                        .child(presence.peer_id.clone())
+                                )
+                                .when_some(presence.editing_file.as_ref(), |this, file| {
+                                    this.child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child(format!("Editing: {}", file))
+                                    )
+                                })
+                                .when_some(presence.selected_object.as_ref(), |this, obj| {
+                                    this.child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child(format!("Selected: {}", obj))
+                                    )
+                                })
+                                .into_any_element()
+                        })
                     )
             )
+    }
+
+    fn render_active_session(&self, session: &ActiveSession, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .size_full()
+            .child(self.render_tab_bar(cx))
             .child(
-                // Tab buttons
-                self.render_tab_buttons(cx)
-            )
-            .child(
-                // Tab content
                 match self.current_tab {
                     SessionTab::Info => self.render_session_info_tab(session, cx).into_any_element(),
+                    SessionTab::Presence => self.render_presence_tab(cx).into_any_element(),
+                    SessionTab::FileSync => self.render_file_sync_tab(cx).into_any_element(),
                     SessionTab::Chat => self.render_chat_tab(cx).into_any_element(),
                 }
-            )
-            .child(
-                // Disconnect Button
-                Button::new("disconnect")
-                    .label("Disconnect")
-                    .icon(IconName::LogOut)
-                    .w_full()
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.disconnect(window, cx);
-                    }))
             )
     }
 }
@@ -1123,19 +1183,45 @@ impl Focusable for MultiplayerWindow {
 
 impl Render for MultiplayerWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
+        v_flex()
             .size_full()
             .bg(cx.theme().background)
             .child(
-                v_flex()
-                    .size_full()
+                TitleBar::new()
                     .child(
-                        if let Some(ref session) = self.active_session {
-                            self.render_active_session(session, cx).into_any_element()
-                        } else {
-                            self.render_connection_form(cx).into_any_element()
-                        }
+                        h_flex()
+                            .w_full()
+                            .items_center()
+                            .justify_between()
+                            .child(div().text_sm().child("Multiplayer"))
+                            .when_some(self.active_session.as_ref(), |this, session| {
+                                this.child(
+                                    h_flex()
+                                        .gap_2()
+                                        .items_center()
+                                        .child(
+                                            div()
+                                                .w(px(6.))
+                                                .h(px(6.))
+                                                .rounded(px(3.))
+                                                .bg(cx.theme().success)
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().foreground)
+                                                .child(format!("{} users", session.connected_users.len()))
+                                        )
+                                )
+                            })
                     )
+            )
+            .child(
+                if let Some(ref session) = self.active_session {
+                    self.render_active_session(session, cx).into_any_element()
+                } else {
+                    self.render_connection_form(cx).into_any_element()
+                }
             )
     }
 }
