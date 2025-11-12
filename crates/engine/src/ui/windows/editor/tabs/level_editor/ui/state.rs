@@ -185,11 +185,15 @@ impl LevelEditorState {
     /// Select an object
     pub fn select_object(&mut self, object_id: Option<String>) {
         self.scene_database.select_object(object_id.clone());
-        
+
         // Update gizmo target
-        if let Some(id) = object_id {
-            let mut gizmo = self.gizmo_state.write();
-            gizmo.target_object_id = Some(id);
+        let mut gizmo = self.gizmo_state.write();
+        gizmo.target_object_id = object_id.clone();
+
+        if let Some(ref id) = object_id {
+            println!("[STATE] 🎯 Selected object: '{}', gizmo will follow", id);
+        } else {
+            println!("[STATE] 🚫 Deselected object, gizmo hidden");
         }
     }
 
@@ -203,19 +207,21 @@ impl LevelEditorState {
         if !self.is_edit_mode() {
             return; // Ignore tool changes in play mode
         }
-        
+
         self.current_tool = tool;
-        
-        // Update gizmo type
+
+        // Update gizmo type in the shared gizmo state
         let gizmo_type = match tool {
             TransformTool::Select => GizmoType::None,
             TransformTool::Move => GizmoType::Translate,
             TransformTool::Rotate => GizmoType::Rotate,
             TransformTool::Scale => GizmoType::Scale,
         };
-        
+
         let mut gizmo = self.gizmo_state.write();
         gizmo.set_gizmo_type(gizmo_type);
+
+        println!("[STATE] 🎯 Tool changed to {:?}, gizmo type: {:?}", tool, gizmo_type);
     }
 
     /// Set camera mode
