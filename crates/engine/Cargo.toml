@@ -32,6 +32,7 @@ tron = "2.1.0"
 dashmap = "6.1.0"
 regex = "1.10"
 chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"
 smol.workspace = true
 rfd = "0.15"
 git2 = "0.19"

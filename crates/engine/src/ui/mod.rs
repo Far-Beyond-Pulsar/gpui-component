@@ -56,6 +56,7 @@
 pub mod common;
 pub mod core;
 pub mod editors;
+pub mod file_sync;
 pub mod multiuser_client;
 pub mod windows;
 

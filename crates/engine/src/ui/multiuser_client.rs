@@ -37,6 +37,29 @@ pub enum ClientMessage {
         peer_id: String,
         message: String,
     },
+    // File sync messages
+    RequestProjectTree {
+        session_id: String,
+        peer_id: String,
+    },
+    ProjectTreeResponse {
+        session_id: String,
+        peer_id: String,
+        tree_json: String, // Serialized ProjectTree
+    },
+    RequestFile {
+        session_id: String,
+        peer_id: String,
+        file_path: String,
+    },
+    FileChunk {
+        session_id: String,
+        peer_id: String,
+        file_path: String,
+        offset: u64,
+        data: Vec<u8>,
+        is_last: bool,
+    },
     Ping,
 }
 
@@ -62,6 +85,29 @@ pub enum ServerMessage {
         peer_id: String,
         message: String,
         timestamp: u64,
+    },
+    // File sync messages (relayed from other clients)
+    RequestProjectTree {
+        session_id: String,
+        from_peer_id: String,
+    },
+    ProjectTreeResponse {
+        session_id: String,
+        from_peer_id: String,
+        tree_json: String,
+    },
+    RequestFile {
+        session_id: String,
+        from_peer_id: String,
+        file_path: String,
+    },
+    FileChunk {
+        session_id: String,
+        from_peer_id: String,
+        file_path: String,
+        offset: u64,
+        data: Vec<u8>,
+        is_last: bool,
     },
     Pong,
     Error {
