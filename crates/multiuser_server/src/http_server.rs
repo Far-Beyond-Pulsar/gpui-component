@@ -459,6 +459,78 @@ async fn handle_websocket_connection(socket: axum::extract::ws::WebSocket, state
                                             warn!("No broadcast channel found for session {}", session_id);
                                         }
                                     }
+                                    // Git sync message handlers
+                                    ClientMessageWs::RequestProjectTree { session_id, peer_id } => {
+                                        info!("Relaying RequestProjectTree from {}", peer_id);
+                                        if let Some(broadcast_tx) = state.session_broadcasts.get(&session_id) {
+                                            let relay_msg = ServerMessageWs::RequestProjectTree {
+                                                session_id: session_id.clone(),
+                                                from_peer_id: peer_id.clone(),
+                                            };
+                                            let _ = broadcast_tx.send(relay_msg);
+                                        }
+                                    }
+                                    ClientMessageWs::ProjectTreeResponse { session_id, peer_id, tree_json } => {
+                                        info!("Relaying ProjectTreeResponse from {}", peer_id);
+                                        if let Some(broadcast_tx) = state.session_broadcasts.get(&session_id) {
+                                            let relay_msg = ServerMessageWs::ProjectTreeResponse {
+                                                session_id: session_id.clone(),
+                                                from_peer_id: peer_id.clone(),
+                                                tree_json: tree_json.clone(),
+                                            };
+                                            let _ = broadcast_tx.send(relay_msg);
+                                        }
+                                    }
+                                    ClientMessageWs::RequestGitObjects { session_id, peer_id, commit_hash } => {
+                                        info!("Relaying RequestGitObjects from {} for commit {}", peer_id, commit_hash);
+                                        if let Some(broadcast_tx) = state.session_broadcasts.get(&session_id) {
+                                            let relay_msg = ServerMessageWs::RequestGitObjects {
+                                                session_id: session_id.clone(),
+                                                from_peer_id: peer_id.clone(),
+                                                commit_hash: commit_hash.clone(),
+                                            };
+                                            let _ = broadcast_tx.send(relay_msg);
+                                        }
+                                    }
+                                    ClientMessageWs::GitObjectsChunk { session_id, peer_id, objects_json, chunk_index, total_chunks } => {
+                                        info!("Relaying GitObjectsChunk from {} (chunk {}/{})", peer_id, chunk_index + 1, total_chunks);
+                                        if let Some(broadcast_tx) = state.session_broadcasts.get(&session_id) {
+                                            let relay_msg = ServerMessageWs::GitObjectsChunk {
+                                                session_id: session_id.clone(),
+                                                from_peer_id: peer_id.clone(),
+                                                objects_json: objects_json.clone(),
+                                                chunk_index,
+                                                total_chunks,
+                                            };
+                                            let _ = broadcast_tx.send(relay_msg);
+                                        }
+                                    }
+                                    // Legacy file transfer handlers
+                                    ClientMessageWs::RequestFile { session_id, peer_id, file_path } => {
+                                        info!("Relaying RequestFile from {} for {}", peer_id, file_path);
+                                        if let Some(broadcast_tx) = state.session_broadcasts.get(&session_id) {
+                                            let relay_msg = ServerMessageWs::RequestFile {
+                                                session_id: session_id.clone(),
+                                                from_peer_id: peer_id.clone(),
+                                                file_path: file_path.clone(),
+                                            };
+                                            let _ = broadcast_tx.send(relay_msg);
+                                        }
+                                    }
+                                    ClientMessageWs::FileChunk { session_id, peer_id, file_path, offset, data, is_last } => {
+                                        info!("Relaying FileChunk from {} for {} (offset: {}, last: {})", peer_id, file_path, offset, is_last);
+                                        if let Some(broadcast_tx) = state.session_broadcasts.get(&session_id) {
+                                            let relay_msg = ServerMessageWs::FileChunk {
+                                                session_id: session_id.clone(),
+                                                from_peer_id: peer_id.clone(),
+                                                file_path: file_path.clone(),
+                                                offset,
+                                                data: data.clone(),
+                                                is_last,
+                                            };
+                                            let _ = broadcast_tx.send(relay_msg);
+                                        }
+                                    }
                                     ClientMessageWs::Ping => {
                                         // Send pong
                                         let pong = ServerMessageWs::Pong;
@@ -527,6 +599,42 @@ enum ClientMessageWs {
         peer_id: String,
         message: String,
     },
+    // Git sync messages
+    RequestProjectTree {
+        session_id: String,
+        peer_id: String,
+    },
+    ProjectTreeResponse {
+        session_id: String,
+        peer_id: String,
+        tree_json: String,
+    },
+    RequestGitObjects {
+        session_id: String,
+        peer_id: String,
+        commit_hash: String,
+    },
+    GitObjectsChunk {
+        session_id: String,
+        peer_id: String,
+        objects_json: String,
+        chunk_index: usize,
+        total_chunks: usize,
+    },
+    // Legacy file transfer
+    RequestFile {
+        session_id: String,
+        peer_id: String,
+        file_path: String,
+    },
+    FileChunk {
+        session_id: String,
+        peer_id: String,
+        file_path: String,
+        offset: u64,
+        data: Vec<u8>,
+        is_last: bool,
+    },
     Ping,
 }
 
@@ -552,6 +660,42 @@ enum ServerMessageWs {
         peer_id: String,
         message: String,
         timestamp: u64,
+    },
+    // Git sync messages (relayed from other peer)
+    RequestProjectTree {
+        session_id: String,
+        from_peer_id: String,
+    },
+    ProjectTreeResponse {
+        session_id: String,
+        from_peer_id: String,
+        tree_json: String,
+    },
+    RequestGitObjects {
+        session_id: String,
+        from_peer_id: String,
+        commit_hash: String,
+    },
+    GitObjectsChunk {
+        session_id: String,
+        from_peer_id: String,
+        objects_json: String,
+        chunk_index: usize,
+        total_chunks: usize,
+    },
+    // Legacy file transfer
+    RequestFile {
+        session_id: String,
+        from_peer_id: String,
+        file_path: String,
+    },
+    FileChunk {
+        session_id: String,
+        from_peer_id: String,
+        file_path: String,
+        offset: u64,
+        data: Vec<u8>,
+        is_last: bool,
     },
     Pong,
     Error {

@@ -37,7 +37,33 @@ pub enum ClientMessage {
         peer_id: String,
         message: String,
     },
-    // File sync messages
+    // P2P connection negotiation
+    P2PConnectionRequest {
+        session_id: String,
+        peer_id: String,
+        public_ip: String,
+        public_port: u16,
+    },
+    P2PConnectionResponse {
+        session_id: String,
+        peer_id: String,
+        public_ip: String,
+        public_port: u16,
+    },
+    // Binary proxy mode (raw bytes, no JSON)
+    // Note: This needs special handling - WebSocket sends as binary frame
+    RequestBinaryProxy {
+        session_id: String,
+        peer_id: String,
+    },
+    BinaryProxyData {
+        session_id: String,
+        peer_id: String,
+        // Data sent separately as WebSocket binary frame
+        sequence: u64,
+        is_git_protocol: bool,
+    },
+    // Git sync messages (JSON fallback)
     RequestProjectTree {
         session_id: String,
         peer_id: String,
@@ -45,8 +71,21 @@ pub enum ClientMessage {
     ProjectTreeResponse {
         session_id: String,
         peer_id: String,
-        tree_json: String, // Serialized ProjectTree
+        tree_json: String, // Commit hash or full tree
     },
+    RequestGitObjects {
+        session_id: String,
+        peer_id: String,
+        commit_hash: String,
+    },
+    GitObjectsChunk {
+        session_id: String,
+        peer_id: String,
+        objects_json: String,
+        chunk_index: usize,
+        total_chunks: usize,
+    },
+    // Legacy file-based messages (kept for backwards compatibility)
     RequestFile {
         session_id: String,
         peer_id: String,
@@ -86,7 +125,32 @@ pub enum ServerMessage {
         message: String,
         timestamp: u64,
     },
-    // File sync messages (relayed from other clients)
+    // P2P connection negotiation (relayed)
+    P2PConnectionRequest {
+        session_id: String,
+        from_peer_id: String,
+        public_ip: String,
+        public_port: u16,
+    },
+    P2PConnectionResponse {
+        session_id: String,
+        from_peer_id: String,
+        public_ip: String,
+        public_port: u16,
+    },
+    // Binary proxy (relayed)
+    RequestBinaryProxy {
+        session_id: String,
+        from_peer_id: String,
+    },
+    BinaryProxyData {
+        session_id: String,
+        from_peer_id: String,
+        sequence: u64,
+        is_git_protocol: bool,
+        // Binary data comes in separate WebSocket frame
+    },
+    // Git sync messages (JSON fallback, relayed)
     RequestProjectTree {
         session_id: String,
         from_peer_id: String,
@@ -96,6 +160,19 @@ pub enum ServerMessage {
         from_peer_id: String,
         tree_json: String,
     },
+    RequestGitObjects {
+        session_id: String,
+        from_peer_id: String,
+        commit_hash: String,
+    },
+    GitObjectsChunk {
+        session_id: String,
+        from_peer_id: String,
+        objects_json: String,
+        chunk_index: usize,
+        total_chunks: usize,
+    },
+    // Legacy file messages
     RequestFile {
         session_id: String,
         from_peer_id: String,

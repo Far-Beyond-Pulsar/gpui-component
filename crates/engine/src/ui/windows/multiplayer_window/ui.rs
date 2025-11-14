@@ -14,10 +14,10 @@ use gpui_component::{
 use super::state::MultiplayerWindow;
 use super::types::*;
 use super::utils::format_timestamp;
-use crate::ui::file_sync::TreeDiff;
+use crate::ui::git_sync::GitDiff;
 
 impl MultiplayerWindow {
-    pub(super) fn render_connection_form(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_connection_form(&self, cx: &mut Context<MultiplayerWindow>) -> impl IntoElement {
         v_flex()
             .gap_4()
             .p_4()
@@ -179,7 +179,7 @@ impl MultiplayerWindow {
     }
 
 
-    pub(super) fn render_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_tab_bar(&self, cx: &mut Context<MultiplayerWindow>) -> impl IntoElement {
         let selected_index = match self.current_tab {
             SessionTab::Info => 0,
             SessionTab::Presence => 1,
@@ -222,7 +222,7 @@ impl MultiplayerWindow {
     }
 
 
-    pub(super) fn render_session_info_tab(&self, session: &ActiveSession, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_session_info_tab(&self, session: &ActiveSession, cx: &mut Context<MultiplayerWindow>) -> impl IntoElement {
         let session_id = session.session_id.clone();
         let join_token = session.join_token.clone();
         let server_address = session.server_address.clone();
@@ -400,7 +400,7 @@ impl MultiplayerWindow {
     }
 
 
-    pub(super) fn render_chat_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_chat_tab(&self, cx: &mut Context<MultiplayerWindow>) -> impl IntoElement {
         v_flex()
             .size_full()
             .child(
@@ -473,9 +473,47 @@ impl MultiplayerWindow {
             )
     }
 
+    pub(super) fn render_file_sync_tab(&self, cx: &mut Context<MultiplayerWindow>) -> impl IntoElement {
+        // Show progress if sync is in progress
+        if self.file_sync_in_progress {
+            return v_flex()
+                .size_full()
+                .items_center()
+                .justify_center()
+                .gap_4()
+                .child(
+                    div()
+                        .text_lg()
+                        .font_semibold()
+                        .text_color(cx.theme().foreground)
+                        .child("Synchronizing files...")
+                )
+                .when_some(self.sync_progress_message.as_ref(), |this, msg| {
+                    this.child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(msg.clone())
+                    )
+                })
+                .when_some(self.sync_progress_percent.as_ref(), |this, percent| {
+                    this.child(
+                        div()
+                            .w(px(300.))
+                            .h(px(8.))
+                            .rounded(px(4.))
+                            .bg(cx.theme().secondary)
+                            .child(
+                                div()
+                                    .w(px(300. * percent))
+                                    .h_full()
+                                    .rounded(px(4.))
+                                    .bg(cx.theme().accent)
+                            )
+                    )
+                });
+        }
 
-    pub(super) fn render_file_sync_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
-    pub(super) fn render_file_sync_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
         // Check if there's a pending file sync
         if let Some((diff, host_peer_id)) = &self.pending_file_sync {
             tracing::info!("Rendering FileSync tab with pending diff");
@@ -508,28 +546,20 @@ impl MultiplayerWindow {
                                         .text_color(cx.theme().foreground)
                                         .child("Changes to apply:")
                                 )
-                                .when(!diff.added.is_empty(), |this| {
-                                    this.child(
-                                        div()
-                                            .text_sm()
-                                            .text_color(cx.theme().success)
-                                            .child(format!("+ {} files to download", diff.added.len()))
-                                    )
-                                })
-                                .when(!diff.modified.is_empty(), |this| {
+                                .when(!diff.changed_files.is_empty(), |this| {
                                     this.child(
                                         div()
                                             .text_sm()
                                             .text_color(cx.theme().warning)
-                                            .child(format!("~ {} files to update", diff.modified.len()))
+                                            .child(format!("~ {} files to sync", diff.changed_files.len()))
                                     )
                                 })
-                                .when(!diff.deleted.is_empty(), |this| {
+                                .when(!diff.deleted_files.is_empty(), |this| {
                                     this.child(
                                         div()
                                             .text_sm()
                                             .text_color(cx.theme().danger)
-                                            .child(format!("- {} files to remove", diff.deleted.len()))
+                                            .child(format!("- {} files to remove", diff.deleted_files.len()))
                                     )
                                 })
                         )
@@ -595,6 +625,7 @@ impl MultiplayerWindow {
         }
     }
 
+    pub(super) fn render_presence_tab(&self, cx: &mut Context<MultiplayerWindow>) -> impl IntoElement {
         div()
             .size_full()
             .p_4()
@@ -650,64 +681,8 @@ impl MultiplayerWindow {
     }
 
 
-        pub(super) fn render_presence_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .size_full()
-            .p_4()
-            .child(
-                v_flex()
-                    .gap_2()
-                    .when(self.user_presences.is_empty(), |this| {
-                        this.child(
-                            div()
-                                .text_sm()
-                                .text_center()
-                                .text_color(cx.theme().muted_foreground)
-                                .child("No active users")
-                        )
-                    })
-                    .children(
-                        self.user_presences.iter().map(|presence| {
-                            v_flex()
-                                .gap_1()
-                                .px_3()
-                                .py_2()
-                                .rounded(px(4.))
-                                .bg(cx.theme().secondary)
-                                .border_l(px(2.))
-                                .border_color(cx.theme().accent)
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .font_medium()
-                                        .text_color(cx.theme().foreground)
-                                        .child(presence.peer_id.clone())
-                                )
-                                .when_some(presence.editing_file.as_ref(), |this, file| {
-                                    this.child(
-                                        div()
-                                            .text_xs()
-                                            .text_color(cx.theme().muted_foreground)
-                                            .child(format!("Editing: {}", file))
-                                    )
-                                })
-                                .when_some(presence.selected_object.as_ref(), |this, obj| {
-                                    this.child(
-                                        div()
-                                            .text_xs()
-                                            .text_color(cx.theme().muted_foreground)
-                                            .child(format!("Selected: {}", obj))
-                                    )
-                                })
-                                .into_any_element()
-                        })
-                    )
-            )
-    }
 
-
-
-    pub(super) fn render_active_session(&self, session: &ActiveSession, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_active_session(&self, session: &ActiveSession, cx: &mut Context<MultiplayerWindow>) -> impl IntoElement {
         v_flex()
             .size_full()
             .child(self.render_tab_bar(cx))

@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 
 use super::state::MultiplayerWindow;
 use super::types::*;
-use crate::ui::file_sync::ProjectTree;
+use crate::ui::git_sync;
 use crate::ui::multiuser_client::{ClientMessage, MultiuserClient, ServerMessage};
 
 impl MultiplayerWindow {
@@ -83,16 +83,25 @@ impl MultiplayerWindow {
                                                 session.connected_users = participants.clone();
                                             }
 
-                                            // Scan project tree (host only)
+                                            // Initialize git and commit current state (host only)
                                             if let Some(project_root) = &this.project_root {
-                                                tracing::info!("CREATE_SESSION: Scanning project tree at {:?}", project_root);
-                                                match ProjectTree::from_directory(project_root) {
-                                                    Ok(tree) => {
-                                                        tracing::info!("CREATE_SESSION: Scanned {} files", tree.files.len());
-                                                        this.local_tree = Some(tree);
+                                                tracing::info!("CREATE_SESSION: Initializing git at {:?}", project_root);
+                                                match git_sync::ensure_git_repo(project_root) {
+                                                    Ok(repo) => {
+                                                        // Commit current state
+                                                        match git_sync::commit_current_state(&repo, "Multiplayer session start") {
+                                                            Ok(commit_id) => {
+                                                                let commit_hash = commit_id.to_string();
+                                                                tracing::info!("CREATE_SESSION: Created commit {}", commit_hash);
+                                                                this.local_commit = Some(commit_hash);
+                                                            }
+                                                            Err(e) => {
+                                                                tracing::error!("CREATE_SESSION: Failed to create commit: {}", e);
+                                                            }
+                                                        }
                                                     }
                                                     Err(e) => {
-                                                        tracing::error!("CREATE_SESSION: Failed to scan project tree: {}", e);
+                                                        tracing::error!("CREATE_SESSION: Failed to init git: {}", e);
                                                     }
                                                 }
                                             }
@@ -192,30 +201,29 @@ impl MultiplayerWindow {
                                             ServerMessage::RequestProjectTree { from_peer_id, session_id: req_session_id, .. } => {
                                                 tracing::info!("CREATE_SESSION: Received RequestProjectTree from {}", from_peer_id);
 
-                                                // Send our tree to the requesting peer
-                                                let tree_result = cx.update(|cx| {
+                                                // Send our commit hash to the requesting peer
+                                                let commit_result = cx.update(|cx| {
                                                     this.update(cx, |this, _cx| {
-                                                        this.local_tree.clone()
+                                                        this.local_commit.clone()
                                                     }).ok()
                                                 }).ok().flatten();
 
-                                                if let Some(tree) = tree_result.flatten() {
-                                                    if let Ok(tree_json) = serde_json::to_string(&tree) {
-                                                        let our_peer_id_result = cx.update(|cx| {
-                                                            this.update(cx, |this, _cx| {
-                                                                this.current_peer_id.clone()
-                                                            }).ok()
-                                                        }).ok().flatten().flatten();
+                                                if let Some(commit_hash) = commit_result.flatten() {
+                                                    let our_peer_id_result = cx.update(|cx| {
+                                                        this.update(cx, |this, _cx| {
+                                                            this.current_peer_id.clone()
+                                                        }).ok()
+                                                    }).ok().flatten().flatten();
 
-                                                        if let Some(our_peer_id) = our_peer_id_result {
-                                                            let client_guard = client.read().await;
-                                                            let _ = client_guard.send(ClientMessage::ProjectTreeResponse {
-                                                                session_id: req_session_id,
-                                                                peer_id: our_peer_id,
-                                                                tree_json,
-                                                            }).await;
-                                                            tracing::info!("CREATE_SESSION: Sent ProjectTreeResponse");
-                                                        }
+                                                    if let Some(our_peer_id) = our_peer_id_result {
+                                                        let client_guard = client.read().await;
+                                                        // Send commit hash as "tree_json" for backwards compatibility
+                                                        let _ = client_guard.send(ClientMessage::ProjectTreeResponse {
+                                                            session_id: req_session_id,
+                                                            peer_id: our_peer_id,
+                                                            tree_json: commit_hash,
+                                                        }).await;
+                                                        tracing::info!("CREATE_SESSION: Sent commit hash");
                                                     }
                                                 }
                                             }
@@ -374,16 +382,25 @@ impl MultiplayerWindow {
                                         connected_users: participants.clone(),
                                     });
 
-                                    // Scan local project tree
+                                    // Initialize git and commit local state
                                     if let Some(project_root) = &this.project_root {
-                                        tracing::info!("JOIN_SESSION: Scanning local project tree at {:?}", project_root);
-                                        match ProjectTree::from_directory(project_root) {
-                                            Ok(tree) => {
-                                                tracing::info!("JOIN_SESSION: Scanned {} local files", tree.files.len());
-                                                this.local_tree = Some(tree);
+                                        tracing::info!("JOIN_SESSION: Initializing git at {:?}", project_root);
+                                        match git_sync::ensure_git_repo(project_root) {
+                                            Ok(repo) => {
+                                                // Commit current state before syncing
+                                                match git_sync::commit_current_state(&repo, "Before multiplayer sync") {
+                                                    Ok(commit_id) => {
+                                                        let commit_hash = commit_id.to_string();
+                                                        tracing::info!("JOIN_SESSION: Created local commit {}", commit_hash);
+                                                        this.local_commit = Some(commit_hash);
+                                                    }
+                                                    Err(e) => {
+                                                        tracing::error!("JOIN_SESSION: Failed to create commit: {}", e);
+                                                    }
+                                                }
                                             }
                                             Err(e) => {
-                                                tracing::error!("JOIN_SESSION: Failed to scan local tree: {}", e);
+                                                tracing::error!("JOIN_SESSION: Failed to init git: {}", e);
                                             }
                                         }
                                     }
@@ -501,46 +518,52 @@ impl MultiplayerWindow {
                                         }).ok();
                                     }
                                     ServerMessage::ProjectTreeResponse { from_peer_id, tree_json, .. } => {
-                                        tracing::info!("JOIN_SESSION: Received ProjectTreeResponse from {}", from_peer_id);
+                                        tracing::info!("JOIN_SESSION: Received commit hash from {}: {}", from_peer_id, tree_json);
 
-                                        // Parse remote tree
-                                        if let Ok(remote_tree) = serde_json::from_str::<ProjectTree>(&tree_json) {
-                                            tracing::info!("JOIN_SESSION: Remote tree has {} files", remote_tree.files.len());
+                                        // tree_json now contains remote commit hash
+                                        let remote_commit_hash = tree_json;
 
-                                            // Compute diff with local tree
-                                            let diff_result = cx.update(|cx| {
-                                                this.update(cx, |this, _cx| {
-                                                    if let Some(local_tree) = &this.local_tree {
-                                                        let diff = local_tree.diff(&remote_tree);
-                                                        tracing::info!(
-                                                            "JOIN_SESSION: Diff computed - {} added, {} modified, {} deleted",
-                                                            diff.added.len(),
-                                                            diff.modified.len(),
-                                                            diff.deleted.len()
-                                                        );
-                                                        Some((diff, from_peer_id.clone()))
-                                                    } else {
-                                                        None
+                                        // Check if we need to sync
+                                        let needs_sync = cx.update(|cx| {
+                                            this.update(cx, |this, _cx| {
+                                                if let Some(local_commit) = &this.local_commit {
+                                                    let differs = local_commit != &remote_commit_hash;
+                                                    tracing::info!("JOIN_SESSION: Local commit: {}, Remote commit: {}, Differs: {}",
+                                                        local_commit, remote_commit_hash, differs);
+                                                    differs
+                                                } else {
+                                                    tracing::info!("JOIN_SESSION: No local commit, sync needed");
+                                                    true
+                                                }
+                                            }).unwrap_or(true)
+                                        }).unwrap_or(true);
+
+                                        if needs_sync {
+                                            // Create a git diff indicating sync is needed
+                                            // Add placeholder to indicate we need to fetch the commit
+                                            let diff = git_sync::GitDiff {
+                                                changed_files: vec![
+                                                    git_sync::ChangedFile {
+                                                        path: format!("Syncing to commit {}", &remote_commit_hash[..8]),
+                                                        size: 0,
+                                                        status: git_sync::FileStatus::Modified,
                                                     }
-                                                }).ok()
-                                            }).ok().flatten().flatten();
+                                                ],
+                                                deleted_files: vec![],
+                                                target_commit: remote_commit_hash.clone(),
+                                            };
 
-                                            if let Some((diff, host_id)) = diff_result {
-                                                // Store pending file sync
-                                                tracing::info!("JOIN_SESSION: Setting pending_file_sync with diff: {} added, {} modified, {} deleted", 
-                                                    diff.added.len(), diff.modified.len(), diff.deleted.len());
-                                                cx.update(|cx| {
-                                                    this.update(cx, |this, cx| {
-                                                        this.pending_file_sync = Some((diff, host_id));
-                                                        this.current_tab = SessionTab::FileSync;
-                                                        tracing::info!("JOIN_SESSION: pending_file_sync set, notifying UI");
-                                                        cx.notify();
-                                                    }).ok();
+                                            tracing::info!("JOIN_SESSION: Commits differ, setting pending_file_sync");
+                                            cx.update(|cx| {
+                                                this.update(cx, |this, cx| {
+                                                    this.pending_file_sync = Some((diff, from_peer_id.clone()));
+                                                    this.current_tab = SessionTab::FileSync;
+                                                    tracing::info!("JOIN_SESSION: pending_file_sync set, notifying");
+                                                    cx.notify();
                                                 }).ok();
-                                                tracing::info!("JOIN_SESSION: File sync modal should now be visible");
-                                            } else {
-                                                tracing::warn!("JOIN_SESSION: diff_result was None - local_tree might be missing");
-                                            }
+                                            }).ok();
+                                        } else {
+                                            tracing::info!("JOIN_SESSION: Commits match, already in sync");
                                         }
                                     }
                                     ServerMessage::FileChunk { from_peer_id, file_path, offset, data, is_last, .. } => {
@@ -578,32 +601,246 @@ impl MultiplayerWindow {
                                             }
                                         }
                                     }
+                                    ServerMessage::GitObjectsChunk { from_peer_id, objects_json, chunk_index, total_chunks, .. } => {
+                                        tracing::info!("JOIN_SESSION: Received GitObjectsChunk from {} (chunk {}/{})",
+                                            from_peer_id, chunk_index + 1, total_chunks);
+
+                                        // Set progress indicator
+                                        cx.update(|cx| {
+                                            this.update(cx, |this, cx| {
+                                                this.sync_progress_message = Some(format!("Receiving git objects ({}/{})", chunk_index + 1, total_chunks));
+                                                this.sync_progress_percent = Some((chunk_index + 1) as f32 / total_chunks as f32);
+                                                cx.notify();
+                                            }).ok();
+                                        }).ok();
+
+                                        // For now, handle single chunk only
+                                        // TODO: Handle multi-chunk transfers by buffering
+                                        if chunk_index == 0 && total_chunks == 1 {
+                                            let project_root_result = cx.update(|cx| {
+                                                this.update(cx, |this, _cx| {
+                                                    this.project_root.clone()
+                                                }).ok()
+                                            }).ok().flatten().flatten();
+
+                                            if let Some(project_root) = project_root_result {
+                                                // Update progress - starting sync
+                                                cx.update(|cx| {
+                                                    this.update(cx, |this, cx| {
+                                                        this.sync_progress_message = Some("Deserializing git objects...".to_string());
+                                                        this.sync_progress_percent = Some(0.1);
+                                                        cx.notify();
+                                                    }).ok();
+                                                }).ok();
+
+                                                // Clone data for blocking task
+                                                let objects_json_clone = objects_json.clone();
+                                                let project_root_clone = project_root.clone();
+
+                                                // Create channel for progress updates
+                                                let (progress_tx, mut progress_rx) = tokio::sync::mpsc::unbounded_channel::<(String, f32)>();
+
+                                                // Spawn task to listen for progress updates and update UI
+                                                let this_progress = this.clone();
+                                                let cx_progress = cx.clone();
+                                                tokio::spawn(async move {
+                                                    while let Some((msg, percent)) = progress_rx.recv().await {
+                                                        cx_progress.update(|cx| {
+                                                            this_progress.update(cx, |this, cx| {
+                                                                this.sync_progress_message = Some(msg);
+                                                                this.sync_progress_percent = Some(percent);
+                                                                cx.notify();
+                                                            }).ok();
+                                                        }).ok();
+                                                    }
+                                                });
+
+                                                // Do git operations in blocking task
+                                                let result = tokio::task::spawn_blocking(move || -> Result<(String, usize), String> {
+                                                    tracing::info!("Sync task: Starting git object processing");
+                                                    let _ = progress_tx.send(("Parsing git objects...".to_string(), 0.2));
+                                                        match git_sync::ensure_git_repo(&project_root_clone) {
+                                                            Ok(repo) => {
+                                                                // Deserialize git objects
+                                                                match serde_json::from_str::<Vec<git_sync::GitObject>>(&objects_json_clone) {
+                                                                Ok(git_objects) => {
+                                                                    tracing::info!("JOIN_SESSION: Processing {} git objects", git_objects.len());
+
+                                                                    // Find the commit hash
+                                                                    let commit_hash = git_objects.iter()
+                                                                        .find(|obj| obj.object_type == git_sync::GitObjectType::Commit)
+                                                                        .map(|obj| obj.oid.clone());
+
+                                                                    if let Some(commit_hash) = commit_hash {
+                                                                        // Reconstruct git objects in the ODB
+                                                                        if let Err(e) = git_sync::reconstruct_objects(&repo, git_objects) {
+                                                                            tracing::error!("Failed to reconstruct git objects: {}", e);
+                                                                        }
+
+                                                                        // Extract files from the commit
+                                                                        match git_sync::extract_files_from_commit(&repo, &commit_hash) {
+                                                                            Ok(files) => {
+                                                                                tracing::info!("JOIN_SESSION: Extracting {} files", files.len());
+
+                                                                                // Write files to working directory
+                                                                                for (path, data) in &files {
+                                                                                    let full_path = project_root_clone.join(path);
+                                                                                    if let Some(parent) = full_path.parent() {
+                                                                                        let _ = std::fs::create_dir_all(parent);
+                                                                                    }
+                                                                                    if let Err(e) = std::fs::write(&full_path, data) {
+                                                                                        tracing::error!("Failed to write file {:?}: {}", path, e);
+                                                                                    }
+                                                                                }
+
+                                                                                // Create a commit with the synced files
+                                                                                match git_sync::commit_current_state(&repo, "Synced from host") {
+                                                                                    Ok(commit_id) => {
+                                                                                        tracing::info!("JOIN_SESSION: Created commit {}", commit_id);
+                                                                                        Ok((commit_id.to_string(), files.len()))
+                                                                                    }
+                                                                                    Err(e) => {
+                                                                                        tracing::error!("Failed to create commit: {}", e);
+                                                                                        Err(format!("Failed to create commit: {}", e))
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                            Err(e) => {
+                                                                                tracing::error!("Failed to extract files: {}", e);
+                                                                                Err(format!("Failed to extract files: {}", e))
+                                                                            }
+                                                                        }
+                                                                    } else {
+                                                                        tracing::error!("No commit found in git objects");
+                                                                        Err("No commit found in git objects".to_string())
+                                                                    }
+                                                                }
+                                                                Err(e) => {
+                                                                    tracing::error!("Failed to deserialize git objects: {}", e);
+                                                                    Err(format!("Failed to deserialize: {}", e))
+                                                                }
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            tracing::error!("Failed to open git repo: {}", e);
+                                                            Err(format!("Failed to open repo: {}", e))
+                                                        }
+                                                    }
+                                                }).await;
+
+                                                // Update UI based on result
+                                                match result {
+                                                    Ok(Ok((new_commit, file_count))) => {
+                                                        cx.update(|cx| {
+                                                            this.update(cx, |this, cx| {
+                                                                this.local_commit = Some(new_commit);
+                                                                this.file_sync_in_progress = false;
+                                                                this.pending_file_sync = None;
+                                                                this.sync_progress_message = None;
+                                                                this.sync_progress_percent = None;
+                                                                tracing::info!("Sync complete: {} files written", file_count);
+                                                                cx.notify();
+                                                            }).ok();
+                                                        }).ok();
+                                                    }
+                                                    Ok(Err(err)) => {
+                                                        tracing::error!("Sync failed: {}", err);
+                                                        cx.update(|cx| {
+                                                            this.update(cx, |this, cx| {
+                                                                this.file_sync_in_progress = false;
+                                                                this.sync_progress_message = Some(format!("Error: {}", err));
+                                                                cx.notify();
+                                                            }).ok();
+                                                        }).ok();
+                                                    }
+                                                    Err(e) => {
+                                                        tracing::error!("Sync task panicked: {}", e);
+                                                        cx.update(|cx| {
+                                                            this.update(cx, |this, cx| {
+                                                                this.file_sync_in_progress = false;
+                                                                this.sync_progress_message = Some("Error: Task failed".to_string());
+                                                                cx.notify();
+                                                            }).ok();
+                                                        }).ok();
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                     ServerMessage::RequestProjectTree { from_peer_id, session_id: req_session_id, .. } => {
                                         tracing::info!("JOIN_SESSION: Received RequestProjectTree from {}", from_peer_id);
 
-                                        // Send our tree to the requesting peer
-                                        let tree_result = cx.update(|cx| {
+                                        // Send our commit hash to the requesting peer
+                                        let commit_result = cx.update(|cx| {
                                             this.update(cx, |this, _cx| {
-                                                this.local_tree.clone()
+                                                this.local_commit.clone()
                                             }).ok()
                                         }).ok().flatten();
 
-                                        if let Some(tree) = tree_result.flatten() {
-                                            if let Ok(tree_json) = serde_json::to_string(&tree) {
-                                                let our_peer_id_result = cx.update(|cx| {
-                                                    this.update(cx, |this, _cx| {
-                                                        this.current_peer_id.clone()
-                                                    }).ok()
-                                                }).ok().flatten().flatten();
+                                        if let Some(commit_hash) = commit_result.flatten() {
+                                            let our_peer_id_result = cx.update(|cx| {
+                                                this.update(cx, |this, _cx| {
+                                                    this.current_peer_id.clone()
+                                                }).ok()
+                                            }).ok().flatten().flatten();
 
-                                                if let Some(our_peer_id) = our_peer_id_result {
-                                                    let client_guard = client.read().await;
-                                                    let _ = client_guard.send(ClientMessage::ProjectTreeResponse {
-                                                        session_id: req_session_id,
-                                                        peer_id: our_peer_id,
-                                                        tree_json,
-                                                    }).await;
+                                            if let Some(our_peer_id) = our_peer_id_result {
+                                                let client_guard = client.read().await;
+                                                // Send commit hash as "tree_json" for backwards compatibility
+                                                let _ = client_guard.send(ClientMessage::ProjectTreeResponse {
+                                                    session_id: req_session_id,
+                                                    peer_id: our_peer_id,
+                                                    tree_json: commit_hash,
+                                                }).await;
+                                                tracing::info!("JOIN_SESSION: Sent commit hash");
+                                            }
+                                        }
+                                    }
+                                    ServerMessage::RequestGitObjects { from_peer_id, commit_hash, session_id: req_session_id, .. } => {
+                                        tracing::info!("JOIN_SESSION: Received RequestGitObjects for commit {} from {}", commit_hash, from_peer_id);
+
+                                        // Serialize the requested commit and send git objects
+                                        let project_root_result = cx.update(|cx| {
+                                            this.update(cx, |this, _cx| {
+                                                this.project_root.clone()
+                                            }).ok()
+                                        }).ok().flatten().flatten();
+
+                                        if let Some(project_root) = project_root_result {
+                                            match git_sync::ensure_git_repo(&project_root) {
+                                                Ok(repo) => {
+                                                    match git_sync::serialize_commit(&repo, &commit_hash) {
+                                                        Ok(git_objects) => {
+                                                            // Serialize to JSON
+                                                            match serde_json::to_string(&git_objects) {
+                                                                Ok(objects_json) => {
+                                                                    // For simplicity, send as single chunk for now
+                                                                    // TODO: Split large commits into multiple chunks
+                                                                    let our_peer_id_result = cx.update(|cx| {
+                                                                        this.update(cx, |this, _cx| {
+                                                                            this.current_peer_id.clone()
+                                                                        }).ok()
+                                                                    }).ok().flatten().flatten();
+
+                                                                    if let Some(our_peer_id) = our_peer_id_result {
+                                                                        let client_guard = client.read().await;
+                                                                        let _ = client_guard.send(ClientMessage::GitObjectsChunk {
+                                                                            session_id: req_session_id,
+                                                                            peer_id: our_peer_id,
+                                                                            objects_json,
+                                                                            chunk_index: 0,
+                                                                            total_chunks: 1,
+                                                                        }).await;
+                                                                        tracing::info!("JOIN_SESSION: Sent git objects for commit {}", commit_hash);
+                                                                    }
+                                                                }
+                                                                Err(e) => tracing::error!("Failed to serialize git objects: {}", e),
+                                                            }
+                                                        }
+                                                        Err(e) => tracing::error!("Failed to serialize commit: {}", e),
+                                                    }
                                                 }
+                                                Err(e) => tracing::error!("Failed to open git repo: {}", e),
                                             }
                                         }
                                     }

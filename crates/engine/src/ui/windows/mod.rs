@@ -24,7 +24,6 @@ pub mod editor;
 pub mod entry_screen;
 pub mod entry_window;
 pub mod file_manager_window;
-pub mod file_sync_modal;
 pub mod loading_window;
 pub mod multiplayer_window;
 pub mod problems_window;

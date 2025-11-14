@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use super::types::*;
-use crate::ui::file_sync::{ProjectTree, TreeDiff};
+use crate::ui::git_sync::{GitDiff, GitSyncState};
 use crate::ui::multiuser_client::MultiuserClient;
 
 /// Multiplayer collaboration window for connecting to multiuser servers
@@ -25,11 +25,13 @@ pub struct MultiplayerWindow {
     pub(super) file_assets: Vec<FileAssetStatus>, // Project assets with sync status
     pub(super) user_presences: Vec<UserPresence>, // Real-time user presence data
     pub(super) focus_handle: FocusHandle,
-    // File sync state
+    // Git sync state
     pub(super) project_root: Option<PathBuf>,
-    pub(super) local_tree: Option<ProjectTree>,
-    pub(super) pending_file_sync: Option<(TreeDiff, String)>, // (diff, host_peer_id)
+    pub(super) local_commit: Option<String>, // Current local commit hash
+    pub(super) pending_file_sync: Option<(GitDiff, String)>, // (diff, host_peer_id)
     pub(super) file_sync_in_progress: bool,
+    pub(super) sync_progress_message: Option<String>,
+    pub(super) sync_progress_percent: Option<f32>,
 }
 
 impl MultiplayerWindow {
@@ -77,9 +79,11 @@ impl MultiplayerWindow {
             user_presences: Vec::new(),
             focus_handle: cx.focus_handle(),
             project_root,
-            local_tree: None,
+            local_commit: None,
             pending_file_sync: None,
             file_sync_in_progress: false,
+            sync_progress_message: None,
+            sync_progress_percent: None,
         }
     }
 
