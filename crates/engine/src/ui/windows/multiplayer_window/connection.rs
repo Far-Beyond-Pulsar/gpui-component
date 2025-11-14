@@ -527,13 +527,19 @@ impl MultiplayerWindow {
 
                                             if let Some((diff, host_id)) = diff_result {
                                                 // Store pending file sync
+                                                tracing::info!("JOIN_SESSION: Setting pending_file_sync with diff: {} added, {} modified, {} deleted", 
+                                                    diff.added.len(), diff.modified.len(), diff.deleted.len());
                                                 cx.update(|cx| {
                                                     this.update(cx, |this, cx| {
                                                         this.pending_file_sync = Some((diff, host_id));
                                                         this.current_tab = SessionTab::FileSync;
+                                                        tracing::info!("JOIN_SESSION: pending_file_sync set, notifying UI");
                                                         cx.notify();
                                                     }).ok();
                                                 }).ok();
+                                                tracing::info!("JOIN_SESSION: File sync modal should now be visible");
+                                            } else {
+                                                tracing::warn!("JOIN_SESSION: diff_result was None - local_tree might be missing");
                                             }
                                         }
                                     }

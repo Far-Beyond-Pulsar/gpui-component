@@ -475,95 +475,126 @@ impl MultiplayerWindow {
 
 
     pub(super) fn render_file_sync_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .size_full()
-            .child(
-                // Toolbar
-                h_flex()
-                    .px_4()
-                    .py_2()
-                    .items_center()
-                    .justify_between()
-                    .bg(cx.theme().secondary)
-                    .border_b_1()
-                    .border_color(cx.theme().border)
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("{} assets", self.file_assets.len()))
-                    )
-                    .child(
-                        Button::new("scan")
-                            .label("Scan")
-                            .xsmall()
-                            .on_click(cx.listener(|_this, _, _window, cx| {
-                                println!("Scanning...");
-                                cx.notify();
-                            }))
-                    )
-            )
-            .child(
-                // Content
-                div()
-                    .flex_1()
-                    .p_4()
-                    .child(
-                        v_flex()
-                            .gap_1()
-                            .when(self.file_assets.is_empty(), |this| {
-                                this.child(
+    pub(super) fn render_file_sync_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        // Check if there's a pending file sync
+        if let Some((diff, host_peer_id)) = &self.pending_file_sync {
+            tracing::info!("Rendering FileSync tab with pending diff");
+            // Show the diff UI
+            v_flex()
+                .size_full()
+                .p_4()
+                .gap_4()
+                .child(
+                    div()
+                        .text_lg()
+                        .font_semibold()
+                        .text_color(cx.theme().foreground)
+                        .child(format!("Synchronize with {}", host_peer_id))
+                )
+                .child(
+                    div()
+                        .p_3()
+                        .rounded(px(6.))
+                        .bg(cx.theme().accent.opacity(0.1))
+                        .border_1()
+                        .border_color(cx.theme().accent)
+                        .child(
+                            v_flex()
+                                .gap_2()
+                                .child(
                                     div()
                                         .text_sm()
-                                        .text_center()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child("No assets scanned")
+                                        .font_semibold()
+                                        .text_color(cx.theme().foreground)
+                                        .child("Changes to apply:")
                                 )
-                            })
-                            .children(
-                                self.file_assets.iter().map(|asset| {
-                                    h_flex()
-                                        .gap_2()
-                                        .px_2()
-                                        .py_1()
-                                        .items_center()
-                                        .child(
-                                            div()
-                                                .w(px(4.))
-                                                .h(px(4.))
-                                                .rounded(px(2.))
-                                                .bg(match asset.status {
-                                                    FileSyncStatus::Synced => cx.theme().success,
-                                                    FileSyncStatus::OutOfSync => cx.theme().warning,
-                                                    FileSyncStatus::Missing => cx.theme().danger,
-                                                    FileSyncStatus::Checking => cx.theme().muted_foreground,
-                                                })
-                                        )
-                                        .child(
-                                            div()
-                                                .flex_1()
-                                                .text_sm()
-                                                .text_color(cx.theme().foreground)
-                                                .child(asset.asset.path.clone())
-                                        )
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child(format!("{}/{}",
-                                                    asset.peers_with_file.len(),
-                                                    self.active_session.as_ref().map(|s| s.connected_users.len()).unwrap_or(0)
-                                                ))
-                                        )
-                                        .into_any_element()
+                                .when(!diff.added.is_empty(), |this| {
+                                    this.child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(cx.theme().success)
+                                            .child(format!("+ {} files to download", diff.added.len()))
+                                    )
                                 })
-                            )
-                    )
-            )
+                                .when(!diff.modified.is_empty(), |this| {
+                                    this.child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(cx.theme().warning)
+                                            .child(format!("~ {} files to update", diff.modified.len()))
+                                    )
+                                })
+                                .when(!diff.deleted.is_empty(), |this| {
+                                    this.child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(cx.theme().danger)
+                                            .child(format!("- {} files to remove", diff.deleted.len()))
+                                    )
+                                })
+                        )
+                )
+                .child(
+                    div()
+                        .p_3()
+                        .rounded(px(6.))
+                        .bg(cx.theme().warning.opacity(0.1))
+                        .border_1()
+                        .border_color(cx.theme().warning)
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(cx.theme().warning)
+                                .child("⚠ Warning: Local changes will be overwritten!")
+                        )
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .child(
+                            Button::new("sync-approve")
+                                .label("Sync Files")
+                                .on_click(cx.listener(|this, _, _window, cx| {
+                                    this.approve_file_sync(cx);
+                                }))
+                        )
+                        .child(
+                            Button::new("sync-cancel")
+                                .label("Cancel")
+                                .on_click(cx.listener(|this, _, _window, cx| {
+                                    this.cancel_file_sync(cx);
+                                }))
+                        )
+                )
+        } else {
+            tracing::debug!("Rendering FileSync tab - no pending sync");
+            // No pending sync
+            v_flex()
+                .size_full()
+                .items_center()
+                .justify_center()
+                .gap_2()
+                .child(
+                    Icon::new(IconName::Check)
+                        .size(px(48.))
+                        .text_color(cx.theme().success)
+                )
+                .child(
+                    div()
+                        .text_lg()
+                        .font_semibold()
+                        .text_color(cx.theme().foreground)
+                        .child("Files are synchronized")
+                )
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child("Your project is up to date with the session")
+                )
+        }
     }
 
-
-    pub(super) fn render_presence_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .size_full()
             .p_4()
@@ -617,6 +648,63 @@ impl MultiplayerWindow {
                     )
             )
     }
+
+
+        pub(super) fn render_presence_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .p_4()
+            .child(
+                v_flex()
+                    .gap_2()
+                    .when(self.user_presences.is_empty(), |this| {
+                        this.child(
+                            div()
+                                .text_sm()
+                                .text_center()
+                                .text_color(cx.theme().muted_foreground)
+                                .child("No active users")
+                        )
+                    })
+                    .children(
+                        self.user_presences.iter().map(|presence| {
+                            v_flex()
+                                .gap_1()
+                                .px_3()
+                                .py_2()
+                                .rounded(px(4.))
+                                .bg(cx.theme().secondary)
+                                .border_l(px(2.))
+                                .border_color(cx.theme().accent)
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .font_medium()
+                                        .text_color(cx.theme().foreground)
+                                        .child(presence.peer_id.clone())
+                                )
+                                .when_some(presence.editing_file.as_ref(), |this, file| {
+                                    this.child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child(format!("Editing: {}", file))
+                                    )
+                                })
+                                .when_some(presence.selected_object.as_ref(), |this, obj| {
+                                    this.child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child(format!("Selected: {}", obj))
+                                    )
+                                })
+                                .into_any_element()
+                        })
+                    )
+            )
+    }
+
 
 
     pub(super) fn render_active_session(&self, session: &ActiveSession, cx: &mut Context<Self>) -> impl IntoElement {
