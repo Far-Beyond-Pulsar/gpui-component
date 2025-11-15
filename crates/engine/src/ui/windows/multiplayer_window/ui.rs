@@ -554,20 +554,28 @@ impl MultiplayerWindow {
                                         .text_color(cx.theme().foreground)
                                         .child("Changes to apply:")
                                 )
-                                .when(!diff.changed_files.is_empty(), |this| {
+                                .when(!diff.files_to_add.is_empty(), |this| {
+                                    this.child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(cx.theme().success)
+                                            .child(format!("+ {} files to add", diff.files_to_add.len()))
+                                    )
+                                })
+                                .when(!diff.files_to_update.is_empty(), |this| {
                                     this.child(
                                         div()
                                             .text_sm()
                                             .text_color(cx.theme().warning)
-                                            .child(format!("~ {} files to sync", diff.changed_files.len()))
+                                            .child(format!("~ {} files to update", diff.files_to_update.len()))
                                     )
                                 })
-                                .when(!diff.deleted_files.is_empty(), |this| {
+                                .when(!diff.files_to_delete.is_empty(), |this| {
                                     this.child(
                                         div()
                                             .text_sm()
                                             .text_color(cx.theme().danger)
-                                            .child(format!("- {} files to remove", diff.deleted_files.len()))
+                                            .child(format!("- {} files to remove", diff.files_to_delete.len()))
                                     )
                                 })
                         )

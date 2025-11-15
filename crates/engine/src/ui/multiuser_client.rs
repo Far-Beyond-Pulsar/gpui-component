@@ -73,15 +73,25 @@ pub enum ClientMessage {
         peer_id: String,
         tree_json: String, // Commit hash or full tree
     },
-    RequestGitObjects {
+    // Simple file sync messages
+    RequestFileManifest {
         session_id: String,
         peer_id: String,
-        commit_hash: String,
     },
-    GitObjectsChunk {
+    FileManifest {
         session_id: String,
         peer_id: String,
-        objects_json: String,
+        manifest_json: String, // serialized simple_sync::FileManifest
+    },
+    RequestFiles {
+        session_id: String,
+        peer_id: String,
+        file_paths: Vec<String>, // List of files needed
+    },
+    FilesChunk {
+        session_id: String,
+        peer_id: String,
+        files_json: String, // serialized Vec<(String, Vec<u8>)>
         chunk_index: usize,
         total_chunks: usize,
     },
@@ -160,15 +170,25 @@ pub enum ServerMessage {
         from_peer_id: String,
         tree_json: String,
     },
-    RequestGitObjects {
+    // Simple file sync messages
+    RequestFileManifest {
         session_id: String,
         from_peer_id: String,
-        commit_hash: String,
     },
-    GitObjectsChunk {
+    FileManifest {
         session_id: String,
         from_peer_id: String,
-        objects_json: String,
+        manifest_json: String,
+    },
+    RequestFiles {
+        session_id: String,
+        from_peer_id: String,
+        file_paths: Vec<String>,
+    },
+    FilesChunk {
+        session_id: String,
+        from_peer_id: String,
+        files_json: String,
         chunk_index: usize,
         total_chunks: usize,
     },

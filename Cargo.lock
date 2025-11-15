@@ -9898,6 +9898,7 @@ dependencies = [
  "tron",
  "url",
  "uuid",
+ "walkdir",
  "wgpu 0.20.1",
  "which 6.0.3",
  "winapi",

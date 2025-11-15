@@ -7,7 +7,7 @@ use tokio::sync::RwLock;
 
 use super::state::MultiplayerWindow;
 use super::types::*;
-use crate::ui::git_sync;
+use crate::ui::simple_sync;
 use crate::ui::multiuser_client::{ClientMessage, MultiuserClient, ServerMessage};
 
 impl MultiplayerWindow {

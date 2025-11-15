@@ -59,6 +59,7 @@ pub mod editors;
 pub mod git_sync;
 pub mod multiuser_client;
 pub mod p2p_connection;
+pub mod simple_sync;
 pub mod windows;
 
 // Re-export core types for backward compatibility and convenience

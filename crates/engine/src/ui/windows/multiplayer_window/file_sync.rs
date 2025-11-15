@@ -1,4 +1,4 @@
-//! Git-based file synchronization functionality
+//! Simple hash-based file synchronization functionality
 
 use gpui::*;
 use std::sync::Arc;
@@ -6,15 +6,14 @@ use tokio::sync::RwLock;
 
 use super::state::MultiplayerWindow;
 use super::types::*;
-use crate::ui::git_sync;
 use crate::ui::multiuser_client::{ClientMessage, MultiuserClient};
 
 impl MultiplayerWindow {
     pub(super) fn approve_file_sync(&mut self, cx: &mut Context<Self>) {
         if let Some((diff, host_peer_id)) = self.pending_file_sync.take() {
             tracing::info!(
-                "Git sync approved - requesting objects for commit {} from {}",
-                diff.target_commit,
+                "File sync approved - requesting {} files from {}",
+                diff.change_count(),
                 host_peer_id
             );
 
@@ -22,26 +21,30 @@ impl MultiplayerWindow {
             self.sync_progress_message = Some("Requesting files from host...".to_string());
             self.sync_progress_percent = Some(0.0);
 
-            // Request git objects from host
+            // Collect all files we need
+            let mut files_needed = Vec::new();
+            files_needed.extend(diff.files_to_add.clone());
+            files_needed.extend(diff.files_to_update.clone());
+
+            // Request files from host
             if let (Some(client), Some(session), Some(peer_id)) =
                 (&self.client, &self.active_session, &self.current_peer_id)
             {
                 let client = client.clone();
                 let session_id = session.session_id.clone();
                 let peer_id = peer_id.clone();
-                let commit_hash = diff.target_commit.clone();
 
                 cx.spawn(async move |this, mut cx| {
-                    tracing::info!("Sending RequestGitObjects for commit {}", commit_hash);
+                    tracing::info!("Sending RequestFiles for {} files", files_needed.len());
 
                     let client_guard = client.read().await;
-                    let _ = client_guard.send(ClientMessage::RequestGitObjects {
+                    let _ = client_guard.send(ClientMessage::RequestFiles {
                         session_id,
                         peer_id,
-                        commit_hash: commit_hash.clone(),
+                        file_paths: files_needed,
                     }).await;
 
-                    tracing::info!("Git objects request sent, waiting for response...");
+                    tracing::info!("File request sent, waiting for response...");
                 }).detach();
             }
 
