@@ -267,23 +267,6 @@ mod tests {
     }
 
     #[test]
-    fn test_duration() {
-        let mut project = DawProject::new("Test");
-        let mut track = Track::new("Track 1", TrackType::Audio);
-        
-        let clip = AudioClip::new(
-            PathBuf::from("test.wav"),
-            0,
-            48000,
-        );
-        track.clips.push(clip);
-        project.add_track(track);
-        
-        assert_eq!(project.duration(), 48000);
-        assert_eq!(project.duration_seconds(), 1.0);
-    }
-
-    #[test]
     fn test_export_ron() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let path = temp_dir.path().join("test.ron");

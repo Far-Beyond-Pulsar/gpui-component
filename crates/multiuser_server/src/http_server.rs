@@ -712,20 +712,6 @@ async fn shutdown_signal(mut shutdown: mpsc::Receiver<()>) {
 mod tests {
     use super::*;
 
-    fn test_state() -> AppState {
-        let config = Arc::new(Config::default());
-        let auth = Arc::new(AuthService::new(&config).unwrap());
-        let sessions = Arc::new(SessionStore::new(config.clone()));
-        let health = Arc::new(HealthChecker::new(config.clone()));
-
-        AppState {
-            config,
-            auth,
-            sessions,
-            health,
-        }
-    }
-
     #[test]
     fn test_app_state_creation() {
         let _state = test_state();
