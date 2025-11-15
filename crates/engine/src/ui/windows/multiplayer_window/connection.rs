@@ -646,11 +646,14 @@ impl MultiplayerWindow {
                                                     }).ok();
                                                 }).ok();
 
-                                                // Do git operations in blocking task
-                                                let result = tokio::task::spawn_blocking(move || -> Result<(String, usize), String> {
+                                                // Create channel for result
+                                                let (tx, rx) = futures::channel::oneshot::channel();
+
+                                                // Do git operations in background thread
+                                                std::thread::spawn(move || {
                                                     tracing::info!("SYNC_TASK: Starting git object processing in blocking thread");
 
-                                                    match git_sync::ensure_git_repo(&project_root_clone) {
+                                                    let result: Result<(String, usize), String> = match git_sync::ensure_git_repo(&project_root_clone) {
                                                         Ok(repo) => {
                                                             tracing::info!("SYNC_TASK: Opened git repository at {:?}", project_root_clone);
 
@@ -741,8 +744,14 @@ impl MultiplayerWindow {
                                                             tracing::error!("Failed to open git repo: {}", e);
                                                             Err(format!("Failed to open repo: {}", e))
                                                         }
-                                                    }
-                                                }).await;
+                                                    };
+
+                                                    // Send result back
+                                                    let _ = tx.send(result);
+                                                });
+
+                                                // Wait for result from background thread
+                                                let result = rx.await.ok().unwrap_or(Err("Thread communication failed".to_string()));
 
                                                 // Update progress - finalizing
                                                 cx.update(|cx| {
@@ -755,7 +764,7 @@ impl MultiplayerWindow {
 
                                                 // Update UI based on result
                                                 match result {
-                                                    Ok(Ok((new_commit, file_count))) => {
+                                                    Ok((new_commit, file_count)) => {
                                                         tracing::info!("SYNC_SUCCESS: Synced {} files, new commit: {}", file_count, new_commit);
 
                                                         // Clear sync state and show success
@@ -776,25 +785,13 @@ impl MultiplayerWindow {
 
                                                         tracing::info!("SYNC_SUCCESS: File synchronization complete!");
                                                     }
-                                                    Ok(Err(err)) => {
+                                                    Err(err) => {
                                                         tracing::error!("SYNC_ERROR: Sync failed with error: {}", err);
                                                         cx.update(|cx| {
                                                             this.update(cx, |this, cx| {
                                                                 this.file_sync_in_progress = false;
                                                                 this.pending_file_sync = None;
                                                                 this.sync_progress_message = Some(format!("Sync failed: {}", err));
-                                                                this.sync_progress_percent = None;
-                                                                cx.notify();
-                                                            }).ok();
-                                                        }).ok();
-                                                    }
-                                                    Err(e) => {
-                                                        tracing::error!("SYNC_ERROR: Sync task panicked: {}", e);
-                                                        cx.update(|cx| {
-                                                            this.update(cx, |this, cx| {
-                                                                this.file_sync_in_progress = false;
-                                                                this.pending_file_sync = None;
-                                                                this.sync_progress_message = Some("Sync task failed".to_string());
                                                                 this.sync_progress_percent = None;
                                                                 cx.notify();
                                                             }).ok();
@@ -844,7 +841,6 @@ impl MultiplayerWindow {
                                         }).ok().flatten().flatten();
 
                                         if let Some(project_root) = project_root_result {
-                                            let commit_hash_for_blocking = commit_hash.clone();
                                             let commit_hash_for_log = commit_hash.clone();
                                             let session_id_clone = req_session_id.clone();
                                             let client_clone = client.clone();
@@ -856,41 +852,38 @@ impl MultiplayerWindow {
                                                 }).ok()
                                             }).ok().flatten().flatten();
 
-                                            // Do git operations in spawn_blocking to avoid freezing
-                                            tokio::spawn(async move {
-                                                let result = tokio::task::spawn_blocking(move || {
-                                                    tracing::info!("HOST: Serializing commit in spawn_blocking");
-                                                    match git_sync::ensure_git_repo(&project_root) {
-                                                        Ok(repo) => {
-                                                            git_sync::serialize_commit(&repo, &commit_hash_for_blocking)
-                                                                .map_err(|e| format!("Serialize error: {}", e))
-                                                        }
-                                                        Err(e) => Err(format!("Git repo error: {}", e)),
-                                                    }
-                                                }).await;
-
-                                                match result {
-                                                    Ok(Ok(git_objects)) => {
-                                                        tracing::info!("HOST: Serialized {} objects, converting to JSON", git_objects.len());
-                                                        match serde_json::to_string(&git_objects) {
-                                                            Ok(objects_json) => {
-                                                                if let Some(peer_id) = our_peer_id {
-                                                                    let client_guard = client_clone.read().await;
-                                                                    let _ = client_guard.send(ClientMessage::GitObjectsChunk {
-                                                                        session_id: session_id_clone,
-                                                                        peer_id,
-                                                                        objects_json,
-                                                                        chunk_index: 0,
-                                                                        total_chunks: 1,
-                                                                    }).await;
-                                                                    tracing::info!("HOST: Sent git objects for commit {}", commit_hash_for_log);
+                                            // Do git operations in a separate thread to avoid freezing
+                                            std::thread::spawn(move || {
+                                                tracing::info!("HOST: Serializing commit in background thread");
+                                                match git_sync::ensure_git_repo(&project_root) {
+                                                    Ok(repo) => {
+                                                        match git_sync::serialize_commit(&repo, &commit_hash) {
+                                                            Ok(git_objects) => {
+                                                                tracing::info!("HOST: Serialized {} objects, converting to JSON", git_objects.len());
+                                                                match serde_json::to_string(&git_objects) {
+                                                                    Ok(objects_json) => {
+                                                                        if let Some(peer_id) = our_peer_id {
+                                                                            // Send via blocking runtime
+                                                                            tokio::runtime::Runtime::new().unwrap().block_on(async {
+                                                                                let client_guard = client_clone.read().await;
+                                                                                let _ = client_guard.send(ClientMessage::GitObjectsChunk {
+                                                                                    session_id: session_id_clone,
+                                                                                    peer_id,
+                                                                                    objects_json,
+                                                                                    chunk_index: 0,
+                                                                                    total_chunks: 1,
+                                                                                }).await;
+                                                                                tracing::info!("HOST: Sent git objects for commit {}", commit_hash_for_log);
+                                                                            });
+                                                                        }
+                                                                    }
+                                                                    Err(e) => tracing::error!("HOST: Failed to serialize to JSON: {}", e),
                                                                 }
                                                             }
-                                                            Err(e) => tracing::error!("HOST: Failed to serialize to JSON: {}", e),
+                                                            Err(e) => tracing::error!("HOST: Git serialize failed: {}", e),
                                                         }
                                                     }
-                                                    Ok(Err(e)) => tracing::error!("HOST: Git operation failed: {}", e),
-                                                    Err(e) => tracing::error!("HOST: Spawn blocking panicked: {}", e),
+                                                    Err(e) => tracing::error!("HOST: Git repo error: {}", e),
                                                 }
                                             });
                                         }
