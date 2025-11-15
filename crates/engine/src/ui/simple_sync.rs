@@ -131,8 +131,16 @@ pub fn create_manifest(project_root: &Path) -> Result<FileManifest, std::io::Err
         match hash_file(path) {
             Ok(hash) => {
                 let metadata = fs::metadata(path)?;
+                // Normalize path separators to forward slashes for cross-platform compatibility
+                let normalized_path = relative_path
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                
+                tracing::debug!("SIMPLE_SYNC: Added file: {} (hash: {}, size: {})", 
+                    normalized_path, &hash[..8], metadata.len());
+                
                 files.push(FileEntry {
-                    path: relative_path.to_string_lossy().to_string(),
+                    path: normalized_path,
                     hash,
                     size: metadata.len(),
                 });
@@ -144,6 +152,10 @@ pub fn create_manifest(project_root: &Path) -> Result<FileManifest, std::io::Err
     }
 
     tracing::info!("SIMPLE_SYNC: Created manifest with {} files", files.len());
+    if files.len() > 0 {
+        tracing::info!("SIMPLE_SYNC: Sample files: {:?}", 
+            files.iter().take(3).map(|f| &f.path).collect::<Vec<_>>());
+    }
     Ok(FileManifest { files })
 }
 
@@ -153,9 +165,15 @@ pub fn compute_diff(
     remote_manifest: &FileManifest,
 ) -> Result<SyncDiff, std::io::Error> {
     tracing::info!("SIMPLE_SYNC: Computing diff against remote manifest ({} files)", remote_manifest.files.len());
+    
+    if remote_manifest.files.len() > 0 {
+        tracing::info!("SIMPLE_SYNC: Remote sample files: {:?}", 
+            remote_manifest.files.iter().take(3).map(|f| &f.path).collect::<Vec<_>>());
+    }
 
     // Build local manifest
     let local_manifest = create_manifest(project_root)?;
+    tracing::info!("SIMPLE_SYNC: Local manifest has {} files", local_manifest.files.len());
 
     // Build lookup maps
     let mut local_map: HashMap<String, String> = local_manifest
@@ -178,11 +196,14 @@ pub fn compute_diff(
         match local_map.get(&file.path) {
             None => {
                 // File doesn't exist locally
+                tracing::debug!("SIMPLE_SYNC: File to ADD: {}", file.path);
                 files_to_add.push(file.path.clone());
             }
             Some(local_hash) => {
                 // File exists - check if different
                 if local_hash != &file.hash {
+                    tracing::debug!("SIMPLE_SYNC: File to UPDATE: {} (local: {}, remote: {})", 
+                        file.path, &local_hash[..8], &file.hash[..8]);
                     files_to_update.push(file.path.clone());
                 }
                 // Remove from local map (used to find deletions)
@@ -193,6 +214,10 @@ pub fn compute_diff(
 
     // Remaining files in local_map are deleted in remote
     let files_to_delete: Vec<String> = local_map.keys().cloned().collect();
+    
+    if !files_to_delete.is_empty() {
+        tracing::debug!("SIMPLE_SYNC: Files to DELETE: {:?}", &files_to_delete);
+    }
 
     let diff = SyncDiff {
         files_to_add,

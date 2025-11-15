@@ -192,6 +192,8 @@ impl MultiplayerWindow {
                                                 }).ok().flatten().flatten();
 
                                                 if let Some(project_root) = project_root_result {
+                                                    tracing::info!("CREATE_SESSION: Project root is {:?}", project_root);
+                                                    
                                                     let our_peer_id_result = cx.update(|cx| {
                                                         this.update(cx, |this, _cx| {
                                                             this.current_peer_id.clone()
@@ -203,11 +205,13 @@ impl MultiplayerWindow {
                                                         let client_clone = client.clone();
                                                         let session_id_clone = req_session_id.clone();
                                                         std::thread::spawn(move || {
-                                                            tracing::info!("HOST: Creating file manifest");
+                                                            tracing::info!("HOST: Creating file manifest for {:?}", project_root);
                                                             match simple_sync::create_manifest(&project_root) {
                                                                 Ok(manifest) => {
+                                                                    tracing::info!("HOST: Created manifest with {} files", manifest.files.len());
                                                                     match serde_json::to_string(&manifest) {
                                                                         Ok(manifest_json) => {
+                                                                            tracing::info!("HOST: Serialized manifest to {} bytes", manifest_json.len());
                                                                             tokio::runtime::Runtime::new().unwrap().block_on(async {
                                                                                 let client_guard = client_clone.read().await;
                                                                                 let _ = client_guard.send(ClientMessage::FileManifest {
@@ -224,7 +228,11 @@ impl MultiplayerWindow {
                                                                 Err(e) => tracing::error!("HOST: Failed to create manifest: {}", e),
                                                             }
                                                         });
+                                                    } else {
+                                                        tracing::error!("CREATE_SESSION: No peer_id available");
                                                     }
+                                                } else {
+                                                    tracing::error!("CREATE_SESSION: No project_root available");
                                                 }
                                             }
                                             ServerMessage::RequestFiles { from_peer_id, file_paths, session_id: req_session_id, .. } => {
@@ -549,7 +557,8 @@ impl MultiplayerWindow {
                                         }).ok();
                                     }
                                     ServerMessage::FileManifest { from_peer_id, manifest_json, .. } => {
-                                        tracing::info!("JOIN_SESSION: Received file manifest from {}", from_peer_id);
+                                        tracing::info!("JOIN_SESSION: Received file manifest from {} ({} bytes)", 
+                                            from_peer_id, manifest_json.len());
 
                                         // Parse manifest and compute diff
                                         let project_root_result = cx.update(|cx| {
@@ -559,6 +568,8 @@ impl MultiplayerWindow {
                                         }).ok().flatten().flatten();
 
                                         if let Some(project_root) = project_root_result {
+                                            tracing::info!("JOIN_SESSION: Project root is {:?}", project_root);
+                                            
                                             // Deserialize manifest
                                             match serde_json::from_str::<simple_sync::FileManifest>(&manifest_json) {
                                                 Ok(remote_manifest) => {
@@ -570,11 +581,13 @@ impl MultiplayerWindow {
                                                             tracing::info!("JOIN_SESSION: Computed diff - {}", diff.summary());
 
                                                             if diff.has_changes() {
+                                                                tracing::info!("JOIN_SESSION: Changes detected, showing sync UI");
                                                                 // Update UI to show pending sync
                                                                 cx.update(|cx| {
                                                                     this.update(cx, |this, cx| {
                                                                         this.pending_file_sync = Some((diff, from_peer_id.clone()));
                                                                         this.current_tab = SessionTab::FileSync;
+                                                                        tracing::info!("JOIN_SESSION: Set pending_file_sync and switched to FileSync tab");
                                                                         cx.notify();
                                                                     }).ok()
                                                                 }).ok();
@@ -591,6 +604,8 @@ impl MultiplayerWindow {
                                                     tracing::error!("JOIN_SESSION: Failed to parse manifest: {}", e);
                                                 }
                                             }
+                                        } else {
+                                            tracing::error!("JOIN_SESSION: No project_root available");
                                         }
                                     }
                                     ServerMessage::FileChunk { from_peer_id, file_path, offset, data, is_last, .. } => {
