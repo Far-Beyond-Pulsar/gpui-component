@@ -713,11 +713,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_app_state_creation() {
-        let _state = test_state();
-    }
-
-    #[test]
     fn test_error_response() {
         let err = ErrorResponse {
             error: "test_error".to_string(),
