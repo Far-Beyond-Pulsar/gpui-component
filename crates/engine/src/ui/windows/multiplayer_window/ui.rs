@@ -476,6 +476,9 @@ impl MultiplayerWindow {
     pub(super) fn render_file_sync_tab(&self, cx: &mut Context<MultiplayerWindow>) -> impl IntoElement {
         // Show progress if sync is in progress
         if self.file_sync_in_progress {
+            tracing::info!("RENDER: Showing sync progress - message: {:?}, percent: {:?}",
+                self.sync_progress_message, self.sync_progress_percent);
+
             return v_flex()
                 .size_full()
                 .items_center()
@@ -488,30 +491,35 @@ impl MultiplayerWindow {
                         .text_color(cx.theme().foreground)
                         .child("Synchronizing files...")
                 )
-                .when_some(self.sync_progress_message.as_ref(), |this, msg| {
-                    this.child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(msg.clone())
-                    )
-                })
-                .when_some(self.sync_progress_percent.as_ref(), |this, percent| {
-                    this.child(
-                        div()
-                            .w(px(300.))
-                            .h(px(8.))
-                            .rounded(px(4.))
-                            .bg(cx.theme().secondary)
-                            .child(
-                                div()
-                                    .w(px(300. * percent))
-                                    .h_full()
-                                    .rounded(px(4.))
-                                    .bg(cx.theme().accent)
-                            )
-                    )
-                });
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(self.sync_progress_message.clone().unwrap_or_else(|| "Starting...".to_string()))
+                )
+                .child(
+                    // Progress bar container
+                    div()
+                        .w(px(400.))
+                        .h(px(12.))
+                        .rounded(px(6.))
+                        .bg(cx.theme().secondary)
+                        .child(
+                            // Progress bar fill
+                            div()
+                                .w(px(400. * self.sync_progress_percent.unwrap_or(0.0)))
+                                .h_full()
+                                .rounded(px(6.))
+                                .bg(cx.theme().accent)
+                        )
+                )
+                .child(
+                    // Percentage text
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(format!("{}%", (self.sync_progress_percent.unwrap_or(0.0) * 100.0) as u32))
+                );
         }
 
         // Check if there's a pending file sync

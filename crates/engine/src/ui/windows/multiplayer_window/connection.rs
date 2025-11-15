@@ -649,13 +649,17 @@ impl MultiplayerWindow {
 
                                                 // Do git operations in blocking task
                                                 let result = tokio::task::spawn_blocking(move || -> Result<(String, usize), String> {
-                                                    tracing::info!("Sync task: Starting git object processing");
-                                                        match git_sync::ensure_git_repo(&project_root_clone) {
-                                                            Ok(repo) => {
-                                                                // Deserialize git objects
-                                                                match serde_json::from_str::<Vec<git_sync::GitObject>>(&objects_json_clone) {
+                                                    tracing::info!("SYNC_TASK: Starting git object processing in blocking thread");
+
+                                                    match git_sync::ensure_git_repo(&project_root_clone) {
+                                                        Ok(repo) => {
+                                                            tracing::info!("SYNC_TASK: Opened git repository at {:?}", project_root_clone);
+
+                                                            // Deserialize git objects
+                                                            tracing::info!("SYNC_TASK: Deserializing git objects from JSON ({} bytes)", objects_json_clone.len());
+                                                            match serde_json::from_str::<Vec<git_sync::GitObject>>(&objects_json_clone) {
                                                                 Ok(git_objects) => {
-                                                                    tracing::info!("JOIN_SESSION: Processing {} git objects", git_objects.len());
+                                                                    tracing::info!("SYNC_TASK: Successfully deserialized {} git objects", git_objects.len());
 
                                                                     // Find the commit hash
                                                                     let commit_hash = git_objects.iter()
@@ -663,31 +667,53 @@ impl MultiplayerWindow {
                                                                         .map(|obj| obj.oid.clone());
 
                                                                     if let Some(commit_hash) = commit_hash {
+                                                                        tracing::info!("SYNC_TASK: Found commit hash: {}", commit_hash);
+
                                                                         // Reconstruct git objects in the ODB
+                                                                        tracing::info!("SYNC_TASK: Reconstructing git objects in ODB...");
                                                                         if let Err(e) = git_sync::reconstruct_objects(&repo, git_objects) {
-                                                                            tracing::error!("Failed to reconstruct git objects: {}", e);
+                                                                            tracing::error!("SYNC_TASK: Failed to reconstruct git objects: {}", e);
+                                                                        } else {
+                                                                            tracing::info!("SYNC_TASK: Git objects reconstructed successfully");
                                                                         }
 
                                                                         // Extract files from the commit
+                                                                        tracing::info!("SYNC_TASK: Extracting files from commit {}", commit_hash);
                                                                         match git_sync::extract_files_from_commit(&repo, &commit_hash) {
                                                                             Ok(files) => {
-                                                                                tracing::info!("JOIN_SESSION: Extracting {} files", files.len());
+                                                                                tracing::info!("SYNC_TASK: Extracted {} files from commit", files.len());
 
                                                                                 // Write files to working directory
+                                                                                let mut written_count = 0;
                                                                                 for (path, data) in &files {
                                                                                     let full_path = project_root_clone.join(path);
+                                                                                    tracing::debug!("SYNC_TASK: Writing file {:?} ({} bytes)", full_path, data.len());
+
                                                                                     if let Some(parent) = full_path.parent() {
-                                                                                        let _ = std::fs::create_dir_all(parent);
+                                                                                        if let Err(e) = std::fs::create_dir_all(parent) {
+                                                                                            tracing::error!("SYNC_TASK: Failed to create directory {:?}: {}", parent, e);
+                                                                                            continue;
+                                                                                        }
                                                                                     }
-                                                                                    if let Err(e) = std::fs::write(&full_path, data) {
-                                                                                        tracing::error!("Failed to write file {:?}: {}", path, e);
+
+                                                                                    match std::fs::write(&full_path, data) {
+                                                                                        Ok(_) => {
+                                                                                            written_count += 1;
+                                                                                            tracing::debug!("SYNC_TASK: Successfully wrote {:?}", full_path);
+                                                                                        }
+                                                                                        Err(e) => {
+                                                                                            tracing::error!("SYNC_TASK: Failed to write file {:?}: {}", full_path, e);
+                                                                                        }
                                                                                     }
                                                                                 }
 
+                                                                                tracing::info!("SYNC_TASK: Successfully wrote {}/{} files to disk", written_count, files.len());
+
                                                                                 // Create a commit with the synced files
+                                                                                tracing::info!("SYNC_TASK: Creating commit for synced files...");
                                                                                 match git_sync::commit_current_state(&repo, "Synced from host") {
                                                                                     Ok(commit_id) => {
-                                                                                        tracing::info!("JOIN_SESSION: Created commit {}", commit_id);
+                                                                                        tracing::info!("SYNC_TASK: Created commit {} successfully", commit_id);
                                                                                         Ok((commit_id.to_string(), files.len()))
                                                                                     }
                                                                                     Err(e) => {
@@ -734,34 +760,46 @@ impl MultiplayerWindow {
                                                 // Update UI based on result
                                                 match result {
                                                     Ok(Ok((new_commit, file_count))) => {
+                                                        tracing::info!("SYNC_SUCCESS: Synced {} files, new commit: {}", file_count, new_commit);
+
+                                                        // Clear sync state and show success
                                                         cx.update(|cx| {
                                                             this.update(cx, |this, cx| {
-                                                                this.local_commit = Some(new_commit);
+                                                                tracing::info!("SYNC_SUCCESS: Updating UI state - clearing progress and pending sync");
+                                                                this.local_commit = Some(new_commit.clone());
                                                                 this.file_sync_in_progress = false;
                                                                 this.pending_file_sync = None;
                                                                 this.sync_progress_message = None;
                                                                 this.sync_progress_percent = None;
-                                                                tracing::info!("Sync complete: {} files written", file_count);
+
+                                                                tracing::info!("SYNC_SUCCESS: State updated - file_sync_in_progress={}, pending_file_sync={:?}",
+                                                                    this.file_sync_in_progress, this.pending_file_sync.is_some());
                                                                 cx.notify();
                                                             }).ok();
                                                         }).ok();
+
+                                                        tracing::info!("SYNC_SUCCESS: File synchronization complete!");
                                                     }
                                                     Ok(Err(err)) => {
-                                                        tracing::error!("Sync failed: {}", err);
+                                                        tracing::error!("SYNC_ERROR: Sync failed with error: {}", err);
                                                         cx.update(|cx| {
                                                             this.update(cx, |this, cx| {
                                                                 this.file_sync_in_progress = false;
-                                                                this.sync_progress_message = Some(format!("Error: {}", err));
+                                                                this.pending_file_sync = None;
+                                                                this.sync_progress_message = Some(format!("Sync failed: {}", err));
+                                                                this.sync_progress_percent = None;
                                                                 cx.notify();
                                                             }).ok();
                                                         }).ok();
                                                     }
                                                     Err(e) => {
-                                                        tracing::error!("Sync task panicked: {}", e);
+                                                        tracing::error!("SYNC_ERROR: Sync task panicked: {}", e);
                                                         cx.update(|cx| {
                                                             this.update(cx, |this, cx| {
                                                                 this.file_sync_in_progress = false;
-                                                                this.sync_progress_message = Some("Error: Task failed".to_string());
+                                                                this.pending_file_sync = None;
+                                                                this.sync_progress_message = Some("Sync task failed".to_string());
+                                                                this.sync_progress_percent = None;
                                                                 cx.notify();
                                                             }).ok();
                                                         }).ok();
