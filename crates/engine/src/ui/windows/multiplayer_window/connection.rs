@@ -605,11 +605,11 @@ impl MultiplayerWindow {
                                         tracing::info!("JOIN_SESSION: Received GitObjectsChunk from {} (chunk {}/{})",
                                             from_peer_id, chunk_index + 1, total_chunks);
 
-                                        // Set progress indicator
+                                        // Set progress indicator - receiving data
                                         cx.update(|cx| {
                                             this.update(cx, |this, cx| {
-                                                this.sync_progress_message = Some(format!("Receiving git objects ({}/{})", chunk_index + 1, total_chunks));
-                                                this.sync_progress_percent = Some((chunk_index + 1) as f32 / total_chunks as f32);
+                                                this.sync_progress_message = Some("Receiving files...".to_string());
+                                                this.sync_progress_percent = Some(0.1);
                                                 cx.notify();
                                             }).ok();
                                         }).ok();
@@ -627,8 +627,8 @@ impl MultiplayerWindow {
                                                 // Update progress - starting sync
                                                 cx.update(|cx| {
                                                     this.update(cx, |this, cx| {
-                                                        this.sync_progress_message = Some("Deserializing git objects...".to_string());
-                                                        this.sync_progress_percent = Some(0.1);
+                                                        this.sync_progress_message = Some("Processing files...".to_string());
+                                                        this.sync_progress_percent = Some(0.2);
                                                         cx.notify();
                                                     }).ok();
                                                 }).ok();
@@ -637,28 +637,19 @@ impl MultiplayerWindow {
                                                 let objects_json_clone = objects_json.clone();
                                                 let project_root_clone = project_root.clone();
 
-                                                // Create channel for progress updates
-                                                let (progress_tx, mut progress_rx) = tokio::sync::mpsc::unbounded_channel::<(String, f32)>();
-
-                                                // Spawn task to listen for progress updates and update UI
-                                                let this_progress = this.clone();
-                                                let cx_progress = cx.clone();
-                                                tokio::spawn(async move {
-                                                    while let Some((msg, percent)) = progress_rx.recv().await {
-                                                        cx_progress.update(|cx| {
-                                                            this_progress.update(cx, |this, cx| {
-                                                                this.sync_progress_message = Some(msg);
-                                                                this.sync_progress_percent = Some(percent);
-                                                                cx.notify();
-                                                            }).ok();
-                                                        }).ok();
-                                                    }
-                                                });
+                                                // Update progress - extracting
+                                                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                                                cx.update(|cx| {
+                                                    this.update(cx, |this, cx| {
+                                                        this.sync_progress_message = Some("Extracting files...".to_string());
+                                                        this.sync_progress_percent = Some(0.5);
+                                                        cx.notify();
+                                                    }).ok();
+                                                }).ok();
 
                                                 // Do git operations in blocking task
                                                 let result = tokio::task::spawn_blocking(move || -> Result<(String, usize), String> {
                                                     tracing::info!("Sync task: Starting git object processing");
-                                                    let _ = progress_tx.send(("Parsing git objects...".to_string(), 0.2));
                                                         match git_sync::ensure_git_repo(&project_root_clone) {
                                                             Ok(repo) => {
                                                                 // Deserialize git objects
@@ -727,6 +718,18 @@ impl MultiplayerWindow {
                                                         }
                                                     }
                                                 }).await;
+
+                                                // Update progress - finalizing
+                                                cx.update(|cx| {
+                                                    this.update(cx, |this, cx| {
+                                                        this.sync_progress_message = Some("Finalizing...".to_string());
+                                                        this.sync_progress_percent = Some(0.9);
+                                                        cx.notify();
+                                                    }).ok();
+                                                }).ok();
+
+                                                // Small delay to show progress
+                                                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
                                                 // Update UI based on result
                                                 match result {
