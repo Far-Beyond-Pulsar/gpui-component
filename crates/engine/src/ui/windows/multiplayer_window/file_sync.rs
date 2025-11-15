@@ -19,6 +19,8 @@ impl MultiplayerWindow {
             );
 
             self.file_sync_in_progress = true;
+            self.sync_progress_message = Some("Requesting files from host...".to_string());
+            self.sync_progress_percent = Some(0.0);
 
             // Request git objects from host
             if let (Some(client), Some(session), Some(peer_id)) =

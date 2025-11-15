@@ -1,5 +1,6 @@
 //! Connection management for multiplayer sessions
 
+use futures::StreamExt;
 use gpui::*;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -637,21 +638,14 @@ impl MultiplayerWindow {
                                                 let objects_json_clone = objects_json.clone();
                                                 let project_root_clone = project_root.clone();
 
-                                                // Update progress - extracting
-                                                cx.update(|cx| {
-                                                    this.update(cx, |this, cx| {
-                                                        this.sync_progress_message = Some("Extracting files...".to_string());
-                                                        this.sync_progress_percent = Some(0.5);
-                                                        cx.notify();
-                                                    }).ok();
-                                                }).ok();
-
-                                                // Create channel for result
-                                                let (tx, rx) = futures::channel::oneshot::channel();
+                                                // Create channels for result and progress
+                                                let (result_tx, mut result_rx) = futures::channel::oneshot::channel();
+                                                let (progress_tx, mut progress_rx) = futures::channel::mpsc::unbounded();
 
                                                 // Do git operations in background thread
                                                 std::thread::spawn(move || {
                                                     tracing::info!("SYNC_TASK: Starting git object processing in blocking thread");
+                                                    let _ = progress_tx.unbounded_send(("Deserializing git objects...".to_string(), 0.3));
 
                                                     let result: Result<(String, usize), String> = match git_sync::ensure_git_repo(&project_root_clone) {
                                                         Ok(repo) => {
@@ -662,6 +656,7 @@ impl MultiplayerWindow {
                                                             match serde_json::from_str::<Vec<git_sync::GitObject>>(&objects_json_clone) {
                                                                 Ok(git_objects) => {
                                                                     tracing::info!("SYNC_TASK: Successfully deserialized {} git objects", git_objects.len());
+                                                                    let _ = progress_tx.unbounded_send(("Reconstructing git objects...".to_string(), 0.4));
 
                                                                     // Find the commit hash
                                                                     let commit_hash = git_objects.iter()
@@ -678,16 +673,19 @@ impl MultiplayerWindow {
                                                                         } else {
                                                                             tracing::info!("SYNC_TASK: Git objects reconstructed successfully");
                                                                         }
+                                                                        let _ = progress_tx.unbounded_send(("Extracting files from commit...".to_string(), 0.5));
 
                                                                         // Extract files from the commit
                                                                         tracing::info!("SYNC_TASK: Extracting files from commit {}", commit_hash);
                                                                         match git_sync::extract_files_from_commit(&repo, &commit_hash) {
                                                                             Ok(files) => {
                                                                                 tracing::info!("SYNC_TASK: Extracted {} files from commit", files.len());
+                                                                                let _ = progress_tx.unbounded_send((format!("Writing {} files to disk...", files.len()), 0.6));
 
                                                                                 // Write files to working directory
                                                                                 let mut written_count = 0;
-                                                                                for (path, data) in &files {
+                                                                                let total_files = files.len() as f32;
+                                                                                for (i, (path, data)) in files.iter().enumerate() {
                                                                                     let full_path = project_root_clone.join(path);
                                                                                     tracing::debug!("SYNC_TASK: Writing file {:?} ({} bytes)", full_path, data.len());
 
@@ -702,6 +700,15 @@ impl MultiplayerWindow {
                                                                                         Ok(_) => {
                                                                                             written_count += 1;
                                                                                             tracing::debug!("SYNC_TASK: Successfully wrote {:?}", full_path);
+
+                                                                                            // Update progress every 10 files
+                                                                                            if written_count % 10 == 0 {
+                                                                                                let progress = 0.6 + (0.2 * (i as f32 / total_files));
+                                                                                                let _ = progress_tx.unbounded_send((
+                                                                                                    format!("Writing files... {}/{}", written_count, files.len()),
+                                                                                                    progress
+                                                                                                ));
+                                                                                            }
                                                                                         }
                                                                                         Err(e) => {
                                                                                             tracing::error!("SYNC_TASK: Failed to write file {:?}: {}", full_path, e);
@@ -713,9 +720,11 @@ impl MultiplayerWindow {
 
                                                                                 // Create a commit with the synced files
                                                                                 tracing::info!("SYNC_TASK: Creating commit for synced files...");
+                                                                                let _ = progress_tx.unbounded_send(("Creating commit...".to_string(), 0.85));
                                                                                 match git_sync::commit_current_state(&repo, "Synced from host") {
                                                                                     Ok(commit_id) => {
                                                                                         tracing::info!("SYNC_TASK: Created commit {} successfully", commit_id);
+                                                                                        let _ = progress_tx.unbounded_send(("Finalizing...".to_string(), 0.95));
                                                                                         Ok((commit_id.to_string(), files.len()))
                                                                                     }
                                                                                     Err(e) => {
@@ -747,20 +756,31 @@ impl MultiplayerWindow {
                                                     };
 
                                                     // Send result back
-                                                    let _ = tx.send(result);
+                                                    let _ = result_tx.send(result);
                                                 });
 
-                                                // Wait for result from background thread
-                                                let result = rx.await.ok().unwrap_or(Err("Thread communication failed".to_string()));
-
-                                                // Update progress - finalizing
-                                                cx.update(|cx| {
-                                                    this.update(cx, |this, cx| {
-                                                        this.sync_progress_message = Some("Finalizing...".to_string());
-                                                        this.sync_progress_percent = Some(0.9);
-                                                        cx.notify();
-                                                    }).ok();
-                                                }).ok();
+                                                // Poll progress updates while waiting for result
+                                                let mut result = None;
+                                                loop {
+                                                    futures::select! {
+                                                        res = result_rx => {
+                                                            result = Some(res.ok().unwrap_or(Err("Thread communication failed".to_string())));
+                                                            break;
+                                                        }
+                                                        progress = progress_rx.next() => {
+                                                            if let Some((message, percent)) = progress {
+                                                                cx.update(|cx| {
+                                                                    this.update(cx, |this, cx| {
+                                                                        this.sync_progress_message = Some(message);
+                                                                        this.sync_progress_percent = Some(percent);
+                                                                        cx.notify();
+                                                                    }).ok();
+                                                                }).ok();
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                let result = result.unwrap();
 
                                                 // Update UI based on result
                                                 match result {

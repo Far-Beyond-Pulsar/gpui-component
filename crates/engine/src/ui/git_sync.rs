@@ -311,12 +311,13 @@ pub fn serialize_commit(repo: &Repository, commit_hash: &str) -> Result<Vec<GitO
 
     let mut objects = Vec::new();
 
-    // Serialize the commit object
-    let commit_obj = repo.find_object(oid, None)?;
+    // Serialize the commit object using ODB
+    let odb = repo.odb()?;
+    let commit_obj = odb.read(oid)?;
     objects.push(GitObject {
         oid: oid.to_string(),
         object_type: GitObjectType::Commit,
-        data: commit_obj.as_blob().map(|b| b.content().to_vec()).unwrap_or_default(),
+        data: commit_obj.data().to_vec(),
     });
 
     // Serialize the tree and all blobs
@@ -333,12 +334,13 @@ pub fn serialize_commit(repo: &Repository, commit_hash: &str) -> Result<Vec<GitO
 
 /// Recursively serialize a tree and its contents
 fn serialize_tree(repo: &Repository, tree: &git2::Tree, objects: &mut Vec<GitObject>) -> Result<(), git2::Error> {
-    // Serialize tree object itself
-    let tree_obj = repo.find_object(tree.id(), None)?;
+    // Serialize tree object itself using ODB
+    let odb = repo.odb()?;
+    let tree_obj = odb.read(tree.id())?;
     objects.push(GitObject {
         oid: tree.id().to_string(),
         object_type: GitObjectType::Tree,
-        data: tree_obj.as_blob().map(|b| b.content().to_vec()).unwrap_or_default(),
+        data: tree_obj.data().to_vec(),
     });
 
     // Walk tree entries
@@ -368,26 +370,33 @@ fn serialize_tree(repo: &Repository, tree: &git2::Tree, objects: &mut Vec<GitObj
 
 /// Reconstruct git objects in local repository from serialized data
 pub fn reconstruct_objects(repo: &Repository, objects: Vec<GitObject>) -> Result<String, git2::Error> {
+    tracing::info!("GIT_SYNC: Reconstructing {} git objects in repository", objects.len());
     let mut commit_oid = None;
+    let odb = repo.odb()?;
 
-    // First pass: create all objects
+    // Write all objects to ODB
     for obj in objects {
-        let oid = match obj.object_type {
-            GitObjectType::Blob => {
-                // Create blob
-                repo.blob(&obj.data)?
-            }
-            GitObjectType::Tree => {
-                // Trees are more complex, we'll handle them via the commit
-                Oid::from_str(&obj.oid)?
-            }
+        let git_type = match obj.object_type {
+            GitObjectType::Blob => ObjectType::Blob,
+            GitObjectType::Tree => ObjectType::Tree,
             GitObjectType::Commit => {
                 commit_oid = Some(obj.oid.clone());
-                Oid::from_str(&obj.oid)?
+                ObjectType::Commit
             }
         };
+
+        // Write raw object data to ODB
+        let written_oid = odb.write(git_type, &obj.data)?;
+        tracing::debug!("GIT_SYNC: Wrote {:?} object {}", git_type, written_oid);
+
+        // Verify OID matches
+        let expected_oid = Oid::from_str(&obj.oid)?;
+        if written_oid != expected_oid {
+            tracing::warn!("GIT_SYNC: OID mismatch! Expected {}, got {}", obj.oid, written_oid);
+        }
     }
 
+    tracing::info!("GIT_SYNC: Successfully reconstructed all git objects");
     commit_oid.ok_or_else(|| git2::Error::from_str("No commit found in objects"))
 }
 
