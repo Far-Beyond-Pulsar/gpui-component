@@ -84,27 +84,9 @@ impl MultiplayerWindow {
                                                 session.connected_users = participants.clone();
                                             }
 
-                                            // Initialize git and commit current state (host only)
+                                            // Log project root for host
                                             if let Some(project_root) = &this.project_root {
-                                                tracing::info!("CREATE_SESSION: Initializing git at {:?}", project_root);
-                                                match git_sync::ensure_git_repo(project_root) {
-                                                    Ok(repo) => {
-                                                        // Commit current state
-                                                        match git_sync::commit_current_state(&repo, "Multiplayer session start") {
-                                                            Ok(commit_id) => {
-                                                                let commit_hash = commit_id.to_string();
-                                                                tracing::info!("CREATE_SESSION: Created commit {}", commit_hash);
-                                                                this.local_commit = Some(commit_hash);
-                                                            }
-                                                            Err(e) => {
-                                                                tracing::error!("CREATE_SESSION: Failed to create commit: {}", e);
-                                                            }
-                                                        }
-                                                    }
-                                                    Err(e) => {
-                                                        tracing::error!("CREATE_SESSION: Failed to init git: {}", e);
-                                                    }
-                                                }
+                                                tracing::info!("CREATE_SESSION: Project root at {:?}", project_root);
                                             }
 
                                             cx.notify();
@@ -199,17 +181,17 @@ impl MultiplayerWindow {
                                                     }).ok();
                                                 }).ok();
                                             }
-                                            ServerMessage::RequestProjectTree { from_peer_id, session_id: req_session_id, .. } => {
-                                                tracing::info!("CREATE_SESSION: Received RequestProjectTree from {}", from_peer_id);
+                                            ServerMessage::RequestFileManifest { from_peer_id, session_id: req_session_id, .. } => {
+                                                tracing::info!("CREATE_SESSION: Received RequestFileManifest from {}", from_peer_id);
 
-                                                // Send our commit hash to the requesting peer
-                                                let commit_result = cx.update(|cx| {
+                                                // Create and send file manifest
+                                                let project_root_result = cx.update(|cx| {
                                                     this.update(cx, |this, _cx| {
-                                                        this.local_commit.clone()
+                                                        this.project_root.clone()
                                                     }).ok()
-                                                }).ok().flatten();
+                                                }).ok().flatten().flatten();
 
-                                                if let Some(commit_hash) = commit_result.flatten() {
+                                                if let Some(project_root) = project_root_result {
                                                     let our_peer_id_result = cx.update(|cx| {
                                                         this.update(cx, |this, _cx| {
                                                             this.current_peer_id.clone()
@@ -217,14 +199,80 @@ impl MultiplayerWindow {
                                                     }).ok().flatten().flatten();
 
                                                     if let Some(our_peer_id) = our_peer_id_result {
-                                                        let client_guard = client.read().await;
-                                                        // Send commit hash as "tree_json" for backwards compatibility
-                                                        let _ = client_guard.send(ClientMessage::ProjectTreeResponse {
-                                                            session_id: req_session_id,
-                                                            peer_id: our_peer_id,
-                                                            tree_json: commit_hash,
-                                                        }).await;
-                                                        tracing::info!("CREATE_SESSION: Sent commit hash");
+                                                        // Create manifest in background thread
+                                                        let client_clone = client.clone();
+                                                        let session_id_clone = req_session_id.clone();
+                                                        std::thread::spawn(move || {
+                                                            tracing::info!("HOST: Creating file manifest");
+                                                            match simple_sync::create_manifest(&project_root) {
+                                                                Ok(manifest) => {
+                                                                    match serde_json::to_string(&manifest) {
+                                                                        Ok(manifest_json) => {
+                                                                            tokio::runtime::Runtime::new().unwrap().block_on(async {
+                                                                                let client_guard = client_clone.read().await;
+                                                                                let _ = client_guard.send(ClientMessage::FileManifest {
+                                                                                    session_id: session_id_clone,
+                                                                                    peer_id: our_peer_id,
+                                                                                    manifest_json,
+                                                                                }).await;
+                                                                                tracing::info!("HOST: Sent file manifest");
+                                                                            });
+                                                                        }
+                                                                        Err(e) => tracing::error!("HOST: Failed to serialize manifest: {}", e),
+                                                                    }
+                                                                }
+                                                                Err(e) => tracing::error!("HOST: Failed to create manifest: {}", e),
+                                                            }
+                                                        });
+                                                    }
+                                                }
+                                            }
+                                            ServerMessage::RequestFiles { from_peer_id, file_paths, session_id: req_session_id, .. } => {
+                                                tracing::info!("CREATE_SESSION: Received RequestFiles for {} files from {}", file_paths.len(), from_peer_id);
+
+                                                // Read and send requested files
+                                                let project_root_result = cx.update(|cx| {
+                                                    this.update(cx, |this, _cx| {
+                                                        this.project_root.clone()
+                                                    }).ok()
+                                                }).ok().flatten().flatten();
+
+                                                if let Some(project_root) = project_root_result {
+                                                    let our_peer_id_result = cx.update(|cx| {
+                                                        this.update(cx, |this, _cx| {
+                                                            this.current_peer_id.clone()
+                                                        }).ok()
+                                                    }).ok().flatten().flatten();
+
+                                                    if let Some(our_peer_id) = our_peer_id_result {
+                                                        // Read files in background thread
+                                                        let client_clone = client.clone();
+                                                        let session_id_clone = req_session_id.clone();
+                                                        std::thread::spawn(move || {
+                                                            tracing::info!("HOST: Reading {} files", file_paths.len());
+                                                            match simple_sync::read_files(&project_root, file_paths.clone()) {
+                                                                Ok(files_data) => {
+                                                                    // Serialize files data
+                                                                    match serde_json::to_string(&files_data) {
+                                                                        Ok(files_json) => {
+                                                                            tokio::runtime::Runtime::new().unwrap().block_on(async {
+                                                                                let client_guard = client_clone.read().await;
+                                                                                let _ = client_guard.send(ClientMessage::FilesChunk {
+                                                                                    session_id: session_id_clone,
+                                                                                    peer_id: our_peer_id,
+                                                                                    files_json,
+                                                                                    chunk_index: 0,
+                                                                                    total_chunks: 1,
+                                                                                }).await;
+                                                                                tracing::info!("HOST: Sent {} files", file_paths.len());
+                                                                            });
+                                                                        }
+                                                                        Err(e) => tracing::error!("HOST: Failed to serialize files: {}", e),
+                                                                    }
+                                                                }
+                                                                Err(e) => tracing::error!("HOST: Failed to read files: {}", e),
+                                                            }
+                                                        });
                                                     }
                                                 }
                                             }
@@ -383,36 +431,18 @@ impl MultiplayerWindow {
                                         connected_users: participants.clone(),
                                     });
 
-                                    // Initialize git and commit local state
+                                    // Log project root
                                     if let Some(project_root) = &this.project_root {
-                                        tracing::info!("JOIN_SESSION: Initializing git at {:?}", project_root);
-                                        match git_sync::ensure_git_repo(project_root) {
-                                            Ok(repo) => {
-                                                // Commit current state before syncing
-                                                match git_sync::commit_current_state(&repo, "Before multiplayer sync") {
-                                                    Ok(commit_id) => {
-                                                        let commit_hash = commit_id.to_string();
-                                                        tracing::info!("JOIN_SESSION: Created local commit {}", commit_hash);
-                                                        this.local_commit = Some(commit_hash);
-                                                    }
-                                                    Err(e) => {
-                                                        tracing::error!("JOIN_SESSION: Failed to create commit: {}", e);
-                                                    }
-                                                }
-                                            }
-                                            Err(e) => {
-                                                tracing::error!("JOIN_SESSION: Failed to init git: {}", e);
-                                            }
-                                        }
+                                        tracing::info!("JOIN_SESSION: Project root at {:?}", project_root);
                                     }
 
                                     cx.notify();
                                 }).ok();
                             }).ok();
 
-                            // Request project tree from host (first participant)
+                            // Request file manifest from host (first participant)
                             if let Some(host_peer_id) = participants.first() {
-                                tracing::info!("JOIN_SESSION: Requesting project tree from host {}", host_peer_id);
+                                tracing::info!("JOIN_SESSION: Requesting file manifest from host {}", host_peer_id);
 
                                 let our_peer_id_result = cx.update(|cx| {
                                     this.update(cx, |this, _cx| {
@@ -422,11 +452,11 @@ impl MultiplayerWindow {
 
                                 if let Some(our_peer_id) = our_peer_id_result {
                                     let client_guard = client.read().await;
-                                    let _ = client_guard.send(ClientMessage::RequestProjectTree {
+                                    let _ = client_guard.send(ClientMessage::RequestFileManifest {
                                         session_id: session_id.clone(),
                                         peer_id: our_peer_id,
                                     }).await;
-                                    tracing::info!("JOIN_SESSION: Sent RequestProjectTree");
+                                    tracing::info!("JOIN_SESSION: Sent RequestFileManifest");
                                 }
                             }
 
@@ -518,53 +548,49 @@ impl MultiplayerWindow {
                                             }).ok();
                                         }).ok();
                                     }
-                                    ServerMessage::ProjectTreeResponse { from_peer_id, tree_json, .. } => {
-                                        tracing::info!("JOIN_SESSION: Received commit hash from {}: {}", from_peer_id, tree_json);
+                                    ServerMessage::FileManifest { from_peer_id, manifest_json, .. } => {
+                                        tracing::info!("JOIN_SESSION: Received file manifest from {}", from_peer_id);
 
-                                        // tree_json now contains remote commit hash
-                                        let remote_commit_hash = tree_json;
-
-                                        // Check if we need to sync
-                                        let needs_sync = cx.update(|cx| {
+                                        // Parse manifest and compute diff
+                                        let project_root_result = cx.update(|cx| {
                                             this.update(cx, |this, _cx| {
-                                                if let Some(local_commit) = &this.local_commit {
-                                                    let differs = local_commit != &remote_commit_hash;
-                                                    tracing::info!("JOIN_SESSION: Local commit: {}, Remote commit: {}, Differs: {}",
-                                                        local_commit, remote_commit_hash, differs);
-                                                    differs
-                                                } else {
-                                                    tracing::info!("JOIN_SESSION: No local commit, sync needed");
-                                                    true
-                                                }
-                                            }).unwrap_or(true)
-                                        }).unwrap_or(true);
+                                                this.project_root.clone()
+                                            }).ok()
+                                        }).ok().flatten().flatten();
 
-                                        if needs_sync {
-                                            // Create a git diff indicating sync is needed
-                                            // Add placeholder to indicate we need to fetch the commit
-                                            let diff = git_sync::GitDiff {
-                                                changed_files: vec![
-                                                    git_sync::ChangedFile {
-                                                        path: format!("Syncing to commit {}", &remote_commit_hash[..8]),
-                                                        size: 0,
-                                                        status: git_sync::FileStatus::Modified,
+                                        if let Some(project_root) = project_root_result {
+                                            // Deserialize manifest
+                                            match serde_json::from_str::<simple_sync::FileManifest>(&manifest_json) {
+                                                Ok(remote_manifest) => {
+                                                    tracing::info!("JOIN_SESSION: Parsed manifest with {} files", remote_manifest.files.len());
+
+                                                    // Compute diff synchronously (fast enough for most cases)
+                                                    match simple_sync::compute_diff(&project_root, &remote_manifest) {
+                                                        Ok(diff) => {
+                                                            tracing::info!("JOIN_SESSION: Computed diff - {}", diff.summary());
+
+                                                            if diff.has_changes() {
+                                                                // Update UI to show pending sync
+                                                                cx.update(|cx| {
+                                                                    this.update(cx, |this, cx| {
+                                                                        this.pending_file_sync = Some((diff, from_peer_id.clone()));
+                                                                        this.current_tab = SessionTab::FileSync;
+                                                                        cx.notify();
+                                                                    }).ok()
+                                                                }).ok();
+                                                            } else {
+                                                                tracing::info!("JOIN_SESSION: No changes needed, already in sync");
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            tracing::error!("JOIN_SESSION: Failed to compute diff: {}", e);
+                                                        }
                                                     }
-                                                ],
-                                                deleted_files: vec![],
-                                                target_commit: remote_commit_hash.clone(),
-                                            };
-
-                                            tracing::info!("JOIN_SESSION: Commits differ, setting pending_file_sync");
-                                            cx.update(|cx| {
-                                                this.update(cx, |this, cx| {
-                                                    this.pending_file_sync = Some((diff, from_peer_id.clone()));
-                                                    this.current_tab = SessionTab::FileSync;
-                                                    tracing::info!("JOIN_SESSION: pending_file_sync set, notifying");
-                                                    cx.notify();
-                                                }).ok();
-                                            }).ok();
-                                        } else {
-                                            tracing::info!("JOIN_SESSION: Commits match, already in sync");
+                                                }
+                                                Err(e) => {
+                                                    tracing::error!("JOIN_SESSION: Failed to parse manifest: {}", e);
+                                                }
+                                            }
                                         }
                                     }
                                     ServerMessage::FileChunk { from_peer_id, file_path, offset, data, is_last, .. } => {
@@ -602,8 +628,8 @@ impl MultiplayerWindow {
                                             }
                                         }
                                     }
-                                    ServerMessage::GitObjectsChunk { from_peer_id, objects_json, chunk_index, total_chunks, .. } => {
-                                        tracing::info!("JOIN_SESSION: Received GitObjectsChunk from {} (chunk {}/{})",
+                                    ServerMessage::FilesChunk { from_peer_id, files_json, chunk_index, total_chunks, .. } => {
+                                        tracing::info!("JOIN_SESSION: Received FilesChunk from {} (chunk {}/{})",
                                             from_peer_id, chunk_index + 1, total_chunks);
 
                                         // Set progress indicator - receiving data
@@ -634,226 +660,68 @@ impl MultiplayerWindow {
                                                     }).ok();
                                                 }).ok();
 
-                                                // Clone data for blocking task
-                                                let objects_json_clone = objects_json.clone();
-                                                let project_root_clone = project_root.clone();
+                                                // Deserialize and apply files synchronously (fast enough for most cases)
+                                                tracing::info!("SYNC_TASK: Deserializing files from JSON ({} bytes)", files_json.len());
+                                                match serde_json::from_str::<Vec<(String, Vec<u8>)>>(&files_json) {
+                                                    Ok(files_data) => {
+                                                        tracing::info!("SYNC_TASK: Successfully deserialized {} files", files_data.len());
 
-                                                // Create channels for result and progress
-                                                let (result_tx, mut result_rx) = futures::channel::oneshot::channel();
-                                                let (progress_tx, mut progress_rx) = futures::channel::mpsc::unbounded();
+                                                        // Apply files using simple_sync
+                                                        match simple_sync::apply_files(&project_root, files_data) {
+                                                            Ok(written_count) => {
+                                                                tracing::info!("SYNC_SUCCESS: Applied {} files successfully", written_count);
 
-                                                // Do git operations in background thread
-                                                std::thread::spawn(move || {
-                                                    tracing::info!("SYNC_TASK: Starting git object processing in blocking thread");
-                                                    let _ = progress_tx.unbounded_send(("Deserializing git objects...".to_string(), 0.3));
-
-                                                    let result: Result<(String, usize), String> = match git_sync::ensure_git_repo(&project_root_clone) {
-                                                        Ok(repo) => {
-                                                            tracing::info!("SYNC_TASK: Opened git repository at {:?}", project_root_clone);
-
-                                                            // Deserialize git objects
-                                                            tracing::info!("SYNC_TASK: Deserializing git objects from JSON ({} bytes)", objects_json_clone.len());
-                                                            match serde_json::from_str::<Vec<git_sync::GitObject>>(&objects_json_clone) {
-                                                                Ok(git_objects) => {
-                                                                    tracing::info!("SYNC_TASK: Successfully deserialized {} git objects", git_objects.len());
-                                                                    let _ = progress_tx.unbounded_send(("Reconstructing git objects...".to_string(), 0.4));
-
-                                                                    // Find the commit hash
-                                                                    let commit_hash = git_objects.iter()
-                                                                        .find(|obj| obj.object_type == git_sync::GitObjectType::Commit)
-                                                                        .map(|obj| obj.oid.clone());
-
-                                                                    if let Some(commit_hash) = commit_hash {
-                                                                        tracing::info!("SYNC_TASK: Found commit hash: {}", commit_hash);
-
-                                                                        // Reconstruct git objects in the ODB
-                                                                        tracing::info!("SYNC_TASK: Reconstructing git objects in ODB...");
-                                                                        if let Err(e) = git_sync::reconstruct_objects(&repo, git_objects) {
-                                                                            tracing::error!("SYNC_TASK: Failed to reconstruct git objects: {}", e);
-                                                                        } else {
-                                                                            tracing::info!("SYNC_TASK: Git objects reconstructed successfully");
-                                                                        }
-                                                                        let _ = progress_tx.unbounded_send(("Extracting files from commit...".to_string(), 0.5));
-
-                                                                        // Extract files from the commit
-                                                                        tracing::info!("SYNC_TASK: Extracting files from commit {}", commit_hash);
-                                                                        match git_sync::extract_files_from_commit(&repo, &commit_hash) {
-                                                                            Ok(files) => {
-                                                                                tracing::info!("SYNC_TASK: Extracted {} files from commit", files.len());
-                                                                                let _ = progress_tx.unbounded_send((format!("Writing {} files to disk...", files.len()), 0.6));
-
-                                                                                // Write files to working directory
-                                                                                let mut written_count = 0;
-                                                                                let total_files = files.len() as f32;
-                                                                                for (i, (path, data)) in files.iter().enumerate() {
-                                                                                    let full_path = project_root_clone.join(path);
-                                                                                    tracing::debug!("SYNC_TASK: Writing file {:?} ({} bytes)", full_path, data.len());
-
-                                                                                    if let Some(parent) = full_path.parent() {
-                                                                                        if let Err(e) = std::fs::create_dir_all(parent) {
-                                                                                            tracing::error!("SYNC_TASK: Failed to create directory {:?}: {}", parent, e);
-                                                                                            continue;
-                                                                                        }
-                                                                                    }
-
-                                                                                    match std::fs::write(&full_path, data) {
-                                                                                        Ok(_) => {
-                                                                                            written_count += 1;
-                                                                                            tracing::debug!("SYNC_TASK: Successfully wrote {:?}", full_path);
-
-                                                                                            // Update progress every 10 files
-                                                                                            if written_count % 10 == 0 {
-                                                                                                let progress = 0.6 + (0.2 * (i as f32 / total_files));
-                                                                                                let _ = progress_tx.unbounded_send((
-                                                                                                    format!("Writing files... {}/{}", written_count, files.len()),
-                                                                                                    progress
-                                                                                                ));
-                                                                                            }
-                                                                                        }
-                                                                                        Err(e) => {
-                                                                                            tracing::error!("SYNC_TASK: Failed to write file {:?}: {}", full_path, e);
-                                                                                        }
-                                                                                    }
-                                                                                }
-
-                                                                                tracing::info!("SYNC_TASK: Successfully wrote {}/{} files to disk", written_count, files.len());
-
-                                                                                // Create a commit with the synced files
-                                                                                tracing::info!("SYNC_TASK: Creating commit for synced files...");
-                                                                                let _ = progress_tx.unbounded_send(("Creating commit...".to_string(), 0.85));
-                                                                                match git_sync::commit_current_state(&repo, "Synced from host") {
-                                                                                    Ok(commit_id) => {
-                                                                                        tracing::info!("SYNC_TASK: Created commit {} successfully", commit_id);
-                                                                                        let _ = progress_tx.unbounded_send(("Finalizing...".to_string(), 0.95));
-                                                                                        Ok((commit_id.to_string(), files.len()))
-                                                                                    }
-                                                                                    Err(e) => {
-                                                                                        tracing::error!("Failed to create commit: {}", e);
-                                                                                        Err(format!("Failed to create commit: {}", e))
-                                                                                    }
-                                                                                }
-                                                                            }
-                                                                            Err(e) => {
-                                                                                tracing::error!("Failed to extract files: {}", e);
-                                                                                Err(format!("Failed to extract files: {}", e))
-                                                                            }
-                                                                        }
-                                                                    } else {
-                                                                        tracing::error!("No commit found in git objects");
-                                                                        Err("No commit found in git objects".to_string())
-                                                                    }
-                                                                }
-                                                                Err(e) => {
-                                                                    tracing::error!("Failed to deserialize git objects: {}", e);
-                                                                    Err(format!("Failed to deserialize: {}", e))
-                                                                }
-                                                            }
-                                                        }
-                                                        Err(e) => {
-                                                            tracing::error!("Failed to open git repo: {}", e);
-                                                            Err(format!("Failed to open repo: {}", e))
-                                                        }
-                                                    };
-
-                                                    // Send result back
-                                                    let _ = result_tx.send(result);
-                                                });
-
-                                                // Poll progress updates while waiting for result
-                                                let mut result = None;
-                                                loop {
-                                                    futures::select! {
-                                                        res = result_rx => {
-                                                            result = Some(res.ok().unwrap_or(Err("Thread communication failed".to_string())));
-                                                            break;
-                                                        }
-                                                        progress = progress_rx.next() => {
-                                                            if let Some((message, percent)) = progress {
+                                                                // Update UI
                                                                 cx.update(|cx| {
                                                                     this.update(cx, |this, cx| {
-                                                                        this.sync_progress_message = Some(message);
-                                                                        this.sync_progress_percent = Some(percent);
+                                                                        tracing::info!("SYNC_SUCCESS: Updating UI state - clearing progress and pending sync");
+                                                                        this.file_sync_in_progress = false;
+                                                                        this.pending_file_sync = None;
+                                                                        this.sync_progress_message = Some(format!("Synced {} files successfully", written_count));
+                                                                        this.sync_progress_percent = Some(1.0);
+
+                                                                        tracing::info!("SYNC_SUCCESS: State updated - file_sync_in_progress={}, pending_file_sync={:?}",
+                                                                            this.file_sync_in_progress, this.pending_file_sync.is_some());
                                                                         cx.notify();
-                                                                    }).ok();
+                                                                    }).ok()
+                                                                }).ok();
+
+                                                                tracing::info!("SYNC_SUCCESS: File synchronization complete!");
+                                                            }
+                                                            Err(e) => {
+                                                                tracing::error!("SYNC_ERROR: Failed to apply files: {}", e);
+                                                                cx.update(|cx| {
+                                                                    this.update(cx, |this, cx| {
+                                                                        this.file_sync_in_progress = false;
+                                                                        this.pending_file_sync = None;
+                                                                        this.sync_progress_message = Some(format!("Sync failed: {}", e));
+                                                                        this.sync_progress_percent = None;
+                                                                        cx.notify();
+                                                                    }).ok()
                                                                 }).ok();
                                                             }
                                                         }
                                                     }
-                                                }
-                                                let result = result.unwrap();
-
-                                                // Update UI based on result
-                                                match result {
-                                                    Ok((new_commit, file_count)) => {
-                                                        tracing::info!("SYNC_SUCCESS: Synced {} files, new commit: {}", file_count, new_commit);
-
-                                                        // Clear sync state and show success
-                                                        cx.update(|cx| {
-                                                            this.update(cx, |this, cx| {
-                                                                tracing::info!("SYNC_SUCCESS: Updating UI state - clearing progress and pending sync");
-                                                                this.local_commit = Some(new_commit.clone());
-                                                                this.file_sync_in_progress = false;
-                                                                this.pending_file_sync = None;
-                                                                this.sync_progress_message = None;
-                                                                this.sync_progress_percent = None;
-
-                                                                tracing::info!("SYNC_SUCCESS: State updated - file_sync_in_progress={}, pending_file_sync={:?}",
-                                                                    this.file_sync_in_progress, this.pending_file_sync.is_some());
-                                                                cx.notify();
-                                                            }).ok();
-                                                        }).ok();
-
-                                                        tracing::info!("SYNC_SUCCESS: File synchronization complete!");
-                                                    }
-                                                    Err(err) => {
-                                                        tracing::error!("SYNC_ERROR: Sync failed with error: {}", err);
+                                                    Err(e) => {
+                                                        tracing::error!("SYNC_ERROR: Failed to deserialize files: {}", e);
                                                         cx.update(|cx| {
                                                             this.update(cx, |this, cx| {
                                                                 this.file_sync_in_progress = false;
                                                                 this.pending_file_sync = None;
-                                                                this.sync_progress_message = Some(format!("Sync failed: {}", err));
+                                                                this.sync_progress_message = Some(format!("Sync failed: {}", e));
                                                                 this.sync_progress_percent = None;
                                                                 cx.notify();
-                                                            }).ok();
+                                                            }).ok()
                                                         }).ok();
                                                     }
                                                 }
                                             }
                                         }
                                     }
-                                    ServerMessage::RequestProjectTree { from_peer_id, session_id: req_session_id, .. } => {
-                                        tracing::info!("JOIN_SESSION: Received RequestProjectTree from {}", from_peer_id);
+                                    ServerMessage::RequestFileManifest { from_peer_id, session_id: req_session_id, .. } => {
+                                        tracing::info!("JOIN_SESSION: Received RequestFileManifest from {}", from_peer_id);
 
-                                        // Send our commit hash to the requesting peer
-                                        let commit_result = cx.update(|cx| {
-                                            this.update(cx, |this, _cx| {
-                                                this.local_commit.clone()
-                                            }).ok()
-                                        }).ok().flatten();
-
-                                        if let Some(commit_hash) = commit_result.flatten() {
-                                            let our_peer_id_result = cx.update(|cx| {
-                                                this.update(cx, |this, _cx| {
-                                                    this.current_peer_id.clone()
-                                                }).ok()
-                                            }).ok().flatten().flatten();
-
-                                            if let Some(our_peer_id) = our_peer_id_result {
-                                                let client_guard = client.read().await;
-                                                // Send commit hash as "tree_json" for backwards compatibility
-                                                let _ = client_guard.send(ClientMessage::ProjectTreeResponse {
-                                                    session_id: req_session_id,
-                                                    peer_id: our_peer_id,
-                                                    tree_json: commit_hash,
-                                                }).await;
-                                                tracing::info!("JOIN_SESSION: Sent commit hash");
-                                            }
-                                        }
-                                    }
-                                    ServerMessage::RequestGitObjects { from_peer_id, commit_hash, session_id: req_session_id, .. } => {
-                                        tracing::info!("JOIN_SESSION: Received RequestGitObjects for commit {} from {}", commit_hash, from_peer_id);
-
-                                        // Serialize the requested commit and send git objects
+                                        // Create and send file manifest (same logic as in CREATE_SESSION)
                                         let project_root_result = cx.update(|cx| {
                                             this.update(cx, |this, _cx| {
                                                 this.project_root.clone()
@@ -861,51 +729,88 @@ impl MultiplayerWindow {
                                         }).ok().flatten().flatten();
 
                                         if let Some(project_root) = project_root_result {
-                                            let commit_hash_for_log = commit_hash.clone();
-                                            let session_id_clone = req_session_id.clone();
-                                            let client_clone = client.clone();
-
-                                            // Get peer_id before spawn
-                                            let our_peer_id = cx.update(|cx| {
+                                            let our_peer_id_result = cx.update(|cx| {
                                                 this.update(cx, |this, _cx| {
                                                     this.current_peer_id.clone()
                                                 }).ok()
                                             }).ok().flatten().flatten();
 
-                                            // Do git operations in a separate thread to avoid freezing
-                                            std::thread::spawn(move || {
-                                                tracing::info!("HOST: Serializing commit in background thread");
-                                                match git_sync::ensure_git_repo(&project_root) {
-                                                    Ok(repo) => {
-                                                        match git_sync::serialize_commit(&repo, &commit_hash) {
-                                                            Ok(git_objects) => {
-                                                                tracing::info!("HOST: Serialized {} objects, converting to JSON", git_objects.len());
-                                                                match serde_json::to_string(&git_objects) {
-                                                                    Ok(objects_json) => {
-                                                                        if let Some(peer_id) = our_peer_id {
-                                                                            // Send via blocking runtime
-                                                                            tokio::runtime::Runtime::new().unwrap().block_on(async {
-                                                                                let client_guard = client_clone.read().await;
-                                                                                let _ = client_guard.send(ClientMessage::GitObjectsChunk {
-                                                                                    session_id: session_id_clone,
-                                                                                    peer_id,
-                                                                                    objects_json,
-                                                                                    chunk_index: 0,
-                                                                                    total_chunks: 1,
-                                                                                }).await;
-                                                                                tracing::info!("HOST: Sent git objects for commit {}", commit_hash_for_log);
-                                                                            });
-                                                                        }
-                                                                    }
-                                                                    Err(e) => tracing::error!("HOST: Failed to serialize to JSON: {}", e),
+                                            if let Some(our_peer_id) = our_peer_id_result {
+                                                // Create manifest in background thread
+                                                let client_clone = client.clone();
+                                                let session_id_clone = req_session_id.clone();
+                                                std::thread::spawn(move || {
+                                                    tracing::info!("PEER: Creating file manifest");
+                                                    match simple_sync::create_manifest(&project_root) {
+                                                        Ok(manifest) => {
+                                                            match serde_json::to_string(&manifest) {
+                                                                Ok(manifest_json) => {
+                                                                    tokio::runtime::Runtime::new().unwrap().block_on(async {
+                                                                        let client_guard = client_clone.read().await;
+                                                                        let _ = client_guard.send(ClientMessage::FileManifest {
+                                                                            session_id: session_id_clone,
+                                                                            peer_id: our_peer_id,
+                                                                            manifest_json,
+                                                                        }).await;
+                                                                        tracing::info!("PEER: Sent file manifest");
+                                                                    });
                                                                 }
+                                                                Err(e) => tracing::error!("PEER: Failed to serialize manifest: {}", e),
                                                             }
-                                                            Err(e) => tracing::error!("HOST: Git serialize failed: {}", e),
                                                         }
+                                                        Err(e) => tracing::error!("PEER: Failed to create manifest: {}", e),
                                                     }
-                                                    Err(e) => tracing::error!("HOST: Git repo error: {}", e),
-                                                }
-                                            });
+                                                });
+                                            }
+                                        }
+                                    }
+                                    ServerMessage::RequestFiles { from_peer_id, file_paths, session_id: req_session_id, .. } => {
+                                        tracing::info!("JOIN_SESSION: Received RequestFiles for {} files from {}", file_paths.len(), from_peer_id);
+
+                                        // Read and send requested files (same logic as in CREATE_SESSION)
+                                        let project_root_result = cx.update(|cx| {
+                                            this.update(cx, |this, _cx| {
+                                                this.project_root.clone()
+                                            }).ok()
+                                        }).ok().flatten().flatten();
+
+                                        if let Some(project_root) = project_root_result {
+                                            let our_peer_id_result = cx.update(|cx| {
+                                                this.update(cx, |this, _cx| {
+                                                    this.current_peer_id.clone()
+                                                }).ok()
+                                            }).ok().flatten().flatten();
+
+                                            if let Some(our_peer_id) = our_peer_id_result {
+                                                // Read files in background thread
+                                                let client_clone = client.clone();
+                                                let session_id_clone = req_session_id.clone();
+                                                std::thread::spawn(move || {
+                                                    tracing::info!("PEER: Reading {} files", file_paths.len());
+                                                    match simple_sync::read_files(&project_root, file_paths.clone()) {
+                                                        Ok(files_data) => {
+                                                            // Serialize files data
+                                                            match serde_json::to_string(&files_data) {
+                                                                Ok(files_json) => {
+                                                                    tokio::runtime::Runtime::new().unwrap().block_on(async {
+                                                                        let client_guard = client_clone.read().await;
+                                                                        let _ = client_guard.send(ClientMessage::FilesChunk {
+                                                                            session_id: session_id_clone,
+                                                                            peer_id: our_peer_id,
+                                                                            files_json,
+                                                                            chunk_index: 0,
+                                                                            total_chunks: 1,
+                                                                        }).await;
+                                                                        tracing::info!("PEER: Sent {} files", file_paths.len());
+                                                                    });
+                                                                }
+                                                                Err(e) => tracing::error!("PEER: Failed to serialize files: {}", e),
+                                                            }
+                                                        }
+                                                        Err(e) => tracing::error!("PEER: Failed to read files: {}", e),
+                                                    }
+                                                });
+                                            }
                                         }
                                     }
                                     ServerMessage::RequestFile { from_peer_id, file_path, session_id: req_session_id, .. } => {

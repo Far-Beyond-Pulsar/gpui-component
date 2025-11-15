@@ -263,8 +263,9 @@ pub fn read_files(
     for relative_path in file_paths {
         let full_path = project_root.join(&relative_path);
         let data = fs::read(&full_path)?;
+        let data_len = data.len();
         files.push((relative_path, data));
-        tracing::debug!("SIMPLE_SYNC: Read {:?} ({} bytes)", full_path, data.len());
+        tracing::debug!("SIMPLE_SYNC: Read {:?} ({} bytes)", full_path, data_len);
     }
 
     tracing::info!("SIMPLE_SYNC: Successfully read {} files", files.len());

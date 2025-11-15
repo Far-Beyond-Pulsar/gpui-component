@@ -14,7 +14,6 @@ use gpui_component::{
 use super::state::MultiplayerWindow;
 use super::types::*;
 use super::utils::format_timestamp;
-use crate::ui::git_sync::GitDiff;
 
 impl MultiplayerWindow {
     pub(super) fn render_connection_form(&self, cx: &mut Context<MultiplayerWindow>) -> impl IntoElement {
