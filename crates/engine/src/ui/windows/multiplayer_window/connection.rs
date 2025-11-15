@@ -638,7 +638,6 @@ impl MultiplayerWindow {
                                                 let project_root_clone = project_root.clone();
 
                                                 // Update progress - extracting
-                                                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                                                 cx.update(|cx| {
                                                     this.update(cx, |this, cx| {
                                                         this.sync_progress_message = Some("Extracting files...".to_string());
@@ -754,9 +753,6 @@ impl MultiplayerWindow {
                                                     }).ok();
                                                 }).ok();
 
-                                                // Small delay to show progress
-                                                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-
                                                 // Update UI based on result
                                                 match result {
                                                     Ok(Ok((new_commit, file_count))) => {
@@ -848,41 +844,55 @@ impl MultiplayerWindow {
                                         }).ok().flatten().flatten();
 
                                         if let Some(project_root) = project_root_result {
-                                            match git_sync::ensure_git_repo(&project_root) {
-                                                Ok(repo) => {
-                                                    match git_sync::serialize_commit(&repo, &commit_hash) {
-                                                        Ok(git_objects) => {
-                                                            // Serialize to JSON
-                                                            match serde_json::to_string(&git_objects) {
-                                                                Ok(objects_json) => {
-                                                                    // For simplicity, send as single chunk for now
-                                                                    // TODO: Split large commits into multiple chunks
-                                                                    let our_peer_id_result = cx.update(|cx| {
-                                                                        this.update(cx, |this, _cx| {
-                                                                            this.current_peer_id.clone()
-                                                                        }).ok()
-                                                                    }).ok().flatten().flatten();
+                                            let commit_hash_for_blocking = commit_hash.clone();
+                                            let commit_hash_for_log = commit_hash.clone();
+                                            let session_id_clone = req_session_id.clone();
+                                            let client_clone = client.clone();
 
-                                                                    if let Some(our_peer_id) = our_peer_id_result {
-                                                                        let client_guard = client.read().await;
-                                                                        let _ = client_guard.send(ClientMessage::GitObjectsChunk {
-                                                                            session_id: req_session_id,
-                                                                            peer_id: our_peer_id,
-                                                                            objects_json,
-                                                                            chunk_index: 0,
-                                                                            total_chunks: 1,
-                                                                        }).await;
-                                                                        tracing::info!("JOIN_SESSION: Sent git objects for commit {}", commit_hash);
-                                                                    }
-                                                                }
-                                                                Err(e) => tracing::error!("Failed to serialize git objects: {}", e),
-                                                            }
+                                            // Get peer_id before spawn
+                                            let our_peer_id = cx.update(|cx| {
+                                                this.update(cx, |this, _cx| {
+                                                    this.current_peer_id.clone()
+                                                }).ok()
+                                            }).ok().flatten().flatten();
+
+                                            // Do git operations in spawn_blocking to avoid freezing
+                                            tokio::spawn(async move {
+                                                let result = tokio::task::spawn_blocking(move || {
+                                                    tracing::info!("HOST: Serializing commit in spawn_blocking");
+                                                    match git_sync::ensure_git_repo(&project_root) {
+                                                        Ok(repo) => {
+                                                            git_sync::serialize_commit(&repo, &commit_hash_for_blocking)
+                                                                .map_err(|e| format!("Serialize error: {}", e))
                                                         }
-                                                        Err(e) => tracing::error!("Failed to serialize commit: {}", e),
+                                                        Err(e) => Err(format!("Git repo error: {}", e)),
                                                     }
+                                                }).await;
+
+                                                match result {
+                                                    Ok(Ok(git_objects)) => {
+                                                        tracing::info!("HOST: Serialized {} objects, converting to JSON", git_objects.len());
+                                                        match serde_json::to_string(&git_objects) {
+                                                            Ok(objects_json) => {
+                                                                if let Some(peer_id) = our_peer_id {
+                                                                    let client_guard = client_clone.read().await;
+                                                                    let _ = client_guard.send(ClientMessage::GitObjectsChunk {
+                                                                        session_id: session_id_clone,
+                                                                        peer_id,
+                                                                        objects_json,
+                                                                        chunk_index: 0,
+                                                                        total_chunks: 1,
+                                                                    }).await;
+                                                                    tracing::info!("HOST: Sent git objects for commit {}", commit_hash_for_log);
+                                                                }
+                                                            }
+                                                            Err(e) => tracing::error!("HOST: Failed to serialize to JSON: {}", e),
+                                                        }
+                                                    }
+                                                    Ok(Err(e)) => tracing::error!("HOST: Git operation failed: {}", e),
+                                                    Err(e) => tracing::error!("HOST: Spawn blocking panicked: {}", e),
                                                 }
-                                                Err(e) => tracing::error!("Failed to open git repo: {}", e),
-                                            }
+                                            });
                                         }
                                     }
                                     ServerMessage::RequestFile { from_peer_id, file_path, session_id: req_session_id, .. } => {
