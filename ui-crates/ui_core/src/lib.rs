@@ -1,0 +1,13 @@
+//! Core UI Application
+//!
+//! Core application components including PulsarApp and PulsarRoot
+
+pub mod app;
+pub mod shared;
+
+// Re-export main app types
+pub use app::{PulsarApp, PulsarRoot, ToggleCommandPalette, ToggleFileManager, ToggleProblems, ToggleTerminal};
+pub use shared::*;
+
+// Re-export file_utils from ui_common
+pub use ui_common::file_utils;

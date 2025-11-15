@@ -1,0 +1,24 @@
+[package]
+name = "ui_file_manager"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# UI framework
+gpui.workspace = true
+ui.workspace = true
+
+# UI crates
+ui_common.workspace = true
+ui_core.workspace = true
+
+# Engine (file_manager doesn't need engine deps)
+
+# File system
+walkdir = "2.4"
+notify.workspace = true
+
+# Utilities
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }

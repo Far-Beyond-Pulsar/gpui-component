@@ -4,7 +4,7 @@ edition = "2021"
 homepage = "https://github.com/longbridge/gpui-component"
 keywords = ["GPUI", "application", "desktop", "ui"]
 license-file = "LICENSE-APACHE"
-name = "gpui-component"
+name = "ui"
 publish = true
 version = "0.1.0"
 
@@ -137,6 +137,14 @@ tree-sitter-yaml = { version = "0.7.1", optional = true }
 tree-sitter-zig = { version = "1.1.2", optional = true }
 enum-iterator = "2.3.0"
 
+# Engine type dependencies (from copied modules)
+toml = "0.8"
+syn = { version = "2.0", features = ["full", "parsing", "extra-traits", "visit", "visit-mut"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+rust-embed = { version = "6", features = ["interpolate-folder-path", "include-exclude"] }
+prettyplease = "0.2"
+
 # Windows DirectX for shared texture opening (zero-copy DX12<->DX11)
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [
@@ -146,7 +154,6 @@ windows = { version = "0.58", features = [
     "Win32_Graphics_Dxgi_Common",
     "Win32_Foundation",
 ] }
-
 
 [dev-dependencies]
 indoc = "2"

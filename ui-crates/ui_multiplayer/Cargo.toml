@@ -1,0 +1,26 @@
+[package]
+name = "ui_multiplayer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# UI framework
+gpui.workspace = true
+ui.workspace = true
+
+# UI crates
+ui_common.workspace = true
+ui_core.workspace = true
+
+# Engine
+engine_state.workspace = true
+engine_backend.workspace = true
+
+# Utilities
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.0", features = ["v4"] }
+tokio = { version = "1", features = ["full"] }

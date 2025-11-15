@@ -53,19 +53,65 @@
 //! - **Common**: Cross-cutting concerns used by multiple windows
 //! - **Clear hierarchy**: Windows use common/core/editors, not vice versa
 
-pub mod common;
-pub mod core;
-pub mod editors;
-pub mod git_sync;
-pub mod multiuser_client;
-pub mod p2p_connection;
-pub mod simple_sync;
-pub mod windows;
+//! UI Module
+//! 
+//! This module re-exports all UI components from the ui-crates.
+//! UI implementations are in separate crates under ui-crates/ for modularity.
 
-// Re-export core types for backward compatibility and convenience
-pub use common::{GpuRenderer, GlobalRustAnalyzerCompletionProvider, RustAnalyzerManager};
+// Re-export all UI crates
+pub use ui_common as common;
+pub use ui_core as core;
 
-pub use core::{PulsarApp, PulsarRoot, ToggleCommandPalette};
+// Re-export core types for convenience
+pub use ui_common::{GpuRenderer, GlobalRustAnalyzerCompletionProvider, RustAnalyzerManager, CommandPalette, Menu, AppTitleBar};
+pub use ui_core::{PulsarApp, PulsarRoot, ToggleCommandPalette, ToggleFileManager, ToggleProblems, ToggleTerminal};
+
+// Re-export windows
+pub use ui_entry::{EntryWindow, LoadingWindow, LoadingComplete};
+pub use ui_editor::{
+    ScriptEditorPanel, LevelEditorPanel, BlueprintEditorPanel, DawEditorPanel,
+    FileManagerDrawer, TerminalDrawer, ProblemsDrawer,
+    TextEditorEvent,
+};
+pub use ui_settings::SettingsWindow;
+pub use ui_terminal::TerminalWindow;
+pub use ui_multiplayer::MultiplayerWindow;
+pub use ui_problems::ProblemsWindow;
+pub use ui_file_manager::FileManagerWindow;
+
+// Backend networking (moved to engine_backend - re-exported for compatibility)
+pub mod multiuser_client {
+    pub use engine_backend::subsystems::networking::multiuser::*;
+}
+pub mod p2p_connection {
+    pub use engine_backend::subsystems::networking::p2p::*;
+}
+pub mod git_sync {
+    pub use engine_backend::subsystems::networking::git_sync::*;
+}
+pub mod simple_sync {
+    pub use engine_backend::subsystems::networking::simple_sync::*;
+}
+
+// Re-export editor stuff that other code expects
+pub mod windows {
+    pub use ui_entry::{EntryWindow, LoadingWindow, LoadingComplete};
+    pub use ui_editor as editor;
+    pub use ui_editor::{
+        ScriptEditorPanel, LevelEditorPanel, BlueprintEditorPanel, DawEditorPanel,
+        FileManagerDrawer, TerminalDrawer, ProblemsDrawer,
+    };
+    pub use ui_settings::SettingsWindow;
+    pub use ui_terminal::TerminalWindow;
+    pub use ui_multiplayer::MultiplayerWindow;
+    pub use ui_problems::ProblemsWindow;
+    pub use ui_file_manager::FileManagerWindow;
+    
+    // Re-export entry_screen for compatibility
+    pub mod entry_screen {
+        pub use ui_entry::entry_screen::*;
+    }
+}
 
 pub use windows::{
     BlueprintEditorPanel, DawEditorPanel, EntryWindow, FileManagerDrawer, FileManagerWindow,

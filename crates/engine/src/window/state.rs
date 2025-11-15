@@ -41,7 +41,7 @@
 //! ```
 
 use crate::assets::Assets;
-use crate::engine_state::WindowRequest;
+use engine_state::WindowRequest;
 use crate::window::events::{MotionSmoother, SimpleClickState};
 use gpui::*;
 use gpui_component::Root;

@@ -1,0 +1,20 @@
+[package]
+name = "ui_problems"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# UI framework
+gpui.workspace = true
+ui.workspace = true
+
+# UI crates
+ui_common.workspace = true
+ui_core.workspace = true
+
+# Engine (problems doesn't need engine deps)
+
+# Utilities
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
