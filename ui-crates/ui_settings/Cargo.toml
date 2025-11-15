@@ -1,0 +1,25 @@
+[package]
+name = "ui_settings"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# UI framework
+gpui.workspace = true
+ui.workspace = true
+
+# UI crates
+ui_common.workspace = true
+ui_core.workspace = true
+
+# Engine
+engine_state.workspace = true
+
+# Configuration
+toml = "0.8"
+
+# Utilities
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

@@ -37,7 +37,6 @@
 //! ```
 
 use crate::assets::Assets;
-use crate::engine_state::{EngineState, WindowRequest};
 use crate::OpenSettings;  // Import the OpenSettings action from main/root
 use crate::ui::core::app::{PulsarApp, PulsarRoot, ToggleCommandPalette};
 use crate::ui::windows::entry_window::EntryWindow;
@@ -45,6 +44,7 @@ use crate::ui::windows::loading_window::{LoadingComplete, LoadingWindow};
 use crate::ui::windows::entry_screen::project_selector::ProjectSelected;
 use crate::ui::windows::settings_window::SettingsWindow;
 use crate::window::{convert_modifiers, convert_mouse_button, WindowState};
+use engine_state::{EngineState, WindowRequest};
 use gpui::*;
 use gpui_component::Root;
 use std::collections::HashMap;
@@ -271,20 +271,25 @@ impl ApplicationHandler for WinitGpuiApp {
                     }
 
                     // First check if this window already has a renderer
-                    if let Some(gpu_renderer) = self.engine_state.get_window_gpu_renderer(window_id_u64) {
-                        *bevy_renderer = Some(gpu_renderer);
-                        println!("[RENDERER] ≡ƒÄ« Γ£à Loaded GPU renderer for window {}!", window_id_u64);
+                    if let Some(renderer_handle) = self.engine_state.get_window_gpu_renderer(window_id_u64) {
+                        // Try to downcast from Any to the concrete type
+                        if let Ok(gpu_renderer) = renderer_handle.clone().downcast::<std::sync::Mutex<crate::ui::common::services::gpu_renderer::GpuRenderer>>() {
+                            *bevy_renderer = Some(gpu_renderer);
+                            println!("[RENDERER] ≡ƒÄ« Γ£à Loaded GPU renderer for window {}!", window_id_u64);
+                        }
                     }
                     // Otherwise, check if there's a pending renderer we can claim
-                    else if let Some(pending_renderer) = self.engine_state.get_window_gpu_renderer(0) {
-                        // Claim the pending renderer for this window
-                        self.engine_state.set_window_gpu_renderer(window_id_u64, pending_renderer.clone());
-                        self.engine_state.remove_window_gpu_renderer(0); // Remove the sentinel
-                        self.engine_state.set_metadata("has_pending_viewport_renderer".to_string(), "false".to_string());
-
-                        *bevy_renderer = Some(pending_renderer);
-                        println!("[RENDERER] ≡ƒÄ» Claimed pending GPU renderer for window {}!", window_id_u64);
-                        println!("[RENDERER] Γ£à Bevy will now render to this window's back buffer");
+                    else if let Some(renderer_handle) = self.engine_state.get_window_gpu_renderer(0) {
+                        // Try to downcast and claim
+                        if let Ok(gpu_renderer) = renderer_handle.clone().downcast::<std::sync::Mutex<crate::ui::common::services::gpu_renderer::GpuRenderer>>() {
+                            self.engine_state.set_window_gpu_renderer(window_id_u64, gpu_renderer.clone() as Arc<dyn std::any::Any + Send + Sync>);
+                            self.engine_state.remove_window_gpu_renderer(0);
+                            self.engine_state.set_metadata("has_pending_viewport_renderer".to_string(), "false".to_string());
+                            
+                            *bevy_renderer = Some(gpu_renderer);
+                            println!("[RENDERER] ≡ƒÄ» Claimed pending GPU renderer for window {}!", window_id_u64);
+                            println!("[RENDERER] Γ£à Bevy will now render to this window's back buffer");
+                        }
                     }
                 }
 
@@ -1191,7 +1196,7 @@ impl ApplicationHandler for WinitGpuiApp {
                 let engine_state = engine_state_for_actions.clone();
                 app.on_action(move |_: &OpenSettings, _app_cx| {
                     println!("ΓÜÖ∩╕Å  Settings window requested - creating new window!");
-                    engine_state.request_window(crate::engine_state::WindowRequest::Settings);
+                    engine_state.request_window(WindowRequest::Settings);
                 });
 
                 app.activate(true);

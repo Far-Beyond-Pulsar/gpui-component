@@ -1,0 +1,34 @@
+[package]
+name = "ui_common"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# UI framework
+gpui.workspace = true
+ui.workspace = true
+
+# Engine
+engine_backend.workspace = true
+engine_state.workspace = true
+
+# LSP
+lsp-types.workspace = true
+ropey.workspace = true
+
+# Code editing
+tree-sitter = "0.20"
+tree-sitter-rust = "0.20"
+
+# Terminal
+alacritty_terminal = { git = "https://github.com/zed-industries/alacritty.git", branch = "add-hush-login-flag" }
+portable-pty = "0.8"
+
+# Utilities
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+regex = "1.10"
+tokio = { version = "1", features = ["full"] }
+flume = "0.11"

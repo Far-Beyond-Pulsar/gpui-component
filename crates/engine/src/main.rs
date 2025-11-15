@@ -40,18 +40,21 @@ use windows::{
     },
 };
 
-// Engine modules
-mod assets;
-mod compiler;
-mod engine_state;
-mod graph;
-pub mod settings;
-pub mod themes;
-mod ui;
-mod window;  // New window management module
+//! Pulsar Engine Binary
+//!
+//! Main executable for the Pulsar Engine
 
-pub use assets::Assets;
-pub use engine_state::EngineState;
+// Use the library
+use pulsar_engine::*;
+
+// Binary-only modules
+mod render;
+mod subsystems;
+mod ui;
+mod window;  // Winit integration
+
+// Use engine_state crate
+pub use engine_state::{EngineState, WindowRequest, WindowRequestSender, WindowRequestReceiver, window_request_channel};
 
 // Engine constants
 pub const ENGINE_NAME: &str = env!("CARGO_PKG_NAME");
@@ -63,8 +66,7 @@ pub const ENGINE_REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 pub const ENGINE_DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 pub const ENGINE_LICENSE_FILE: &str = env!("CARGO_PKG_LICENSE_FILE");
 
-// Re-export WindowRequest from engine_state
-pub use crate::engine_state::WindowRequest;
+// WindowRequest now comes from engine_state crate
 
 // Engine actions
 #[derive(Action, Clone, PartialEq, Eq, Deserialize)]

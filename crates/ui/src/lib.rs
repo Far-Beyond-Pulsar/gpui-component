@@ -1,5 +1,12 @@
 #![allow(warnings)]
 
+// Engine core types (used by UI components)
+pub mod assets;
+pub mod compiler;
+pub mod graph;
+pub mod settings;
+pub mod themes;
+
 mod event;
 mod global_state;
 mod icon;
@@ -92,6 +99,22 @@ pub use window_border::{window_border, window_paddings, WindowBorder};
 pub use icon::*;
 pub use kbd::*;
 pub use theme::*;
+
+// Re-export engine types for UI crates
+pub use assets::Assets;
+pub use graph::*;
+pub use compiler::*;
+pub use settings::*;
+pub use themes::*;
+
+// Engine constants (will be set by engine binary)
+pub const ENGINE_NAME: &str = "Pulsar Engine";
+pub const ENGINE_VERSION: &str = "0.1.45";
+pub const ENGINE_LICENSE: &str = "MIT/Apache-2.0";
+pub const ENGINE_AUTHORS: &str = "Pulsar Contributors";
+
+// Common actions
+gpui::actions!(ui, [OpenSettings]);
 
 use std::ops::Deref;
 

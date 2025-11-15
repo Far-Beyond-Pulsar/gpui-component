@@ -1,0 +1,28 @@
+[package]
+name = "ui_terminal"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# UI framework
+gpui.workspace = true
+ui.workspace = true
+
+# UI crates
+ui_common.workspace = true
+
+# Engine (terminal doesn't need engine deps)
+
+# Terminal
+alacritty_terminal = { git = "https://github.com/zed-industries/alacritty.git", branch = "add-hush-login-flag" }
+portable-pty = "0.8"
+
+# System
+which = "6"
+libc = "0.2"
+
+# Utilities
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+smallvec = "1"

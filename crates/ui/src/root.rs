@@ -255,7 +255,7 @@ impl Root {
         let root = window
             .root::<Root>()
             .flatten()
-            .expect("BUG: window first layer should be a gpui_component::Root.");
+            .expect("BUG: window first layer should be a crate::Root.");
 
         root.update(cx, |root, cx| f(root, window, cx))
     }

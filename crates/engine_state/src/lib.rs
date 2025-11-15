@@ -1,0 +1,130 @@
+//! Engine State Management
+//!
+//! Centralized state management for the Pulsar Engine.
+//! Provides thread-safe storage for:
+//! - Metadata (key-value pairs)
+//! - GPU renderers (per-window)
+//! - Communication channels
+//! - Global registries
+
+mod metadata;
+mod renderers;
+mod channels;
+
+pub use metadata::Metadata;
+pub use renderers::{RendererRegistry, RendererHandle};
+pub use channels::{WindowRequest, WindowRequestSender, WindowRequestReceiver, window_request_channel};
+
+use std::sync::Arc;
+use parking_lot::RwLock;
+
+/// Global engine state
+#[derive(Clone)]
+pub struct EngineState {
+    inner: Arc<RwLock<EngineStateInner>>,
+}
+
+struct EngineStateInner {
+    metadata: Metadata,
+    renderers: RendererRegistry,
+    window_count: usize,
+}
+
+impl EngineState {
+    /// Create new engine state
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(EngineStateInner {
+                metadata: Metadata::new(),
+                renderers: RendererRegistry::new(),
+                window_count: 0,
+            })),
+        }
+    }
+
+    /// Add window sender (builder pattern)
+    pub fn with_window_sender(self, _sender: WindowRequestSender) -> Self {
+        // For now, we don't store the sender in the state
+        // The engine manages it separately
+        self
+    }
+
+    /// Get metadata
+    pub fn metadata(&self) -> Metadata {
+        self.inner.read().metadata.clone()
+    }
+
+    /// Set metadata key-value pair (convenience method)
+    pub fn set_metadata(&self, key: String, value: String) {
+        self.metadata().set(key, value);
+    }
+
+    /// Get metadata value (convenience method)
+    pub fn get_metadata(&self, key: &str) -> Option<String> {
+        self.metadata().get(key)
+    }
+
+    /// Get renderer registry
+    pub fn renderers(&self) -> RendererRegistry {
+        self.inner.read().renderers.clone()
+    }
+
+    /// Request a window (convenience method - requires manual sender setup)
+    pub fn request_window(&self, _request: WindowRequest) {
+        // This is a placeholder - actual implementation would need the sender
+        // For now, windows are requested via the channel directly
+    }
+
+    /// Set window GPU renderer
+    pub fn set_window_gpu_renderer(&self, window_id: u64, renderer: RendererHandle) {
+        self.renderers().register(window_id, renderer);
+    }
+
+    /// Get window GPU renderer
+    pub fn get_window_gpu_renderer(&self, window_id: u64) -> Option<RendererHandle> {
+        self.renderers().get(window_id)
+    }
+
+    /// Remove window GPU renderer
+    pub fn remove_window_gpu_renderer(&self, window_id: u64) -> Option<RendererHandle> {
+        self.renderers().unregister(window_id)
+    }
+
+    /// Increment window count
+    pub fn increment_window_count(&self) -> usize {
+        let mut inner = self.inner.write();
+        inner.window_count += 1;
+        inner.window_count
+    }
+
+    /// Decrement window count
+    pub fn decrement_window_count(&self) -> usize {
+        let mut inner = self.inner.write();
+        inner.window_count = inner.window_count.saturating_sub(1);
+        inner.window_count
+    }
+
+    /// Get window count
+    pub fn window_count(&self) -> usize {
+        self.inner.read().window_count
+    }
+
+    /// Set global instance
+    pub fn set_global(self) {
+        GLOBAL_STATE.set(self).ok();
+    }
+
+    /// Get global instance (returns Option for compatibility)
+    pub fn global() -> Option<&'static Self> {
+        GLOBAL_STATE.get()
+    }
+}
+
+impl Default for EngineState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+use std::sync::OnceLock;
+static GLOBAL_STATE: OnceLock<EngineState> = OnceLock::new();
