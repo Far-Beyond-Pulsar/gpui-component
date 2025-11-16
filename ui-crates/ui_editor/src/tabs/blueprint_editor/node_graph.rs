@@ -282,8 +282,13 @@ impl NodeGraphRenderer {
                         // Ctrl+Enter saves the comment
                         panel.finish_comment_editing(cx);
                     }
-                } else if key_lower == "escape" && panel.dragging_connection.is_some() {
-                    panel.cancel_connection_drag(cx);
+                } else if key_lower == "escape" {
+                    // Escape key dismisses menus and cancels operations
+                    if panel.node_creation_menu.is_some() {
+                        panel.dismiss_node_creation_menu(cx);
+                    } else if panel.dragging_connection.is_some() {
+                        panel.cancel_connection_drag(cx);
+                    }
                 } else if key_lower == "delete" || key_lower == "backspace" {
                     println!(
                         "Delete key pressed! Selected nodes: {:?}",

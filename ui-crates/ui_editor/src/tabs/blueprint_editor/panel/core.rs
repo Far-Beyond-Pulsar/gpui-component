@@ -128,6 +128,20 @@ impl BlueprintEditorPanel {
         Self::new_internal(None, window, cx)
     }
 
+    /// Create a new blueprint editor panel with a file to load
+    pub fn new_with_file(file_path: std::path::PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let mut panel = Self::new_internal(Some(file_path.clone()), window, cx);
+        
+        // Try to load the blueprint file
+        if let Err(e) = panel.load_blueprint(file_path.to_str().unwrap(), window, cx) {
+            eprintln!("❌ Failed to load blueprint: {}", e);
+        } else {
+            println!("✅ Loaded blueprint from {:?}", file_path);
+        }
+        
+        panel
+    }
+
     /// Create a new blueprint editor for an engine library (virtual blueprint)
     pub fn new_for_library(
         library_id: String, 
@@ -148,15 +162,30 @@ impl BlueprintEditorPanel {
 
     /// Internal constructor with sample graph
     fn new_internal(
-        _project_path: Option<std::path::PathBuf>,
+        project_path: Option<std::path::PathBuf>,
         window: &mut Window,
         cx: &mut Context<Self>
     ) -> Self {
         let resizable_state = ResizableState::new(cx);
         let left_sidebar_resizable_state = ResizableState::new(cx);
 
-        // Create demo graph with sample nodes
-        let main_graph = Self::create_sample_graph();
+        // Create demo graph with sample nodes (only if no file is being loaded)
+        let main_graph = if project_path.is_some() {
+            // Empty graph - will be loaded from file
+            BlueprintGraph {
+                nodes: Vec::new(),
+                connections: Vec::new(),
+                comments: Vec::new(),
+                selected_nodes: Vec::new(),
+                selected_comments: Vec::new(),
+                zoom_level: 1.0,
+                pan_offset: Point::new(0.0, 0.0),
+                virtualization_stats: VirtualizationStats::default(),
+            }
+        } else {
+            // No file to load - create sample graph
+            Self::create_sample_graph()
+        };
 
         Self {
             focus_handle: cx.focus_handle(),

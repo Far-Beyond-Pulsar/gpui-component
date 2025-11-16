@@ -24,20 +24,20 @@ impl PropertiesRenderer {
                         // Main header with professional styling
                         h_flex()
                             .w_full()
-                            .px_4()
-                            .py_3()
+                            .px_3()
+                            .py_2()
                             .bg(cx.theme().secondary)
                             .border_b_2()
                             .border_color(cx.theme().border)
                             .items_center()
-                            .gap_3()
+                            .gap_2()
                             .child(
                                 // Icon container with glow
                                 div()
                                     .flex_shrink_0()
-                                    .w(px(32.0))
-                                    .h(px(32.0))
-                                    .rounded(px(6.0))
+                                    .w(px(28.0))
+                                    .h(px(28.0))
+                                    .rounded(px(5.0))
                                     .bg(cx.theme().info.opacity(0.15))
                                     .border_1()
                                     .border_color(cx.theme().info.opacity(0.3))
@@ -46,13 +46,13 @@ impl PropertiesRenderer {
                                     .justify_center()
                                     .child(
                                         div()
-                                            .text_lg()
+                                            .text_base()
                                             .child("🔍")
                                     )
                             )
                             .child(
                                 v_flex()
-                                    .gap_1()
+                                    .gap_0p5()
                                     .child(
                                         div()
                                             .text_sm()
@@ -78,8 +78,8 @@ impl PropertiesRenderer {
                         // Selection type indicator bar
                         h_flex()
                             .w_full()
-                            .px_4()
-                            .py_2()
+                            .px_3()
+                            .py_1p5()
                             .bg(cx.theme().sidebar.darken(0.03))
                             .border_b_1()
                             .border_color(cx.theme().border.opacity(0.3))
