@@ -36,7 +36,7 @@ use std::path::PathBuf;
 use gpui::{
     div, px, Action, App, InteractiveElement as _, ParentElement as _, Render, SharedString,
 };
-use gpui_component::{
+use crate::{
     button::{Button, ButtonVariants},
     popup_menu::PopupMenuExt,
     scroll::ScrollbarShow,

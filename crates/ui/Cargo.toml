@@ -144,6 +144,8 @@ quote = "1.0"
 proc-macro2 = "1.0"
 rust-embed = { version = "6", features = ["interpolate-folder-path", "include-exclude"] }
 prettyplease = "0.2"
+directories = "5"
+pulsar_std = { path = "../pulsar_std" }
 
 # Windows DirectX for shared texture opening (zero-copy DX12<->DX11)
 [target.'cfg(windows)'.dependencies]
