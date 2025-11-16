@@ -42,9 +42,7 @@ use windows::{
 use pulsar_engine::*;
 
 // Binary-only modules
-mod render;
-mod subsystems;
-mod window;  // Winit integration
+mod window;  // Winit integration (Winit + GPUI coordination)
 
 // Use engine_state crate
 pub use engine_state::{EngineState, WindowRequest, WindowRequestSender, WindowRequestReceiver, window_request_channel};

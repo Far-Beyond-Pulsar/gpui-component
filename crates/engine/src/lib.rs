@@ -4,8 +4,10 @@
 
 // Re-export core modules that UI needs
 pub mod assets;
-pub mod render;
 pub mod settings;
+
+// Re-export render from backend where it actually lives
+pub use engine_backend::subsystems::render;
 
 // Re-export compiler and graph from ui crate (canonical location)
 pub use ui::compiler;
