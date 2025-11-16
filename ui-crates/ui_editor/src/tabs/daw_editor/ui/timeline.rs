@@ -3,7 +3,7 @@ use super::panel::DawPanel;
 use super::track_header;
 use gpui::*;
 use gpui::prelude::FluentBuilder;
-use gpui_component::{
+use ui::{
     h_flex, v_flex, Icon, IconName, StyledExt, ActiveTheme,
     scroll::{Scrollbar, ScrollbarAxis}, PixelsExt, h_virtual_list};
 use std::rc::Rc;
@@ -333,7 +333,7 @@ fn render_track_row(
                 )
                 // Add ScrollableMask as a sibling to enable scroll wheel handling
                 .child(
-                    gpui_component::scroll::ScrollableMask::new(
+                    ui::scroll::ScrollableMask::new(
                         view.entity_id(),
                         Axis::Horizontal,
                         horizontal_scroll_handle.as_ref(),

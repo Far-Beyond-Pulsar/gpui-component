@@ -5,7 +5,7 @@ use super::state::*;
 use super::super::{audio_service::AudioService, audio_types::*};
 use gpui::*;
 use gpui::prelude::FluentBuilder;
-use gpui_component::{v_flex, h_flex, StyledExt, ActiveTheme, PixelsExt};
+use ui::{v_flex, h_flex, StyledExt, ActiveTheme, PixelsExt};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -539,7 +539,7 @@ impl DawPanel {
     }
 
     fn render_inspector(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        use gpui_component::{button::*, Sizable};
+        use ui::{button::*, Sizable};
 
         let selected_track_id = self.state.selection.selected_track_ids.iter().next().copied();
 
@@ -708,7 +708,7 @@ impl DawPanel {
                                     .gap_2()
                                     .items_center()
                                     .child(
-                                        gpui_component::Icon::new(gpui_component::IconName::MusicNote)
+                                        ui::Icon::new(ui::IconName::MusicNote)
                                             .size_4()
                                             .text_color(cx.theme().accent_foreground)
                                     )

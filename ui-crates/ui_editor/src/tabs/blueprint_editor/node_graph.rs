@@ -1,8 +1,8 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui::prelude::*;
-use gpui_component::{Colorize, PixelsExt};
-use gpui_component::{button::{Button, ButtonVariants}, h_flex, v_flex, ActiveTheme as _, IconName, Sizable, StyledExt, tooltip::Tooltip};
+use ui::{Colorize, PixelsExt};
+use ui::{button::{Button, ButtonVariants}, h_flex, v_flex, ActiveTheme as _, IconName, Sizable, StyledExt, tooltip::Tooltip};
 
 use super::panel::BlueprintEditorPanel;
 use super::{BlueprintNode, BlueprintGraph, Pin, NodeType, Connection};
@@ -462,7 +462,7 @@ impl NodeGraphRenderer {
                                 .font_family("JetBrainsMono-Regular")
                                 .font_weight(gpui::FontWeight::default())
                                 .child(
-                                    gpui_component::input::TextInput::new(&panel.comment_text_input)
+                                    ui::input::TextInput::new(&panel.comment_text_input)
                                 )
                                 .on_mouse_down(gpui::MouseButton::Left, cx.listener(|_panel, _event: &MouseDownEvent, _window, cx| {
                                     cx.stop_propagation();
@@ -567,10 +567,10 @@ impl NodeGraphRenderer {
                                 .top(px(8.0 * panel.graph.zoom_level))
                                 .right(px(8.0 * panel.graph.zoom_level))
                                 .child(
-                                    gpui_component::color_picker::ColorPicker::new(
+                                    ui::color_picker::ColorPicker::new(
                                         comment.color_picker_state.as_ref().expect("Color picker state")
                                     )
-                                    .size(gpui_component::Size::Small)
+                                    .size(ui::Size::Small)
                                 )
                                 .on_mouse_down(gpui::MouseButton::Left, cx.listener(|_panel, _event: &MouseDownEvent, _window, cx| {
                                     cx.stop_propagation();

@@ -1,8 +1,8 @@
 use ui::settings::EngineSettings;
 use gpui::*;
-use gpui_component::label::Label;
-use gpui_component::menu::popup_menu::PopupMenuExt;
-use gpui_component::{
+use ui::label::Label;
+use ui::menu::popup_menu::PopupMenuExt;
+use ui::{
     button::{Button, ButtonVariants},
     h_flex, v_flex, ActiveTheme, Icon, IconName, Theme, ThemeRegistry, StyledExt,
     scroll::ScrollbarAxis,

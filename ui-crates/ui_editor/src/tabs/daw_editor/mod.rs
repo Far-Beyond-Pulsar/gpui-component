@@ -18,7 +18,7 @@ pub use audio_service::AudioService;
 pub use ui::DawPanel;
 
 use gpui::*;
-use gpui_component::dock::{Panel, PanelEvent};
+use ui::dock::{Panel, PanelEvent};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -157,16 +157,16 @@ impl Panel for DawEditorPanel {
             .into_any_element()
     }
 
-    fn dump(&self, _cx: &App) -> gpui_component::dock::PanelState {
+    fn dump(&self, _cx: &App) -> ui::dock::PanelState {
         let info = self.project_path.as_ref().map(|p| {
             serde_json::json!({
                 "project_path": p.to_string_lossy().to_string()
             })
         }).unwrap_or(serde_json::Value::Null);
 
-        gpui_component::dock::PanelState {
+        ui::dock::PanelState {
             panel_name: self.panel_name().to_string(),
-            info: gpui_component::dock::PanelInfo::Panel(info),
+            info: ui::dock::PanelInfo::Panel(info),
             ..Default::default()
         }
     }

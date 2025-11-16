@@ -4,7 +4,7 @@
 //       It should be toggleable from the View menu and dockable in the main window when docking is enabled
 
 use gpui::{prelude::*, *};
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _, ButtonVariant},
     h_flex, v_flex, ActiveTheme as _, IconName, Sizable as _,
     Selectable,
@@ -133,7 +133,7 @@ impl RenderOnce for DiagnosticItem {
                                 div()
                                     .flex_shrink_0()
                                     .child(
-                                        gpui_component::Icon::new(diagnostic.severity.icon())
+                                        ui::Icon::new(diagnostic.severity.icon())
                                             .size_4()
                                             .text_color(diagnostic.severity.color(cx))
                                     )
@@ -419,7 +419,7 @@ impl Render for ProblemsDrawer {
                                         .gap_2()
                                         .items_center()
                                         .child(
-                                            gpui_component::Icon::new(IconName::Check)
+                                            ui::Icon::new(IconName::Check)
                                                 .size_8()
                                                 .text_color(cx.theme().success)
                                         )

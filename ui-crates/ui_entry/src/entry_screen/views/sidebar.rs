@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _},
     v_flex, IconName, ActiveTheme as _,
 };
@@ -25,9 +25,9 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                 .label("")
                 .tooltip("Recent Projects")
                 .with_variant(if screen.view == EntryScreenView::Recent {
-                    gpui_component::button::ButtonVariant::Primary
+                    ui::button::ButtonVariant::Primary
                 } else {
-                    gpui_component::button::ButtonVariant::Ghost
+                    ui::button::ButtonVariant::Ghost
                 })
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.view = EntryScreenView::Recent;
@@ -40,9 +40,9 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                 .label("")
                 .tooltip("Project Templates")
                 .with_variant(if screen.view == EntryScreenView::Templates {
-                    gpui_component::button::ButtonVariant::Primary
+                    ui::button::ButtonVariant::Primary
                 } else {
-                    gpui_component::button::ButtonVariant::Ghost
+                    ui::button::ButtonVariant::Ghost
                 })
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.view = EntryScreenView::Templates;
@@ -55,9 +55,9 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                 .label("")
                 .tooltip("Create New Project")
                 .with_variant(if screen.view == EntryScreenView::NewProject {
-                    gpui_component::button::ButtonVariant::Primary
+                    ui::button::ButtonVariant::Primary
                 } else {
-                    gpui_component::button::ButtonVariant::Ghost
+                    ui::button::ButtonVariant::Ghost
                 })
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.view = EntryScreenView::NewProject;
@@ -70,9 +70,9 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                 .label("")
                 .tooltip("Clone from Git")
                 .with_variant(if screen.view == EntryScreenView::CloneGit {
-                    gpui_component::button::ButtonVariant::Primary
+                    ui::button::ButtonVariant::Primary
                 } else {
-                    gpui_component::button::ButtonVariant::Ghost
+                    ui::button::ButtonVariant::Ghost
                 })
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.view = EntryScreenView::CloneGit;
@@ -85,7 +85,7 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                 .icon(IconName::FolderOpen)
                 .label("")
                 .tooltip("Open Existing Project")
-                .with_variant(gpui_component::button::ButtonVariant::Ghost)
+                .with_variant(ui::button::ButtonVariant::Ghost)
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.open_folder_dialog(window, cx);
                 }))
@@ -95,7 +95,7 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                 .icon(IconName::Settings)
                 .label("")
                 .tooltip("Settings")
-                .with_variant(gpui_component::button::ButtonVariant::Ghost)
+                .with_variant(ui::button::ButtonVariant::Ghost)
                 .on_click(cx.listener(|_, _, window, cx| {
                     window.dispatch_action(Box::new(OpenSettings), cx);
                 }))

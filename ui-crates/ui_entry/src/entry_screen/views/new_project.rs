@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, ActiveTheme as _, divider::Divider,
 };
@@ -100,7 +100,7 @@ pub fn render_new_project(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -
                                 .child(
                                     Button::new("browse-location")
                                         .label("Browse")
-                                        .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                        .with_variant(ui::button::ButtonVariant::Secondary)
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             this.browse_project_location(cx);
                                         }))
@@ -156,7 +156,7 @@ pub fn render_new_project(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -
                         .child(
                             Button::new("create-project")
                                 .label("Create Project")
-                                .with_variant(gpui_component::button::ButtonVariant::Primary)
+                                .with_variant(ui::button::ButtonVariant::Primary)
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.create_new_project(window, cx);
                                 }))

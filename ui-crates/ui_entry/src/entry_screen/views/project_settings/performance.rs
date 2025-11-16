@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, Icon, IconName, divider::Divider, ActiveTheme as _,
 };
@@ -158,7 +158,7 @@ pub fn render_performance_tab(settings: &ProjectSettings, cx: &mut Context<Entry
                                 .label("Run Git GC")
                                 .icon(IconName::Activity)
                                 .flex_1()
-                                .with_variant(gpui_component::button::ButtonVariant::Primary)
+                                .with_variant(ui::button::ButtonVariant::Primary)
                                 .on_click({
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
@@ -174,7 +174,7 @@ pub fn render_performance_tab(settings: &ProjectSettings, cx: &mut Context<Entry
                                 .label("Prune Objects")
                                 .icon(IconName::Trash)
                                 .flex_1()
-                                .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                .with_variant(ui::button::ButtonVariant::Secondary)
                                 .on_click({
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
@@ -190,7 +190,7 @@ pub fn render_performance_tab(settings: &ProjectSettings, cx: &mut Context<Entry
                                 .label("Clean Untracked")
                                 .icon(IconName::Trash)
                                 .flex_1()
-                                .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                .with_variant(ui::button::ButtonVariant::Secondary)
                                 .on_click({
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
@@ -242,7 +242,7 @@ fn calculate_repo_health(settings: &ProjectSettings) -> f32 {
     score.max(0.0_f32).min(100.0)
 }
 
-fn generate_optimization_recommendations(settings: &ProjectSettings, theme: &gpui_component::theme::Theme) -> Vec<gpui::AnyElement> {
+fn generate_optimization_recommendations(settings: &ProjectSettings, theme: &ui::theme::Theme) -> Vec<gpui::AnyElement> {
     let mut recommendations = Vec::new();
     
     // Check git size ratio
@@ -321,7 +321,7 @@ fn generate_optimization_recommendations(settings: &ProjectSettings, theme: &gpu
     recommendations
 }
 
-fn render_recommendation_card(title: &str, desc: &str, severity: &str, theme: &gpui_component::theme::Theme) -> gpui::AnyElement {
+fn render_recommendation_card(title: &str, desc: &str, severity: &str, theme: &ui::theme::Theme) -> gpui::AnyElement {
     
     
     let (bg_color, border_color, icon_color) = match severity {

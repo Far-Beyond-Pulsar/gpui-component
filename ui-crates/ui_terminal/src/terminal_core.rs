@@ -803,7 +803,7 @@ impl EventEmitter<Event> for Terminal {}
 
 impl Render for Terminal {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        use gpui_component::{v_flex, h_flex, StyledExt, ActiveTheme, button::{Button, ButtonVariants}, IconName, Sizable};
+        use ui::{v_flex, h_flex, StyledExt, ActiveTheme, button::{Button, ButtonVariants}, IconName, Sizable};
         use super::terminal_element::TerminalElement;
 
         // Update terminal content before rendering
@@ -915,7 +915,7 @@ impl Render for Terminal {
                                             this.close_session(index, cx);
                                         }))
                                         .child(
-                                            gpui_component::Icon::new(IconName::Close)
+                                            ui::Icon::new(IconName::Close)
                                                 .size_3()
                                         )
                                 );

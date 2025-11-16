@@ -8,7 +8,7 @@ pub use autocomplete_integration::*;
 
 use std::path::PathBuf;
 use gpui::*;
-use gpui_component::{
+use ui::{
     dock::{Panel, PanelEvent},
     resizable::{h_resizable, resizable_panel, ResizableState},
     h_flex,
@@ -172,8 +172,8 @@ impl Panel for ScriptEditor {
         div().child("Script Editor").into_any_element()
     }
 
-    fn dump(&self, _cx: &App) -> gpui_component::dock::PanelState {
-        gpui_component::dock::PanelState {
+    fn dump(&self, _cx: &App) -> ui::dock::PanelState {
+        ui::dock::PanelState {
             panel_name: self.panel_name().to_string(),
             ..Default::default()
         }

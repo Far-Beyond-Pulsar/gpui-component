@@ -10,7 +10,7 @@ pub mod integrations;
 
 pub use types::{ProjectSettings, ProjectSettingsTab};
 use gpui::{prelude::*, *};
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, Icon, IconName, ActiveTheme as _, StyledExt, divider::Divider,
     scroll::ScrollbarAxis,
@@ -101,7 +101,7 @@ fn render_settings_sidebar(settings: &ProjectSettings, cx: &mut Context<EntryScr
                     Button::new("close-settings")
                         .label("Close")
                         .w_full()
-                        .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                        .with_variant(ui::button::ButtonVariant::Secondary)
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.close_project_settings(cx);
                         }))

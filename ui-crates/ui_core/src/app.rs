@@ -1,5 +1,5 @@
 use gpui::{prelude::*, Animation, AnimationExt as _, SharedString, *};
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _},
     dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
     notification::Notification,
@@ -10,7 +10,7 @@ use serde::Deserialize;
 use std::path::PathBuf;
 use std::{sync::Arc, time::Duration};
 
-use pulsar_engine::ui::{
+use ui::ui::{
     common::{
         command_palette::{CommandPalette, CommandSelected, CommandType, FileSelected as PaletteFileSelected},
         menu::AppTitleBar,
@@ -79,7 +79,7 @@ impl PulsarRoot {
 
 impl Render for PulsarRoot {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        use gpui_component::Root;
+        use ui::Root;
         
         let drawer_layer = Root::render_drawer_layer(window, cx);
         let modal_layer = Root::render_modal_layer(window, cx);
@@ -199,13 +199,13 @@ impl PulsarApp {
     /// Create a detached window with a panel, sharing the rust analyzer
     fn create_detached_window(
         &self,
-        panel: Arc<dyn gpui_component::dock::PanelView>,
+        panel: Arc<dyn ui::dock::PanelView>,
         position: gpui::Point<gpui::Pixels>,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
-        use gpui_component::Root;
+        use ui::Root;
 
         let window_size = size(px(800.), px(600.));
         let window_bounds = Bounds::new(
@@ -580,7 +580,7 @@ impl PulsarApp {
         cx: &mut Context<Self>,
     ) {
         use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
-        use gpui_component::Root;
+        use ui::Root;
 
         let project_path = event.project_path.clone();
 
@@ -635,7 +635,7 @@ impl PulsarApp {
 
     fn toggle_problems(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
-        use gpui_component::Root;
+        use ui::Root;
 
         // Open problems in a separate window
         let problems_drawer = self.problems_drawer.clone();
@@ -673,7 +673,7 @@ impl PulsarApp {
 
     fn toggle_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
-        use gpui_component::Root;
+        use ui::Root;
 
         // Open terminal in a separate window
         // Each window gets its own independent terminal instance
@@ -712,7 +712,7 @@ impl PulsarApp {
 
     fn toggle_multiplayer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
-        use gpui_component::Root;
+        use ui::Root;
 
         // Open multiplayer window
         let _ = cx.open_window(
@@ -858,7 +858,7 @@ impl PulsarApp {
                 self.toggle_problems(window, cx);
             }
             CommandType::OpenSettings => {
-                cx.dispatch_action(&crate::OpenSettings);
+                cx.dispatch_action(&ui::OpenSettings);
             }
             CommandType::BuildProject => {
                 window.push_notification(
@@ -1220,7 +1220,7 @@ impl PulsarApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        use pulsar_engine::ui::windows::TextEditorEvent;
+        use ui::ui::windows::TextEditorEvent;
 
         match event {
             // LSP notifications are now handled by ScriptEditor internally
@@ -1714,8 +1714,8 @@ impl Panel for EditorPanel {
             .into_any_element()
     }
 
-    fn dump(&self, _cx: &App) -> gpui_component::dock::PanelState {
-        gpui_component::dock::PanelState {
+    fn dump(&self, _cx: &App) -> ui::dock::PanelState {
+        ui::dock::PanelState {
             panel_name: self.panel_name().to_string(),
             ..Default::default()
         }

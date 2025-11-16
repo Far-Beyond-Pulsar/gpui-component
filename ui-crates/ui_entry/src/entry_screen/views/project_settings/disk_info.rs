@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _},
     v_flex, divider::Divider, ActiveTheme as _, IconName,
 };
@@ -53,7 +53,7 @@ pub fn render_disk_info_tab(settings: &ProjectSettings, cx: &mut Context<EntrySc
                         .label("Refresh Disk Info")
                         .icon(IconName::ArrowUp)
                         .w_full()
-                        .with_variant(gpui_component::button::ButtonVariant::Primary)
+                        .with_variant(ui::button::ButtonVariant::Primary)
                         .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
                             this.refresh_project_settings(cx);
                         }))
@@ -63,7 +63,7 @@ pub fn render_disk_info_tab(settings: &ProjectSettings, cx: &mut Context<EntrySc
                         .label("Clean Project (Git GC)")
                         .icon(IconName::Trash)
                         .w_full()
-                        .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                        .with_variant(ui::button::ButtonVariant::Secondary)
                         .on_click({
                             let path = settings.project_path.clone();
                             move |_, _, _| {

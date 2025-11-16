@@ -1,6 +1,6 @@
 use gpui::*;
 use gpui::prelude::FluentBuilder;
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _},
     context_menu::ContextMenuExt,
     h_flex,
@@ -253,8 +253,8 @@ impl FileManagerDrawer {
         // Subscribe to input events to handle Enter key for committing rename
         cx.subscribe(
             &rename_input_state,
-            |drawer, _input, event: &gpui_component::input::InputEvent, cx| match event {
-                gpui_component::input::InputEvent::PressEnter { .. } => {
+            |drawer, _input, event: &ui::input::InputEvent, cx| match event {
+                ui::input::InputEvent::PressEnter { .. } => {
                     if drawer.renaming_item.is_some() {
                         cx.dispatch_action(&CommitRename);
                     }
@@ -267,8 +267,8 @@ impl FileManagerDrawer {
         // Subscribe to folder search input for live filtering
         cx.subscribe(
             &folder_search_state,
-            |drawer, _input, event: &gpui_component::input::InputEvent, cx| match event {
-                gpui_component::input::InputEvent::Change { .. } => {
+            |drawer, _input, event: &ui::input::InputEvent, cx| match event {
+                ui::input::InputEvent::Change { .. } => {
                     drawer.search_query = drawer.folder_search_state.read(cx).text().to_string();
                     cx.notify();
                 }
@@ -280,8 +280,8 @@ impl FileManagerDrawer {
         // Subscribe to file filter input for live filtering
         cx.subscribe(
             &file_filter_state,
-            |drawer, _input, event: &gpui_component::input::InputEvent, cx| match event {
-                gpui_component::input::InputEvent::Change { .. } => {
+            |drawer, _input, event: &ui::input::InputEvent, cx| match event {
+                ui::input::InputEvent::Change { .. } => {
                     drawer.file_filter_query = drawer.file_filter_state.read(cx).text().to_string();
                     cx.notify();
                 }

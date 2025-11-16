@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use ui_editor::tabs::daw_editor::audio_types::{SAMPLE_RATE, AudioClip, AudioAssetData};
-use gpui_component::{VirtualListScrollHandle, scroll::ScrollbarState};
+use ui::{VirtualListScrollHandle, scroll::ScrollbarState};
 
 /// Main view modes
 #[derive(Clone, Copy, PartialEq, Debug)]

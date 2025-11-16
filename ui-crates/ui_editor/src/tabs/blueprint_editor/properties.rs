@@ -1,5 +1,5 @@
 use gpui::*;
-use gpui_component::{
+use ui::{
     button::ButtonVariants as _,
     h_flex, v_flex,
     ActiveTheme as _, StyledExt, Colorize,
@@ -440,7 +440,7 @@ impl PropertiesRenderer {
                                             .child(format!("{}", input_node.map(|n| n.outputs.len()).unwrap_or(0)))
                                     )
                                     .child(
-                                        gpui_component::button::Button::new("add-input-pin")
+                                        ui::button::Button::new("add-input-pin")
                                             .icon(IconName::Plus)
                                             .ghost()
                                             .tooltip("Add Input Pin")
@@ -484,7 +484,7 @@ impl PropertiesRenderer {
                                             .child(format!("{}", output_node.map(|n| n.inputs.len()).unwrap_or(0)))
                                     )
                                     .child(
-                                        gpui_component::button::Button::new("add-output-pin")
+                                        ui::button::Button::new("add-output-pin")
                                             .icon(IconName::Plus)
                                             .ghost()
                                             .tooltip("Add Output Pin")
@@ -608,7 +608,7 @@ impl PropertiesRenderer {
             )
             .child(
                 // Remove button
-                gpui_component::button::Button::new(("remove-pin", pin_hash))
+                ui::button::Button::new(("remove-pin", pin_hash))
                     .icon(IconName::Close)
                     .ghost()
                     .tooltip("Remove Pin")

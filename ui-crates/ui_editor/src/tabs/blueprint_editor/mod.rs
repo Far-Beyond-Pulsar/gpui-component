@@ -142,7 +142,7 @@ pub struct Connection {
     pub to_pin_id: String,
 }
 
-use gpui_component::color_picker::ColorPickerState;
+use ui::color_picker::ColorPickerState;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BlueprintComment {

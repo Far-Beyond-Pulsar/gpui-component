@@ -1,12 +1,12 @@
 use gpui::*;
 use gpui::prelude::FluentBuilder;
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _}, h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
     chart::{BarChart, AreaChart},
     PixelsExt,
 };
 // Zero-copy Bevy viewport for 3D rendering
-use gpui_component::bevy_viewport::BevyViewport;
+use ui::bevy_viewport::BevyViewport;
 
 use super::state::{CameraMode, LevelEditorState};
 use super::actions::*;
@@ -328,7 +328,7 @@ impl ViewportPanel {
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
-        V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
+        V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
         // Note: We can't check focus here because we don't have Window reference in this context
         // Instead, the viewport div will set focus when clicked (via track_focus)
@@ -807,7 +807,7 @@ impl ViewportPanel {
 
     fn render_camera_mode_selector<V: 'static>(camera_mode: CameraMode, cx: &mut Context<V>) -> impl IntoElement
     where
-        V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
+        V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
         h_flex()
             .gap_1()
@@ -881,7 +881,7 @@ impl ViewportPanel {
 
     fn render_viewport_options<V: 'static>(state: &LevelEditorState, cx: &mut Context<V>) -> impl IntoElement
     where
-        V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
+        V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
         h_flex()
             .gap_1()
@@ -946,7 +946,7 @@ impl ViewportPanel {
 
     fn render_viewport_controls_overlay<V: 'static>(cx: &mut Context<V>) -> impl IntoElement
     where
-        V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
+        V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
         h_flex()
             .gap_2()
@@ -999,7 +999,7 @@ impl ViewportPanel {
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
-        V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
+        V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
         // Get GPU profiler data
         let gpu_data = if let Ok(engine) = gpu_engine.lock() {
@@ -1147,7 +1147,7 @@ impl ViewportPanel {
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
-        V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
+        V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
         let theme = cx.theme();
         
@@ -1196,7 +1196,7 @@ impl ViewportPanel {
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
-        V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
+        V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
         // Get comprehensive metrics
         let (ui_fps, bevy_fps, pipeline_us, gpu_us, cpu_us, render_metrics) = if let Ok(engine) = gpu_engine.lock() {
@@ -1506,7 +1506,7 @@ impl ViewportPanel {
                                 .child({
                                     let fps_graph_clone = fps_graph_state.clone();
                                     
-                                    gpui_component::switch::Switch::new("fps_graph_type")
+                                    ui::switch::Switch::new("fps_graph_type")
                                         .checked(*fps_graph_state.borrow())
                                         .label("Line")
                                         .xsmall()

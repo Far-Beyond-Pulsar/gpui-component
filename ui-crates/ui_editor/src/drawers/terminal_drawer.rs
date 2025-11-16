@@ -2,7 +2,7 @@
 //! Based on Zed's terminal architecture
 
 use gpui::*;
-use gpui_component::{
+use ui::{
     v_flex, ActiveTheme as _,
 };
 use ui_terminal::::Terminal;

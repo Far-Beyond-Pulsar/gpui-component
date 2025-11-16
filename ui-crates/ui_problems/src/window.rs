@@ -2,7 +2,7 @@
 //! Similar to VS Code's Problems panel as a separate window
 
 use gpui::*;
-use gpui_component::{
+use ui::{
     v_flex, ActiveTheme as _, TitleBar,
 };
 

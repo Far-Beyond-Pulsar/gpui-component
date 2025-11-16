@@ -1,5 +1,5 @@
 use gpui::*;
-use gpui_component::{
+use ui::{
     dock::{Panel, PanelEvent},
     h_flex, v_flex,
     ActiveTheme as _, StyledExt,
@@ -26,8 +26,8 @@ impl Panel for AnimationEditorPanel {
         div().child("Animation Editor").into_any_element()
     }
 
-    fn dump(&self, _cx: &App) -> gpui_component::dock::PanelState {
-        gpui_component::dock::PanelState {
+    fn dump(&self, _cx: &App) -> ui::dock::PanelState {
+        ui::dock::PanelState {
             panel_name: self.panel_name().to_string(),
             ..Default::default()
         }

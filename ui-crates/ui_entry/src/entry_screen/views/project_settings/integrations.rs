@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use gpui_component::{
+use ui::{
     h_flex, v_flex, Icon, IconName, divider::Divider, ActiveTheme as _,
     button::{Button, ButtonVariants as _},
     indicator::Indicator,
@@ -112,7 +112,7 @@ pub fn render_integrations_tab(settings: &ProjectSettings, cx: &mut Context<Entr
                             .child(
                                 Indicator::new()
                                     .color(theme.primary)
-                                    .with_size(gpui_component::Size::XSmall)
+                                    .with_size(ui::Size::XSmall)
                             )
                             .child(
                                 div()
@@ -166,7 +166,7 @@ fn render_tool_category(
     default_tool: Option<&str>,
     project_path: &std::path::PathBuf,
     tool_type: &str,
-    theme: &gpui_component::theme::Theme,
+    theme: &ui::theme::Theme,
 ) -> impl IntoElement {
     // Clone all borrowed data to avoid lifetime issues
     let category_name = category_name.to_string();
@@ -213,7 +213,7 @@ fn render_tool_row(
     is_default: bool,
     project_path: &std::path::PathBuf,
     tool_type: &str,
-    theme: &gpui_component::theme::Theme,
+    theme: &ui::theme::Theme,
 ) -> impl IntoElement {
     let available = tool.available;
     let tool_name = tool.name.clone();
@@ -313,7 +313,7 @@ fn render_tool_row(
                     this.child(
                         Button::new(SharedString::from(format!("set-default-{}", tool_command)))
                             .label("Set as Default")
-                            .with_variant(gpui_component::button::ButtonVariant::Ghost)
+                            .with_variant(ui::button::ButtonVariant::Ghost)
                             .on_click(move |_, _, _| {
                                 save_tool_preference(&path_clone, &cmd_clone, &tool_type_clone);
                             })
@@ -327,7 +327,7 @@ fn render_tool_row(
                         Button::new(SharedString::from(format!("launch-{}", tool_command)))
                             .label("Launch")
                             .icon(IconName::ArrowUp)
-                            .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                            .with_variant(ui::button::ButtonVariant::Secondary)
                             .on_click(move |_, _, _| {
                                 use ui_entry::screen::integration_launcher;
                                 match tool_type_clone.as_str() {

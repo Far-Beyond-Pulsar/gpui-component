@@ -1,5 +1,5 @@
 use gpui::{prelude::*, div, px, Context, DismissEvent, Entity, EventEmitter, MouseButton, Render, Window};
-use gpui_component::{
+use ui::{
     button::ButtonVariants as _,
     h_flex, input::{InputState, InputEvent}, input::TextInput, v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
 };

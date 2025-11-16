@@ -25,7 +25,7 @@ use gpui::{
     Subscription,
     Window,
 };
-use gpui_component::{
+use ui::{
     badge::Badge,
     button::{ Button, ButtonVariants as _ },
     locale,
@@ -43,7 +43,7 @@ use gpui_component::{
     TitleBar,
 };
 
-use pulsar_engine::{ themes::ThemeSwitcher, OpenSettings };
+use ui::{ themes::ThemeSwitcher, OpenSettings };
 
 // Define UI preference actions
 #[derive(gpui::Action, Clone, PartialEq, Eq, serde::Deserialize)]

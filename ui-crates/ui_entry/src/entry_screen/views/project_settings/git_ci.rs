@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, Icon, IconName, divider::Divider, ActiveTheme as _,
 };
@@ -81,7 +81,7 @@ pub fn render_git_ci_tab(settings: &ProjectSettings, cx: &mut Context<EntryScree
                         .label("Create New Workflow")
                         .icon(IconName::Plus)
                         .w_full()
-                        .with_variant(gpui_component::button::ButtonVariant::Primary)
+                        .with_variant(ui::button::ButtonVariant::Primary)
                         .on_click({
                             let path = settings.project_path.clone();
                             move |_, _, _| {
@@ -97,7 +97,7 @@ pub fn render_git_ci_tab(settings: &ProjectSettings, cx: &mut Context<EntryScree
                         .label("View on GitHub")
                         .icon(IconName::GitHub)
                         .w_full()
-                        .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                        .with_variant(ui::button::ButtonVariant::Secondary)
                         .on_click({
                             let remote = settings.remote_url.clone();
                             move |_, _, _| {

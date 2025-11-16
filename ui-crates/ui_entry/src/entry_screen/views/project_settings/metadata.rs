@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, Icon, IconName, divider::Divider, ActiveTheme as _,
 };
@@ -242,7 +242,7 @@ pub fn render_metadata_tab(settings: &ProjectSettings, cx: &mut Context<EntryScr
                                 .label("Edit in External Editor")
                                 .icon(IconName::Code)
                                 .flex_1()
-                                .with_variant(gpui_component::button::ButtonVariant::Primary)
+                                .with_variant(ui::button::ButtonVariant::Primary)
                                 .on_click({
                                     let path = config_path.clone();
                                     move |_, _, _| {
@@ -269,7 +269,7 @@ pub fn render_metadata_tab(settings: &ProjectSettings, cx: &mut Context<EntryScr
                                 .label("Create Template Config")
                                 .icon(IconName::Plus)
                                 .flex_1()
-                                .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                .with_variant(ui::button::ButtonVariant::Secondary)
                                 .on_click({
                                     let path = config_path.clone();
                                     move |_, _, _| {
@@ -298,7 +298,7 @@ pub fn render_metadata_tab(settings: &ProjectSettings, cx: &mut Context<EntryScr
                                 .label("Validate Project")
                                 .icon(IconName::Activity)
                                 .flex_1()
-                                .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                .with_variant(ui::button::ButtonVariant::Secondary)
                                 .on_click({
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
@@ -326,7 +326,7 @@ pub fn render_metadata_tab(settings: &ProjectSettings, cx: &mut Context<EntryScr
                                 .label("Create Missing Folders")
                                 .icon(IconName::FolderOpen)
                                 .flex_1()
-                                .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                .with_variant(ui::button::ButtonVariant::Secondary)
                                 .on_click({
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
@@ -342,7 +342,7 @@ pub fn render_metadata_tab(settings: &ProjectSettings, cx: &mut Context<EntryScr
         )
 }
 
-fn render_config_field(label: &str, value: &str, theme: &gpui_component::theme::Theme) -> impl IntoElement {
+fn render_config_field(label: &str, value: &str, theme: &ui::theme::Theme) -> impl IntoElement {
     h_flex()
         .items_center()
         .justify_between()

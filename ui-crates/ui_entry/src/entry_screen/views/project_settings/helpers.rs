@@ -1,8 +1,8 @@
 use gpui::{prelude::*, *};
-use gpui_component::{h_flex, v_flex};
+use ui::{h_flex, v_flex};
 
 /// Render an info section with key-value pairs
-pub fn render_info_section(title: &str, items: Vec<(&str, String)>, theme: &gpui_component::theme::Theme) -> impl IntoElement {
+pub fn render_info_section(title: &str, items: Vec<(&str, String)>, theme: &ui::theme::Theme) -> impl IntoElement {
     v_flex()
         .gap_2()
         .child(
@@ -41,7 +41,7 @@ pub fn render_info_section(title: &str, items: Vec<(&str, String)>, theme: &gpui
 }
 
 /// Render a size bar visualization
-pub fn render_size_bar(label: &str, size: u64, total: u64, color: Hsla, theme: &gpui_component::theme::Theme) -> impl IntoElement {
+pub fn render_size_bar(label: &str, size: u64, total: u64, color: Hsla, theme: &ui::theme::Theme) -> impl IntoElement {
     let percentage = if total > 0 {
         ((size as f64 / total as f64) * 100.0) as f32
     } else {

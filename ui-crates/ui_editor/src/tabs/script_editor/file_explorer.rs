@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use gpui::{*, prelude::FluentBuilder, actions};
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _},
     context_menu::ContextMenuExt,
     h_flex,
@@ -68,7 +68,7 @@ pub struct FileExplorer {
     last_opened_file: Option<PathBuf>,
     /// Scroll state for virtualization
     scroll_handle: ScrollHandle,
-    scroll_state: gpui_component::scroll::ScrollbarState,
+    scroll_state: ui::scroll::ScrollbarState,
     /// Item height in pixels (fixed for all items)
     item_height: Pixels,
     /// Last measured viewport bounds for accurate calculations
@@ -95,7 +95,7 @@ impl FileExplorer {
             selected_file: None,
             last_opened_file: None,
             scroll_handle: ScrollHandle::new(),
-            scroll_state: gpui_component::scroll::ScrollbarState::default(),
+            scroll_state: ui::scroll::ScrollbarState::default(),
             item_height: px(28.0), // Fixed height for each item
             last_viewport_bounds: None,
             last_window_size: None,

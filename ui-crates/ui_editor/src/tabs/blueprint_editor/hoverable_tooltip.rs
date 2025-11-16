@@ -4,7 +4,7 @@ use gpui::{
     StatefulInteractiveElement, Styled, Window,
 };
 
-use gpui_component::{v_flex, ActiveTheme as _, text::TextView};
+use ui::{v_flex, ActiveTheme as _, text::TextView};
 
 /// A hoverable tooltip that stays open when the mouse moves into it
 pub struct HoverableTooltip {

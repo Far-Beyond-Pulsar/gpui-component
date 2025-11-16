@@ -1,5 +1,5 @@
 use gpui::*;
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex,
     ActiveTheme as _, StyledExt, IconName,

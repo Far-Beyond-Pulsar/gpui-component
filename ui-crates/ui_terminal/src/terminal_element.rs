@@ -4,7 +4,7 @@
 use super::terminal_core::{Terminal, TerminalBounds};
 use super::rendering::{layout_grid, BatchedTextRun, LayoutRect};
 use gpui::*;
-use gpui_component::ActiveTheme;
+use ui::ActiveTheme;
 use alacritty_terminal::vte::ansi::CursorShape as AlacCursorShape;
 
 // For cursor rendering - these types should exist in your editor crate

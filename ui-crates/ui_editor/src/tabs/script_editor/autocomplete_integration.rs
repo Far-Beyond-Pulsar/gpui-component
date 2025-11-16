@@ -2,7 +2,7 @@
 /// This module connects the global rust-analyzer instance to provide intelligent completions
 
 use gpui::{Context, Entity, Window};
-use gpui_component::input::{
+use ui::input::{
     ComprehensiveCompletionProvider, 
     InputState,
 };

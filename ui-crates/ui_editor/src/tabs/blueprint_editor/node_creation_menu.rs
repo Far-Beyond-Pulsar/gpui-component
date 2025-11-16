@@ -1,7 +1,7 @@
 use gpui::*;
 use gpui::ElementId;
 use gpui::prelude::{FluentBuilder, InteractiveElement, StatefulInteractiveElement, Styled};
-use gpui_component::{
+use ui::{
     h_flex, v_flex,
     ActiveTheme as _, StyledExt,
     Icon, IconName,

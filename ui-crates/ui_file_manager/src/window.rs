@@ -2,7 +2,7 @@
 //! Similar to the drawer but in a separate window
 
 use gpui::*;
-use gpui_component::{
+use ui::{
     v_flex, ActiveTheme as _, TitleBar,
 };
 

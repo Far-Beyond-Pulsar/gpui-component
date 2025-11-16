@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _},
     v_flex, divider::Divider, ActiveTheme as _, IconName,
 };
@@ -41,7 +41,7 @@ pub fn render_general_tab(settings: &ProjectSettings, cx: &mut Context<EntryScre
                                 .label("Open in File Manager")
                                 .icon(IconName::FolderOpen)
                                 .w_full()
-                                .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                .with_variant(ui::button::ButtonVariant::Secondary)
                                 .on_click({
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
@@ -55,7 +55,7 @@ pub fn render_general_tab(settings: &ProjectSettings, cx: &mut Context<EntryScre
                                 .label("Open in Terminal")
                                 .icon(IconName::Terminal)
                                 .w_full()
-                                .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                .with_variant(ui::button::ButtonVariant::Secondary)
                                 .on_click({
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
@@ -69,7 +69,7 @@ pub fn render_general_tab(settings: &ProjectSettings, cx: &mut Context<EntryScre
                                 .label("Copy Project Path")
                                 .icon(IconName::Copy)
                                 .w_full()
-                                .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                .with_variant(ui::button::ButtonVariant::Secondary)
                                 .on_click({
                                     let path = settings.project_path.to_string_lossy().to_string();
                                     move |_, _, cx| {

@@ -1,5 +1,5 @@
 use gpui::*;
-use gpui_component::{button::{Button, ButtonVariants}, h_flex, ActiveTheme as _, Colorize, Sizable, StyledExt, IconName};
+use ui::{button::{Button, ButtonVariants}, h_flex, ActiveTheme as _, Colorize, Sizable, StyledExt, IconName};
 
 use super::panel::BlueprintEditorPanel;
 use super::{BlueprintGraph, BlueprintNode, NodeType};

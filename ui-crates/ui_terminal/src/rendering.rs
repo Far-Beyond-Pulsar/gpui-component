@@ -108,7 +108,7 @@ impl LayoutRect {
 }
 
 /// Convert ANSI color to GPUI Hsla
-fn convert_color(color: &AnsiColor, theme: &gpui_component::Theme) -> Hsla {
+fn convert_color(color: &AnsiColor, theme: &ui::Theme) -> Hsla {
     match color {
         AnsiColor::Named(named) => named_color(*named, theme),
         AnsiColor::Spec(rgb) => {
@@ -123,7 +123,7 @@ fn convert_color(color: &AnsiColor, theme: &gpui_component::Theme) -> Hsla {
     }
 }
 
-fn named_color(color: NamedColor, theme: &gpui_component::Theme) -> Hsla {
+fn named_color(color: NamedColor, theme: &ui::Theme) -> Hsla {
     
     match color {
         NamedColor::Black => hsla(0.0, 0.0, 0.0, 1.0),
@@ -190,7 +190,7 @@ fn cell_style(
     cell: &Cell,
     fg: AnsiColor,
     bg: AnsiColor,
-    theme: &gpui_component::Theme,
+    theme: &ui::Theme,
     font: &Font,
 ) -> TextRun {
     let flags = cell.flags;
@@ -253,7 +253,7 @@ pub fn layout_grid(
     display_offset: usize,
     text_style: &TextStyle,
     font: &Font,
-    theme: &gpui_component::Theme,
+    theme: &ui::Theme,
 ) -> (Vec<LayoutRect>, Vec<BatchedTextRun>) {
     use itertools::Itertools;
     

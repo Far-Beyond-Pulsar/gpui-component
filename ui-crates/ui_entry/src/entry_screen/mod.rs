@@ -9,7 +9,7 @@ use types::{EntryScreenView, Template, CloneProgress, SharedCloneProgress, GitFe
 use git_operations::{clone_repository, setup_template_remotes, add_user_upstream, init_repository, is_git_repo, check_for_updates, pull_updates};
 
 use gpui::{prelude::*, *};
-use gpui_component::{h_flex, v_flex, TitleBar, ActiveTheme as _};
+use ui::{h_flex, v_flex, TitleBar, ActiveTheme as _};
 use std::path::PathBuf;
 use std::collections::HashMap;
 use recent_projects::{RecentProject, RecentProjectsList};

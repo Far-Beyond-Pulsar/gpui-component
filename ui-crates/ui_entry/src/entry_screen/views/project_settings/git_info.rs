@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, divider::Divider, ActiveTheme as _, IconName,
 };
@@ -52,7 +52,7 @@ pub fn render_git_info_tab(settings: &ProjectSettings, cx: &mut Context<EntryScr
                                 .label("Refresh Git Info")
                                 .icon(IconName::ArrowUp)
                                 .flex_1()
-                                .with_variant(gpui_component::button::ButtonVariant::Primary)
+                                .with_variant(ui::button::ButtonVariant::Primary)
                                 .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
                                     this.refresh_project_settings(cx);
                                 }))
@@ -62,7 +62,7 @@ pub fn render_git_info_tab(settings: &ProjectSettings, cx: &mut Context<EntryScr
                                 .label("Open Git GUI")
                                 .icon(IconName::GitHub)
                                 .flex_1()
-                                .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                .with_variant(ui::button::ButtonVariant::Secondary)
                                 .on_click({
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
@@ -80,7 +80,7 @@ pub fn render_git_info_tab(settings: &ProjectSettings, cx: &mut Context<EntryScr
                                 .label("View Git Log")
                                 .icon(IconName::GitHub)
                                 .flex_1()
-                                .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                .with_variant(ui::button::ButtonVariant::Secondary)
                                 .on_click({
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
@@ -95,7 +95,7 @@ pub fn render_git_info_tab(settings: &ProjectSettings, cx: &mut Context<EntryScr
                                 .label("Copy Remote URL")
                                 .icon(IconName::Copy)
                                 .flex_1()
-                                .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                .with_variant(ui::button::ButtonVariant::Secondary)
                                 .on_click({
                                     let url = settings.remote_url.clone();
                                     move |_, _, cx| {

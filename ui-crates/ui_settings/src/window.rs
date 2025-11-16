@@ -1,6 +1,6 @@
 use ui_settings::settings::{SettingsScreen, SettingsScreenProps};
 use gpui::*;
-use gpui_component::{
+use ui::{
     v_flex, ActiveTheme, TitleBar,
 };
 

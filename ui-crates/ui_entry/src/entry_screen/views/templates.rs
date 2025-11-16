@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use gpui_component::{
+use ui::{
     h_flex, v_flex, Icon, IconName, ActiveTheme as _, StyledExt,
     divider::Divider, scroll::ScrollbarAxis, progress::Progress,
 };

@@ -1,5 +1,5 @@
 use gpui::*;
-use gpui_component::{
+use ui::{
     button::Button, h_flex, v_flex, scroll::ScrollbarAxis, ActiveTheme, Sizable, StyledExt,
 };
 

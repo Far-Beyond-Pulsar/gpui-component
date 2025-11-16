@@ -1,12 +1,12 @@
 use gpui::*;
-use gpui_component::{
+use ui::{
     dock::{Panel, PanelEvent},
     resizable::{h_resizable, v_resizable, resizable_panel, ResizableState},
     v_flex,
     ActiveTheme as _,
 };
 // Zero-copy Bevy viewport for 3D rendering
-use gpui_component::bevy_viewport::{BevyViewport, BevyViewportState};
+use ui::bevy_viewport::{BevyViewport, BevyViewportState};
 
 use ui::settings::EngineSettings;
 // DEPRECATED: Old software renderers - replaced by Bevy
@@ -491,8 +491,8 @@ impl Panel for LevelEditorPanel {
             .into_any_element()
     }
 
-    fn dump(&self, _cx: &App) -> gpui_component::dock::PanelState {
-        gpui_component::dock::PanelState {
+    fn dump(&self, _cx: &App) -> ui::dock::PanelState {
+        ui::dock::PanelState {
             panel_name: self.panel_name().to_string(),
             ..Default::default()
         }

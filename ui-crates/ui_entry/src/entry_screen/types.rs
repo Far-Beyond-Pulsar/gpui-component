@@ -1,4 +1,4 @@
-use gpui_component::IconName;
+use ui::IconName;
 use std::sync::Arc;
 use parking_lot::Mutex;
 

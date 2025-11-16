@@ -1,5 +1,5 @@
 use gpui::*;
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _}, h_flex, ActiveTheme, IconName, Selectable, Sizable,
 };
 
@@ -16,7 +16,7 @@ impl ToolbarPanel {
 
     pub fn render<V: 'static>(&self, state: &LevelEditorState, cx: &mut Context<V>) -> impl IntoElement
     where
-        V: EventEmitter<gpui_component::dock::PanelEvent> + Render,
+        V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
         h_flex()
             .w_full()

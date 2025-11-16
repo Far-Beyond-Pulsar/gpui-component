@@ -1,7 +1,7 @@
 //! Terminal Window - Displays a full terminal emulator in a separate window
 
 use gpui::*;
-use gpui_component::{
+use ui::{
     v_flex, ActiveTheme as _, TitleBar,
 };
 

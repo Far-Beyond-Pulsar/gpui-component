@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, Icon, IconName, ActiveTheme as _,
     divider::Divider, progress::Progress,
@@ -165,7 +165,7 @@ pub fn render_clone_git(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> 
                             Button::new("clone-repo")
                                 .label("Clone Repository")
                                 .icon(IconName::GitHub)
-                                .with_variant(gpui_component::button::ButtonVariant::Primary)
+                                .with_variant(ui::button::ButtonVariant::Primary)
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     let url = this.git_repo_url.clone();
                                     if !url.is_empty() {

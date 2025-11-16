@@ -1,5 +1,5 @@
 use gpui::*;
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _},
     input::{InputState, TextInput, TabSize, InputEvent},
     tab::{Tab, TabBar},
@@ -207,7 +207,7 @@ impl TextEditor {
                     // The InputState has a search panel that can be shown
                     // Emit focus event to potentially show search
                     println!("✓ Opening search panel for current file");
-                    cx.emit(gpui_component::input::InputEvent::Focus);
+                    cx.emit(ui::input::InputEvent::Focus);
                 });
             }
         }
@@ -222,7 +222,7 @@ impl TextEditor {
                 file.input_state.update(cx, |state, cx| {
                     println!("✓ Opening find/replace panel for current file");
                     // The search panel supports replace functionality
-                    cx.emit(gpui_component::input::InputEvent::Focus);
+                    cx.emit(ui::input::InputEvent::Focus);
                 });
             }
         }
@@ -631,7 +631,7 @@ impl TextEditor {
                 open_file.input_state.update(cx, |state, cx| {
                     // LSP Position uses 'line' and 'character' fields (0-based)
                     // Our UI uses 1-based line numbers
-                    use gpui_component::input::Position;
+                    use ui::input::Position;
                     state.set_cursor_position(
                         Position {
                             line: (line.saturating_sub(1)) as u32,
@@ -704,7 +704,7 @@ impl TextEditor {
                     println!("📜 Attempting to scroll to line {}, column {}", line, column);
                     
                     let scroll_attempted = open_file.input_state.update(cx, |state, cx| {
-                        use gpui_component::input::Position;
+                        use ui::input::Position;
                         state.set_cursor_position(
                             Position {
                                 line: (line.saturating_sub(1)) as u32,
@@ -861,7 +861,7 @@ impl TextEditor {
                                 .icon(IconName::Search)
                                 .tooltip("Toggle Performance Stats (F12)")
                                 .small()
-                                .with_variant(gpui_component::button::ButtonVariant::Primary)
+                                .with_variant(ui::button::ButtonVariant::Primary)
                                 .on_click(cx.listener(|this, _, _window, cx| {
                                     this.show_performance_stats = !this.show_performance_stats;
                                     cx.notify();
@@ -1072,7 +1072,7 @@ impl TextEditor {
                                 Button::new("open_folder_welcome")
                                     .label("Open Folder")
                                     .icon(IconName::FolderOpen)
-                                    .with_variant(gpui_component::button::ButtonVariant::Primary)
+                                    .with_variant(ui::button::ButtonVariant::Primary)
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.open_folder_dialog(window, cx);
                                     }))

@@ -113,6 +113,9 @@ pub const ENGINE_VERSION: &str = "0.1.45";
 pub const ENGINE_LICENSE: &str = "MIT/Apache-2.0";
 pub const ENGINE_AUTHORS: &str = "Pulsar Contributors";
 
+// Common actions
+gpui::actions!(ui, [OpenSettings]);
+
 use std::ops::Deref;
 
 rust_i18n::i18n!("locales", fallback = "en");

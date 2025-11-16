@@ -5,7 +5,7 @@ use super::state::*;
 use super::panel::DawPanel;
 use gpui::*;
 use gpui::prelude::FluentBuilder;
-use gpui_component::{
+use ui::{
     button::*, h_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, Disableable, divider::Divider,
 };
 

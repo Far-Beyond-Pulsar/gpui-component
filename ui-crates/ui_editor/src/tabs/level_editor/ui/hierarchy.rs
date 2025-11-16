@@ -1,5 +1,5 @@
 use gpui::*;
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _},
     context_menu::ContextMenuExt,
     h_flex, v_flex, scroll::ScrollbarAxis, ActiveTheme, Icon, IconName, Sizable, StyledExt,
@@ -216,4 +216,4 @@ impl HierarchyPanel {
     }
 }
 
-use gpui_component::dock::PanelEvent;
+use ui::dock::PanelEvent;

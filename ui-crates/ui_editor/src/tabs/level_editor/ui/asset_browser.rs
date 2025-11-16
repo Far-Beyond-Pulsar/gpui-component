@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use gpui::*;
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _}, h_flex, v_flex, scroll::ScrollbarAxis, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
 };
 

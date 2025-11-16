@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, Icon, IconName, ActiveTheme as _, StyledExt, divider::Divider,
     scroll::ScrollbarAxis,
@@ -44,7 +44,7 @@ pub fn render_recent_projects(screen: &mut EntryScreen, cols: usize, cx: &mut Co
                             Button::new("refresh-btn")
                                 .label("Refresh")
                                 .icon(IconName::ArrowUp)
-                                .with_variant(gpui_component::button::ButtonVariant::Secondary)
+                                .with_variant(ui::button::ButtonVariant::Secondary)
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     let path = this.recent_projects_path.clone();
                                     this.recent_projects = RecentProjectsList::load(&path);
@@ -56,7 +56,7 @@ pub fn render_recent_projects(screen: &mut EntryScreen, cols: usize, cx: &mut Co
                             Button::new("open-folder-btn")
                                 .label("Open Folder")
                                 .icon(IconName::FolderOpen)
-                                .with_variant(gpui_component::button::ButtonVariant::Primary)
+                                .with_variant(ui::button::ButtonVariant::Primary)
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.open_folder_dialog(window, cx);
                                 }))
@@ -207,7 +207,7 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                                     Button::new(SharedString::from(format!("open-editor-{}", proj_path)))
                                         .icon(IconName::Code)
                                         .tooltip(format!("Open in {}", get_tool_display_name(&editor)))
-                                        .with_variant(gpui_component::button::ButtonVariant::Ghost)
+                                        .with_variant(ui::button::ButtonVariant::Ghost)
                                         .on_click({
                                             let cmd = editor.clone();
                                             let path = std::path::PathBuf::from(proj_path.clone());
@@ -224,7 +224,7 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                                         Button::new(SharedString::from(format!("open-git-{}", proj_path)))
                                             .icon(IconName::GitHub)
                                             .tooltip(format!("Open in {}", get_tool_display_name(&git_tool)))
-                                            .with_variant(gpui_component::button::ButtonVariant::Ghost)
+                                            .with_variant(ui::button::ButtonVariant::Ghost)
                                             .on_click({
                                                 let cmd = git_tool.clone();
                                                 let path = std::path::PathBuf::from(proj_path.clone());
@@ -243,7 +243,7 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                                             Button::new(SharedString::from(format!("update-{}", proj_path)))
                                                 .label(format!("Pull {} update{}", count, if *count == 1 { "" } else { "s" }))
                                                 .icon(IconName::ArrowUp)
-                                                .with_variant(gpui_component::button::ButtonVariant::Primary)
+                                                .with_variant(ui::button::ButtonVariant::Primary)
                                                 .on_click(cx.listener({
                                                     let path = proj_path.clone();
                                                     move |this, _, _, cx| {
@@ -259,7 +259,7 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                                 Button::new(SharedString::from(format!("settings-{}", proj_path)))
                                     .icon(IconName::Settings)
                                     .tooltip("Project settings")
-                                    .with_variant(gpui_component::button::ButtonVariant::Ghost)
+                                    .with_variant(ui::button::ButtonVariant::Ghost)
                                     .on_click(cx.listener({
                                         let path = proj_path.clone();
                                         let name = proj_name_for_settings.clone();
@@ -272,7 +272,7 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                                 Button::new(SharedString::from(format!("location-{}", proj_path)))
                                     .icon(IconName::FolderOpen)
                                     .tooltip("Open in file manager")
-                                    .with_variant(gpui_component::button::ButtonVariant::Ghost)
+                                    .with_variant(ui::button::ButtonVariant::Ghost)
                                     .on_click({
                                         let path = std::path::PathBuf::from(proj_path.clone());
                                         move |_, _, _| {
@@ -285,7 +285,7 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                                 Button::new(SharedString::from(format!("remove-{}", proj_path)))
                                     .icon(IconName::Trash)
                                     .tooltip("Remove from recent")
-                                    .with_variant(gpui_component::button::ButtonVariant::Ghost)
+                                    .with_variant(ui::button::ButtonVariant::Ghost)
                                     .on_click(cx.listener({
                                         let path = proj_path.clone();
                                         move |this, _, _, cx| {

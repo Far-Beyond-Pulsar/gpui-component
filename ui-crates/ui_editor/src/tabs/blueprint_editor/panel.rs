@@ -1,6 +1,6 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _},
     dock::{Panel, PanelEvent},
     input::InputState,
@@ -86,9 +86,9 @@ pub struct BlueprintEditorPanel {
     pub class_variables: Vec<super::variables::ClassVariable>,
     // Variable creation state
     pub is_creating_variable: bool,
-    pub variable_name_input: Entity<gpui_component::input::InputState>,
+    pub variable_name_input: Entity<ui::input::InputState>,
     pub variable_type_dropdown:
-        Entity<gpui_component::dropdown::DropdownState<Vec<super::variables::TypeItem>>>,
+        Entity<ui::dropdown::DropdownState<Vec<super::variables::TypeItem>>>,
     // Variable drag state
     pub dragging_variable: Option<super::variables::VariableDrag>,
     pub variable_drop_menu_position: Option<Point<f32>>,
@@ -96,7 +96,7 @@ pub struct BlueprintEditorPanel {
     pub dragging_comment: Option<String>, // Comment ID being dragged
     pub resizing_comment: Option<(String, ResizeHandle)>, // (comment ID, handle being dragged)
     pub editing_comment: Option<String>,  // Comment ID being edited
-    pub comment_text_input: Entity<gpui_component::input::InputState>,
+    pub comment_text_input: Entity<ui::input::InputState>,
     // Store subscriptions to keep them alive
     pub subscriptions: Vec<gpui::Subscription>,
     // Compilation status for UI feedback
@@ -474,10 +474,10 @@ impl BlueprintEditorPanel {
             class_variables: Vec::new(),
             is_creating_variable: false,
             variable_name_input: cx.new(|cx| {
-                gpui_component::input::InputState::new(window, cx).placeholder("Variable name...")
+                ui::input::InputState::new(window, cx).placeholder("Variable name...")
             }),
             variable_type_dropdown: cx.new(|cx| {
-                gpui_component::dropdown::DropdownState::new(Vec::new(), None, window, cx)
+                ui::dropdown::DropdownState::new(Vec::new(), None, window, cx)
             }),
             dragging_variable: None,
             variable_drop_menu_position: None,
@@ -485,7 +485,7 @@ impl BlueprintEditorPanel {
             resizing_comment: None,
             editing_comment: None,
             comment_text_input: cx.new(|cx| {
-                gpui_component::input::InputState::new(window, cx).placeholder("Comment text...")
+                ui::input::InputState::new(window, cx).placeholder("Comment text...")
             }),
             subscriptions: Vec::<gpui::Subscription>::new(),
             compilation_status: super::CompilationStatus::default(),
@@ -1555,7 +1555,7 @@ impl BlueprintEditorPanel {
         for comment in &mut comments {
             if comment.color_picker_state.is_none() {
                 comment.color_picker_state = Some(
-                    cx.new(|cx| gpui_component::color_picker::ColorPickerState::new(window, cx)),
+                    cx.new(|cx| ui::color_picker::ColorPickerState::new(window, cx)),
                 );
             }
         }
@@ -1569,10 +1569,10 @@ impl BlueprintEditorPanel {
                     window,
                     move |this: &mut BlueprintEditorPanel,
                           _picker,
-                          event: &gpui_component::color_picker::ColorPickerEvent,
+                          event: &ui::color_picker::ColorPickerEvent,
                           _window,
                           cx| {
-                        if let gpui_component::color_picker::ColorPickerEvent::Change(Some(color)) =
+                        if let ui::color_picker::ColorPickerEvent::Change(Some(color)) =
                             event
                         {
                             if let Some(comment) =
@@ -1816,10 +1816,10 @@ impl BlueprintEditorPanel {
                 window,
                 move |this: &mut BlueprintEditorPanel,
                       _picker,
-                      event: &gpui_component::color_picker::ColorPickerEvent,
+                      event: &ui::color_picker::ColorPickerEvent,
                       _window,
                       cx| {
-                    if let gpui_component::color_picker::ColorPickerEvent::Change(Some(color)) =
+                    if let ui::color_picker::ColorPickerEvent::Change(Some(color)) =
                         event
                     {
                         if let Some(comment) =
@@ -2749,7 +2749,7 @@ impl BlueprintEditorPanel {
 
         // Create a new empty input state
         self.variable_name_input = cx.new(|cx| {
-            gpui_component::input::InputState::new(window, cx).placeholder("Variable name...")
+            ui::input::InputState::new(window, cx).placeholder("Variable name...")
         });
 
         // Populate dropdown with available types
@@ -2761,7 +2761,7 @@ impl BlueprintEditorPanel {
 
         self.variable_type_dropdown.update(cx, |dropdown, cx| {
             dropdown.set_items(type_items, window, cx);
-            dropdown.set_selected_index(Some(gpui_component::IndexPath::default()), window, cx);
+            dropdown.set_selected_index(Some(ui::IndexPath::default()), window, cx);
         });
 
         cx.notify();
@@ -3034,7 +3034,7 @@ impl BlueprintEditorPanel {
     }
 
     // Stub methods for node library (not currently used)
-    pub fn get_search_input_state(&self) -> &Entity<gpui_component::input::InputState> {
+    pub fn get_search_input_state(&self) -> &Entity<ui::input::InputState> {
         &self.variable_name_input // Reuse existing input state
     }
 
@@ -3226,7 +3226,7 @@ impl BlueprintEditorPanel {
         position: Point<f32>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        use gpui_component::{
+        use ui::{
             button::{Button, ButtonVariants as _},
             v_flex,
         };
@@ -3608,8 +3608,8 @@ impl Panel for BlueprintEditorPanel {
             .into_any_element()
     }
 
-    fn dump(&self, _cx: &App) -> gpui_component::dock::PanelState {
-        gpui_component::dock::PanelState {
+    fn dump(&self, _cx: &App) -> ui::dock::PanelState {
+        ui::dock::PanelState {
             panel_name: self.panel_name().to_string(),
             ..Default::default()
         }

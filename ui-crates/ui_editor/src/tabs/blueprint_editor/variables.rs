@@ -1,5 +1,5 @@
 use gpui::*;
-use gpui_component::{
+use ui::{
     button::{Button, ButtonVariants as _},
     dropdown::{Dropdown, DropdownItem},
     h_flex, v_flex,
@@ -358,7 +358,7 @@ impl VariablesRenderer {
     }
 
     fn render_variable_creation_form(panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
-        use gpui_component::input::TextInput;
+        use ui::input::TextInput;
 
         v_flex()
             .w_full()

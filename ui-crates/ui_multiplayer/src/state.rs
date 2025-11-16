@@ -1,7 +1,7 @@
 //! State management for the multiplayer window
 
 use gpui::*;
-use gpui_component::input::InputState;
+use ui::input::InputState;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;

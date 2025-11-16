@@ -2,7 +2,7 @@
 
 use gpui::*;
 use gpui::prelude::FluentBuilder;
-use gpui_component::{
+use ui::{
     button::Button,
     clipboard::Clipboard,
     h_flex, v_flex,

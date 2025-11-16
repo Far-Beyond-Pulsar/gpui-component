@@ -3,7 +3,7 @@
 
 use anyhow::Result;
 use gpui::{App, Context, Task, Window};
-use gpui_component::input::{CompletionProvider, DefinitionProvider, InputState, RopeExt};
+use ui::input::{CompletionProvider, DefinitionProvider, InputState, RopeExt};
 use serde_json::json;
 use std::path::PathBuf;
 
@@ -339,7 +339,7 @@ impl DefinitionProvider for GlobalRustAnalyzerCompletionProvider {
     }
 }
 
-impl gpui_component::input::HoverProvider for GlobalRustAnalyzerCompletionProvider {
+impl ui::input::HoverProvider for GlobalRustAnalyzerCompletionProvider {
     fn hover(
         &self,
         text: &ropey::Rope,

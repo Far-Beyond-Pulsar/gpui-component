@@ -1,6 +1,6 @@
 use gpui::*;
 use gpui::Hsla;
-use gpui_component::{ActiveTheme, Colorize};
+use ui::{ActiveTheme, Colorize};
 use std::path::PathBuf;
 use std::time::Duration;
 use ui_common::services::rust_analyzer_manager::{RustAnalyzerManager, AnalyzerStatus, AnalyzerEvent};

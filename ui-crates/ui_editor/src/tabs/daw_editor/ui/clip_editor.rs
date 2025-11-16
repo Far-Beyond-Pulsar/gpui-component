@@ -5,7 +5,7 @@ use super::state::*;
 use super::panel::DawPanel;
 use gpui::*;
 use gpui::prelude::FluentBuilder;
-use gpui_component::{v_flex, StyledExt, ActiveTheme};
+use ui::{v_flex, StyledExt, ActiveTheme};
 
 pub fn render_clip_editor(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     v_flex()
