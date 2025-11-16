@@ -3,6 +3,7 @@
 // Engine core types (used by UI components)
 pub mod assets;
 pub mod compiler;
+pub mod diagnostics;
 pub mod graph;
 pub mod settings;
 pub mod themes;
@@ -26,6 +27,7 @@ pub mod gpu_mem_tracker; // GPU memory allocation tracker for debugging VRAM lea
 pub mod dx11_shared_opener; // DX11 opener for DX12 shared handles (zero-copy bridge)
 mod virtual_list;
 mod window_border;
+pub mod component; // Component-based UI architecture
 
 pub(crate) mod actions;
 
@@ -100,6 +102,7 @@ pub use window_border::{window_border, window_paddings, WindowBorder};
 pub use icon::*;
 pub use kbd::*;
 pub use theme::*;
+pub use component::*;
 
 // Re-export engine types for UI crates
 pub use assets::Assets;

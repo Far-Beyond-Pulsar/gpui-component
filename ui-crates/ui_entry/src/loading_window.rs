@@ -54,6 +54,7 @@ impl LoadingWindow {
             .unwrap_or("Unnamed Project")
             .to_string();
         
+        //TODO: These should be fetched dynamically based on rust analyzer's output
         // Define all loading tasks
         let loading_tasks = vec![
             LoadingTask {

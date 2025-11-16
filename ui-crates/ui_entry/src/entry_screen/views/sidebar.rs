@@ -3,8 +3,8 @@ use ui::{
     button::{Button, ButtonVariants as _},
     v_flex, IconName, ActiveTheme as _,
 };
-use crate::entry_screen::{EntryScreen, EntryScreenView};
 use crate::OpenSettings;
+use crate::entry_screen::{EntryScreen, EntryScreenView};
 
 pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();

@@ -44,7 +44,7 @@ use crate::assets::Assets;
 use engine_state::WindowRequest;
 use crate::window::events::{MotionSmoother, SimpleClickState};
 use gpui::*;
-use gpui_component::Root;
+use ui::Root;
 use std::collections::HashSet;
 use std::sync::Arc;
 use winit::window::Window as WinitWindow;
@@ -175,7 +175,7 @@ pub struct WindowState {
     // ===== 3D Rendering =====
     
     /// Bevy renderer for this window (if it has a 3D viewport)
-    pub bevy_renderer: Option<Arc<std::sync::Mutex<crate::ui::common::services::gpu_renderer::GpuRenderer>>>,
+    pub bevy_renderer: Option<Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>>,
 }
 
 impl WindowState {

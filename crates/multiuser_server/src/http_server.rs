@@ -95,9 +95,11 @@ pub async fn run_server(
 
     let app = create_router(state);
 
-    info!("Starting HTTP server on {}", bind_addr);
+    info!("🌐 HTTP server binding to {}", bind_addr);
 
     let listener = tokio::net::TcpListener::bind(bind_addr).await?;
+
+    info!("🌐 HTTP server ready - accepting connections");
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal(shutdown))
@@ -283,7 +285,7 @@ async fn handle_websocket_connection(socket: axum::extract::ws::WebSocket, state
     let mut current_session_id: Option<String> = None;
     let mut broadcast_rx: Option<broadcast::Receiver<ServerMessageWs>> = None;
 
-    info!("WebSocket connection established");
+    info!("🔌 WebSocket connection established");
 
     // Handle incoming messages and broadcasts
     loop {
@@ -705,7 +707,7 @@ enum ServerMessageWs {
 
 async fn shutdown_signal(mut shutdown: mpsc::Receiver<()>) {
     shutdown.recv().await;
-    info!("HTTP server shutdown signal received");
+    info!("🛑 HTTP server shutdown signal received");
 }
 
 #[cfg(test)]

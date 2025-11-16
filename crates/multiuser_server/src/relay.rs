@@ -116,7 +116,7 @@ impl RelayServer {
         let endpoint = Endpoint::server(server_config, config.quic_bind)
             .context("Failed to create QUIC endpoint")?;
 
-        info!(bind_addr = %config.quic_bind, "Relay server initialized");
+        info!(bind_addr = %config.quic_bind, "⚡ QUIC relay server initialized");
 
         Ok(Self {
             config,
@@ -175,7 +175,7 @@ impl RelayServer {
 
     /// Start the relay server
     pub async fn run(self: Arc<Self>) -> Result<()> {
-        info!("Relay server starting");
+        info!("⚡ QUIC relay server starting...");
 
         // Spawn bandwidth monitoring task
         let server = self.clone();
@@ -220,7 +220,7 @@ impl RelayServer {
     async fn handle_connection(self: Arc<Self>, connection: quinn::Connection) -> Result<()> {
         let remote_addr = connection.remote_address();
 
-        info!(remote = %remote_addr, "New relay connection");
+        info!(remote = %remote_addr, "⚡ New QUIC relay connection");
         METRICS.relay_connections_active.inc();
 
         // Accept bi-directional streams
@@ -235,17 +235,18 @@ impl RelayServer {
                     });
                 }
                 Err(quinn::ConnectionError::ApplicationClosed(_)) => {
-                    info!("Connection closed by peer");
+                    info!("🔌 Connection closed by peer");
                     break;
                 }
                 Err(e) => {
-                    error!(error = %e, "Failed to accept stream");
+                    error!(error = %e, "❌ Failed to accept stream");
                     break;
                 }
             }
         }
 
         METRICS.relay_connections_active.dec();
+        info!("🔌 QUIC connection ended");
         Ok(())
     }
 
@@ -301,7 +302,7 @@ impl RelayServer {
 
             // Check bandwidth limits
             if !self.check_bandwidth_limit(&frame.session_id, frame_buf.len() as u64) {
-                warn!(session = %frame.session_id, "Bandwidth limit exceeded");
+                warn!(session = %frame.session_id, "⚠️  Bandwidth limit exceeded, dropping frame");
                 continue;
             }
 
@@ -371,9 +372,9 @@ impl RelayServer {
         if current_bw > limit {
             warn!(
                 session = session_id,
-                current = current_bw,
-                limit = limit,
-                "Bandwidth limit exceeded"
+                current_bps = current_bw,
+                limit_bps = limit,
+                "⚠️  Bandwidth limit exceeded for session"
             );
             return false;
         }
@@ -433,7 +434,7 @@ impl RelayServer {
 
             for key in to_remove {
                 self.connections.remove(&key);
-                debug!(connection = %key, "Removed idle connection");
+                debug!(connection = %key, "🧹 Removed idle connection");
             }
 
             // Clean up idle bandwidth accounts
@@ -446,7 +447,7 @@ impl RelayServer {
 
             for key in to_remove {
                 self.bandwidth_accounts.remove(&key);
-                debug!(session = %key, "Removed idle bandwidth account");
+                debug!(session = %key, "🧹 Removed idle bandwidth account");
             }
         }
     }
@@ -467,8 +468,8 @@ impl RelayServer {
 
         let session = Arc::new(RelaySession {
             session_id: session_id.clone(),
-            peer_a_id,
-            peer_b_id,
+            peer_a_id: peer_a_id.clone(),
+            peer_b_id: peer_b_id.clone(),
             peer_a_tx: tx_a,
             peer_b_tx: tx_b,
             bandwidth,
@@ -477,7 +478,12 @@ impl RelayServer {
 
         self.sessions.insert(session_id.clone(), session);
 
-        info!(session = %session_id, "Created relay session");
+        info!(
+            session = %session_id,
+            peer_a = %peer_a_id,
+            peer_b = %peer_b_id,
+            "⚡ Created relay session"
+        );
 
         Ok(())
     }
@@ -485,10 +491,11 @@ impl RelayServer {
     /// Close a relay session
     pub async fn close_session(&self, session_id: &str) -> Result<()> {
         if let Some((_, session)) = self.sessions.remove(session_id) {
+            let duration = session.created_at.elapsed();
             info!(
                 session = %session_id,
-                duration = ?session.created_at.elapsed(),
-                "Closed relay session"
+                duration_secs = duration.as_secs(),
+                "🔒 Closed relay session"
             );
         }
 

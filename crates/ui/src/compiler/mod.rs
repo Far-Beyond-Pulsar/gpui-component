@@ -35,10 +35,6 @@ pub mod utils;
 /// Validation and testing utilities
 pub mod validation;
 
-/// Legacy code (deprecated)
-#[allow(deprecated)]
-pub mod legacy;
-
 // ================================================================================================
 // Backward Compatibility Layer
 // ================================================================================================

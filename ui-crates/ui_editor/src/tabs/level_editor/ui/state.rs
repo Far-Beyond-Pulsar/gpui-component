@@ -19,7 +19,7 @@ pub struct LevelEditorState {
     /// Scene database - single source of truth for all scene data
     pub scene_database: SceneDatabase,
     /// Snapshot of scene state when entering play mode (for reset on stop)
-    pub scene_snapshot: Option<Arc<parking_lot::RwLock<Vec<crate::ui::windows::editor::tabs::level_editor::scene_database::SceneObjectData>>>>,
+    pub scene_snapshot: Option<Arc<parking_lot::RwLock<Vec<crate::tabs::level_editor::scene_database::SceneObjectData>>>>,
     /// Gizmo state for 3D manipulation
     pub gizmo_state: Arc<parking_lot::RwLock<GizmoState>>,
     /// Current editor mode

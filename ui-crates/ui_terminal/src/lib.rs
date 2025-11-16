@@ -11,7 +11,7 @@ pub mod terminal_element;
 pub mod window;
 
 // Re-export main types
-pub use terminal_core::Terminal;
+pub use terminal_core::{Terminal, TERMINAL_CONTEXT, Event as TerminalEvent, init};
 pub use terminal_drawer::TerminalDrawer;
 pub use terminal_element::TerminalElement;
 pub use window::TerminalWindow;

@@ -1,11 +1,27 @@
+//! Configuration management for Pulsar MultiEdit Server
+//!
+//! This module handles loading configuration from multiple sources:
+//! - Environment variables (highest priority)
+//! - Command-line arguments
+//! - Configuration files (JSON or TOML)
+//! - Sensible defaults
+//!
+//! Configuration validation ensures all required parameters are set correctly.
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
+use tracing::warn;
 
 /// Pulsar MultiEdit Service Configuration
+///
+/// All settings can be configured via:
+/// - Environment variables (prefixed with `PULSAR_`)
+/// - Command-line flags
+/// - Config file (JSON or TOML format)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// HTTP admin server bind address
@@ -213,17 +229,25 @@ impl Config {
         Ok(config)
     }
 
+    /// Validate configuration settings
+    ///
+    /// Ensures all required parameters are set correctly and warns about
+    /// insecure defaults that should be changed in production.
     fn validate(&self) -> Result<()> {
         if self.jwt_secret == "change-this-secret-in-production" {
-            tracing::warn!("Using default JWT secret - change this in production!");
+            warn!("⚠️  Using default JWT secret - CHANGE THIS IN PRODUCTION!");
         }
 
         if self.max_sessions == 0 {
-            anyhow::bail!("max_sessions must be greater than 0");
+            anyhow::bail!("❌ max_sessions must be greater than 0");
         }
 
         if self.mtls_enabled && self.client_ca_path.is_none() {
-            anyhow::bail!("mtls_enabled requires client_ca_path to be set");
+            anyhow::bail!("❌ mtls_enabled requires client_ca_path to be set");
+        }
+
+        if self.tls_cert_path.is_none() {
+            warn!("🔓 Using self-signed TLS certificate (not recommended for production)");
         }
 
         Ok(())

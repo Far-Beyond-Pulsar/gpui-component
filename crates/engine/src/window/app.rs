@@ -38,18 +38,18 @@
 
 use crate::assets::Assets;
 use crate::OpenSettings;  // Import the OpenSettings action from main/root
-use crate::ui::core::app::{PulsarApp, PulsarRoot, ToggleCommandPalette};
-use crate::ui::windows::entry_window::EntryWindow;
-use crate::ui::windows::loading_window::{LoadingComplete, LoadingWindow};
-use crate::ui::windows::entry_screen::project_selector::ProjectSelected;
-use crate::ui::windows::settings_window::SettingsWindow;
+use ui_core::{PulsarApp, PulsarRoot, ToggleCommandPalette};
+use ui_entry::{EntryScreen, ProjectSelected, create_entry_component};
+use ui_settings::{SettingsWindow, create_settings_component};
+use ui_loading_screen::create_loading_component;
 use crate::window::{convert_modifiers, convert_mouse_button, WindowState};
 use engine_state::{EngineState, WindowRequest};
 use gpui::*;
-use gpui_component::Root;
+use ui::Root;
 use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton as WinitMouseButton, WindowEvent};
@@ -118,13 +118,14 @@ impl WinitGpuiApp {
     /// * `request` - Type of window to create
     fn create_window(&mut self, event_loop: &ActiveEventLoop, request: WindowRequest) {
         let (title, size) = match &request {
+            WindowRequest::Entry => ("Pulsar Engine", (1280.0, 720.0)),
             WindowRequest::Settings => ("Settings", (800.0, 600.0)),
             WindowRequest::ProjectEditor { .. } => ("Pulsar Engine - Project Editor", (1280.0, 800.0)),
             WindowRequest::ProjectSplash { .. } => ("Loading Project...", (960.0, 540.0)),
             WindowRequest::CloseWindow { .. } => return, // Handled elsewhere
         };
 
-        println!("≡ƒ¬ƒ Creating new window: {}", title);
+        println!("≡ƒ¬ƒ [CREATE-WINDOW] Creating new window: {} (type: {:?})", title, request);
 
         let mut window_attributes = WinitWindow::default_attributes()
             .with_title(title)
@@ -159,26 +160,10 @@ impl ApplicationHandler for WinitGpuiApp {
             return;
         }
 
-        println!("Γ£à Creating main window...");
-
-        let window_attributes = WinitWindow::default_attributes()
-            .with_title("Pulsar Engine")
-            .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
-            .with_transparent(false);
-
-        let winit_window = Arc::new(
-            event_loop
-                .create_window(window_attributes)
-                .expect("Failed to create window"),
-        );
-
-        let window_id = winit_window.id();
-        let window_state = WindowState::new(winit_window);
-
-        self.windows.insert(window_id, window_state);
-        self.engine_state.increment_window_count();
-
-        println!("Γ£à Main window created (total windows: {})", self.engine_state.window_count());
+        println!("Γ£à Creating main entry window...");
+        
+        // Create the main entry window using the modular system
+        self.create_window(event_loop, WindowRequest::Entry);
     }
 
     fn window_event(
@@ -273,7 +258,7 @@ impl ApplicationHandler for WinitGpuiApp {
                     // First check if this window already has a renderer
                     if let Some(renderer_handle) = self.engine_state.get_window_gpu_renderer(window_id_u64) {
                         // Try to downcast from Any to the concrete type
-                        if let Ok(gpu_renderer) = renderer_handle.clone().downcast::<std::sync::Mutex<crate::ui::common::services::gpu_renderer::GpuRenderer>>() {
+                        if let Ok(gpu_renderer) = renderer_handle.clone().downcast::<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>() {
                             *bevy_renderer = Some(gpu_renderer);
                             println!("[RENDERER] ≡ƒÄ« Γ£à Loaded GPU renderer for window {}!", window_id_u64);
                         }
@@ -281,7 +266,7 @@ impl ApplicationHandler for WinitGpuiApp {
                     // Otherwise, check if there's a pending renderer we can claim
                     else if let Some(renderer_handle) = self.engine_state.get_window_gpu_renderer(0) {
                         // Try to downcast and claim
-                        if let Ok(gpu_renderer) = renderer_handle.clone().downcast::<std::sync::Mutex<crate::ui::common::services::gpu_renderer::GpuRenderer>>() {
+                        if let Ok(gpu_renderer) = renderer_handle.clone().downcast::<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>() {
                             self.engine_state.set_window_gpu_renderer(window_id_u64, gpu_renderer.clone() as Arc<dyn std::any::Any + Send + Sync>);
                             self.engine_state.remove_window_gpu_renderer(0);
                             self.engine_state.set_metadata("has_pending_viewport_renderer".to_string(), "false".to_string());
@@ -1183,9 +1168,9 @@ impl ApplicationHandler for WinitGpuiApp {
                 }
 
                 // Initialize GPUI components
-                gpui_component::init(app);
+                ui::init(app);
                 crate::themes::init(app);
-                crate::ui::windows::terminal::init(app);
+                ui_terminal::init(app);
 
                 // Setup keybindings
                 app.bind_keys([
@@ -1216,42 +1201,44 @@ impl ApplicationHandler for WinitGpuiApp {
                 println!("[WINDOW-INIT] ≡ƒÄ» This is a ProjectEditor window with ID: {}", window_id_u64);
             }
 
-            // Capture window_id_u64 for use in the closure
+            // Capture window_id_u64 and engine_state for use in the closure
             let captured_window_id = window_id_u64;
+            let engine_state_for_events = self.engine_state.clone();
             println!("[WINDOW-INIT] ≡ƒôª Captured window_id for closure: {}", captured_window_id);
 
             // Open GPUI window using external window API with appropriate view
             let gpui_window = app.open_window_external(external_handle.clone(), |window, cx| {
                 match &window_state.window_type {
+                    Some(WindowRequest::Entry) => {
+                        create_entry_component(window, cx, &engine_state_for_events)
+                    }
                     Some(WindowRequest::Settings) => {
-                        let settings_view = cx.new(|cx| crate::ui::windows::settings_window::SettingsWindow::new(window, cx));
-                        cx.new(|cx| Root::new(settings_view.clone().into(), window, cx))
+                        create_settings_component(window, cx, &engine_state_for_events)
                     }
                     Some(WindowRequest::ProjectSplash { project_path }) => {
-                        let loading_view = cx.new(|cx| crate::ui::windows::loading_window::LoadingWindow::new_with_window_id(
-                            std::path::PathBuf::from(project_path),
+                        // Create loading screen for project loading
+                        create_loading_component(
+                            PathBuf::from(project_path),
                             captured_window_id,
                             window,
                             cx
-                        ));
-                        cx.new(|cx| Root::new(loading_view.clone().into(), window, cx))
+                        )
                     }
                     Some(WindowRequest::ProjectEditor { project_path }) => {
                         // Use the captured window_id to ensure consistency
                         // Create the actual PulsarApp editor with the project
-                        let app = cx.new(|cx| crate::ui::core::app::PulsarApp::new_with_project_and_window_id(
+                        let app = cx.new(|cx| PulsarApp::new_with_project_and_window_id(
                             std::path::PathBuf::from(project_path),
                             captured_window_id,
                             window,
                             cx
                         ));
-                        let pulsar_root = cx.new(|cx| crate::ui::core::app::PulsarRoot::new("Pulsar Engine", app, window, cx));
-                        cx.new(|cx| Root::new(pulsar_root.into(), window, cx))
+                        let pulsar_root = cx.new(|cx| PulsarRoot::new("Pulsar Engine", app, window, cx));
+                        cx.new(|cx| ui::Root::new(pulsar_root.into(), window, cx))
                     }
                     Some(WindowRequest::CloseWindow { .. }) | None => {
-                        // Default to entry window for main window
-                        let entry_view = cx.new(|cx| EntryWindow::new(window, cx));
-                        cx.new(|cx| Root::new(entry_view.clone().into(), window, cx))
+                        // Fallback to entry screen if window_type is None or CloseWindow
+                        create_entry_component(window, cx, &engine_state_for_events)
                     }
                 }
             }).expect("Failed to open GPUI window");

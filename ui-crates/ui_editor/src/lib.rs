@@ -8,10 +8,8 @@ pub mod tabs;
 pub mod editors;
 
 // Re-export main types
-pub use drawers::{
-    FileManagerDrawer, TerminalDrawer, ProblemsDrawer,
-    file_manager_drawer::{FileSelected, FileType as DrawerFileType, PopoutFileManagerEvent},
-};
+pub use drawers::{FileManagerDrawer, TerminalDrawer, ProblemsDrawer};
+pub use ui_file_manager::{FileSelected, FileType as DrawerFileType, PopoutFileManagerEvent};
 pub use tabs::{
     ScriptEditorPanel, LevelEditorPanel, BlueprintEditorPanel, DawEditorPanel,
     TextEditorEvent,

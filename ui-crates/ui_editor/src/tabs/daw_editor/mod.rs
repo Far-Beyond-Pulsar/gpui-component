@@ -12,10 +12,10 @@ mod ecs_integration;
 mod gpu_dsp;
 mod project;
 mod real_time_audio;
-mod ui;
+mod daw_ui;
 
 pub use audio_service::AudioService;
-pub use ui::DawPanel;
+pub use daw_ui::DawPanel;
 
 use gpui::*;
 use ui::dock::{Panel, PanelEvent};

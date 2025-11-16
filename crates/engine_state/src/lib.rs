@@ -28,6 +28,7 @@ struct EngineStateInner {
     metadata: Metadata,
     renderers: RendererRegistry,
     window_count: usize,
+    window_sender: Option<WindowRequestSender>,
 }
 
 impl EngineState {
@@ -38,14 +39,14 @@ impl EngineState {
                 metadata: Metadata::new(),
                 renderers: RendererRegistry::new(),
                 window_count: 0,
+                window_sender: None,
             })),
         }
     }
 
     /// Add window sender (builder pattern)
-    pub fn with_window_sender(self, _sender: WindowRequestSender) -> Self {
-        // For now, we don't store the sender in the state
-        // The engine manages it separately
+    pub fn with_window_sender(self, sender: WindowRequestSender) -> Self {
+        self.inner.write().window_sender = Some(sender);
         self
     }
 
@@ -69,10 +70,16 @@ impl EngineState {
         self.inner.read().renderers.clone()
     }
 
-    /// Request a window (convenience method - requires manual sender setup)
-    pub fn request_window(&self, _request: WindowRequest) {
-        // This is a placeholder - actual implementation would need the sender
-        // For now, windows are requested via the channel directly
+    /// Request a window
+    pub fn request_window(&self, request: WindowRequest) {
+        let inner = self.inner.read();
+        if let Some(sender) = &inner.window_sender {
+            if let Err(e) = sender.send(request) {
+                eprintln!("❌ Failed to send window request: {}", e);
+            }
+        } else {
+            eprintln!("❌ Window sender not initialized!");
+        }
     }
 
     /// Set window GPU renderer

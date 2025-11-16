@@ -4,11 +4,15 @@
 
 // Re-export core modules that UI needs
 pub mod assets;
-pub mod compiler;
-pub mod graph;
 pub mod render;
 pub mod settings;
-pub mod themes;
+
+// Re-export compiler and graph from ui crate (canonical location)
+pub use ui::compiler;
+pub use ui::graph;
+
+// Re-export themes from ui crate (where it belongs)
+pub use ui::themes;
 
 // Re-export engine state
 pub use engine_state;
@@ -18,11 +22,9 @@ pub use assets::Assets;
 
 // Re-export action types that UI needs
 pub use gpui::Action;
-use serde::Deserialize;
 
-#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
-#[action(namespace = pulsar_engine, no_json)]
-pub struct OpenSettings;
+// Re-export OpenSettings from ui crate
+pub use ui::OpenSettings;
 
 // Engine constants
 pub const ENGINE_NAME: &str = env!("CARGO_PKG_NAME");

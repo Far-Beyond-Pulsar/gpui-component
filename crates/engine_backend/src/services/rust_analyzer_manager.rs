@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use std::thread;
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::fs;
+use ui::diagnostics::{Diagnostic, DiagnosticSeverity};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AnalyzerStatus {
@@ -26,7 +27,7 @@ pub enum AnalyzerEvent {
     IndexingProgress { progress: f32, message: String },
     Ready,
     Error(String),
-    Diagnostics(Vec<crate::diagnostics::Diagnostic>),
+    Diagnostics(Vec<Diagnostic>),
 }
 
 #[derive(Debug)]
@@ -35,7 +36,7 @@ enum ProgressUpdate {
     Ready,
     Error(String),
     ProcessExited(ExitStatus),
-    Diagnostics(Vec<crate::diagnostics::Diagnostic>),
+    Diagnostics(Vec<Diagnostic>),
 }
 
 pub struct RustAnalyzerManager {
@@ -801,16 +802,16 @@ impl RustAnalyzerManager {
                                                 let column = start.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize + 1;
                                                 
                                                 let severity = match severity_num {
-                                                    1 => crate::diagnostics::DiagnosticSeverity::Error,
-                                                    2 => crate::diagnostics::DiagnosticSeverity::Warning,
-                                                    3 => crate::diagnostics::DiagnosticSeverity::Information,
-                                                    4 => crate::diagnostics::DiagnosticSeverity::Hint,
-                                                    _ => crate::diagnostics::DiagnosticSeverity::Information,
+                                                    1 => DiagnosticSeverity::Error,
+                                                    2 => DiagnosticSeverity::Warning,
+                                                    3 => DiagnosticSeverity::Information,
+                                                    4 => DiagnosticSeverity::Hint,
+                                                    _ => DiagnosticSeverity::Information,
                                                 };
                                                 
                                                 let file_path = uri.trim_start_matches("file:///").replace("%20", " ");
                                                 
-                                                diagnostics.push(crate::diagnostics::Diagnostic {
+                                                diagnostics.push(Diagnostic {
                                                     file_path,
                                                     line,
                                                     column,

@@ -9,6 +9,7 @@
 //! - Telemetry and metrics collection
 
 use anyhow::{Context, Result};
+use colored::Colorize;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal;
@@ -25,76 +26,94 @@ async fn main() -> Result<()> {
     // 2. Initialize logging and tracing
     logging::init(&config).context("Failed to initialize logging")?;
 
-    info!(
-        version = env!("CARGO_PKG_VERSION"),
-        "Pulsar MultiEdit service starting"
-    );
+    // 3. Print beautiful banner
+    logging::print_banner(&config);
 
-    // Log configuration (sanitized)
+    // 4. Log configuration (sanitized)
     logging::log_config(&config);
 
-    // 3. Initialize telemetry (OpenTelemetry)
-    telemetry::init_telemetry(&config).context("Failed to initialize telemetry")?;
+    info!("{} Starting all services...", "🚀".to_string());
 
-    // 4. Initialize metrics registry
+    // 5. Initialize telemetry (OpenTelemetry)
+    if config.otlp_endpoint.is_some() {
+        info!("📡 Initializing telemetry...");
+        telemetry::init_telemetry(&config).context("Failed to initialize telemetry")?;
+        logging::log_status("📡", "Telemetry", "READY", true);
+    }
+
+    // 6. Initialize metrics registry
+    info!("📊 Initializing metrics...");
     let _metrics = metrics::init(&config).context("Failed to initialize metrics")?;
+    logging::log_status("📊", "Metrics", "READY", true);
 
-    // 5. Initialize persistence (DB + S3)
-    let _persistence = PersistenceLayer::new((*config).clone())
-        .await
-        .context("Failed to initialize persistence layer")?;
+    // 7. Initialize persistence (DB + S3)
+    if config.database_url.is_some() || config.s3_bucket.is_some() {
+        info!("💾 Initializing persistence layer...");
+        let _persistence = PersistenceLayer::new((*config).clone())
+            .await
+            .context("Failed to initialize persistence layer")?;
+        logging::log_status("💾", "Persistence", "READY", true);
+    }
 
-    // 6. Create shutdown channels
+    // 8. Create shutdown channels
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
     let (http_shutdown_tx, http_shutdown_rx) = mpsc::channel::<()>(1);
     let (quic_shutdown_tx, quic_shutdown_rx) = mpsc::channel::<()>(1);
 
-    // 7. Start HTTP admin server
+    // 9. Start HTTP admin server
+    info!("🌐 Starting HTTP server on {}...", config.http_bind);
     let config_http = config.clone();
     let http_handle = tokio::spawn(async move {
         if let Err(e) = http_server::run_server(config_http, http_shutdown_rx).await {
-            tracing::error!(error = %e, "HTTP server failed");
+            tracing::error!("❌ HTTP server failed: {}", e);
         }
     });
+    logging::log_status("🌐", "HTTP Server", "LISTENING", true);
 
-    // 8. Start QUIC relay server
+    // 10. Start QUIC relay server
+    info!("⚡ Starting QUIC relay on {}...", config.quic_bind);
     let config_quic = config.clone();
     let quic_handle = tokio::spawn(async move {
         match QuicServer::new(config_quic).await {
             Ok(server) => {
                 let server = Arc::new(server);
                 if let Err(e) = server.run(quic_shutdown_rx).await {
-                    tracing::error!(error = %e, "QUIC server failed");
+                    tracing::error!("❌ QUIC server failed: {}", e);
                 }
             }
             Err(e) => {
-                tracing::error!(error = %e, "Failed to create QUIC server");
+                tracing::error!("❌ Failed to create QUIC server: {}", e);
             }
         }
     });
+    logging::log_status("⚡", "QUIC Relay", "LISTENING", true);
 
-    // 9. Start session garbage collector
+    // 11. Start session garbage collector
+    info!("🧹 Starting session garbage collector...");
     let config_gc = config.clone();
     let sessions = Arc::new(SessionStore::new(config_gc.clone()));
     let sessions_gc = sessions.clone();
     let gc_handle = tokio::spawn(async move {
         session::garbage_collector_loop(sessions_gc, Duration::from_secs(60)).await;
     });
+    logging::log_status("🧹", "Garbage Collector", "RUNNING", true);
 
-    info!("All services started successfully");
+    println!("\n{}", "✅ All services started successfully!".bright_green().bold());
+    println!("{}\n", "━".repeat(60).bright_black());
 
-    // 10. Wait for shutdown signal
+    // 12. Wait for shutdown signal
     tokio::select! {
         _ = signal::ctrl_c() => {
-            info!("Received Ctrl+C, initiating graceful shutdown");
+            println!("\n{}", "⚠️  Received Ctrl+C, initiating graceful shutdown...".bright_yellow());
         }
         _ = shutdown_rx.recv() => {
-            info!("Received shutdown signal");
+            info!("🛑 Received shutdown signal");
         }
     }
 
-    // 11. Initiate graceful shutdown
-    info!("Shutting down services...");
+    // 13. Initiate graceful shutdown
+    println!("{}", "🛑 Shutting down services...".bright_yellow().bold());
+    println!("{}", "━".repeat(60).bright_black());
 
     // Signal all services to stop
     let _ = http_shutdown_tx.send(()).await;
@@ -104,26 +123,31 @@ async fn main() -> Result<()> {
     let shutdown_timeout = Duration::from_secs(10);
 
     tokio::select! {
-        _ = http_handle => info!("HTTP server stopped"),
+        _ = http_handle => logging::log_status("🌐", "HTTP Server", "STOPPED", true),
         _ = tokio::time::sleep(shutdown_timeout) => {
-            tracing::warn!("HTTP server shutdown timeout");
+            tracing::warn!("⚠️  HTTP server shutdown timeout");
         }
     }
 
     tokio::select! {
-        _ = quic_handle => info!("QUIC server stopped"),
+        _ = quic_handle => logging::log_status("⚡", "QUIC Relay", "STOPPED", true),
         _ = tokio::time::sleep(shutdown_timeout) => {
-            tracing::warn!("QUIC server shutdown timeout");
+            tracing::warn!("⚠️  QUIC server shutdown timeout");
         }
     }
 
     // Stop GC task (it runs indefinitely)
     gc_handle.abort();
+    logging::log_status("🧹", "Garbage Collector", "STOPPED", true);
 
-    // 12. Shutdown telemetry
-    telemetry::shutdown().await;
+    // 14. Shutdown telemetry
+    if config.otlp_endpoint.is_some() {
+        telemetry::shutdown().await;
+        logging::log_status("📡", "Telemetry", "STOPPED", true);
+    }
 
-    info!("Pulsar MultiEdit service stopped");
+    println!("\n{}", "👋 Pulsar MultiEdit service stopped cleanly".bright_green().bold());
+    println!("{}\n", "━".repeat(60).bright_black());
 
     Ok(())
 }

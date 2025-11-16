@@ -32,8 +32,6 @@ impl MultiplayerWindow {
             });
 
             cx.spawn(async move |_this, _cx| {
-                use ui::ui::multiuser_client::ClientMessage;
-
                 let client_guard = client.read().await;
                 match client_guard.send(ClientMessage::ChatMessage {
                     session_id: session_id.clone(),

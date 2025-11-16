@@ -7,6 +7,8 @@ use std::sync::mpsc::{channel, Sender, Receiver};
 /// Window creation/management request
 #[derive(Debug, Clone)]
 pub enum WindowRequest {
+    /// Open entry/launcher window
+    Entry,
     /// Open settings window
     Settings,
     /// Open project editor

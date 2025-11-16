@@ -10,7 +10,6 @@ gpui.workspace = true
 ui.workspace = true
 
 # Engine
-engine_backend.workspace = true
 engine_state.workspace = true
 
 # LSP

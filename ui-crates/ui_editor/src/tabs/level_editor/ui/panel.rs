@@ -13,7 +13,7 @@ use ui::settings::EngineSettings;
 // use ui::ui::rainbow_engine_final::{RainbowRenderEngine, RainbowPattern};
 // use ui::ui::wgpu_3d_renderer::Wgpu3DRenderer;
 use engine_backend::services::gpu_renderer::GpuRenderer;
-use ui_core::shared::StatusBar;
+use ui_common::StatusBar;
 use engine_backend::GameThread;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -109,7 +109,7 @@ impl LevelEditorPanel {
 
         // Store GPU renderer in global EngineState using a marker that the render loop will pick up
         // The render loop will associate it with the correct window when it first renders
-        if let Some(engine_state) = crate::EngineState::global() {
+        if let Some(engine_state) = engine_state::EngineState::global() {
             if let Some(wid) = window_id {
                 // We have the actual window ID - register directly!
                 engine_state.set_window_gpu_renderer(wid, gpu_engine.clone());

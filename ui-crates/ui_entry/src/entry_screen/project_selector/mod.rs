@@ -47,14 +47,7 @@ impl ProjectSelector {
 
     fn confirm_project(&mut self, cx: &mut Context<Self>) {
         if let Some(path) = &self.selected_path {
-            // Request splash window to be opened via the multi-window system
-            if let Some(engine_state) = crate::EngineState::global() {
-                println!("🚀 Opening project splash for: {:?}", path);
-                engine_state.request_window(crate::WindowRequest::ProjectSplash {
-                    project_path: path.to_string_lossy().to_string(),
-                });
-            }
-            // Still emit for backward compatibility
+            // Only emit the event - the window creation is handled by the event subscriber
             cx.emit(ProjectSelected { path: path.clone() });
         }
     }

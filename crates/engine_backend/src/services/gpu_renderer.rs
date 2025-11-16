@@ -1,7 +1,7 @@
 // OPTIMIZED: Wrapper around the backend Bevy renderer with zero-copy improvements
 // Now uses BGRA8UnormSrgb format (matches Bevy's pipeline) and Arc-based sharing for 3x performance improvement
 
-use engine_backend::subsystems::render::{BevyRenderer, RenderMetrics};
+use crate::subsystems::render::{BevyRenderer, RenderMetrics};
 use std::sync::{Arc, Mutex, Once};
 use std::time::Instant;
 
@@ -54,7 +54,7 @@ impl GpuRenderer {
     pub fn new_with_game_thread(
         display_width: u32, 
         display_height: u32,
-        game_thread_state: Option<Arc<Mutex<engine_backend::subsystems::game::GameState>>>,
+        game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
     ) -> Self {
         let width = display_width;
         let height = display_height;
@@ -121,7 +121,7 @@ impl GpuRenderer {
 
     /// TRUE ZERO-COPY: Get native GPU texture handle for immediate-mode rendering
     /// NO buffers, NO copies - just a raw pointer for GPUI to display!
-    pub fn get_native_texture_handle(&self) -> Option<engine_backend::subsystems::render::NativeTextureHandle> {
+    pub fn get_native_texture_handle(&self) -> Option<crate::subsystems::render::NativeTextureHandle> {
         self.bevy_renderer.as_ref()?.get_current_native_handle()
     }
 
@@ -247,7 +247,7 @@ impl GpuRenderer {
     
     /// Get detailed GPU pipeline profiling data (like Unreal's "stat gpu")
     /// Shows actual measured timings for each render pass
-    pub fn get_gpu_profiler_data(&self) -> Option<engine_backend::subsystems::render::GpuProfilerData> {
+    pub fn get_gpu_profiler_data(&self) -> Option<crate::subsystems::render::GpuProfilerData> {
         if let Some(ref renderer) = self.bevy_renderer {
             renderer.get_gpu_profiler_data()
         } else {
@@ -256,7 +256,7 @@ impl GpuRenderer {
     }
 
     /// Update camera input for Unreal-style controls
-    pub fn update_camera_input(&mut self, input: engine_backend::subsystems::render::CameraInput) {
+    pub fn update_camera_input(&mut self, input: crate::subsystems::render::CameraInput) {
         if let Some(ref mut renderer) = self.bevy_renderer {
             renderer.update_camera_input(input);
         }

@@ -6,13 +6,11 @@ use directories::ProjectDirs;
 use gpui::Action;
 use gpui::*;
 use gpui::SharedString;
-use gpui_component::scroll::ScrollbarShow;
-use gpui_component::Root;
+use ui::{scroll::ScrollbarShow, Root};
+use ui_core::ToggleCommandPalette;
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;
-use ui::core::ToggleCommandPalette;
-use ui::windows::EntryWindow;
 
 // Winit imports
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -40,17 +38,12 @@ use windows::{
     },
 };
 
-//! Pulsar Engine Binary
-//!
-//! Main executable for the Pulsar Engine
-
 // Use the library
 use pulsar_engine::*;
 
 // Binary-only modules
 mod render;
 mod subsystems;
-mod ui;
 mod window;  // Winit integration
 
 // Use engine_state crate
@@ -85,9 +78,8 @@ pub struct SelectFont(usize);
 #[action(namespace = story, no_json)]
 pub struct SelectRadius(usize);
 
-#[derive(Action, Clone, PartialEq, Eq)]
-#[action(namespace = pulsar, no_json)]
-pub struct OpenSettings;
+// Re-export OpenSettings from ui crate
+pub use ui::OpenSettings;
 
 // Import window management utilities from the window module
 use window::{convert_mouse_button, convert_modifiers, SimpleClickState, MotionSmoother, WindowState, WinitGpuiApp};

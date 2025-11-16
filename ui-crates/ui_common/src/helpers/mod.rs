@@ -11,8 +11,9 @@
 //! - `multiplayer/` - Multiplayer UI helpers (session, chat, sync)
 
 pub mod editor;
-pub mod multiplayer;
-pub mod project;
+// TODO: Move these to engine crate - they depend on backend
+// pub mod multiplayer;
+// pub mod project;
 pub mod window;
 
 // Re-export common types

@@ -10,7 +10,7 @@ use ui::bevy_viewport::BevyViewport;
 
 use super::state::{CameraMode, LevelEditorState};
 use super::actions::*;
-use ui_core::shared::ViewportControls;
+use ui_common::ViewportControls;
 use engine_backend::GameThread;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
@@ -323,7 +323,7 @@ impl ViewportPanel {
         &mut self,
         state: &mut LevelEditorState,
         fps_graph_state: Rc<RefCell<bool>>,  // Shared state for the Switch
-        gpu_engine: &Arc<Mutex<crate::ui::common::services::gpu_renderer::GpuRenderer>>,
+        gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         game_thread: &Arc<GameThread>,
         cx: &mut Context<V>,
     ) -> impl IntoElement
@@ -995,7 +995,7 @@ impl ViewportPanel {
     /// Shows REAL measured timings for each render pass
     fn render_gpu_pipeline_overlay<V: 'static>(
         &mut self,
-        gpu_engine: &Arc<Mutex<crate::ui::common::services::gpu_renderer::GpuRenderer>>,
+        gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
@@ -1191,7 +1191,7 @@ impl ViewportPanel {
         &mut self,
         state: &mut LevelEditorState,
         fps_graph_state: Rc<RefCell<bool>>,
-        gpu_engine: &Arc<Mutex<crate::ui::common::services::gpu_renderer::GpuRenderer>>,
+        gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         game_thread: &Arc<GameThread>,
         cx: &mut Context<V>,
     ) -> impl IntoElement

@@ -249,7 +249,7 @@ fn is_blank(cell: &Cell) -> bool {
 
 /// Layout terminal grid into batched text runs and background rects (Zed approach)
 pub fn layout_grid(
-    grid_iter: impl Iterator<Item = crate::ui::windows::terminal::terminal_core::IndexedCell>,
+    grid_iter: impl Iterator<Item = crate::terminal_core::IndexedCell>,
     display_offset: usize,
     text_style: &TextStyle,
     font: &Font,

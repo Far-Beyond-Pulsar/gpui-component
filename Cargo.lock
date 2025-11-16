@@ -4455,12 +4455,16 @@ dependencies = [
  "bevy",
  "bytemuck",
  "crossbeam-channel",
+ "flume",
  "futures",
  "git2",
+ "gpui",
  "image",
+ "lsp-types",
  "nalgebra 0.32.6",
  "parking_lot",
  "rapier3d",
+ "ropey",
  "serde",
  "serde_json",
  "sha2",
@@ -4468,6 +4472,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "ui",
  "url",
  "uuid",
  "walkdir",
@@ -9808,6 +9813,7 @@ dependencies = [
  "chacha20poly1305",
  "chrono",
  "clap",
+ "colored",
  "config 0.14.1",
  "criterion",
  "dashmap",
@@ -9914,6 +9920,7 @@ dependencies = [
  "ui_editor",
  "ui_entry",
  "ui_file_manager",
+ "ui_loading_screen",
  "ui_multiplayer",
  "ui_problems",
  "ui_settings",
@@ -13988,7 +13995,6 @@ version = "0.1.0"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
- "engine_backend",
  "engine_state",
  "flume",
  "gpui",
@@ -14021,8 +14027,10 @@ dependencies = [
  "ui_editor",
  "ui_entry",
  "ui_file_manager",
+ "ui_loading_screen",
  "ui_multiplayer",
  "ui_problems",
+ "ui_project_launcher",
  "ui_settings",
  "ui_terminal",
  "walkdir",
@@ -14089,6 +14097,7 @@ dependencies = [
  "engine_state",
  "git2",
  "gpui",
+ "open",
  "parking_lot",
  "rfd",
  "serde",
@@ -14115,6 +14124,18 @@ dependencies = [
  "ui",
  "ui_common",
  "walkdir",
+]
+
+[[package]]
+name = "ui_loading_screen"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine_backend",
+ "engine_state",
+ "gpui",
+ "serde",
+ "ui",
 ]
 
 [[package]]
@@ -14145,6 +14166,18 @@ dependencies = [
  "serde",
  "ui",
  "ui_common",
+]
+
+[[package]]
+name = "ui_project_launcher"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "gpui",
+ "serde",
+ "ui",
+ "ui_common",
+ "ui_entry",
 ]
 
 [[package]]

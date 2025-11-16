@@ -227,10 +227,10 @@ impl NodeGraphRenderer {
                         panel.finish_dragging_variable(graph_pos, cx);
                     } else if panel.dragging_connection.is_some() {
                         // Show node creation menu when dropping connection on empty space
-                        // Menu is positioned at panel level, use panel coordinate conversion
                         let panel_pos = Self::window_to_panel_pos(event.position, panel);
                         let screen_pos = Point::new(panel_pos.x.as_f32(), panel_pos.y.as_f32());
-                        panel.show_node_creation_menu(screen_pos, _window, cx);
+                        let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
+                        panel.show_node_creation_menu(screen_pos, graph_pos, _window, cx);
                         panel.cancel_connection_drag(cx);
                     } else if panel.is_selecting() {
                         // End selection drag
@@ -248,10 +248,10 @@ impl NodeGraphRenderer {
                     } else if panel.right_click_start.is_some() {
                         // Right-click released without dragging - show context menu
                         panel.right_click_start = None;
-                        // Menu is positioned at panel level, use panel coordinate conversion
                         let panel_pos = Self::window_to_panel_pos(event.position, panel);
                         let screen_pos = Point::new(panel_pos.x.as_f32(), panel_pos.y.as_f32());
-                        panel.show_node_creation_menu(screen_pos, _window, cx);
+                        let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
+                        panel.show_node_creation_menu(screen_pos, graph_pos, _window, cx);
                     }
                 }),
             )
@@ -323,10 +323,10 @@ impl NodeGraphRenderer {
             }
 
             // Fade in/out at edges of zoom range
-            let fade_range = 0.2;
-            let fade_in = ((zoom - min_zoom) / (min_zoom * fade_range)).min(1.0);
-            let fade_out = ((max_zoom - zoom) / (max_zoom * fade_range)).min(1.0);
-            let fade = fade_in.min(fade_out).max(0.0);
+            let fade_range = 0.2_f32;
+            let fade_in = ((zoom - min_zoom) / (min_zoom * fade_range)).min(1.0_f32);
+            let fade_out = ((max_zoom - zoom) / (max_zoom * fade_range)).min(1.0_f32);
+            let fade = fade_in.min(fade_out).max(0.0_f32);
             let opacity = base_opacity * fade;
 
             if opacity > 0.01 {
@@ -1057,7 +1057,8 @@ impl NodeGraphRenderer {
                         // Clicking input pin - do nothing for now
                     } else {
                         // Clicking output pin - start connection drag
-                        panel.start_connection_drag_from_pin(node_id.clone(), pin_id.clone(), cx);
+                        let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
+                        panel.start_connection_drag_from_pin(node_id.clone(), pin_id.clone(), graph_pos, cx);
                     }
                 })
             })
@@ -1190,12 +1191,13 @@ impl NodeGraphRenderer {
                 let pin_id = pin.id.clone();
                 let node_id = node_id.to_string();
                 div.on_mouse_down(gpui::MouseButton::Left, {
-                    cx.listener(move |panel, _event: &MouseDownEvent, _window, cx| {
+                    cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
                         // Stop event propagation to prevent main graph handler from firing
                         cx.stop_propagation();
 
-                        // Start connection drag from this output pin - no coordinate calculation needed
-                        panel.start_connection_drag_from_pin(node_id.clone(), pin_id.clone(), cx);
+                        // Start connection drag from this output pin
+                        let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
+                        panel.start_connection_drag_from_pin(node_id.clone(), pin_id.clone(), graph_pos, cx);
                     })
                 })
             })

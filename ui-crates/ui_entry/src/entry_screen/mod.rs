@@ -211,7 +211,7 @@ impl EntryScreen {
                     this.update(cx, |screen, cx| {
                         screen.recent_projects.add_or_update(recent_project);
                         screen.recent_projects.save(&recent_projects_path);
-                        cx.emit(crate::ui::windows::entry_screen::project_selector::ProjectSelected { path });
+                        cx.emit(crate::entry_screen::project_selector::ProjectSelected { path });
                     }).ok();
                 }).ok();
             }
@@ -370,15 +370,8 @@ impl EntryScreen {
         self.recent_projects.add_or_update(recent_project);
         self.recent_projects.save(&self.recent_projects_path);
 
-        // Request splash window via multi-window system
-        if let Some(engine_state) = crate::EngineState::global() {
-            println!("🚀 Opening project splash for: {:?}", path);
-            engine_state.request_window(crate::WindowRequest::ProjectSplash {
-                project_path: path.to_string_lossy().to_string(),
-            });
-        }
-
-        cx.emit(crate::ui::windows::entry_screen::project_selector::ProjectSelected { path });
+        // Only emit the event - the window creation is handled by the event subscriber
+        cx.emit(crate::entry_screen::project_selector::ProjectSelected { path });
     }
     
     pub(crate) fn remove_recent_project(&mut self, path: String, cx: &mut Context<Self>) {
@@ -581,14 +574,14 @@ default_scene = "scenes/main.scene"
                     screen.recent_projects.save(&recent_projects_path);
                     screen.new_project_name.clear();
                     screen.view = EntryScreenView::Recent;
-                    cx.emit(crate::ui::windows::entry_screen::project_selector::ProjectSelected { path: project_path });
+                    cx.emit(crate::entry_screen::project_selector::ProjectSelected { path: project_path });
                 }).ok();
             }).ok();
         }).detach();
     }
 }
 
-impl EventEmitter<crate::ui::windows::entry_screen::project_selector::ProjectSelected> for EntryScreen {}
+impl EventEmitter<crate::entry_screen::project_selector::ProjectSelected> for EntryScreen {}
 
 impl Render for EntryScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

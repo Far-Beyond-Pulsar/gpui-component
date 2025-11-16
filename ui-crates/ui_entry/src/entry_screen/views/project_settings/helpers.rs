@@ -63,7 +63,7 @@ pub fn render_size_bar(label: &str, size: u64, total: u64, color: Hsla, theme: &
                     div()
                         .text_sm()
                         .text_color(theme.muted_foreground)
-                        .child(format!("{} ({:.1}%)", crate::ui::windows::entry_screen::views::project_settings::types::format_size(Some(size)), percentage))
+                        .child(format!("{} ({:.1}%)", crate::entry_screen::views::project_settings::types::format_size(Some(size)), percentage))
                 )
         )
         .child(

@@ -14,8 +14,8 @@ use std::{sync::Arc, time::Duration};
 use ui_common::{
     command_palette::{CommandPalette, CommandSelected, CommandType, FileSelected as PaletteFileSelected},
     menu::AppTitleBar,
-    services::rust_analyzer_manager::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager},
 };
+use engine_backend::services::rust_analyzer_manager::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};
 
 // Editor panels and drawers (all from ui_editor)
 use ui_editor::{
@@ -27,7 +27,7 @@ use ui_editor::{
 // Standalone windows
 use ui_entry::{EntryScreen, ProjectSelected};
 use ui_file_manager::FileManagerWindow;
-use ui_terminal::TerminalWindow;
+use ui_terminal::{TerminalWindow, Terminal};
 use ui_problems::ProblemsWindow;
 use ui_multiplayer::MultiplayerWindow;
 
@@ -41,7 +41,7 @@ pub enum EditorType {
 }
 
 impl EditorType {
-    pub fn display_name(&self) -> &str {
+    pub fn display_name(&self) -> &'static str {
         match self {
             EditorType::Blueprint => "Blueprint Editor",
             EditorType::Script => "Script Editor",
@@ -50,7 +50,7 @@ impl EditorType {
         }
     }
 
-    pub fn description(&self) -> &str {
+    pub fn description(&self) -> &'static str {
         match self {
             EditorType::Blueprint => "Visual scripting with node graphs",
             EditorType::Script => "Code editor with LSP support",
@@ -508,9 +508,24 @@ impl PulsarApp {
                 cx.notify();
             }
             AnalyzerEvent::Diagnostics(diagnostics) => {
-                // Forward diagnostics to the problems drawer
+                // Convert and forward diagnostics to the problems drawer
+                let problems_diagnostics: Vec<ui_problems::Diagnostic> = diagnostics.iter().map(|d| {
+                    ui_problems::Diagnostic {
+                        file_path: d.file_path.clone(),
+                        line: d.line,
+                        column: d.column,
+                        severity: match d.severity {
+                            ui_common::DiagnosticSeverity::Error => ui_problems::DiagnosticSeverity::Error,
+                            ui_common::DiagnosticSeverity::Warning => ui_problems::DiagnosticSeverity::Warning,
+                            ui_common::DiagnosticSeverity::Information => ui_problems::DiagnosticSeverity::Information,
+                            ui_common::DiagnosticSeverity::Hint => ui_problems::DiagnosticSeverity::Hint,
+                        },
+                        message: d.message.clone(),
+                        source: d.source.clone(),
+                    }
+                }).collect();
                 self.problems_drawer.update(cx, |drawer, cx| {
-                    drawer.set_diagnostics(diagnostics.clone(), cx);
+                    drawer.set_diagnostics(problems_diagnostics, cx);
                 });
                 cx.notify();
             }
@@ -602,7 +617,7 @@ impl PulsarApp {
         &mut self,
         _drawer: &Entity<FileManagerDrawer>,
         event: &PopoutFileManagerEvent,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
@@ -611,7 +626,7 @@ impl PulsarApp {
         let project_path = event.project_path.clone();
 
         // Get a clone of self as Entity to pass to the file manager window
-        let parent_app = cx.entity().clone();
+        let _parent_app = cx.entity().clone();
 
         // Close the drawer when popping out
         self.drawer_open = false;
@@ -647,19 +662,19 @@ impl PulsarApp {
                     cx.new(|cx| FileManagerDrawer::new_in_window(project_path.clone(), window, cx));
 
                 let file_manager_window =
-                    cx.new(|cx| FileManagerWindow::new(new_drawer, parent_app.clone(), window, cx));
+                    cx.new(|cx| FileManagerWindow::new(new_drawer, window, cx));
 
                 cx.new(|cx| Root::new(file_manager_window.into(), window, cx))
             },
         );
     }
 
-    fn toggle_drawer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn toggle_drawer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.drawer_open = !self.drawer_open;
         cx.notify();
     }
 
-    fn toggle_problems(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn toggle_problems(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
         use ui::Root;
 
@@ -697,7 +712,7 @@ impl PulsarApp {
         );
     }
 
-    fn toggle_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn toggle_terminal(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
         use ui::Root;
 
@@ -727,16 +742,16 @@ impl PulsarApp {
                 ..Default::default()
             },
             |window, cx| {
-                // Create a NEW terminal drawer for this window (independent terminal session)
-                let terminal_drawer = cx.new(|cx| TerminalDrawer::new(window, cx));
-                let terminal_window = cx.new(|cx| TerminalWindow::new(terminal_drawer, window, cx));
+                // Create a NEW terminal for this window (independent terminal session)
+                let terminal = cx.new(|cx| Terminal::new(window, cx).expect("Failed to create terminal"));
+                let terminal_window = cx.new(|cx| TerminalWindow::new(terminal, window, cx));
 
                 cx.new(|cx| Root::new(terminal_window.into(), window, cx))
             },
         );
     }
 
-    fn toggle_multiplayer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn toggle_multiplayer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
         use ui::Root;
 
@@ -937,7 +952,7 @@ impl PulsarApp {
     fn on_navigate_to_diagnostic(
         &mut self,
         _drawer: &Entity<ProblemsDrawer>,
-        event: &crate::ui::windows::editor::drawers::problems_drawer::NavigateToDiagnostic,
+        event: &ui_problems::NavigateToDiagnostic,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1068,7 +1083,7 @@ impl PulsarApp {
     fn on_blueprint_editor_event(
         &mut self,
         _editor: &Entity<BlueprintEditorPanel>,
-        event: &crate::ui::windows::editor::tabs::blueprint_editor::OpenEngineLibraryRequest,
+        event: &ui_editor::tabs::blueprint_editor::OpenEngineLibraryRequest,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1220,7 +1235,7 @@ impl PulsarApp {
             cx.new(|cx| DawEditorPanel::new_with_project(project_path.clone(), window, cx));
 
         // Extract project name for tab label
-        let project_name = project_path
+        let _project_name = project_path
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("DAW")
@@ -1242,9 +1257,9 @@ impl PulsarApp {
     fn on_text_editor_event(
         &mut self,
         _editor: &Entity<ScriptEditorPanel>,
-        event: &crate::ui::windows::TextEditorEvent,
+        event: &ui_editor::TextEditorEvent,
         _window: &mut Window,
-        cx: &mut Context<Self>,
+        _cx: &mut Context<Self>,
     ) {
         use ui_editor::TextEditorEvent;
 
@@ -1414,11 +1429,11 @@ impl PulsarApp {
         let error_count = self
             .problems_drawer
             .read(cx)
-            .count_by_severity(crate::ui::windows::editor::drawers::problems_drawer::DiagnosticSeverity::Error);
+            .count_by_severity(ui_problems::DiagnosticSeverity::Error);
         let warning_count = self
             .problems_drawer
             .read(cx)
-            .count_by_severity(crate::ui::windows::editor::drawers::problems_drawer::DiagnosticSeverity::Warning);
+            .count_by_severity(ui_problems::DiagnosticSeverity::Warning);
 
         // Get status colors
         let (status_color, status_icon) = match status {

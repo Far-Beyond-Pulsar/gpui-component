@@ -57,7 +57,8 @@ tokio-tungstenite = "0.24"
 
 # Logging & Telemetry
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt", "ansi"] }
+colored = "2.1"
 opentelemetry = "0.24"
 opentelemetry_sdk = { version = "0.24", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.17", features = ["grpc-tonic"] }

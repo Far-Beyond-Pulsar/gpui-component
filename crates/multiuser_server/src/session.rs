@@ -1,9 +1,15 @@
+//! Session management and lifecycle
+//!
+//! Handles creation, joining, leaving, and garbage collection of collaborative editing sessions.
+//! Each session has a unique ID, host, participants, and metadata for coordination.
+
 use anyhow::{Context, Result};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::auth::Role;
@@ -74,10 +80,11 @@ impl SessionStore {
         METRICS.sessions_total.with_label_values(&[&session.host_id]).inc();
         METRICS.sessions_active.inc();
 
-        tracing::info!(
+        info!(
             session_id = %session_id,
             host_id = %session.host_id,
-            "Session created"
+            participants = session.participants.len(),
+            "✨ Session created"
         );
 
         Ok(session)
@@ -123,15 +130,17 @@ impl SessionStore {
 
         session.participants.push(ParticipantInfo {
             peer_id: peer_id.clone(),
-            role,
+            role: role.clone(),
             joined_at: now,
             last_seen: now,
         });
 
-        tracing::info!(
+        info!(
             session_id = %session_id,
             peer_id = %peer_id,
-            "Peer joined session"
+            role = ?role,
+            total_participants = session.participants.len(),
+            "👤 Peer joined session"
         );
 
         Ok(session.clone())
@@ -146,10 +155,11 @@ impl SessionStore {
 
         session.participants.retain(|p| p.peer_id != peer_id);
 
-        tracing::info!(
+        info!(
             session_id = %session_id,
             peer_id = %peer_id,
-            "Peer left session"
+            remaining_participants = session.participants.len(),
+            "👋 Peer left session"
         );
 
         // Close session if host left or no participants remain
@@ -185,14 +195,21 @@ impl SessionStore {
 
     /// Close a session
     pub fn close_session(&self, session_id: &str, reason: &str) -> Result<()> {
-        if let Some((_, _session)) = self.sessions.remove(session_id) {
+        if let Some((_, session)) = self.sessions.remove(session_id) {
             METRICS.sessions_active.dec();
             METRICS.sessions_closed.with_label_values(&[reason]).inc();
 
-            tracing::info!(
+            let duration = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() - session.created_at;
+
+            info!(
                 session_id = %session_id,
                 reason = %reason,
-                "Session closed"
+                duration_secs = duration,
+                participants = session.participants.len(),
+                "🔒 Session closed"
             );
         }
 
@@ -230,9 +247,9 @@ impl SessionStore {
         }
 
         if removed > 0 {
-            tracing::info!(
+            info!(
                 removed = removed,
-                "Garbage collected expired sessions"
+                "🧹 Garbage collected expired sessions"
             );
         }
 
@@ -257,12 +274,16 @@ impl SessionStore {
                 session.participants.retain(|p| p.peer_id != peer_id);
                 removed += 1;
 
-                tracing::warn!(
+                warn!(
                     session_id = %session.id,
                     peer_id = %peer_id,
-                    "Removed stale participant"
+                    "⚠️  Removed stale participant (timeout)"
                 );
             }
+        }
+
+        if removed > 0 {
+            info!(removed = removed, "🧹 Removed {} stale participants", removed);
         }
 
         Ok(removed)

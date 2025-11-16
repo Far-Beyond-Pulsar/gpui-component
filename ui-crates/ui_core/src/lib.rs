@@ -3,11 +3,14 @@
 //! Core application components including PulsarApp and PulsarRoot
 
 pub mod app;
-pub mod shared;
+pub mod flow;
 
 // Re-export main app types
 pub use app::{PulsarApp, PulsarRoot, ToggleCommandPalette, ToggleFileManager, ToggleProblems, ToggleTerminal};
-pub use shared::*;
+pub use flow::AppState;
 
 // Re-export file_utils from ui_common
 pub use ui_common::file_utils;
+
+// Re-export actions from ui crate
+pub use ui::OpenSettings;

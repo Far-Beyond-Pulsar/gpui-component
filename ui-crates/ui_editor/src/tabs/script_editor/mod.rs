@@ -187,7 +187,7 @@ impl Focusable for ScriptEditor {
 }
 
 impl EventEmitter<PanelEvent> for ScriptEditor {}
-impl EventEmitter<crate::ui::windows::editor::tabs::script_editor::text_editor::TextEditorEvent> for ScriptEditor {}
+impl EventEmitter<crate::tabs::script_editor::text_editor::TextEditorEvent> for ScriptEditor {}
 
 impl Render for ScriptEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

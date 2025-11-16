@@ -24,6 +24,13 @@ nalgebra = { version = "0.32", features = ["serde-serialize"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# UI dependencies needed for services
+gpui.workspace = true
+ui.workspace = true
+lsp-types.workspace = true
+ropey.workspace = true
+flume = "0.11"
+
 # Rendering dependencies
 bevy = { version = "0.17.2", default-features = false, features = [
     "bevy_render",

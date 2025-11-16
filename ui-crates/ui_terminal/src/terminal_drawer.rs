@@ -5,7 +5,7 @@ use gpui::*;
 use ui::{
     v_flex, ActiveTheme as _,
 };
-use ui_terminal::Terminal;
+use crate::Terminal;
 
 pub struct TerminalDrawer {
     focus_handle: FocusHandle,

@@ -12,6 +12,7 @@ use ui::{
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+// Local diagnostic types (TODO: unify with ui::diagnostics)
 #[derive(Clone, Debug)]
 pub struct Diagnostic {
     pub file_path: String,
