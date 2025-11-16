@@ -336,7 +336,7 @@ impl BlueprintEditorPanel {
                 
                 println!("📂 ✓ Legacy format parsed successfully");
                 let graph_description: GraphDescription = legacy_graph.into();
-                self.graph = self.convert_graph_description_to_blueprint(&graph_description)?;
+                self.graph = self.convert_graph_description_to_blueprint(&graph_description, window, cx)?;
 
                 // Reset to main tab
                 self.open_tabs = vec![GraphTab {
@@ -387,7 +387,7 @@ impl BlueprintEditorPanel {
         }
 
         // Load main graph
-        self.graph = self.convert_graph_description_to_blueprint(&asset.main_graph)?;
+        self.graph = self.convert_graph_description_to_blueprint(&asset.main_graph, window, cx)?;
 
         // Load local macros
         self.local_macros = asset.local_macros;
@@ -427,7 +427,7 @@ impl BlueprintEditorPanel {
                     .map(|m| (m.name.clone(), m.graph.clone()));
                     
                 if let Some((macro_name, macro_graph)) = macro_data {
-                    if let Ok(mut blueprint_graph) = self.convert_graph_description_to_blueprint(&macro_graph) {
+                    if let Ok(mut blueprint_graph) = self.convert_graph_description_to_blueprint(&macro_graph, window, cx) {
                         // Restore view state for this tab if available
                         if let Some(view_state) = editor_state.graph_view_states.get(tab_id) {
                             blueprint_graph.pan_offset = Point {
@@ -509,8 +509,8 @@ impl BlueprintEditorPanel {
     fn restore_tabs_state(
         &mut self,
         class_path: &std::path::Path,
-        _window: &mut Window,
-        _cx: &mut Context<Self>
+        window: &mut Window,
+        cx: &mut Context<Self>
     ) -> Result<(), String> {
         let tabs_file = class_path.join("tabs.json");
         if !tabs_file.exists() {
@@ -535,7 +535,7 @@ impl BlueprintEditorPanel {
                     .map(|m| m.graph.clone());
                     
                 if let Some(graph) = macro_graph {
-                    if let Ok(blueprint_graph) = self.convert_graph_description_to_blueprint(&graph) {
+                    if let Ok(blueprint_graph) = self.convert_graph_description_to_blueprint(&graph, window, cx) {
                         self.open_tabs.push(GraphTab {
                             id: ser_tab.id.clone(),
                             name: ser_tab.name.clone(),
@@ -553,7 +553,7 @@ impl BlueprintEditorPanel {
                     .map(|m| m.graph.clone());
                     
                 if let Some(graph) = macro_graph {
-                    if let Ok(blueprint_graph) = self.convert_graph_description_to_blueprint(&graph) {
+                    if let Ok(blueprint_graph) = self.convert_graph_description_to_blueprint(&graph, window, cx) {
                         self.open_tabs.push(GraphTab {
                             id: ser_tab.id.clone(),
                             name: ser_tab.name.clone(),

@@ -98,6 +98,8 @@ impl BlueprintEditorPanel {
     pub(super) fn convert_graph_description_to_blueprint(
         &mut self,
         graph_desc: &GraphDescription,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) -> Result<BlueprintGraph, String> {
         let mut nodes = Vec::new();
         let mut connections = Vec::new();
@@ -204,17 +206,22 @@ impl BlueprintEditorPanel {
             connections.push(bp_connection);
         }
 
-        // Convert comments (without subscriptions - those are added by caller if needed)
+        // Convert comments with initialized color picker states
         let comments: Vec<BlueprintComment> = graph_desc.comments.iter().map(|c| {
+            let color = Hsla { h: c.color[0], s: c.color[1], l: c.color[2], a: c.color[3] };
+            let color_picker_state = Some(cx.new(|cx| {
+                ui::color_picker::ColorPickerState::new(window, cx)
+            }));
+            
             BlueprintComment {
                 id: c.id.clone(),
                 text: c.text.clone(),
                 position: Point::new(c.position.0, c.position.1),
                 size: Size::new(c.size.0, c.size.1),
-                color: Hsla { h: c.color[0], s: c.color[1], l: c.color[2], a: c.color[3] },
+                color,
                 contained_node_ids: c.contained_node_ids.clone(),
                 is_selected: false,
-                color_picker_state: None, // Set by caller if needed
+                color_picker_state,
             }
         }).collect();
 
