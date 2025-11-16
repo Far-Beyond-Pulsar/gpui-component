@@ -10,29 +10,55 @@ use serde::Deserialize;
 use std::path::PathBuf;
 use std::{sync::Arc, time::Duration};
 
-use ui::ui::{
-    common::{
-        command_palette::{CommandPalette, CommandSelected, CommandType, FileSelected as PaletteFileSelected},
-        menu::AppTitleBar,
-        services::rust_analyzer_manager::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager},
-    },
-    editors::EditorType,
-    windows::{
-        BlueprintEditorPanel, DawEditorPanel, LevelEditorPanel, ScriptEditorPanel,
-        editor::{
-            FileManagerDrawer, ProblemsDrawer, TerminalDrawer,
-            drawers::{
-                file_manager_drawer::{FileSelected, FileType, PopoutFileManagerEvent},
-            },
-        },
-
-        file_manager_window::FileManagerWindow,
-        multiplayer_window::MultiplayerWindow,
-        problems_window::ProblemsWindow,
-        terminal_window::TerminalWindow,
-        entry_screen::{EntryScreen, project_selector::ProjectSelected},
-    },
+// Import from new modular ui-crates
+use ui_common::{
+    command_palette::{CommandPalette, CommandSelected, CommandType, FileSelected as PaletteFileSelected},
+    menu::AppTitleBar,
+    services::rust_analyzer_manager::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager},
 };
+
+// Editor panels and drawers (all from ui_editor)
+use ui_editor::{
+    BlueprintEditorPanel, DawEditorPanel, LevelEditorPanel, ScriptEditorPanel,
+    FileManagerDrawer, TerminalDrawer, ProblemsDrawer, TextEditorEvent,
+    FileSelected, DrawerFileType as FileType, PopoutFileManagerEvent,
+};
+
+// Standalone windows
+use ui_entry::{EntryScreen, ProjectSelected};
+use ui_file_manager::FileManagerWindow;
+use ui_terminal::TerminalWindow;
+use ui_problems::ProblemsWindow;
+use ui_multiplayer::MultiplayerWindow;
+
+// EditorType enum
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum EditorType {
+    Blueprint,
+    Script,
+    Level,
+    Daw,
+}
+
+impl EditorType {
+    pub fn display_name(&self) -> &str {
+        match self {
+            EditorType::Blueprint => "Blueprint Editor",
+            EditorType::Script => "Script Editor",
+            EditorType::Level => "Level Editor",
+            EditorType::Daw => "DAW Editor",
+        }
+    }
+
+    pub fn description(&self) -> &str {
+        match self {
+            EditorType::Blueprint => "Visual scripting with node graphs",
+            EditorType::Script => "Code editor with LSP support",
+            EditorType::Level => "3D level design and placement",
+            EditorType::Daw => "Digital audio workstation",
+        }
+    }
+}
 
 // Action to toggle the file manager drawer
 #[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -1220,7 +1246,7 @@ impl PulsarApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        use ui::ui::windows::TextEditorEvent;
+        use ui_editor::TextEditorEvent;
 
         match event {
             // LSP notifications are now handled by ScriptEditor internally

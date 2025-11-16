@@ -7,8 +7,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use super::types::*;
-use pulsar_engine::ui::simple_sync::SyncDiff;
-use pulsar_engine::ui::multiuser_client::MultiuserClient;
+use ui::ui::simple_sync::SyncDiff;
+use ui::ui::multiuser_client::MultiuserClient;
 
 /// Multiplayer collaboration window for connecting to multiuser servers
 pub struct MultiplayerWindow {

@@ -9,7 +9,7 @@ use ui::{v_flex, h_flex, StyledExt, ActiveTheme, PixelsExt};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use ui_editor::tabs::daw_editor::audio_types::SAMPLE_RATE;
+use crate::tabs::daw_editor::audio_types::SAMPLE_RATE;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 

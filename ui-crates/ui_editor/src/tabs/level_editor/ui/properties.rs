@@ -4,7 +4,7 @@ use ui::{
 };
 
 use super::state::{LevelEditorState, Transform};
-use ui_editor::tabs::level_editor::scene_database::ObjectType;
+use crate::tabs::level_editor::scene_database::ObjectType;
 
 /// Properties Panel - Inspector showing properties of the selected object
 pub struct PropertiesPanel;

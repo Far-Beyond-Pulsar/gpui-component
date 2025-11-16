@@ -7,7 +7,7 @@ use ui::{
 
 use super::state::{LevelEditorState, SceneObject};
 use super::actions::*;
-use ui_editor::tabs::level_editor::scene_database::ObjectType;
+use crate::tabs::level_editor::scene_database::ObjectType;
 
 /// Hierarchy Panel - Scene outliner showing all objects in a tree structure
 pub struct HierarchyPanel;

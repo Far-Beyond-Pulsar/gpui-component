@@ -2,8 +2,10 @@
 //!
 //! Real-time collaboration and multiplayer features
 
+mod chat;
 mod connection;
-mod mod_file;
+mod file_sync;
+mod presence;
 mod session;
 mod state;
 mod traits;
@@ -12,7 +14,5 @@ mod ui;
 mod utils;
 
 // Re-export main types
-pub use mod_file::MultiplayerWindow;
-pub use state::MultiplayerWindowState;
+pub use state::MultiplayerWindow;
 pub use types::*;
-pub use traits::*;

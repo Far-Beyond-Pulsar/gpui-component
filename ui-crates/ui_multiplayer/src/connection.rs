@@ -7,8 +7,8 @@ use tokio::sync::RwLock;
 
 use super::state::MultiplayerWindow;
 use super::types::*;
-use pulsar_engine::ui::simple_sync;
-use pulsar_engine::ui::multiuser_client::{ClientMessage, MultiuserClient, ServerMessage};
+use ui::ui::simple_sync;
+use ui::ui::multiuser_client::{ClientMessage, MultiuserClient, ServerMessage};
 
 impl MultiplayerWindow {
     pub(super) fn create_session(&mut self, window: &mut Window, cx: &mut Context<Self>) {

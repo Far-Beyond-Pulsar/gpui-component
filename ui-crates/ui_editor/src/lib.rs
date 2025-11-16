@@ -2,20 +2,17 @@
 //!
 //! Main editor window with tabs and drawers
 
+// Drawers and tabs are in the main editor module
 pub mod drawers;
-pub mod editors;
 pub mod tabs;
+pub mod editors;
 
-// Re-export editor window (from mod.rs)
-mod editor_mod;
-pub use editor_mod::*;
-
-// Re-export commonly used editor types
-pub use tabs::{
-    ScriptEditorPanel, LevelEditorPanel, BlueprintEditorPanel, DawEditorPanel,
-    TextEditorEvent,
-};
+// Re-export main types
 pub use drawers::{
     FileManagerDrawer, TerminalDrawer, ProblemsDrawer,
     file_manager_drawer::{FileSelected, FileType as DrawerFileType, PopoutFileManagerEvent},
+};
+pub use tabs::{
+    ScriptEditorPanel, LevelEditorPanel, BlueprintEditorPanel, DawEditorPanel,
+    TextEditorEvent,
 };

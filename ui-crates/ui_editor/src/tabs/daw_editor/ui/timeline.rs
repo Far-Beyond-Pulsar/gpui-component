@@ -8,7 +8,7 @@ use ui::{
     scroll::{Scrollbar, ScrollbarAxis}, PixelsExt, h_virtual_list};
 use std::rc::Rc;
 use std::ops::Range;
-use ui_editor::tabs::daw_editor::audio_types::SAMPLE_RATE;
+use crate::tabs::daw_editor::audio_types::SAMPLE_RATE;
 
 const TIMELINE_HEADER_HEIGHT: f32 = 40.0;
 const TRACK_HEADER_WIDTH: f32 = 200.0;

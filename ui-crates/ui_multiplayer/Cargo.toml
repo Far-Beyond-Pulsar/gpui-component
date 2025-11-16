@@ -11,8 +11,6 @@ ui.workspace = true
 
 # UI crates
 ui_common.workspace = true
-ui_core.workspace = true
-
 # Engine
 engine_state.workspace = true
 engine_backend.workspace = true

@@ -8,7 +8,7 @@ use gpui::prelude::FluentBuilder;
 use ui::{
     button::*, h_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, divider::Divider,
 };
-use ui_editor::tabs::daw_editor::audio_types::SAMPLE_RATE;
+use crate::tabs::daw_editor::audio_types::SAMPLE_RATE;
 
 pub fn render_transport(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     h_flex()

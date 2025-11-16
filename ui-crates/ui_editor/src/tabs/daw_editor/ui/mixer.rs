@@ -10,7 +10,7 @@ use ui::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, PixelsExt,
     h_virtual_list, scroll::{Scrollbar, ScrollbarAxis},
 };
-use ui_editor::tabs::daw_editor::audio_types::{Track, TrackId};
+use crate::tabs::daw_editor::audio_types::{Track, TrackId};
 use std::rc::Rc;
 
 const CHANNEL_STRIP_WIDTH: f32 = 90.0;

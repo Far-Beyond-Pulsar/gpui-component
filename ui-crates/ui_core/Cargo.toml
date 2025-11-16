@@ -9,8 +9,15 @@ publish = false
 gpui.workspace = true
 ui.workspace = true
 
-# Shared UI
+# UI crates (all of them!)
 ui_common.workspace = true
+ui_editor.workspace = true
+ui_entry.workspace = true
+ui_settings.workspace = true
+ui_multiplayer.workspace = true
+ui_terminal.workspace = true
+ui_problems.workspace = true
+ui_file_manager.workspace = true
 
 # Engine
 engine_state.workspace = true

@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use ui_editor::tabs::daw_editor::audio_types::{SAMPLE_RATE, AudioClip, AudioAssetData};
+use crate::tabs::daw_editor::audio_types::{SAMPLE_RATE, AudioClip, AudioAssetData};
 use ui::{VirtualListScrollHandle, scroll::ScrollbarState};
 
 /// Main view modes

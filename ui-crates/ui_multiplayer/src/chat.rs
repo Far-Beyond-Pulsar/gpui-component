@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 
 use super::state::MultiplayerWindow;
 use super::types::*;
-use pulsar_engine::ui::multiuser_client::{ClientMessage, MultiuserClient};
+use ui::ui::multiuser_client::{ClientMessage, MultiuserClient};
 
 impl MultiplayerWindow {
     pub(super) fn send_chat_message(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -32,7 +32,7 @@ impl MultiplayerWindow {
             });
 
             cx.spawn(async move |_this, _cx| {
-                use pulsar_engine::ui::multiuser_client::ClientMessage;
+                use ui::ui::multiuser_client::ClientMessage;
 
                 let client_guard = client.read().await;
                 match client_guard.send(ClientMessage::ChatMessage {

@@ -10,8 +10,8 @@ use ui::bevy_viewport::{BevyViewport, BevyViewportState};
 
 use ui::settings::EngineSettings;
 // DEPRECATED: Old software renderers - replaced by Bevy
-// use pulsar_engine::ui::rainbow_engine_final::{RainbowRenderEngine, RainbowPattern};
-// use pulsar_engine::ui::wgpu_3d_renderer::Wgpu3DRenderer;
+// use ui::ui::rainbow_engine_final::{RainbowRenderEngine, RainbowPattern};
+// use ui::ui::wgpu_3d_renderer::Wgpu3DRenderer;
 use ui_common::services::gpu_renderer::GpuRenderer;
 use ui_core::shared::StatusBar;
 use engine_backend::GameThread;
@@ -25,7 +25,7 @@ use super::{
     ViewportPanel, ToolbarPanel, CameraMode, TransformTool,
 };
 use super::actions::*;
-use ui_editor::tabs::level_editor::scene_database::{
+use crate::tabs::level_editor::scene_database::{
     SceneObjectData, ObjectType, Transform, MeshType, LightType,
 };
 
@@ -181,7 +181,7 @@ impl LevelEditorPanel {
 
                     // Map GPUI GizmoType to Bevy GizmoType
                     use engine_backend::subsystems::render::bevy_renderer::BevyGizmoType;
-                    use ui_editor::tabs::level_editor::GizmoType;
+                    use crate::tabs::level_editor::GizmoType;
                     bevy_gizmo.gizmo_type = match gpui_gizmo.gizmo_type {
                         GizmoType::None => BevyGizmoType::None,
                         GizmoType::Translate => BevyGizmoType::Translate,

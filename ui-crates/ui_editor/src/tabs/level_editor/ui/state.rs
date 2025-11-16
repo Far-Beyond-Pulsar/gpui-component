@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 // Import our scene database and gizmo systems
-use ui_editor::tabs::level_editor::{SceneDatabase, GizmoState, GizmoType};
+use crate::tabs::level_editor::{SceneDatabase, GizmoState, GizmoType};
 
 /// Editor mode - Edit or Play
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,7 +64,7 @@ pub enum CameraMode {
 }
 
 // Legacy types for backwards compatibility - now forwarded from scene_database
-pub use ui_editor::tabs::level_editor::scene_database::{
+pub use crate::tabs::level_editor::scene_database::{
     Transform,
     SceneObjectData as SceneObject,
 };
