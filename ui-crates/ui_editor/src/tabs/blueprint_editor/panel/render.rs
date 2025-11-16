@@ -111,6 +111,7 @@ impl Render for BlueprintEditorPanel {
                     )
             )
             .when_some(self.node_creation_menu.clone(), |this, menu| {
+                let menu_pos = self.node_creation_menu_position.unwrap_or(Point::new(0.0, 0.0));
                 this.child(
                     div()
                         .absolute()
@@ -136,6 +137,8 @@ impl Render for BlueprintEditorPanel {
                         .child(
                             div()
                                 .absolute()
+                                .left(px(menu_pos.x))
+                                .top(px(menu_pos.y))
                                 // Stop propagation on menu itself so clicks don't dismiss
                                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                                 .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
@@ -144,6 +147,8 @@ impl Render for BlueprintEditorPanel {
                 )
             })
             .when_some(self.hoverable_tooltip.clone(), |this, tooltip| {
+                let tooltip_pos = self.pending_tooltip.as_ref().map(|(_, pos)| *pos).unwrap_or(Point::new(0.0, 0.0));
+                let tooltip_pos_clone = tooltip_pos.clone();
                 this.child(
                     div()
                         .absolute()
@@ -151,24 +156,48 @@ impl Render for BlueprintEditorPanel {
                         .left_0()
                         .w_full()
                         .h_full()
+                        // Dismiss on mouse move (hover away)
+                        .on_mouse_move(cx.listener(move |panel, event: &MouseMoveEvent, _window, cx| {
+                            // Dismiss if mouse moves away from the hover area
+                            // We use a simple distance check - if mouse is far from tooltip position, hide it
+                            let mouse_pos_pixels = event.position; // Window coordinates (Pixels)
+                            let mouse_pos = Point::new(mouse_pos_pixels.x.to_f64() as f32, mouse_pos_pixels.y.to_f64() as f32);
+                            let dist_x = (mouse_pos.x - tooltip_pos_clone.x).abs();
+                            let dist_y = (mouse_pos.y - tooltip_pos_clone.y).abs();
+                            // If mouse is more than 100px away in any direction, dismiss
+                            if dist_x > 100.0 || dist_y > 100.0 {
+                                panel.hoverable_tooltip = None;
+                                panel.pending_tooltip = None;
+                                cx.notify();
+                            }
+                        }))
                         // Dismiss on click
                         .on_mouse_down(MouseButton::Left, cx.listener(|panel, _, _window, cx| {
                             panel.hoverable_tooltip = None;
+                            panel.pending_tooltip = None;
                             cx.notify();
                         }))
                         .on_mouse_down(MouseButton::Right, cx.listener(|panel, _, _window, cx| {
                             panel.hoverable_tooltip = None;
+                            panel.pending_tooltip = None;
                             cx.notify();
                         }))
                         // Dismiss on escape key
                         .on_key_down(cx.listener(|panel, event: &KeyDownEvent, _window, cx| {
                             if event.keystroke.key == "escape" {
                                 panel.hoverable_tooltip = None;
+                                panel.pending_tooltip = None;
                                 cx.notify();
                                 cx.stop_propagation();
                             }
                         }))
-                        .child(div().absolute().child(tooltip))
+                        .child(
+                            div()
+                                .absolute()
+                                .left(px(tooltip_pos.x))
+                                .top(px(tooltip_pos.y))
+                                .child(tooltip)
+                        )
                 )
             })
     }
