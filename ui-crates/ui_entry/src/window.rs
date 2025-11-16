@@ -1,6 +1,6 @@
 use gpui::*;
-use ui_entry::screen::EntryScreen;
-use ui_entry::screen::project_selector::ProjectSelected;
+use crate::entry_screen::EntryScreen;
+use crate::entry_screen::project_selector::ProjectSelected;
 
 pub struct EntryWindow {
     entry_screen: Option<Entity<EntryScreen>>,

@@ -6,18 +6,17 @@ use ui::{
     v_flex, ActiveTheme as _, TitleBar,
 };
 
-use ui_editor::drawers::file_manager_drawer::{FileManagerDrawer, FileSelected};
-use ui_core::app::PulsarApp;
+use crate::{FileManagerDrawer, FileSelected};
 
 pub struct FileManagerWindow {
     file_manager: Entity<FileManagerDrawer>,
-    parent_app: Entity<PulsarApp>,
+    // TODO: Use event emitter instead of direct parent reference
+    // parent_app: Entity<PulsarApp>,
 }
 
 impl FileManagerWindow {
     pub fn new(
         file_manager: Entity<FileManagerDrawer>,
-        parent_app: Entity<PulsarApp>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -26,7 +25,6 @@ impl FileManagerWindow {
 
         Self { 
             file_manager,
-            parent_app,
         }
     }
 
@@ -38,19 +36,15 @@ impl FileManagerWindow {
         &mut self,
         _drawer: &Entity<FileManagerDrawer>,
         event: &FileSelected,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Forward the event to the parent app
-        let event_clone = event.clone();
-        let parent = self.parent_app.clone();
-        
-        // Update parent in its own window
-        parent.update(cx, |app, cx| {
-            app.handle_file_selected_from_external_window(&event_clone, window, cx);
-        });
+        // Emit event for parent to handle
+        cx.emit(event.clone());
     }
 }
+
+impl EventEmitter<FileSelected> for FileManagerWindow {}
 
 impl Render for FileManagerWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

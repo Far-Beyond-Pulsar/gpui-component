@@ -15,7 +15,7 @@ use ui::{
     h_flex, v_flex, Icon, IconName, ActiveTheme as _, StyledExt, divider::Divider,
     scroll::ScrollbarAxis,
 };
-use ui_entry::screen::EntryScreen;
+use crate::entry_screen::EntryScreen;
 
 pub fn render_project_settings(screen: &EntryScreen, settings: &ProjectSettings, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();

@@ -9,11 +9,13 @@
 
 pub mod subsystems;
 pub mod gpu_interop;
+pub mod services;
 
 pub use tokio;
 pub use subsystems::physics::PhysicsEngine;
 pub use subsystems::game::{GameThread, GameState, GameObject};
 pub use subsystems::render::{WgpuRenderer, BevyRenderer, Framebuffer as RenderFramebuffer};
+pub use services::{GpuRenderer, GlobalRustAnalyzerCompletionProvider, RustAnalyzerManager};
 pub use std::sync::Arc;
 
 pub const ENGINE_THREADS: [&str; 8] = [

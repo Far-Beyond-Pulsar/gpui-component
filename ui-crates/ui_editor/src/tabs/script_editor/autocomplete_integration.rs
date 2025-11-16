@@ -9,8 +9,8 @@ use ui::input::{
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use ui_common::services::rust_analyzer_manager::RustAnalyzerManager;
-use ui_common::services::lsp_completion_provider::GlobalRustAnalyzerCompletionProvider;
+use engine_backend::services::rust_analyzer_manager::RustAnalyzerManager;
+use engine_backend::services::lsp_completion_provider::GlobalRustAnalyzerCompletionProvider;
 
 /// Helper function to set up autocomplete for a Rust file with real rust-analyzer completions
 /// 

@@ -12,7 +12,7 @@ use ui::settings::EngineSettings;
 // DEPRECATED: Old software renderers - replaced by Bevy
 // use ui::ui::rainbow_engine_final::{RainbowRenderEngine, RainbowPattern};
 // use ui::ui::wgpu_3d_renderer::Wgpu3DRenderer;
-use ui_common::services::gpu_renderer::GpuRenderer;
+use engine_backend::services::gpu_renderer::GpuRenderer;
 use ui_core::shared::StatusBar;
 use engine_backend::GameThread;
 use std::sync::{Arc, Mutex};

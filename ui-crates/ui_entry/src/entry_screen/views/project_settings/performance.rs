@@ -4,7 +4,7 @@ use ui::{
     h_flex, v_flex, Icon, IconName, divider::Divider, ActiveTheme as _,
 };
 use super::{types::{ProjectSettings, format_size}, helpers::render_info_section};
-use ui_entry::screen::EntryScreen;
+use crate::entry_screen::EntryScreen;
 
 pub fn render_performance_tab(settings: &ProjectSettings, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();

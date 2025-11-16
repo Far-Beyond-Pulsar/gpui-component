@@ -5,23 +5,23 @@ use ui::{
     v_flex, ActiveTheme as _, TitleBar,
 };
 
-use ui_editor::drawers::terminal_drawer::TerminalDrawer;
+use crate::Terminal;
 
 pub struct TerminalWindow {
-    terminal_drawer: Entity<TerminalDrawer>,
+    terminal: Entity<Terminal>,
 }
 
 impl TerminalWindow {
     pub fn new(
-        terminal_drawer: Entity<TerminalDrawer>,
+        terminal: Entity<Terminal>,
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Self {
-        Self { terminal_drawer }
+        Self { terminal }
     }
 
-    pub fn terminal_drawer(&self) -> &Entity<TerminalDrawer> {
-        &self.terminal_drawer
+    pub fn terminal(&self) -> &Entity<Terminal> {
+        &self.terminal
     }
 }
 
@@ -37,7 +37,7 @@ impl Render for TerminalWindow {
                 div()
                     .flex_1()
                     .overflow_hidden()
-                    .child(self.terminal_drawer.clone())
+                    .child(self.terminal.clone())
             )
     }
 }

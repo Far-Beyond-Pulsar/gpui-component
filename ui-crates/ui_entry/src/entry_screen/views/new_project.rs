@@ -3,7 +3,7 @@ use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, ActiveTheme as _, divider::Divider,
 };
-use ui_entry::screen::EntryScreen;
+use crate::entry_screen::EntryScreen;
 
 pub fn render_new_project(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();

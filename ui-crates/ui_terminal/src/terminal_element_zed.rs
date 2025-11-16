@@ -1,4 +1,6 @@
-use editor::{CursorLayout, EditorSettings, HighlightedRange, HighlightedRangeLine};
+// TODO: This file is from Zed and needs major refactoring to work with our codebase
+// For now, commenting out to allow compilation
+// use editor::{CursorLayout, EditorSettings, HighlightedRange, HighlightedRangeLine};
 use gpui::{
     AbsoluteLength, AnyElement, App, AvailableSpace, Bounds, ContentMask, Context, DispatchPhase,
     Element, ElementId, Entity, FocusHandle, Font, FontFeatures, FontStyle, FontWeight,
@@ -9,27 +11,28 @@ use gpui::{
     size,
 };
 use itertools::Itertools;
-use language::CursorShape;
-use settings::Settings;
+// use language::CursorShape;
+// use settings::Settings;
 use std::time::Instant;
-use terminal::{
-    IndexedCell, Terminal, TerminalBounds, TerminalContent,
-    alacritty_terminal::{
-        grid::Dimensions,
-        index::Point as AlacPoint,
-        term::{TermMode, cell::Flags},
-        vte::ansi::{
-            Color::{self as AnsiColor, Named},
-            CursorShape as AlacCursorShape, NamedColor,
-        },
-    },
-    terminal_settings::TerminalSettings,
+use crate::{
+    Terminal,
+    // Terminal dependencies that exist
 };
-use theme::{ActiveTheme, Theme, ThemeSettings};
+use alacritty_terminal::{
+    grid::Dimensions,
+    index::Point as AlacPoint,
+    term::{TermMode, cell::Flags},
+    vte::ansi::{
+        Color::{self as AnsiColor, Named},
+        CursorShape as AlacCursorShape, NamedColor,
+    },
+};
+// use theme::{ActiveTheme, Theme, ThemeSettings};
 use ui::utils::ensure_minimum_contrast;
-use ui::{ParentElement, Tooltip};
-use util::ResultExt;
-use workspace::Workspace;
+use ui::tooltip::Tooltip;
+use ui::ActiveTheme;
+// use util::ResultExt;
+// use workspace::Workspace;
 
 use std::mem;
 use std::{fmt::Debug, ops::RangeInclusive, rc::Rc};

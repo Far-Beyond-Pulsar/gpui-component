@@ -3,7 +3,7 @@ use gpui::Hsla;
 use ui::{ActiveTheme, Colorize};
 use std::path::PathBuf;
 use std::time::Duration;
-use ui_common::services::rust_analyzer_manager::{RustAnalyzerManager, AnalyzerStatus, AnalyzerEvent};
+use engine_backend::services::rust_analyzer_manager::{RustAnalyzerManager, AnalyzerStatus, AnalyzerEvent};
 
 pub struct LoadingWindow {
     project_path: PathBuf,

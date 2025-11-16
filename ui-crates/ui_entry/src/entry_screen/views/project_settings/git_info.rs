@@ -4,7 +4,7 @@ use ui::{
     h_flex, v_flex, divider::Divider, ActiveTheme as _, IconName,
 };
 use super::{types::{ProjectSettings, format_size}, helpers::render_info_section};
-use ui_entry::screen::EntryScreen;
+use crate::entry_screen::EntryScreen;
 
 pub fn render_git_info_tab(settings: &ProjectSettings, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();
@@ -66,7 +66,7 @@ pub fn render_git_info_tab(settings: &ProjectSettings, cx: &mut Context<EntryScr
                                 .on_click({
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
-                                        use ui_entry::screen::integration_launcher;
+                                        use crate::entry_screen::integration_launcher;
                                         let _ = integration_launcher::launch_git_tool("git", &path);
                                     }
                                 })
@@ -84,7 +84,7 @@ pub fn render_git_info_tab(settings: &ProjectSettings, cx: &mut Context<EntryScr
                                 .on_click({
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
-                                        use ui_entry::screen::integration_launcher;
+                                        use crate::entry_screen::integration_launcher;
                                         // Use preferred git tool or default to "git"
                                         let _ = integration_launcher::launch_git_tool("git", &path);
                                     }

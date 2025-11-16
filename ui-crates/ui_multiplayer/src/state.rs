@@ -7,8 +7,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use super::types::*;
-use ui::ui::simple_sync::SyncDiff;
-use ui::ui::multiuser_client::MultiuserClient;
+use engine_backend::subsystems::networking::simple_sync::SyncDiff;
+use engine_backend::subsystems::networking::multiuser::MultiuserClient;
 
 /// Multiplayer collaboration window for connecting to multiuser servers
 pub struct MultiplayerWindow {

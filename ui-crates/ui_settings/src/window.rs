@@ -1,4 +1,4 @@
-use ui_settings::settings::{SettingsScreen, SettingsScreenProps};
+use crate::settings::{SettingsScreen, SettingsScreenProps};
 use gpui::*;
 use ui::{
     v_flex, ActiveTheme, TitleBar,

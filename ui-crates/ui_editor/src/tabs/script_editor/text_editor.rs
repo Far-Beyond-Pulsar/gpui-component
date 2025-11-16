@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 use std::fs;
 
-use ui_common::services::rust_analyzer_manager::RustAnalyzerManager;
+use engine_backend::services::rust_analyzer_manager::RustAnalyzerManager;
 
 #[derive(Clone)]
 pub enum TextEditorEvent {

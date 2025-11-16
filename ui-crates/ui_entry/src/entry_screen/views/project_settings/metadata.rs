@@ -4,7 +4,7 @@ use ui::{
     h_flex, v_flex, Icon, IconName, divider::Divider, ActiveTheme as _,
 };
 use super::{types::ProjectSettings, helpers::render_info_section};
-use ui_entry::screen::EntryScreen;
+use crate::entry_screen::EntryScreen;
 
 #[derive(Clone, Debug)]
 struct ProjectConfig {

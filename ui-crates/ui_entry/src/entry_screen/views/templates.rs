@@ -3,7 +3,7 @@ use ui::{
     h_flex, v_flex, Icon, IconName, ActiveTheme as _, StyledExt,
     divider::Divider, scroll::ScrollbarAxis, progress::Progress,
 };
-use ui_entry::screen::{EntryScreen, Template};
+use crate::entry_screen::{EntryScreen, Template};
 
 pub fn render_templates(screen: &mut EntryScreen, cols: usize, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();

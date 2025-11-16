@@ -4,7 +4,7 @@ use ui::{
     h_flex, v_flex, Icon, IconName, ActiveTheme as _, StyledExt, divider::Divider,
     scroll::ScrollbarAxis,
 };
-use ui_entry::screen::{EntryScreen, GitFetchStatus, recent_projects::RecentProjectsList};
+use crate::entry_screen::{EntryScreen, GitFetchStatus, recent_projects::RecentProjectsList};
 
 pub fn render_recent_projects(screen: &mut EntryScreen, cols: usize, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();
@@ -212,7 +212,7 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                                             let cmd = editor.clone();
                                             let path = std::path::PathBuf::from(proj_path.clone());
                                             move |_, _, _| {
-                                                use ui_entry::screen::integration_launcher;
+                                                use crate::entry_screen::integration_launcher;
                                                 let _ = integration_launcher::launch_editor(&cmd, &path);
                                             }
                                         })
@@ -229,7 +229,7 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                                                 let cmd = git_tool.clone();
                                                 let path = std::path::PathBuf::from(proj_path.clone());
                                                 move |_, _, _| {
-                                                    use ui_entry::screen::integration_launcher;
+                                                    use crate::entry_screen::integration_launcher;
                                                     let _ = integration_launcher::launch_git_tool(&cmd, &path);
                                                 }
                                             })
@@ -276,7 +276,7 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                                     .on_click({
                                         let path = std::path::PathBuf::from(proj_path.clone());
                                         move |_, _, _| {
-                                            use ui_entry::screen::integration_launcher;
+                                            use crate::entry_screen::integration_launcher;
                                             let _ = integration_launcher::launch_file_manager(&path);
                                         }
                                     })

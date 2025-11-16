@@ -4,7 +4,7 @@ use ui::{
     v_flex, divider::Divider, ActiveTheme as _, IconName,
 };
 use super::{types::{ProjectSettings, format_size}, helpers::{render_info_section, render_size_bar}};
-use ui_entry::screen::EntryScreen;
+use crate::entry_screen::EntryScreen;
 
 pub fn render_disk_info_tab(settings: &ProjectSettings, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();

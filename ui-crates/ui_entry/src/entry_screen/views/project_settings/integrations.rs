@@ -6,7 +6,7 @@ use ui::{
     Sizable,
 };
 use super::types::{ProjectSettings, ToolInfo, AvailableTools};
-use ui_entry::screen::EntryScreen;
+use crate::entry_screen::EntryScreen;
 
 pub fn render_integrations_tab(settings: &ProjectSettings, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();
@@ -329,7 +329,7 @@ fn render_tool_row(
                             .icon(IconName::ArrowUp)
                             .with_variant(ui::button::ButtonVariant::Secondary)
                             .on_click(move |_, _, _| {
-                                use ui_entry::screen::integration_launcher;
+                                use crate::entry_screen::integration_launcher;
                                 match tool_type_clone.as_str() {
                                     "editor" => {
                                         let _ = integration_launcher::launch_editor(&cmd_clone, &path_clone);

@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 
 use super::state::MultiplayerWindow;
 use super::types::*;
-use ui::ui::multiuser_client::{ClientMessage, MultiuserClient};
+use engine_backend::subsystems::networking::multiuser::{ClientMessage, MultiuserClient};
 
 impl MultiplayerWindow {
     pub(super) fn approve_file_sync(&mut self, cx: &mut Context<Self>) {

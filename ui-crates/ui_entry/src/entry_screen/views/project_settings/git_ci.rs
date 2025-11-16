@@ -4,7 +4,7 @@ use ui::{
     h_flex, v_flex, Icon, IconName, divider::Divider, ActiveTheme as _,
 };
 use super::{types::ProjectSettings, helpers::render_info_section};
-use ui_entry::screen::EntryScreen;
+use crate::entry_screen::EntryScreen;
 
 pub fn render_git_ci_tab(settings: &ProjectSettings, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();
@@ -87,7 +87,7 @@ pub fn render_git_ci_tab(settings: &ProjectSettings, cx: &mut Context<EntryScree
                             move |_, _, _| {
                                 let workflows_dir = path.join(".github").join("workflows");
                                 let _ = std::fs::create_dir_all(&workflows_dir);
-                                use ui_entry::screen::integration_launcher;
+                                use crate::entry_screen::integration_launcher;
                                 let _ = integration_launcher::launch_file_manager(&workflows_dir);
                             }
                         })

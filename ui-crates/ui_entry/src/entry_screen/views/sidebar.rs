@@ -3,7 +3,7 @@ use ui::{
     button::{Button, ButtonVariants as _},
     v_flex, IconName, ActiveTheme as _,
 };
-use ui_entry::screen::{EntryScreen, EntryScreenView};
+use crate::entry_screen::{EntryScreen, EntryScreenView};
 use crate::OpenSettings;
 
 pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {

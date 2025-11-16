@@ -6,7 +6,7 @@ use ui::{
     v_flex, ActiveTheme as _, TitleBar,
 };
 
-use ui_editor::drawers::problems_drawer::{ProblemsDrawer, NavigateToDiagnostic};
+use crate::{ProblemsDrawer, NavigateToDiagnostic};
 
 pub struct ProblemsWindow {
     problems_drawer: Entity<ProblemsDrawer>,

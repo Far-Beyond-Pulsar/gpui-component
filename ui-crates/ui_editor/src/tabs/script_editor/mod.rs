@@ -15,7 +15,7 @@ use ui::{
     ActiveTheme,
 };
 
-use ui_common::services::rust_analyzer_manager::RustAnalyzerManager;
+use engine_backend::services::rust_analyzer_manager::RustAnalyzerManager;
 
 actions!(script_editor, [SaveCurrentFile, CloseCurrentFile]);
 

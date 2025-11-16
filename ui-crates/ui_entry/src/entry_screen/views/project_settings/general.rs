@@ -4,7 +4,7 @@ use ui::{
     v_flex, divider::Divider, ActiveTheme as _, IconName,
 };
 use super::{types::ProjectSettings, helpers::render_info_section};
-use ui_entry::screen::EntryScreen;
+use crate::entry_screen::EntryScreen;
 
 pub fn render_general_tab(settings: &ProjectSettings, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();
@@ -45,7 +45,7 @@ pub fn render_general_tab(settings: &ProjectSettings, cx: &mut Context<EntryScre
                                 .on_click({
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
-                                        use ui_entry::screen::integration_launcher;
+                                        use crate::entry_screen::integration_launcher;
                                         let _ = integration_launcher::launch_file_manager(&path);
                                     }
                                 })
@@ -59,7 +59,7 @@ pub fn render_general_tab(settings: &ProjectSettings, cx: &mut Context<EntryScre
                                 .on_click({
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
-                                        use ui_entry::screen::integration_launcher;
+                                        use crate::entry_screen::integration_launcher;
                                         let _ = integration_launcher::launch_terminal("default", &path);
                                     }
                                 })

@@ -11,6 +11,7 @@ mod event;
 mod global_state;
 mod icon;
 mod index_path;
+pub mod utils;
 #[cfg(any(feature = "inspector", debug_assertions))]
 mod inspector;
 mod kbd;
