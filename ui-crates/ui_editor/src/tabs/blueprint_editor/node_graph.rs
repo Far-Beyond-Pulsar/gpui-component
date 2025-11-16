@@ -131,8 +131,16 @@ impl NodeGraphRenderer {
                     println!("[MOUSE] Zoom level: {}", panel.graph.zoom_level);
 
                     // Dismiss context menu if clicking outside of it
-                    if panel.node_creation_menu.is_some() && !panel.is_position_inside_menu(mouse_pos) {
-                        panel.dismiss_node_creation_menu(cx);
+                    if panel.node_creation_menu.is_some() {
+                        // Use window coordinates for menu position checking
+                        let window_pos = Point::new(event.position.x.as_f32(), event.position.y.as_f32());
+                        let inside_menu = panel.is_position_inside_menu(window_pos);
+                        println!("[MENU] Click at window pos ({}, {}), inside_menu: {}", window_pos.x, window_pos.y, inside_menu);
+                        if !inside_menu {
+                            println!("[MENU] Dismissing menu (clicked outside)");
+                            panel.dismiss_node_creation_menu(cx);
+                            return; // Don't process other clicks when dismissing menu
+                        }
                     }
 
                     // Check if clicking on a node (check ALL nodes, not just rendered ones)
@@ -160,7 +168,16 @@ impl NodeGraphRenderer {
                         if !panel.graph.selected_nodes.contains(&node.id) {
                             panel.select_node(Some(node.id.clone()), cx);
                         }
+                        // Dismiss context menu when clicking on a node
+                        if panel.node_creation_menu.is_some() {
+                            panel.dismiss_node_creation_menu(cx);
+                        }
                     } else {
+                        // Dismiss context menu when clicking on empty space
+                        if panel.node_creation_menu.is_some() {
+                            panel.dismiss_node_creation_menu(cx);
+                        }
+                        
                         // Check for double-click on connection (for creating reroute nodes)
                         let handled_double_click = panel.handle_empty_space_click(graph_pos, cx);
 

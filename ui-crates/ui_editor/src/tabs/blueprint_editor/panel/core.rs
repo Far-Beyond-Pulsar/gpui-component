@@ -10,7 +10,7 @@ use ui::{
 };
 use std::collections::HashMap;
 
-use super::super::{BlueprintGraph, BlueprintNode, Connection, NodeType, Pin, PinType, DataType};
+use super::super::{BlueprintGraph, BlueprintNode, Connection, NodeType, Pin, PinType, DataType, VirtualizationStats, Size};
 use super::super::hoverable_tooltip::HoverableTooltip;
 use super::super::node_creation_menu::NodeCreationMenu;
 use super::super::variables::ClassVariable;

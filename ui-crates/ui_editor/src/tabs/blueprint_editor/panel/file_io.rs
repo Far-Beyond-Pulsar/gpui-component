@@ -4,6 +4,126 @@ use gpui::*;
 use super::core::BlueprintEditorPanel;
 use super::tabs::{GraphTab, SerializedGraphTab};
 use ui::graph::{BlueprintAsset, GraphDescription, SubGraphDefinition};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+// Legacy format structures for backward compatibility
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LegacyGraphDescription {
+    pub nodes: HashMap<String, ui::graph::NodeInstance>,
+    pub connections: Vec<LegacyConnection>,
+    pub metadata: ui::graph::GraphMetadata,
+    #[serde(default)]
+    pub comments: Vec<LegacyBlueprintComment>,
+}
+
+// Legacy connection format - actually matches current format exactly
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LegacyConnection {
+    pub id: String,
+    pub source_node: String,
+    pub source_pin: String,
+    pub target_node: String,
+    pub target_pin: String,
+    pub connection_type: ui::graph::ConnectionType,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct LegacyBlueprintComment {
+    pub id: String,
+    pub text: String,
+    pub position: LegacyPosition,
+    pub size: LegacySize,
+    pub color: LegacyColor,
+    pub contained_node_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct LegacyPosition {
+    pub x: f32,
+    pub y: f32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct LegacySize {
+    pub width: f32,
+    pub height: f32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct LegacyColor {
+    pub h: f32,
+    pub s: f32,
+    pub l: f32,
+    pub a: f32,
+}
+
+impl From<LegacyConnection> for ui::graph::Connection {
+    fn from(legacy: LegacyConnection) -> Self {
+        ui::graph::Connection {
+            id: legacy.id,
+            source_node: legacy.source_node,
+            source_pin: legacy.source_pin,
+            target_node: legacy.target_node,
+            target_pin: legacy.target_pin,
+            connection_type: legacy.connection_type,
+        }
+    }
+}
+
+impl From<LegacyGraphDescription> for GraphDescription {
+    fn from(legacy: LegacyGraphDescription) -> Self {
+        GraphDescription {
+            nodes: legacy.nodes,
+            connections: legacy.connections.into_iter().map(|c| c.into()).collect(),
+            metadata: legacy.metadata,
+            comments: legacy.comments.into_iter().map(|c| c.into()).collect(),
+        }
+    }
+}
+
+impl From<LegacyBlueprintComment> for ui::graph::BlueprintComment {
+    fn from(legacy: LegacyBlueprintComment) -> Self {
+        // Convert HSL to RGB for the color array
+        let (r, g, b) = hsl_to_rgb(legacy.color.h, legacy.color.s, legacy.color.l);
+        ui::graph::BlueprintComment {
+            id: legacy.id,
+            text: legacy.text,
+            position: (legacy.position.x, legacy.position.y),
+            size: (legacy.size.width, legacy.size.height),
+            color: [r, g, b, legacy.color.a],
+            contained_node_ids: legacy.contained_node_ids,
+        }
+    }
+}
+
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (f32, f32, f32) {
+    if s == 0.0 {
+        return (l, l, l);
+    }
+    
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
+    let p = 2.0 * l - q;
+    
+    let hue_to_rgb = |p: f32, q: f32, mut t: f32| -> f32 {
+        if t < 0.0 { t += 1.0; }
+        if t > 1.0 { t -= 1.0; }
+        if t < 1.0 / 6.0 { return p + (q - p) * 6.0 * t; }
+        if t < 1.0 / 2.0 { return q; }
+        if t < 2.0 / 3.0 { return p + (q - p) * (2.0 / 3.0 - t) * 6.0; }
+        p
+    };
+    
+    (
+        hue_to_rgb(p, q, h + 1.0 / 3.0),
+        hue_to_rgb(p, q, h),
+        hue_to_rgb(p, q, h - 1.0 / 3.0),
+    )
+}
 
 impl BlueprintEditorPanel {
     /// Save complete blueprint to unified JSON file
@@ -159,8 +279,19 @@ impl BlueprintEditorPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
+        println!("📂 ═══════════════════════════════════════════════════════════════");
+        println!("📂 LOADING BLUEPRINT FROM FILE");
+        println!("📂 ═══════════════════════════════════════════════════════════════");
+        println!("📂 File: {}", file_path);
+        
         let content = std::fs::read_to_string(file_path)
-            .map_err(|e| format!("Failed to read file: {}", e))?;
+            .map_err(|e| {
+                let error_msg = format!("Failed to read file: {}", e);
+                eprintln!("❌ {}", error_msg);
+                error_msg
+            })?;
+
+        println!("📂 ✓ File read successfully ({} bytes)", content.len());
 
         // Strip header comments
         let json = content.lines()
@@ -169,36 +300,50 @@ impl BlueprintEditorPanel {
             .join("\n");
 
         // Try new unified format first
-        if let Ok(blueprint_asset) = serde_json::from_str::<BlueprintAsset>(&json) {
-            self.load_from_blueprint_asset(blueprint_asset, file_path, window, cx)?;
-        } else {
-            // Legacy format
-            let graph_description: GraphDescription = serde_json::from_str(&json)
-                .map_err(|e| format!("Failed to parse JSON: {}", e))?;
-            self.graph = self.convert_graph_description_to_blueprint(&graph_description)?;
+        match serde_json::from_str::<BlueprintAsset>(&json) {
+            Ok(blueprint_asset) => {
+                println!("📂 ✓ Detected unified blueprint format");
+                self.load_from_blueprint_asset(blueprint_asset, file_path, window, cx)?;
+            },
+            Err(unified_err) => {
+                println!("📂 ⚠️  Unified format parse failed: {}", unified_err);
+                println!("📂 ✓ Trying legacy format...");
+                
+                // Try parsing as legacy format first, then convert to new format
+                let legacy_graph: LegacyGraphDescription = serde_json::from_str(&json)
+                    .map_err(|e| {
+                        let error_msg = format!("Failed to parse as both unified and legacy format.\nUnified error: {}\nLegacy error: {}", unified_err, e);
+                        eprintln!("❌ {}", error_msg);
+                        error_msg
+                    })?;
+                
+                println!("📂 ✓ Legacy format parsed successfully");
+                let graph_description: GraphDescription = legacy_graph.into();
+                self.graph = self.convert_graph_description_to_blueprint(&graph_description)?;
 
-            // Reset to main tab
-            self.open_tabs = vec![GraphTab {
-                id: "main".to_string(),
-                name: "EventGraph".to_string(),
-                graph: self.graph.clone(),
-                is_main: true,
-                is_dirty: false,
-                is_library_macro: false,
-                library_id: None,
-            }];
-            self.active_tab_index = 0;
+                // Reset to main tab
+                self.open_tabs = vec![GraphTab {
+                    id: "main".to_string(),
+                    name: "EventGraph".to_string(),
+                    graph: self.graph.clone(),
+                    is_main: true,
+                    is_dirty: false,
+                    is_library_macro: false,
+                    library_id: None,
+                }];
+                self.active_tab_index = 0;
 
-            // Load separate legacy files
-            let file_path_buf = std::path::Path::new(file_path);
-            if let Some(parent) = file_path_buf.parent() {
-                self.current_class_path = Some(parent.to_path_buf());
-                let _ = self.load_local_macros(parent);
-                let _ = self.restore_tabs_state(parent, window, cx);
-                let _ = self.load_variables_from_class(parent);
+                // Load separate legacy files
+                let file_path_buf = std::path::Path::new(file_path);
+                if let Some(parent) = file_path_buf.parent() {
+                    self.current_class_path = Some(parent.to_path_buf());
+                    let _ = self.load_local_macros(parent);
+                    let _ = self.restore_tabs_state(parent, window, cx);
+                    let _ = self.load_variables_from_class(parent);
+                }
+
+                println!("📂 Loaded blueprint in legacy format");
             }
-
-            println!("📂 Loaded blueprint in legacy format");
         }
 
         // Reload library manager
@@ -319,6 +464,8 @@ impl BlueprintEditorPanel {
         println!("📂   ✓ Local Macros: {}", self.local_macros.len());
         println!("📂   ✓ Variables: {}", self.class_variables.len());
         println!("📂   ✓ Open Tabs: {}", self.open_tabs.len());
+        println!("📂   ✓ Active Tab Index: {}", self.active_tab_index);
+        println!("📂 ═══════════════════════════════════════════════════════════════");
 
         Ok(())
     }

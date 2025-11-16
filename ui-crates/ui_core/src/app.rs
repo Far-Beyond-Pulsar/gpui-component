@@ -1061,13 +1061,19 @@ impl PulsarApp {
 
         // Load the blueprint from the class path
         let graph_save_path = class_path.join("graph_save.json");
+        println!("🔍 Looking for blueprint at: {:?}", graph_save_path);
         if graph_save_path.exists() {
+            println!("✅ Blueprint file found, loading...");
             blueprint_editor.update(cx, |editor, cx| {
                 if let Err(e) = editor.load_blueprint(graph_save_path.to_str().unwrap(), window, cx)
                 {
-                    eprintln!("Failed to load blueprint: {}", e);
+                    eprintln!("❌ Failed to load blueprint: {}", e);
+                } else {
+                    println!("✅ Blueprint loaded successfully!");
                 }
             });
+        } else {
+            println!("⚠️  No graph_save.json found, creating empty blueprint");
         }
 
         // Add the tab (Entity<BlueprintEditorPanel> implements all required traits)
