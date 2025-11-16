@@ -152,13 +152,108 @@ impl BlueprintEditorPanel {
         Ok(())
     }
 
-    /// Finish dragging variable (drop to create getter/setter)
-    pub fn finish_dragging_variable(&mut self, _graph_pos: Point<f32>, cx: &mut Context<Self>) {
-        // TODO: Implement variable getter/setter node creation
-        // For now, just clear the drag state
+    /// Finish dragging variable and show Get/Set context menu
+    pub fn finish_dragging_variable(&mut self, drop_position: Point<f32>, cx: &mut Context<Self>) {
+        if self.dragging_variable.is_some() {
+            self.variable_drop_menu_position = Some(drop_position);
+            cx.notify();
+        }
+    }
+    
+    /// Cancel dragging variable
+    pub fn cancel_dragging_variable(&mut self, cx: &mut Context<Self>) {
         self.dragging_variable = None;
         self.variable_drop_menu_position = None;
         cx.notify();
+    }
+    
+    /// Create a getter node for a variable at the specified position
+    pub fn create_getter_node(
+        &mut self,
+        var_name: String,
+        var_type: String,
+        position: Point<f32>,
+        cx: &mut Context<Self>,
+    ) {
+        use super::super::BlueprintNode;
+        use super::super::NodeType;
+        
+        let node_id = format!("get_{}_node_{}", var_name, uuid::Uuid::new_v4());
+
+        let node = BlueprintNode {
+            id: node_id,
+            definition_id: format!("get_{}", var_name),
+            title: format!("Get {}", var_name),
+            icon: "📖".to_string(),
+            node_type: NodeType::Logic,
+            position,
+            size: super::super::Size::new(180.0, 80.0),
+            inputs: vec![],
+            outputs: vec![Pin {
+                id: "value".to_string(),
+                name: var_name.clone(),
+                pin_type: PinType::Output,
+                data_type: DataType::from_type_str(&var_type),
+            }],
+            properties: std::collections::HashMap::new(),
+            is_selected: false,
+            description: format!("Gets the value of {}", var_name),
+            color: None,
+        };
+
+        self.add_node(node, cx);
+        self.cancel_dragging_variable(cx);
+    }
+    
+    /// Create a setter node for a variable at the specified position
+    pub fn create_setter_node(
+        &mut self,
+        var_name: String,
+        var_type: String,
+        position: Point<f32>,
+        cx: &mut Context<Self>,
+    ) {
+        use super::super::BlueprintNode;
+        use super::super::NodeType;
+        
+        let node_id = format!("set_{}_node_{}", var_name, uuid::Uuid::new_v4());
+
+        let node = BlueprintNode {
+            id: node_id,
+            definition_id: format!("set_{}", var_name),
+            title: format!("Set {}", var_name),
+            icon: "📝".to_string(),
+            node_type: NodeType::Logic,
+            position,
+            size: super::super::Size::new(180.0, 100.0),
+            inputs: vec![
+                Pin {
+                    id: "exec".to_string(),
+                    name: "".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: DataType::from_type_str("execution"),
+                },
+                Pin {
+                    id: "value".to_string(),
+                    name: var_name.clone(),
+                    pin_type: PinType::Input,
+                    data_type: DataType::from_type_str(&var_type),
+                },
+            ],
+            outputs: vec![Pin {
+                id: "exec_out".to_string(),
+                name: "".to_string(),
+                pin_type: PinType::Output,
+                data_type: DataType::from_type_str("execution"),
+            }],
+            properties: std::collections::HashMap::new(),
+            is_selected: false,
+            description: format!("Sets the value of {}", var_name),
+            color: None,
+        };
+
+        self.add_node(node, cx);
+        self.cancel_dragging_variable(cx);
     }
     
     /// Start dragging a variable
