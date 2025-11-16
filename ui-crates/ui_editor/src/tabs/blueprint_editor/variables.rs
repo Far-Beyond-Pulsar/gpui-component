@@ -100,8 +100,8 @@ impl VariablesRenderer {
                         // Main header with gradient background
                         h_flex()
                             .w_full()
-                            .px_4()
-                            .py_3()
+                            .px_3()
+                            .py_2()
                             .bg(cx.theme().secondary)
                             .border_b_2()
                             .border_color(cx.theme().border)
@@ -109,15 +109,15 @@ impl VariablesRenderer {
                             .justify_between()
                             .child(
                                 h_flex()
-                                    .gap_3()
+                                    .gap_2()
                                     .items_center()
                                     .child(
                                         // Icon with subtle glow effect
                                         div()
                                             .flex_shrink_0()
-                                            .w(px(32.0))
-                                            .h(px(32.0))
-                                            .rounded(px(6.0))
+                                            .w(px(28.0))
+                                            .h(px(28.0))
+                                            .rounded(px(5.0))
                                             .bg(cx.theme().accent.opacity(0.15))
                                             .border_1()
                                             .border_color(cx.theme().accent.opacity(0.3))
@@ -126,13 +126,13 @@ impl VariablesRenderer {
                                             .justify_center()
                                             .child(
                                                 div()
-                                                    .text_lg()
+                                                    .text_base()
                                                     .child("📋")
                                             )
                                     )
                                     .child(
                                         v_flex()
-                                            .gap_1()
+                                            .gap_0p5()
                                             .child(
                                                 div()
                                                     .text_sm()
