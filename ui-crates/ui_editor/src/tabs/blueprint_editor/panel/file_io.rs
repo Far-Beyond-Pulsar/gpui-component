@@ -306,7 +306,24 @@ impl BlueprintEditorPanel {
                 self.load_from_blueprint_asset(blueprint_asset, file_path, window, cx)?;
             },
             Err(unified_err) => {
-                println!("📂 ⚠️  Unified format parse failed: {}", unified_err);
+                println!("📂 ⚠️  Unified format parse failed:");
+                println!("📂    Error: {}", unified_err);
+                println!("📂    Line: {}, Column: {}", unified_err.line(), unified_err.column());
+                
+                // Show context around the error location
+                let lines: Vec<&str> = json.lines().collect();
+                let error_line = unified_err.line().saturating_sub(1);
+                if error_line < lines.len() {
+                    println!("📂    Context:");
+                    for i in error_line.saturating_sub(2)..=error_line.saturating_add(2).min(lines.len().saturating_sub(1)) {
+                        println!("📂      {}{}: {}", 
+                            if i == error_line { ">>> " } else { "    " },
+                            i + 1,
+                            lines.get(i).unwrap_or(&"")
+                        );
+                    }
+                }
+                
                 println!("📂 ✓ Trying legacy format...");
                 
                 // Try parsing as legacy format first, then convert to new format

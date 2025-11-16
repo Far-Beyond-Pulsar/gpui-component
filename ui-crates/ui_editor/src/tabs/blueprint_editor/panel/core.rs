@@ -115,9 +115,9 @@ pub enum ResizeHandle {
 /// Connection drag state
 #[derive(Clone, Debug)]
 pub struct ConnectionDrag {
-    pub from_node_id: String,
-    pub from_pin_id: String,
-    pub from_pin_type: GraphDataType,
+    pub source_node: String,
+    pub source_pin: String,
+    pub source_pin_type: GraphDataType,
     pub current_mouse_pos: Point<f32>,
     pub target_pin: Option<(String, String)>,
 }
@@ -487,42 +487,47 @@ impl BlueprintEditorPanel {
             // Execution: main -> branch
             Connection {
                 id: "conn_main_branch".to_string(),
-                from_node_id: "main_event".to_string(),
-                from_pin_id: "Body".to_string(),
-                to_node_id: "branch_node".to_string(),
-                to_pin_id: "exec".to_string(),
+                source_node: "main_event".to_string(),
+                source_pin: "Body".to_string(),
+                target_node: "branch_node".to_string(),
+                target_pin: "exec".to_string(),
+                connection_type: ui::graph::ConnectionType::Execution,
             },
             // Data: add -> greater_than
             Connection {
                 id: "conn_add_gt".to_string(),
-                from_node_id: "add_node".to_string(),
-                from_pin_id: "result".to_string(),
-                to_node_id: "greater_node".to_string(),
-                to_pin_id: "a".to_string(),
+                source_node: "add_node".to_string(),
+                source_pin: "result".to_string(),
+                target_node: "greater_node".to_string(),
+                target_pin: "a".to_string(),
+                connection_type: ui::graph::ConnectionType::Data,
             },
             // Data: greater_than -> branch
             Connection {
                 id: "conn_gt_branch".to_string(),
-                from_node_id: "greater_node".to_string(),
-                from_pin_id: "result".to_string(),
-                to_node_id: "branch_node".to_string(),
-                to_pin_id: "condition".to_string(),
+                source_node: "greater_node".to_string(),
+                source_pin: "result".to_string(),
+                target_node: "branch_node".to_string(),
+                target_pin: "condition".to_string(),
+                connection_type: ui::graph::ConnectionType::Data,
             },
             // Execution: branch(True) -> print_true
             Connection {
                 id: "conn_branch_true".to_string(),
-                from_node_id: "branch_node".to_string(),
-                from_pin_id: "True".to_string(),
-                to_node_id: "print_true".to_string(),
-                to_pin_id: "exec".to_string(),
+                source_node: "branch_node".to_string(),
+                source_pin: "True".to_string(),
+                target_node: "print_true".to_string(),
+                target_pin: "exec".to_string(),
+                connection_type: ui::graph::ConnectionType::Execution,
             },
             // Execution: branch(False) -> print_false
             Connection {
                 id: "conn_branch_false".to_string(),
-                from_node_id: "branch_node".to_string(),
-                from_pin_id: "False".to_string(),
-                to_node_id: "print_false".to_string(),
-                to_pin_id: "exec".to_string(),
+                source_node: "branch_node".to_string(),
+                source_pin: "False".to_string(),
+                target_node: "print_false".to_string(),
+                target_pin: "exec".to_string(),
+                connection_type: ui::graph::ConnectionType::Execution,
             },
         ];
 

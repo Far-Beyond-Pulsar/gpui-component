@@ -136,10 +136,11 @@ pub enum PinType {
 #[derive(Clone, Debug)]
 pub struct Connection {
     pub id: String,
-    pub from_node_id: String,
-    pub from_pin_id: String,
-    pub to_node_id: String,
-    pub to_pin_id: String,
+    pub source_node: String,
+    pub source_pin: String,
+    pub target_node: String,
+    pub target_pin: String,
+    pub connection_type: ui::graph::ConnectionType,
 }
 
 use ui::color_picker::ColorPickerState;

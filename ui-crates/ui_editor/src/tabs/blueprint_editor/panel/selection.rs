@@ -109,8 +109,8 @@ impl BlueprintEditorPanel {
 
             // Remove connections involving deleted nodes
             self.graph.connections.retain(|connection| {
-                !self.graph.selected_nodes.contains(&connection.from_node_id)
-                    && !self.graph.selected_nodes.contains(&connection.to_node_id)
+                !self.graph.selected_nodes.contains(&connection.source_node)
+                    && !self.graph.selected_nodes.contains(&connection.target_node)
             });
 
             self.graph.selected_nodes.clear();
@@ -156,10 +156,10 @@ impl BlueprintEditorPanel {
                     self.graph.nodes.push(reroute_node);
 
                     // Split connection
-                    let from_node = connection.from_node_id.clone();
-                    let from_pin = connection.from_pin_id.clone();
-                    let to_node = connection.to_node_id.clone();
-                    let to_pin = connection.to_pin_id.clone();
+                    let from_node = connection.source_node.clone();
+                    let from_pin = connection.source_pin.clone();
+                    let to_node = connection.target_node.clone();
+                    let to_pin = connection.target_pin.clone();
 
                     // Remove original connection
                     self.graph.connections.retain(|c| c.id != connection.id);
@@ -167,18 +167,20 @@ impl BlueprintEditorPanel {
                     // Create two new connections through reroute
                     self.graph.connections.push(Connection {
                         id: uuid::Uuid::new_v4().to_string(),
-                        from_node_id: from_node,
-                        from_pin_id: from_pin,
-                        to_node_id: reroute_id.clone(),
-                        to_pin_id: "input".to_string(),
+                        source_node: from_node,
+                        source_pin: from_pin,
+                        target_node: reroute_id.clone(),
+                        target_pin: "input".to_string(),
+                        connection_type: connection.connection_type.clone(),
                     });
 
                     self.graph.connections.push(Connection {
                         id: uuid::Uuid::new_v4().to_string(),
-                        from_node_id: reroute_id.clone(),
-                        from_pin_id: "output".to_string(),
-                        to_node_id: to_node,
-                        to_pin_id: to_pin,
+                        source_node: reroute_id.clone(),
+                        source_pin: "output".to_string(),
+                        target_node: to_node,
+                        target_pin: to_pin,
+                        connection_type: connection.connection_type.clone(),
                     });
 
                     // Propagate types

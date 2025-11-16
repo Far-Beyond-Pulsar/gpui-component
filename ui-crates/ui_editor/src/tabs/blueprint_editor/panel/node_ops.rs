@@ -36,7 +36,7 @@ impl BlueprintEditorPanel {
     pub fn delete_node(&mut self, node_id: String, cx: &mut Context<Self>) {
         self.graph.nodes.retain(|n| n.id != node_id);
         self.graph.connections.retain(|conn| {
-            conn.from_node_id != node_id && conn.to_node_id != node_id
+            conn.source_node != node_id && conn.target_node != node_id
         });
         self.graph.selected_nodes.retain(|id| *id != node_id);
         cx.notify();

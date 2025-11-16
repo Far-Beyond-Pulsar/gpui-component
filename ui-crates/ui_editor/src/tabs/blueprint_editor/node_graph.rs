@@ -79,6 +79,18 @@ impl NodeGraphRenderer {
                 if panel.editing_comment.is_some() {
                     panel.finish_comment_editing(cx);
                 }
+
+                // Close node creation menu if it's open
+                if panel.node_creation_menu_position.is_some() {
+                    panel.node_creation_menu_position = None;
+                    cx.notify();
+                }
+
+                // Close variable drop menu if it's open
+                if panel.variable_drop_menu_position.is_some() {
+                    panel.variable_drop_menu_position = None;
+                    cx.notify();
+                }
             }))
             .child(Self::render_comments(panel, cx))
             .child(Self::render_nodes(panel, cx))
@@ -301,8 +313,12 @@ impl NodeGraphRenderer {
                     }
                 } else if key_lower == "escape" {
                     // Escape key dismisses menus and cancels operations
-                    if panel.node_creation_menu.is_some() {
-                        panel.dismiss_node_creation_menu(cx);
+                    if panel.node_creation_menu_position.is_some() {
+                        panel.node_creation_menu_position = None;
+                        cx.notify();
+                    } else if panel.variable_drop_menu_position.is_some() {
+                        panel.variable_drop_menu_position = None;
+                        cx.notify();
                     } else if panel.dragging_connection.is_some() {
                         panel.cancel_connection_drag(cx);
                     }
@@ -1050,7 +1066,7 @@ impl NodeGraphRenderer {
 
         // Check if this pin is compatible with the current drag
         let is_compatible = if let Some(ref drag) = panel.dragging_connection {
-            is_input && node_id != drag.from_node_id && pin.data_type.is_compatible_with(&drag.from_pin_type)
+            is_input && node_id != drag.source_node && pin.data_type.is_compatible_with(&drag.source_pin_type)
         } else {
             false
         };
@@ -1177,7 +1193,7 @@ impl NodeGraphRenderer {
 
         // Check if this pin is compatible with the current drag
         let is_compatible = if let Some(ref drag) = panel.dragging_connection {
-            is_input && node_id != drag.from_node_id && pin.data_type.is_compatible_with(&drag.from_pin_type)
+            is_input && node_id != drag.source_node && pin.data_type.is_compatible_with(&drag.source_pin_type)
         } else {
             false
         };
@@ -1295,29 +1311,29 @@ impl NodeGraphRenderer {
             .graph
             .nodes
             .iter()
-            .find(|n| n.id == connection.from_node_id);
+            .find(|n| n.id == connection.source_node);
         let to_node = panel
             .graph
             .nodes
             .iter()
-            .find(|n| n.id == connection.to_node_id);
+            .find(|n| n.id == connection.target_node);
 
         if let (Some(from_node), Some(to_node)) = (from_node, to_node) {
             // Calculate exact pin positions
             if let (Some(from_pin_pos), Some(to_pin_pos)) = (
                 Self::calculate_pin_position(
                     from_node,
-                    &connection.from_pin_id,
+                    &connection.source_pin,
                     false,
                     &panel.graph,
                 ),
-                Self::calculate_pin_position(to_node, &connection.to_pin_id, true, &panel.graph),
+                Self::calculate_pin_position(to_node, &connection.target_pin, true, &panel.graph),
             ) {
                 // Get pin data type for color
                 let pin_color = if let Some(pin) = from_node
                     .outputs
                     .iter()
-                    .find(|p| p.id == connection.from_pin_id)
+                    .find(|p| p.id == connection.source_pin)
                 {
                     Self::get_pin_color(&pin.data_type, cx)
                 } else {
@@ -1340,11 +1356,11 @@ impl NodeGraphRenderer {
         cx: &mut Context<BlueprintEditorPanel>,
     ) -> AnyElement {
         // Find the from node and pin position
-        if let Some(from_node) = panel.graph.nodes.iter().find(|n| n.id == drag.from_node_id) {
+        if let Some(from_node) = panel.graph.nodes.iter().find(|n| n.id == drag.source_node) {
             if let Some(from_pin_pos) =
-                Self::calculate_pin_position(from_node, &drag.from_pin_id, false, &panel.graph)
+                Self::calculate_pin_position(from_node, &drag.source_pin, false, &panel.graph)
             {
-                let pin_color = Self::get_pin_color(&drag.from_pin_type, cx);
+                let pin_color = Self::get_pin_color(&drag.source_pin_type, cx);
 
                 // Determine the end position - either target pin or mouse position
                 let end_pos = if let Some((target_node_id, target_pin_id)) = &drag.target_pin {
@@ -1869,8 +1885,8 @@ impl NodeGraphRenderer {
 
     fn is_connection_visible_simple(connection: &Connection, graph: &BlueprintGraph) -> bool {
         // A connection is visible if either of its nodes is visible
-        let from_node = graph.nodes.iter().find(|n| n.id == connection.from_node_id);
-        let to_node = graph.nodes.iter().find(|n| n.id == connection.to_node_id);
+        let from_node = graph.nodes.iter().find(|n| n.id == connection.source_node);
+        let to_node = graph.nodes.iter().find(|n| n.id == connection.target_node);
 
         match (from_node, to_node) {
             (Some(from), Some(to)) => {

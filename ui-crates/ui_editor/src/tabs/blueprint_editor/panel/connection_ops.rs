@@ -18,9 +18,9 @@ impl BlueprintEditorPanel {
             if let Some(pin) = node.outputs.iter().find(|p| p.id == pin_id) {
                 println!("Starting connection drag from pin {} on node {}", pin_id, node_id);
                 self.dragging_connection = Some(ConnectionDrag {
-                    from_node_id: node_id,
-                    from_pin_id: pin_id,
-                    from_pin_type: pin.data_type.clone(),
+                    source_node: node_id,
+                    source_pin: pin_id,
+                    source_pin_type: pin.data_type.clone(),
                     current_mouse_pos: mouse_pos,
                     target_pin: None,
                 });
@@ -71,51 +71,58 @@ impl BlueprintEditorPanel {
             if let Some(node) = self.graph.nodes.iter().find(|n| n.id == node_id) {
                 if let Some(pin) = node.inputs.iter().find(|p| p.id == pin_id) {
                     // Check compatibility and not same node
-                    if Self::are_types_compatible(&drag.from_pin_type, &pin.data_type)
-                        && drag.from_node_id != node_id
+                    if Self::are_types_compatible(&drag.source_pin_type, &pin.data_type)
+                        && drag.source_node != node_id
                     {
                         // Check if source or target is a reroute node
                         let source_is_reroute = self.graph.nodes.iter()
-                            .any(|n| n.id == drag.from_node_id && n.node_type == NodeType::Reroute);
+                            .any(|n| n.id == drag.source_node && n.node_type == NodeType::Reroute);
                         let target_is_reroute = self.graph.nodes.iter()
                             .any(|n| n.id == node_id && n.node_type == NodeType::Reroute);
 
                         // Remove old connections based on pin types
-                        if drag.from_pin_type == GraphDataType::Execution || source_is_reroute {
+                        if drag.source_pin_type == GraphDataType::Execution || source_is_reroute {
                             // Execution pins and reroute outputs: single connection from source
-                            println!("Removing old connection from source {}:{}", drag.from_node_id, drag.from_pin_id);
+                            println!("Removing old connection from source {}:{}", drag.source_node, drag.source_pin);
                             self.graph.connections.retain(|conn| {
-                                !(conn.from_node_id == drag.from_node_id && conn.from_pin_id == drag.from_pin_id)
+                                !(conn.source_node == drag.source_node && conn.source_pin == drag.source_pin)
                             });
                         }
                         
-                        if drag.from_pin_type == GraphDataType::Execution || target_is_reroute || pin.data_type != GraphDataType::Execution {
+                        if drag.source_pin_type == GraphDataType::Execution || target_is_reroute || pin.data_type != GraphDataType::Execution {
                             // Execution targets, reroute inputs, or data inputs: single connection to target
                             println!("Removing old connection to target {}:{}", node_id, pin_id);
                             self.graph.connections.retain(|conn| {
-                                !(conn.to_node_id == node_id && conn.to_pin_id == pin_id)
+                                !(conn.target_node == node_id && conn.target_pin == pin_id)
                             });
                         }
 
                         println!("Creating connection from {}:{} to {}:{}", 
-                            drag.from_node_id, drag.from_pin_id, node_id, pin_id);
+                            drag.source_node, drag.source_pin, node_id, pin_id);
 
                         // Create new connection
+                        let connection_type = if pin.data_type == GraphDataType::Execution {
+                            ui::graph::ConnectionType::Execution
+                        } else {
+                            ui::graph::ConnectionType::Data
+                        };
+                        
                         let connection = Connection {
                             id: uuid::Uuid::new_v4().to_string(),
-                            from_node_id: drag.from_node_id.clone(),
-                            from_pin_id: drag.from_pin_id.clone(),
-                            to_node_id: node_id.clone(),
-                            to_pin_id: pin_id.clone(),
+                            source_node: drag.source_node.clone(),
+                            source_pin: drag.source_pin.clone(),
+                            target_node: node_id.clone(),
+                            target_pin: pin_id.clone(),
+                            connection_type,
                         };
                         self.graph.connections.push(connection);
                         println!("Connection created successfully!");
 
                         // Propagate types through reroute nodes
                         if target_is_reroute {
-                            self.propagate_reroute_types(node_id.clone(), drag.from_pin_type, cx);
+                            self.propagate_reroute_types(node_id.clone(), drag.source_pin_type, cx);
                         } else if source_is_reroute {
-                            self.propagate_reroute_types(drag.from_node_id.clone(), pin.data_type.clone(), cx);
+                            self.propagate_reroute_types(drag.source_node.clone(), pin.data_type.clone(), cx);
                         }
 
                         cx.notify();
@@ -130,8 +137,8 @@ impl BlueprintEditorPanel {
     /// Disconnect a pin
     pub fn disconnect_pin(&mut self, node_id: String, pin_id: String, cx: &mut Context<Self>) {
         self.graph.connections.retain(|conn| {
-            !(conn.from_node_id == node_id && conn.from_pin_id == pin_id)
-                && !(conn.to_node_id == node_id && conn.to_pin_id == pin_id)
+            !(conn.source_node == node_id && conn.source_pin == pin_id)
+                && !(conn.target_node == node_id && conn.target_pin == pin_id)
         });
         cx.notify();
     }
@@ -172,20 +179,20 @@ impl BlueprintEditorPanel {
 
                     // Find connected reroute nodes
                     for connection in &self.graph.connections {
-                        if connection.from_node_id == node_id {
+                        if connection.source_node == node_id {
                             if let Some(target_node) = self.graph.nodes.iter()
-                                .find(|n| n.id == connection.to_node_id)
+                                .find(|n| n.id == connection.target_node)
                             {
                                 if target_node.node_type == NodeType::Reroute {
-                                    queue.push_back(connection.to_node_id.clone());
+                                    queue.push_back(connection.target_node.clone());
                                 }
                             }
-                        } else if connection.to_node_id == node_id {
+                        } else if connection.target_node == node_id {
                             if let Some(source_node) = self.graph.nodes.iter()
-                                .find(|n| n.id == connection.from_node_id)
+                                .find(|n| n.id == connection.source_node)
                             {
                                 if source_node.node_type == NodeType::Reroute {
-                                    queue.push_back(connection.from_node_id.clone());
+                                    queue.push_back(connection.source_node.clone());
                                 }
                             }
                         }
@@ -199,8 +206,8 @@ impl BlueprintEditorPanel {
 
     /// Get data type of a connection
     pub(super) fn get_connection_data_type(&self, connection: &Connection) -> Option<GraphDataType> {
-        let from_node = self.graph.nodes.iter().find(|n| n.id == connection.from_node_id)?;
-        let output_pin = from_node.outputs.iter().find(|p| p.id == connection.from_pin_id)?;
+        let from_node = self.graph.nodes.iter().find(|n| n.id == connection.source_node)?;
+        let output_pin = from_node.outputs.iter().find(|p| p.id == connection.source_pin)?;
         Some(output_pin.data_type.clone())
     }
 
@@ -209,8 +216,8 @@ impl BlueprintEditorPanel {
         const CLICK_THRESHOLD: f32 = 30.0;
 
         for connection in &self.graph.connections {
-            let from_node = self.graph.nodes.iter().find(|n| n.id == connection.from_node_id)?;
-            let to_node = self.graph.nodes.iter().find(|n| n.id == connection.to_node_id)?;
+            let from_node = self.graph.nodes.iter().find(|n| n.id == connection.source_node)?;
+            let to_node = self.graph.nodes.iter().find(|n| n.id == connection.target_node)?;
 
             // Calculate pin positions (simplified - using node edges)
             let from_pos = Point::new(

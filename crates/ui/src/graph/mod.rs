@@ -133,10 +133,105 @@ pub struct GraphDescription {
 pub struct BlueprintComment {
     pub id: String,
     pub text: String,
+    #[serde(with = "tuple_or_object_f32_pair")]
     pub position: (f32, f32), // Simple tuple for position
+    #[serde(with = "tuple_or_object_f32_pair")]
     pub size: (f32, f32),     // Simple tuple for size  
+    #[serde(with = "array_or_hsla_color")]
     pub color: [f32; 4],      // RGBA color as array
     pub contained_node_ids: Vec<String>,
+}
+
+// Helper module to deserialize both tuple and object formats for (f32, f32)
+mod tuple_or_object_f32_pair {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum F32Pair {
+        Tuple(f32, f32),
+        Object { x: f32, y: f32 },
+        ObjectAlt { width: f32, height: f32 },
+    }
+
+    pub fn serialize<S>(value: &(f32, f32), serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        value.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<(f32, f32), D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        match F32Pair::deserialize(deserializer)? {
+            F32Pair::Tuple(x, y) => Ok((x, y)),
+            F32Pair::Object { x, y } => Ok((x, y)),
+            F32Pair::ObjectAlt { width, height } => Ok((width, height)),
+        }
+    }
+}
+
+// Helper module to deserialize both array and HSLA object formats for colors
+mod array_or_hsla_color {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum ColorFormat {
+        Array([f32; 4]),
+        HSLA { h: f32, s: f32, l: f32, a: f32 },
+    }
+
+    pub fn serialize<S>(value: &[f32; 4], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        value.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<[f32; 4], D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        match ColorFormat::deserialize(deserializer)? {
+            ColorFormat::Array(arr) => Ok(arr),
+            ColorFormat::HSLA { h, s, l, a } => {
+                // Convert HSLA to RGBA
+                let (r, g, b) = hsl_to_rgb(h, s, l);
+                Ok([r, g, b, a])
+            }
+        }
+    }
+
+    fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (f32, f32, f32) {
+        if s == 0.0 {
+            return (l, l, l);
+        }
+        
+        let q = if l < 0.5 {
+            l * (1.0 + s)
+        } else {
+            l + s - l * s
+        };
+        let p = 2.0 * l - q;
+        
+        let hue_to_rgb = |p: f32, q: f32, mut t: f32| -> f32 {
+            if t < 0.0 { t += 1.0; }
+            if t > 1.0 { t -= 1.0; }
+            if t < 1.0 / 6.0 { return p + (q - p) * 6.0 * t; }
+            if t < 1.0 / 2.0 { return q; }
+            if t < 2.0 / 3.0 { return p + (q - p) * (2.0 / 3.0 - t) * 6.0; }
+            p
+        };
+        
+        (
+            hue_to_rgb(p, q, h + 1.0 / 3.0),
+            hue_to_rgb(p, q, h),
+            hue_to_rgb(p, q, h - 1.0 / 3.0),
+        )
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

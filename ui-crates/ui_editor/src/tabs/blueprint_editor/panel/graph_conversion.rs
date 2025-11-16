@@ -55,8 +55,8 @@ impl BlueprintEditorPanel {
         // Convert connections
         for connection in &graph.connections {
             let conn_type = graph.nodes.iter()
-                .find(|n| n.id == connection.from_node_id)
-                .and_then(|node| node.outputs.iter().find(|p| p.id == connection.from_pin_id))
+                .find(|n| n.id == connection.source_node)
+                .and_then(|node| node.outputs.iter().find(|p| p.id == connection.source_pin))
                 .map(|pin| match &pin.data_type {
                     graph_types::DataType::Execution => graph_types::ConnectionType::Execution,
                     _ => graph_types::ConnectionType::Data,
@@ -65,10 +65,10 @@ impl BlueprintEditorPanel {
 
             let graph_connection = graph_types::Connection::new(
                 &connection.id,
-                &connection.from_node_id,
-                &connection.from_pin_id,
-                &connection.to_node_id,
-                &connection.to_pin_id,
+                &connection.source_node,
+                &connection.source_pin,
+                &connection.target_node,
+                &connection.target_pin,
                 conn_type,
             );
             graph_desc.add_connection(graph_connection);
@@ -195,10 +195,11 @@ impl BlueprintEditorPanel {
         for connection in &graph_desc.connections {
             let bp_connection = Connection {
                 id: connection.id.clone(),
-                from_node_id: connection.source_node.clone(),
-                from_pin_id: connection.source_pin.clone(),
-                to_node_id: connection.target_node.clone(),
-                to_pin_id: connection.target_pin.clone(),
+                source_node: connection.source_node.clone(),
+                source_pin: connection.source_pin.clone(),
+                target_node: connection.target_node.clone(),
+                target_pin: connection.target_pin.clone(),
+                connection_type: connection.connection_type.clone(),
             };
             connections.push(bp_connection);
         }
