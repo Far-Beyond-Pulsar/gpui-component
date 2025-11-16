@@ -119,7 +119,28 @@ impl Render for BlueprintEditorPanel {
                         .w_full()
                         .h_full()
                         .occlude()
-                        .child(div().absolute().child(menu))
+                        // Dismiss on click outside
+                        .on_mouse_down(MouseButton::Left, cx.listener(|panel, _, _window, cx| {
+                            panel.dismiss_node_creation_menu(cx);
+                        }))
+                        .on_mouse_down(MouseButton::Right, cx.listener(|panel, _, _window, cx| {
+                            panel.dismiss_node_creation_menu(cx);
+                        }))
+                        // Dismiss on escape key
+                        .on_key_down(cx.listener(|panel, event: &KeyDownEvent, _window, cx| {
+                            if event.keystroke.key == "escape" {
+                                panel.dismiss_node_creation_menu(cx);
+                                cx.stop_propagation();
+                            }
+                        }))
+                        .child(
+                            div()
+                                .absolute()
+                                // Stop propagation on menu itself so clicks don't dismiss
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+                                .child(menu)
+                        )
                 )
             })
             .when_some(self.hoverable_tooltip.clone(), |this, tooltip| {
@@ -130,6 +151,23 @@ impl Render for BlueprintEditorPanel {
                         .left_0()
                         .w_full()
                         .h_full()
+                        // Dismiss on click
+                        .on_mouse_down(MouseButton::Left, cx.listener(|panel, _, _window, cx| {
+                            panel.hoverable_tooltip = None;
+                            cx.notify();
+                        }))
+                        .on_mouse_down(MouseButton::Right, cx.listener(|panel, _, _window, cx| {
+                            panel.hoverable_tooltip = None;
+                            cx.notify();
+                        }))
+                        // Dismiss on escape key
+                        .on_key_down(cx.listener(|panel, event: &KeyDownEvent, _window, cx| {
+                            if event.keystroke.key == "escape" {
+                                panel.hoverable_tooltip = None;
+                                cx.notify();
+                                cx.stop_propagation();
+                            }
+                        }))
                         .child(div().absolute().child(tooltip))
                 )
             })
