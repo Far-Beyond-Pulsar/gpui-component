@@ -185,13 +185,18 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                 MouseButton::Left,
                 cx.listener(|_this, _event, _window, cx| {
                     cx.emit(DismissEvent);
-                    cx.stop_propagation();
                 }),
             )
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
+                if event.keystroke.key.as_str() == "escape" {
+                    cx.emit(DismissEvent);
+                    cx.stop_propagation();
+                }
+            }))
             .child(
                 h_flex()
-                    .gap_0()
-                    .items_center()
+                    .gap_3()
+                    .items_start()
                     .on_mouse_down(MouseButton::Left, |_, _, cx| {
                         cx.stop_propagation();
                     })
@@ -221,97 +226,7 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                             _ => {}
                         }
                     }))
-                    // Documentation panel (shown on the LEFT when space is pressed)
-                    .when(show_docs, |this| {
-                        this.child(
-                            v_flex()
-                                .w(px(400.0))
-                                .max_h(px(600.0))
-                                .bg(cx.theme().background)
-                                .border_1()
-                                .border_r_0()
-                                .border_color(cx.theme().border)
-                                .rounded_l(px(8.0))
-                                .shadow_lg()
-                                .overflow_hidden()
-                                .child(
-                                    // Header
-                                    h_flex()
-                                        .p_3()
-                                        .border_b_1()
-                                        .border_color(cx.theme().border)
-                                        .gap_2()
-                                        .items_center()
-                                        .child(
-                                            Icon::new(IconName::SubmitDocument)
-                                                .size(px(18.0))
-                                                .text_color(cx.theme().muted_foreground),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .font_semibold()
-                                                .text_color(cx.theme().foreground)
-                                                .child("Documentation"),
-                                        ),
-                                )
-                                .child(
-                                    // Documentation content
-                                    div()
-                                        .flex_1()
-                                        .overflow_hidden()
-                                        .child(
-                                            v_flex()
-                                                .p_4()
-                                                .gap_4()
-                                                .scrollable(Axis::Vertical)
-                                                .when_some(selected_item.as_ref().and_then(|item| item.documentation()), |this, doc_text| {
-                                                    this.child(
-                                                        div()
-                                                            .text_sm()
-                                                            .text_color(cx.theme().foreground)
-                                                            .child(doc_text)
-                                                    )
-                                                })
-                                                .when(selected_item.as_ref().and_then(|item| item.documentation()).is_none(), |this| {
-                                                    this.child(
-                                                        div()
-                                                            .flex_1()
-                                                            .flex()
-                                                            .items_center()
-                                                            .justify_center()
-                                                            .child(
-                                                                div()
-                                                                    .text_sm()
-                                                                    .text_color(
-                                                                        cx.theme().muted_foreground,
-                                                                    )
-                                                                    .child(
-                                                                        "No documentation available",
-                                                                    ),
-                                                            )
-                                                    )
-                                                }),
-                                        ),
-                                )
-                                .child(
-                                    // Footer hint
-                                    div()
-                                        .p_2()
-                                        .border_t_1()
-                                        .border_color(cx.theme().border)
-                                        .bg(cx.theme().muted.opacity(0.05))
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .text_center()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child("Press Space to toggle"),
-                                        ),
-                                ),
-                        )
-                    })
-                    // Main list panel
+                    // Main list panel (always shown, fixed width)
                     .child(
                         v_flex()
                             .w(px(600.0))
@@ -319,8 +234,7 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                             .bg(cx.theme().background)
                             .border_1()
                             .border_color(cx.theme().border)
-                            .when(show_docs, |this| this.border_l_0().rounded_r(px(8.0)))
-                            .when(!show_docs, |this| this.rounded(px(8.0)))
+                            .rounded(px(8.0))
                             .shadow_lg()
                             .overflow_hidden()
                             .child(
@@ -329,6 +243,12 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                     .p_3()
                                     .border_b_1()
                                     .border_color(cx.theme().border)
+                                    .on_key_down(cx.listener(|_this, event: &KeyDownEvent, _window, cx| {
+                                        if event.keystroke.key.as_str() == "escape" {
+                                            cx.emit(DismissEvent);
+                                            cx.stop_propagation();
+                                        }
+                                    }))
                                     .child(
                                         TextInput::new(&self.search_input)
                                             .appearance(false)
@@ -496,7 +416,96 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                         ),
                                 )
                             }),
-                    ),
+                    )
+                    // Documentation panel (shown on the RIGHT when space is pressed)
+                    .when(show_docs, |this| {
+                        this.child(
+                            v_flex()
+                                .w(px(400.0))
+                                .max_h(px(600.0))
+                                .bg(cx.theme().background)
+                                .border_1()
+                                .border_color(cx.theme().border)
+                                .rounded(px(8.0))
+                                .shadow_lg()
+                                .overflow_hidden()
+                                .child(
+                                    // Header
+                                    h_flex()
+                                        .p_3()
+                                        .border_b_1()
+                                        .border_color(cx.theme().border)
+                                        .gap_2()
+                                        .items_center()
+                                        .child(
+                                            Icon::new(IconName::SubmitDocument)
+                                                .size(px(18.0))
+                                                .text_color(cx.theme().muted_foreground),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_semibold()
+                                                .text_color(cx.theme().foreground)
+                                                .child("Documentation"),
+                                        ),
+                                )
+                                .child(
+                                    // Documentation content
+                                    div()
+                                        .flex_1()
+                                        .overflow_hidden()
+                                        .child(
+                                            v_flex()
+                                                .p_4()
+                                                .gap_4()
+                                                .scrollable(Axis::Vertical)
+                                                .when_some(selected_item.as_ref().and_then(|item| item.documentation()), |this, doc_text| {
+                                                    this.child(
+                                                        div()
+                                                            .text_sm()
+                                                            .text_color(cx.theme().foreground)
+                                                            .child(doc_text)
+                                                    )
+                                                })
+                                                .when(selected_item.as_ref().and_then(|item| item.documentation()).is_none(), |this| {
+                                                    this.child(
+                                                        div()
+                                                            .flex_1()
+                                                            .flex()
+                                                            .items_center()
+                                                            .justify_center()
+                                                            .child(
+                                                                div()
+                                                                    .text_sm()
+                                                                    .text_color(
+                                                                        cx.theme().muted_foreground,
+                                                                    )
+                                                                    .child(
+                                                                        "No documentation available",
+                                                                    ),
+                                                            )
+                                                    )
+                                                }),
+                                        ),
+                                )
+                                .child(
+                                    // Footer hint
+                                    div()
+                                        .p_2()
+                                        .border_t_1()
+                                        .border_color(cx.theme().border)
+                                        .bg(cx.theme().muted.opacity(0.05))
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_center()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child("Press Space to toggle"),
+                                        ),
+                                ),
+                        )
+                    })
             )
     }
 }

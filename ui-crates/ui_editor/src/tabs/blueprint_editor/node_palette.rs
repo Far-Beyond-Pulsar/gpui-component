@@ -98,7 +98,7 @@ impl PaletteDelegate for NodePalette {
     }
 
     fn categories_collapsed_by_default(&self) -> bool {
-        false  // Start with categories expanded so users can see what's available
+        true  // Start with categories collapsed for cleaner UI
     }
 
     fn supports_docs(&self) -> bool {
