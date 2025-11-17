@@ -568,25 +568,28 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_side_view))
             // Keyboard shortcuts - LETTER KEYS for fast workflow
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
-                // Only respond to unmodified key presses (no Ctrl/Alt/Shift/etc.)
-                if !event.keystroke.modifiers.control
-                    && !event.keystroke.modifiers.alt
-                    && !event.keystroke.modifiers.shift
-                    && !event.keystroke.modifiers.platform
-                    && !event.keystroke.modifiers.function
+                // Only respond if this panel has focus and keys are unmodified
+                if !this.focus_handle.is_focused(window)
+                    || event.keystroke.modifiers.control
+                    || event.keystroke.modifiers.alt
+                    || event.keystroke.modifiers.shift
+                    || event.keystroke.modifiers.platform
+                    || event.keystroke.modifiers.function
                 {
-                    match event.keystroke.key.as_ref() {
-                        "q" => cx.dispatch_action(&SelectTool),
-                        "w" => cx.dispatch_action(&MoveTool),
-                        "e" => cx.dispatch_action(&RotateTool),
-                        "r" => cx.dispatch_action(&ScaleTool),
-                        "g" => cx.dispatch_action(&ToggleSnapping),
-                        "l" => cx.dispatch_action(&ToggleLocalSpace),
-                        "f" => cx.dispatch_action(&FocusSelected),
-                        "[" => cx.dispatch_action(&DecreaseSnapIncrement),
-                        "]" => cx.dispatch_action(&IncreaseSnapIncrement),
-                        _ => {}
-                    }
+                    return;
+                }
+                
+                match event.keystroke.key.as_ref() {
+                    "q" => cx.dispatch_action(&SelectTool),
+                    "w" => cx.dispatch_action(&MoveTool),
+                    "e" => cx.dispatch_action(&RotateTool),
+                    "r" => cx.dispatch_action(&ScaleTool),
+                    "g" => cx.dispatch_action(&ToggleSnapping),
+                    "l" => cx.dispatch_action(&ToggleLocalSpace),
+                    "f" => cx.dispatch_action(&FocusSelected),
+                    "[" => cx.dispatch_action(&DecreaseSnapIncrement),
+                    "]" => cx.dispatch_action(&IncreaseSnapIncrement),
+                    _ => {}
                 }
             }))
             .child(

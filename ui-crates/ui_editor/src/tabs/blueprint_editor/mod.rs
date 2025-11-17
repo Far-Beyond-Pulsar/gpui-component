@@ -80,6 +80,10 @@ pub struct DisconnectPin {
     pub pin_id: String,
 }
 
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = blueprint_editor)]
+pub struct OpenAddNodeMenu;
+
 // Event for requesting to open an engine library in main tabs
 #[derive(Clone, Debug)]
 pub struct OpenEngineLibraryRequest {

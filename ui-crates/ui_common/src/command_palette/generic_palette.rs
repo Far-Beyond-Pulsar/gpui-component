@@ -298,18 +298,46 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                             .w_full(),
                                     ),
                             )
-                            .child(
-                                // Item list with categories
-                                div()
-                                    .flex_1()
-                                    .overflow_hidden()
-                                    .child(
-                                        v_flex()
-                                            .gap_0p5()
-                                            .p_2()
-                                            .id("palette-list")  // ID preserves scroll state across renders
-                                            .scrollable(Axis::Vertical)
-                                            .children({
+                            .child({
+                                if self.filtered_categories.iter().all(|(_, items)| items.is_empty()) {
+                                    // Show "No items found" message
+                                    div()
+                                        .flex_1()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .p_8()
+                                        .child(
+                                            v_flex()
+                                                .items_center()
+                                                .gap_2()
+                                                .child(
+                                                    Icon::new(IconName::Search)
+                                                        .size(px(48.0))
+                                                        .text_color(
+                                                            cx.theme().muted_foreground.opacity(0.3),
+                                                        ),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_sm()
+                                                        .text_color(cx.theme().muted_foreground)
+                                                        .child("No items found"),
+                                                ),
+                                        )
+                                        .into_any_element()
+                                } else {
+                                    // Item list with categories
+                                    div()
+                                        .flex_1()
+                                        .overflow_hidden()
+                                        .child(
+                                            v_flex()
+                                                .gap_0p5()
+                                                .p_2()
+                                                .id("palette-list")  // ID preserves scroll state across renders
+                                                .scrollable(Axis::Vertical)
+                                                .children({
                                                 let mut item_index = 0;
                                                 let has_categories = self
                                                     .filtered_categories
@@ -423,37 +451,11 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                                         elements
                                                     })
                                                     .collect::<Vec<_>>()
-                                            }),
-                                    ),
-                            )
-                            .when(self.get_all_visible_items().is_empty(), |this| {
-                                this.child(
-                                    div()
-                                        .flex_1()
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .p_8()
-                                        .child(
-                                            v_flex()
-                                                .items_center()
-                                                .gap_2()
-                                                .child(
-                                                    Icon::new(IconName::Search)
-                                                        .size(px(48.0))
-                                                        .text_color(
-                                                            cx.theme().muted_foreground.opacity(0.3),
-                                                        ),
-                                                )
-                                                .child(
-                                                    div()
-                                                        .text_sm()
-                                                        .text_color(cx.theme().muted_foreground)
-                                                        .child("No items found"),
-                                                ),
-                                        ),
-                                )
-                            }),
+                                                }),
+                                        )
+                                        .into_any_element()
+                                }
+                            })
                     )
                     // Documentation panel (shown on the RIGHT when space is pressed)
                     .when(show_docs, |this| {
@@ -579,6 +581,7 @@ impl<D: PaletteDelegate> GenericPalette<D> {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
                     this.selected_index = item_index;
                     this.select_item(cx);
                 }),

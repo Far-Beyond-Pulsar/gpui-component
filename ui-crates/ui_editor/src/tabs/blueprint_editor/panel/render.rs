@@ -5,7 +5,7 @@ use gpui::prelude::*;
 use ui::{dock::{Panel, PanelEvent, PanelState}, h_flex, v_flex, ActiveTheme, PixelsExt};
 use super::core::BlueprintEditorPanel;
 use super::super::toolbar::ToolbarRenderer;
-use super::super::{DuplicateNode, DeleteNode, CopyNode, PasteNode, DisconnectPin, OpenEngineLibraryRequest, ShowNodePickerRequest};
+use super::super::{DuplicateNode, DeleteNode, CopyNode, PasteNode, DisconnectPin, OpenAddNodeMenu, OpenEngineLibraryRequest, ShowNodePickerRequest};
 
 impl Panel for BlueprintEditorPanel {
     fn panel_name(&self) -> &'static str {
@@ -53,6 +53,7 @@ impl Render for BlueprintEditorPanel {
         v_flex()
             .size_full()
             .bg(cx.theme().background)
+            .key_context("BlueprintEditor")
             .on_action(cx.listener(|panel, action: &DuplicateNode, _window, cx| {
                 panel.duplicate_node(action.node_id.clone(), cx);
             }))
@@ -67,6 +68,22 @@ impl Render for BlueprintEditorPanel {
             }))
             .on_action(cx.listener(|panel, action: &DisconnectPin, _window, cx| {
                 panel.disconnect_pin(action.node_id.clone(), action.pin_id.clone(), cx);
+            }))
+            .on_action(cx.listener(|panel, _action: &OpenAddNodeMenu, window, cx| {
+                // Open node menu at center of visible graph area
+                if let Some(bounds) = &panel.graph_element_bounds {
+                    // Get center of the graph element in screen coordinates
+                    let screen_center = Point::new(
+                        bounds.center().x,
+                        bounds.center().y,
+                    );
+                    // Convert to graph coordinates
+                    let graph_pos = super::super::node_graph::NodeGraphRenderer::screen_to_graph_pos(
+                        screen_center, 
+                        &panel.graph
+                    );
+                    panel.show_node_picker(graph_pos, window, cx);
+                }
             }))
             .child(ToolbarRenderer::render(self, cx))
             .child(self.render_tab_bar(cx))

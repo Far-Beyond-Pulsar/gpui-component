@@ -407,9 +407,22 @@ impl Render for NodeCreationMenu {
                             )
                     )
                     .child(self.render_search_box(cx))
-                    .when(!self.filtered_categories.is_empty(), |this| {
-                        // Show category list when there are results
-                        this.child(
+                    .child({
+                        if self.filtered_categories.is_empty() {
+                            // Show "No results found" when search has no matches
+                            v_flex()
+                                .flex_1()
+                                .items_center()
+                                .justify_center()
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("No results found")
+                                )
+                                .into_any_element()
+                        } else {
+                            // Show category list when there are results
                             v_flex()
                                 .flex_1()
                                 .overflow_y_hidden()
@@ -425,23 +438,8 @@ impl Render for NodeCreationMenu {
                                             })
                                         )
                                 )
-                        )
-                    })
-                    .when(self.filtered_categories.is_empty(), |this| {
-                        // Show "No results found" when search has no matches
-                        this.child(
-                            div()
-                                .flex_1()
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child("No results found")
-                                )
-                        )
+                                .into_any_element()
+                        }
                     })
             )
     }
