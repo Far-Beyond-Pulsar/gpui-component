@@ -28,28 +28,12 @@ impl PaletteItem for NodeDefinition {
     }
 
     fn documentation(&self) -> Option<String> {
-        // Build documentation from inputs/outputs
-        let mut doc = String::new();
-
-        if !self.inputs.is_empty() {
-            doc.push_str("**Inputs:**\n");
-            for input in &self.inputs {
-                doc.push_str(&format!("- {}: {:?}\n", input.name, input.pin_type));
-            }
-            doc.push('\n');
-        }
-
-        if !self.outputs.is_empty() {
-            doc.push_str("**Outputs:**\n");
-            for output in &self.outputs {
-                doc.push_str(&format!("- {}: {:?}\n", output.name, output.pin_type));
-            }
-        }
-
-        if doc.is_empty() {
+        // Return the real node documentation from the description field
+        // (which contains markdown documentation loaded from node metadata)
+        if self.description.is_empty() {
             None
         } else {
-            Some(doc)
+            Some(self.description.clone())
         }
     }
 }
