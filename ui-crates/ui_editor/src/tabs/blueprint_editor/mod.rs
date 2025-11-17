@@ -330,7 +330,8 @@ pub struct NodeDefinition {
     pub id: String,
     pub name: String,
     pub icon: String,
-    pub description: String,
+    pub description: String,  // Short one-line description for list display
+    pub documentation: String,  // Full markdown documentation for docs panel
     pub inputs: Vec<PinDefinition>,
     pub outputs: Vec<PinDefinition>,
     pub properties: HashMap<String, String>,
@@ -406,6 +407,7 @@ impl NodeDefinitions {
                     name: subgraph.name.clone(),
                     icon: "📦".to_string(), // Macro icon
                     description: subgraph.description.clone(),
+                    documentation: subgraph.description.clone(),  // Use same text for docs
                     inputs,
                     outputs,
                     properties: std::collections::HashMap::new(),
@@ -445,6 +447,7 @@ impl NodeDefinitions {
                 name: "Reroute".to_string(),
                 icon: "•".to_string(),
                 description: "Organize connections with a pass-through node (typeless until connected)".to_string(),
+                documentation: "Organize connections with a pass-through node (typeless until connected)".to_string(),
                 inputs: vec![],
                 outputs: vec![],
                 properties: std::collections::HashMap::new(),
@@ -497,13 +500,20 @@ impl NodeDefinitions {
             }
 
             let category = node_meta.category.to_string();
-            let description = node_meta.documentation.join("\n");
+
+            // Use first line of docs as short description, full docs for documentation panel
+            let documentation = node_meta.documentation.join("\n");
+            let description = node_meta.documentation
+                .first()
+                .map(|s| s.trim().to_string())
+                .unwrap_or_else(|| format!("Node: {}", node_meta.name));
 
             let static_def = NodeDefinition {
                 id: id.clone(),
                 name: node_meta.name.to_string(),
                 icon: "⚙️".to_string(), // Default icon
                 description,
+                documentation,
                 inputs,
                 outputs,
                 properties: std::collections::HashMap::new(),

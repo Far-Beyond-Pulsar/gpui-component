@@ -1,5 +1,5 @@
 use gpui::{prelude::*, div, px, Axis, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, KeyDownEvent, MouseButton, Render, Window};
-use ui::{h_flex, input::{InputEvent, InputState, TextInput}, v_flex, ActiveTheme as _, Icon, IconName, StyledExt};
+use ui::{h_flex, input::{Escape, InputEvent, InputState, TextInput}, text::TextView, v_flex, ActiveTheme as _, Icon, IconName, StyledExt};
 
 use super::palette::{PaletteDelegate, PaletteItem};
 
@@ -166,7 +166,7 @@ impl<D: PaletteDelegate> GenericPalette<D> {
 }
 
 impl<D: PaletteDelegate> Render for GenericPalette<D> {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let selected_index = self.selected_index;
         let visible_items = self.get_all_visible_items();
         let selected_item = visible_items.get(selected_index).cloned();
@@ -190,7 +190,12 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                     cx.emit(DismissEvent);
                 }),
             )
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
+            .on_action(cx.listener(|_this, _: &Escape, _window, cx| {
+                // Handle ESC key action (bubbled up from input or direct)
+                cx.emit(DismissEvent);
+            }))
+            .on_key_down(cx.listener(|_this, event: &KeyDownEvent, _window, cx| {
+                // Fallback for raw escape keystrokes
                 match event.keystroke.key.as_str() {
                     "escape" => {
                         cx.emit(DismissEvent);
@@ -206,6 +211,10 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                     .on_mouse_down(MouseButton::Left, |_, _, cx| {
                         cx.stop_propagation();
                     })
+                    .on_action(cx.listener(|_this, _: &Escape, _window, cx| {
+                        // Handle ESC from input or elsewhere
+                        cx.emit(DismissEvent);
+                    }))
                     .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
                         match event.keystroke.key.as_str() {
                             "down" | "arrowdown" => {
@@ -428,7 +437,7 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                         this.child(
                             v_flex()
                                 .w(px(400.0))
-                                .max_h(px(600.0))
+                                .max_h(px(500.0))  // Match palette height to avoid layout shifts
                                 .bg(cx.theme().background)
                                 .border_1()
                                 .border_color(cx.theme().border)
@@ -456,8 +465,10 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                                 .child("Documentation"),
                                         ),
                                 )
-                                .child(
+                                .child({
                                     // Documentation content
+                                    let doc_content = selected_item.as_ref().and_then(|item| item.documentation());
+
                                     div()
                                         .flex_1()
                                         .overflow_hidden()
@@ -466,35 +477,34 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                                 .p_4()
                                                 .gap_4()
                                                 .scrollable(Axis::Vertical)
-                                                .when_some(selected_item.as_ref().and_then(|item| item.documentation()), |this, doc_text| {
-                                                    this.child(
-                                                        div()
-                                                            .text_sm()
-                                                            .text_color(cx.theme().foreground)
-                                                            .child(doc_text)
-                                                    )
-                                                })
-                                                .when(selected_item.as_ref().and_then(|item| item.documentation()).is_none(), |this| {
-                                                    this.child(
-                                                        div()
-                                                            .flex_1()
-                                                            .flex()
-                                                            .items_center()
-                                                            .justify_center()
-                                                            .child(
-                                                                div()
-                                                                    .text_sm()
-                                                                    .text_color(
-                                                                        cx.theme().muted_foreground,
-                                                                    )
-                                                                    .child(
-                                                                        "No documentation available",
-                                                                    ),
-                                                            )
-                                                    )
+                                                .map(|el| {
+                                                    if let Some(doc_text) = doc_content {
+                                                        el.child(
+                                                            TextView::markdown("node-docs", doc_text, window, cx)
+                                                                .selectable()
+                                                        )
+                                                    } else {
+                                                        el.child(
+                                                            div()
+                                                                .flex_1()
+                                                                .flex()
+                                                                .items_center()
+                                                                .justify_center()
+                                                                .child(
+                                                                    div()
+                                                                        .text_sm()
+                                                                        .text_color(
+                                                                            cx.theme().muted_foreground,
+                                                                        )
+                                                                        .child(
+                                                                            "No documentation available",
+                                                                        ),
+                                                                )
+                                                        )
+                                                    }
                                                 }),
-                                        ),
-                                )
+                                        )
+                                })
                                 .child(
                                     // Footer hint
                                     div()

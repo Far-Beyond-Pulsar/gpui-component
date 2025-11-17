@@ -843,12 +843,7 @@ impl PulsarApp {
                     palette.swap_delegate(delegate, window, cx);
                 });
 
-                // Focus the palette so it receives key events (ESC)
-                palette.update(cx, |palette, cx| {
-                    palette.focus_handle(cx).focus(window);
-                });
-
-                // Also focus the input for typing
+                // Focus the input for typing (actions bubble up to palette)
                 let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
                 input_handle.focus(window);
             } else {
@@ -876,12 +871,7 @@ impl PulsarApp {
                     cx.notify();
                 }).detach();
 
-                // Focus the palette so it receives key events (ESC)
-                palette.update(cx, |palette, cx| {
-                    palette.focus_handle(cx).focus(window);
-                });
-
-                // Also focus the input for typing
+                // Focus the input for typing (actions bubble up to palette)
                 let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
                 input_handle.focus(window);
 
@@ -1151,12 +1141,7 @@ impl PulsarApp {
                 palette.swap_delegate(delegate, window, cx);
             });
 
-            // Focus the palette so it receives key events (ESC)
-            palette.update(cx, |palette, cx| {
-                palette.focus_handle(cx).focus(window);
-            });
-
-            // Also focus the input for typing
+            // Focus the input for typing (actions bubble up to palette)
             let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
             input_handle.focus(window);
         } else {
@@ -1199,12 +1184,7 @@ impl PulsarApp {
                 cx.notify();
             }).detach();
 
-            // Focus the palette so it receives key events (ESC)
-            palette.update(cx, |palette, cx| {
-                palette.focus_handle(cx).focus(window);
-            });
-
-            // Also focus the input for typing
+            // Focus the input for typing (actions bubble up to palette)
             let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
             input_handle.focus(window);
 

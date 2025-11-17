@@ -28,12 +28,11 @@ impl PaletteItem for NodeDefinition {
     }
 
     fn documentation(&self) -> Option<String> {
-        // Return the real node documentation from the description field
-        // (which contains markdown documentation loaded from node metadata)
-        if self.description.is_empty() {
+        // Return the full markdown documentation from the documentation field
+        if self.documentation.is_empty() {
             None
         } else {
-            Some(self.description.clone())
+            Some(self.documentation.clone())
         }
     }
 }
