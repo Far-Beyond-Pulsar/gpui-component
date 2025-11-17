@@ -48,7 +48,8 @@ pub struct BlueprintEditorPanel {
     
     // Node creation menu
     pub node_creation_menu: Option<Entity<NodeCreationMenu>>,
-    pub node_creation_menu_position: Option<Point<f32>>,
+    pub node_creation_menu_position: Option<Point<f32>>, // Graph space coordinates for placing nodes
+    pub node_creation_menu_position_window: Option<Point<Pixels>>, // Window coordinates for rendering menu
     
     // Right-click gesture detection
     pub right_click_start: Option<Point<f32>>,
@@ -206,6 +207,7 @@ impl BlueprintEditorPanel {
             last_mouse_pos: None,
             node_creation_menu: None,
             node_creation_menu_position: None,
+            node_creation_menu_position_window: None,
             right_click_start: None,
             right_click_threshold: 5.0,
             hoverable_tooltip: None,

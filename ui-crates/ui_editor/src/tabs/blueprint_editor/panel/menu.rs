@@ -12,17 +12,25 @@ impl BlueprintEditorPanel {
     /// Show node creation menu at screen position
     pub fn show_node_creation_menu(
         &mut self,
-        screen_pos: Point<f32>,
+        window_pos: Point<Pixels>,
         graph_pos: Point<f32>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let adjusted_position = self.calculate_menu_position(screen_pos, window);
+        // Store BOTH positions:
+        // - graph_pos: for placing the created node in the correct graph location
+        // - window_pos: for rendering the menu at the correct window location (in Pixels)
+
+        println!("📍 Opening node creation menu:");
+        println!("   Window pos (raw from event): {:?}", window_pos);
+        println!("   Graph pos: {:?}", graph_pos);
+        println!("   Graph element bounds: {:?}", self.graph_element_bounds);
 
         // Create search input for the menu
         let search_input = cx.new(|cx| ui::input::InputState::new(window, cx));
         let panel_weak = cx.weak_entity();
         
+        // Pass graph_pos for placing nodes, not window_pos for rendering
         let menu = cx.new(|cx| NodeCreationMenu::new(graph_pos, search_input, panel_weak, cx));
         let menu_entity = menu.clone();
 
@@ -32,37 +40,9 @@ impl BlueprintEditorPanel {
         .detach();
 
         self.node_creation_menu = Some(menu);
-        self.node_creation_menu_position = Some(adjusted_position);
+        self.node_creation_menu_position = Some(graph_pos); // For placing nodes
+        self.node_creation_menu_position_window = Some(window_pos); // For rendering menu
         cx.notify();
-    }
-
-    /// Calculate smart menu positioning to prevent off-screen placement
-    fn calculate_menu_position(&self, requested_position: Point<f32>, window: &Window) -> Point<f32> {
-        let window_bounds = window.bounds();
-        let viewport_width: f32 = window_bounds.size.width.into();
-        let viewport_height: f32 = window_bounds.size.height.into();
-
-        let edge_padding = 10.0;
-
-        let mut adjusted_x = requested_position.x;
-        let mut adjusted_y = requested_position.y;
-
-        // Clamp to window bounds
-        if adjusted_x + NODE_MENU_WIDTH + edge_padding > viewport_width {
-            adjusted_x = viewport_width - NODE_MENU_WIDTH - edge_padding;
-        }
-        if adjusted_x < edge_padding {
-            adjusted_x = edge_padding;
-        }
-
-        if adjusted_y + NODE_MENU_MAX_HEIGHT + edge_padding > viewport_height {
-            adjusted_y = viewport_height - NODE_MENU_MAX_HEIGHT - edge_padding;
-        }
-        if adjusted_y < edge_padding {
-            adjusted_y = edge_padding;
-        }
-
-        Point::new(adjusted_x, adjusted_y)
     }
 
     /// Handle node creation events
@@ -87,6 +67,7 @@ impl BlueprintEditorPanel {
     pub fn dismiss_node_creation_menu(&mut self, cx: &mut Context<Self>) {
         self.node_creation_menu = None;
         self.node_creation_menu_position = None;
+        self.node_creation_menu_position_window = None;
         cx.notify();
     }
 

@@ -256,10 +256,12 @@ impl NodeGraphRenderer {
                         panel.finish_dragging_variable(graph_pos, cx);
                     } else if panel.dragging_connection.is_some() {
                         // Show node creation menu when dropping connection on empty space
-                        let panel_pos = Self::window_to_panel_pos(event.position, panel);
-                        let screen_pos = Point::new(panel_pos.x.as_f32(), panel_pos.y.as_f32());
-                        let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
-                        panel.show_node_creation_menu(screen_pos, graph_pos, _window, cx);
+                        let element_pos = Self::window_to_graph_element_pos(event.position, panel);
+                        let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
+                        // Convert graph position back to screen coordinates for menu positioning
+                        let screen_pos = Self::graph_to_screen_pos(graph_pos, &panel.graph);
+                        let screen_pos_pixels = Point::new(px(screen_pos.x), px(screen_pos.y));
+                        panel.show_node_creation_menu(screen_pos_pixels, graph_pos, _window, cx);
                         panel.cancel_connection_drag(cx);
                     } else if panel.is_selecting() {
                         // End selection drag
@@ -277,10 +279,21 @@ impl NodeGraphRenderer {
                     } else if panel.right_click_start.is_some() {
                         // Right-click released without dragging - show context menu
                         panel.right_click_start = None;
-                        let panel_pos = Self::window_to_panel_pos(event.position, panel);
-                        let screen_pos = Point::new(panel_pos.x.as_f32(), panel_pos.y.as_f32());
-                        let graph_pos = Self::screen_to_graph_pos(event.position, &panel.graph);
-                        panel.show_node_creation_menu(screen_pos, graph_pos, _window, cx);
+                        let element_pos = Self::window_to_graph_element_pos(event.position, panel);
+                        let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
+                        // Convert graph position back to screen coordinates for menu positioning (same as selection box)
+                        let screen_pos = Self::graph_to_screen_pos(graph_pos, &panel.graph);
+                        let screen_pos_pixels = Point::new(px(screen_pos.x), px(screen_pos.y));
+                        
+                        println!("🖱️ Right-click event:");
+                        println!("   event.position (element-relative): {:?}", event.position);
+                        println!("   element_pos (relative to graph element): {:?}", element_pos);
+                        println!("   graph_pos (in graph space): {:?}", graph_pos);
+                        println!("   screen_pos (converted for menu): {:?}", screen_pos_pixels);
+                        println!("   graph pan_offset: {:?}", panel.graph.pan_offset);
+                        println!("   graph zoom_level: {:?}", panel.graph.zoom_level);
+                        
+                        panel.show_node_creation_menu(screen_pos_pixels, graph_pos, _window, cx);
                     }
                 }),
             )
@@ -849,10 +862,9 @@ impl NodeGraphRenderer {
                                 move |panel, event: &MouseMoveEvent, window, cx| {
                                     // Only show tooltip if it's not already visible or pending
                                     if panel.hoverable_tooltip.is_none() && panel.pending_tooltip.is_none() {
-                                        // Position tooltip near the node header, offset right and up from mouse
-                                        // Convert to element coordinates first
-                                        let element_pos = Self::window_to_graph_element_pos(event.position, panel);
-                                        let tooltip_pos = Point::new(element_pos.x.as_f32() + 20.0, element_pos.y.as_f32() - 60.0);
+                                        // Position tooltip near the mouse, offset right and up
+                                        // Use raw window coordinates (tooltip is rendered as overlay)
+                                        let tooltip_pos = Point::new(event.position.x.as_f32() + 20.0, event.position.y.as_f32() - 60.0);
                                         panel.show_hoverable_tooltip(tooltip_content.clone(), tooltip_pos, window, cx);
                                     }
                                 }

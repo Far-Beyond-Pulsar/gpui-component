@@ -2,7 +2,7 @@
 
 use gpui::*;
 use gpui::prelude::*;
-use ui::{dock::{Panel, PanelEvent, PanelState}, h_flex, v_flex, ActiveTheme};
+use ui::{dock::{Panel, PanelEvent, PanelState}, h_flex, v_flex, ActiveTheme, PixelsExt};
 use super::core::BlueprintEditorPanel;
 use super::super::toolbar::ToolbarRenderer;
 use super::super::{DuplicateNode, DeleteNode, CopyNode, PasteNode, DisconnectPin, OpenEngineLibraryRequest};
@@ -111,44 +111,32 @@ impl Render for BlueprintEditorPanel {
                     )
             )
             .when_some(self.node_creation_menu.clone(), |this, menu| {
-                let menu_pos = self.node_creation_menu_position.unwrap_or(Point::new(0.0, 0.0));
+                // Menu position is stored in window coordinates (Point<Pixels>)
+                let menu_pos = self.node_creation_menu_position_window.unwrap_or(Point::new(px(0.0), px(0.0)));
+                
                 this.child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .w_full()
-                        .h_full()
-                        .occlude()
-                        // Dismiss on click outside
-                        .on_mouse_down(MouseButton::Left, cx.listener(|panel, _, _window, cx| {
-                            panel.dismiss_node_creation_menu(cx);
-                        }))
-                        .on_mouse_down(MouseButton::Right, cx.listener(|panel, _, _window, cx| {
-                            panel.dismiss_node_creation_menu(cx);
-                        }))
-                        // Dismiss on escape key
-                        .on_key_down(cx.listener(|panel, event: &KeyDownEvent, _window, cx| {
-                            if event.keystroke.key == "escape" {
-                                panel.dismiss_node_creation_menu(cx);
-                                cx.stop_propagation();
-                            }
-                        }))
-                        .child(
-                            div()
-                                .absolute()
-                                .left(px(menu_pos.x))
-                                .top(px(menu_pos.y))
-                                // Stop propagation on menu itself so clicks don't dismiss
-                                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                                .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
-                                .child(menu)
-                        )
+                    deferred(
+                        anchored()
+                            .position(menu_pos)
+                            .snap_to_window_with_margin(px(8.))
+                            .anchor(Corner::TopLeft)
+                            .child(
+                                div()
+                                    .occlude()
+                                    // Stop propagation on menu itself so clicks don't dismiss
+                                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                    .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+                                    .child(menu)
+                            )
+                    )
+                    .with_priority(1)
                 )
             })
             .when_some(self.hoverable_tooltip.clone(), |this, tooltip| {
                 let tooltip_pos = self.pending_tooltip.as_ref().map(|(_, pos)| *pos).unwrap_or(Point::new(0.0, 0.0));
-                let tooltip_pos_clone = tooltip_pos.clone();
+                // Use a reasonable size estimate for tooltip hover area (300x200 px)
+                let tooltip_width = 300.0;
+                let tooltip_height = 200.0;
                 this.child(
                     div()
                         .absolute()
@@ -158,14 +146,17 @@ impl Render for BlueprintEditorPanel {
                         .h_full()
                         // Dismiss on mouse move (hover away)
                         .on_mouse_move(cx.listener(move |panel, event: &MouseMoveEvent, _window, cx| {
-                            // Dismiss if mouse moves away from the hover area
-                            // We use a simple distance check - if mouse is far from tooltip position, hide it
-                            let mouse_pos_pixels = event.position; // Window coordinates (Pixels)
-                            let mouse_pos = Point::new(mouse_pos_pixels.x.to_f64() as f32, mouse_pos_pixels.y.to_f64() as f32);
-                            let dist_x = (mouse_pos.x - tooltip_pos_clone.x).abs();
-                            let dist_y = (mouse_pos.y - tooltip_pos_clone.y).abs();
-                            // If mouse is more than 100px away in any direction, dismiss
-                            if dist_x > 100.0 || dist_y > 100.0 {
+                            // Check if mouse is outside tooltip area
+                            let mouse_pos = event.position;
+                            let mouse_x = mouse_pos.x.as_f32();
+                            let mouse_y = mouse_pos.y.as_f32();
+                            
+                            let outside = mouse_x < tooltip_pos.x ||
+                                         mouse_x > tooltip_pos.x + tooltip_width ||
+                                         mouse_y < tooltip_pos.y ||
+                                         mouse_y > tooltip_pos.y + tooltip_height;
+                            
+                            if outside {
                                 panel.hoverable_tooltip = None;
                                 panel.pending_tooltip = None;
                                 cx.notify();
@@ -196,6 +187,8 @@ impl Render for BlueprintEditorPanel {
                                 .absolute()
                                 .left(px(tooltip_pos.x))
                                 .top(px(tooltip_pos.y))
+                                // Stop propagation on tooltip itself
+                                .on_mouse_move(|_, _, cx| cx.stop_propagation())
                                 .child(tooltip)
                         )
                 )
