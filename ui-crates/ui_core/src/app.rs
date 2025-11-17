@@ -1423,8 +1423,12 @@ impl Render for PulsarApp {
             return screen.clone().into_any_element();
         }
 
-        // Use the stored command palette entity
-        let command_palette = self.command_palette.clone();
+        // Use the stored command palette entity - only show when open
+        let command_palette = if self.command_palette_open {
+            self.command_palette.clone()
+        } else {
+            None
+        };
 
         let drawer_open = self.drawer_open;
 

@@ -184,12 +184,34 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
             .justify_center()
             .bg(gpui::rgba(0x00000099))
             .track_focus(&self.focus_handle)
+            // Block ALL mouse events from falling through
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|_this, _event, _window, cx| {
                     cx.emit(DismissEvent);
                 }),
             )
+            .on_mouse_down(MouseButton::Right, |_, _, cx| {
+                cx.stop_propagation();
+            })
+            .on_mouse_down(MouseButton::Middle, |_, _, cx| {
+                cx.stop_propagation();
+            })
+            .on_mouse_up(MouseButton::Left, |_, _, cx| {
+                cx.stop_propagation();
+            })
+            .on_mouse_up(MouseButton::Right, |_, _, cx| {
+                cx.stop_propagation();
+            })
+            .on_mouse_up(MouseButton::Middle, |_, _, cx| {
+                cx.stop_propagation();
+            })
+            .on_mouse_move(|_, _, cx| {
+                cx.stop_propagation();
+            })
+            .on_scroll_wheel(|_, _, cx| {
+                cx.stop_propagation();
+            })
             .on_action(cx.listener(|_this, _: &Escape, _window, cx| {
                 // Handle ESC key action (bubbled up from input or direct)
                 cx.emit(DismissEvent);
@@ -285,6 +307,7 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                         v_flex()
                                             .gap_0p5()
                                             .p_2()
+                                            .id("palette-list")  // ID preserves scroll state across renders
                                             .scrollable(Axis::Vertical)
                                             .children({
                                                 let mut item_index = 0;
@@ -476,6 +499,7 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                             v_flex()
                                                 .p_4()
                                                 .gap_4()
+                                                .id("palette-docs")  // ID preserves scroll state
                                                 .scrollable(Axis::Vertical)
                                                 .map(|el| {
                                                     if let Some(doc_text) = doc_content {
