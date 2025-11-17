@@ -316,7 +316,7 @@ pub struct NodeDefinitions {
     pub categories: Vec<NodeCategory>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct NodeCategory {
     pub name: String,
     pub color: String,
