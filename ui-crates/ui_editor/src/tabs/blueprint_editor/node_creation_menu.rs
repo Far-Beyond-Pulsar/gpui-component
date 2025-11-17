@@ -426,6 +426,7 @@ impl Render for NodeCreationMenu {
                                                 .text_color(cx.theme().muted_foreground)
                                                 .child("No results found")
                                         )
+                                        .into_any_element()
                                 } else {
                                     // Show category list when there are results
                                     v_flex()
@@ -438,6 +439,7 @@ impl Render for NodeCreationMenu {
                                                 self.render_category(category, cx)
                                             })
                                         )
+                                        .into_any_element()
                                 }
                             )
                     )
