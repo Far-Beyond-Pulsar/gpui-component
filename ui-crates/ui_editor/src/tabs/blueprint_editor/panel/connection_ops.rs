@@ -26,7 +26,7 @@ impl BlueprintEditorPanel {
                 });
 
                 // Close tooltips when starting connection drag
-                self.hoverable_tooltip = None;
+                // Tooltip removed - use node picker instead
                 cx.notify();
             }
         }

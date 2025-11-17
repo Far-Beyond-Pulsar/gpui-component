@@ -22,7 +22,7 @@ use ui::{
     IconName,
     StyledExt,
 };
-use crate::node_library::{ NodeDefinition, NodeCategory, get_all_node_definitions };
+use crate::tabs::blueprint_editor::{ NodeDefinition, NodeCategory };
 
 #[derive(Clone, Debug)]
 pub struct NodeSelected {
@@ -50,7 +50,8 @@ impl NodePicker {
             state
         });
 
-        let all_nodes = get_all_node_definitions();
+        // TODO: Load from node_library
+        let all_nodes = vec![];
         let filtered_nodes = all_nodes.clone();
 
         // Subscribe to input changes to update the filter
@@ -86,11 +87,8 @@ impl NodePicker {
             self.filtered_nodes = self.all_nodes
                 .iter()
                 .filter(|node| {
-                    // Search in name
+                    // Search in name and description
                     node.name.to_lowercase().contains(&query_lower) ||
-                        // Search in category
-                        format!("{:?}", node.category).to_lowercase().contains(&query_lower) ||
-                        // Search in description
                         node.description.to_lowercase().contains(&query_lower)
                 })
                 .cloned()
@@ -121,17 +119,8 @@ impl NodePicker {
         cx.notify();
     }
 
-    fn get_icon_for_category(category: &NodeCategory) -> IconName {
-        match category {
-            NodeCategory::FlowControl => IconName::GitBranch,
-            NodeCategory::Math => IconName::Calculator,
-            NodeCategory::String => IconName::Type,
-            NodeCategory::Logic => IconName::BinaryTree,
-            NodeCategory::Variable => IconName::Database,
-            NodeCategory::Function => IconName::Code,
-            NodeCategory::Event => IconName::Zap,
-            NodeCategory::Custom => IconName::Box,
-        }
+    fn get_icon_for_category(_category: &NodeCategory) -> IconName {
+        IconName::Code
     }
 }
 
@@ -216,7 +205,6 @@ impl Render for NodePicker {
                         // Node list
                         v_flex()
                             .flex_1()
-                            .overflow_y_scroll()
                             .gap_0p5()
                             .p_2()
                             .children(
@@ -226,7 +214,7 @@ impl Render for NodePicker {
                                     .map(|(i, node)| {
                                         let is_selected = i == selected_index;
                                         let node_def = node.clone();
-                                        let icon = Self::get_icon_for_category(&node_def.category);
+                                        let icon = IconName::Code;
 
                                         h_flex()
                                             .w_full()
@@ -289,9 +277,7 @@ impl Render for NodePicker {
                                                         div()
                                                             .text_xs()
                                                             .text_color(cx.theme().muted_foreground)
-                                                            .child(
-                                                                format!("{:?}", node_def.category)
-                                                            )
+                                                            .child(node_def.description.clone())
                                                     )
                                             )
                                     })
@@ -364,7 +350,6 @@ impl Render for NodePicker {
                             // Documentation content
                             v_flex()
                                 .flex_1()
-                                .overflow_y_scroll()
                                 .p_4()
                                 .gap_4()
                                 .when_some(selected_node.clone(), |this, node| {
@@ -380,18 +365,7 @@ impl Render for NodePicker {
                                                     .child(node.name.clone())
                                             )
                                             // Category badge
-                                            .child(
-                                                div()
-                                                    .px_2()
-                                                    .py_1()
-                                                    .rounded(px(4.0))
-                                                    .bg(cx.theme().primary.opacity(0.1))
-                                                    .text_xs()
-                                                    .font_medium()
-                                                    .text_color(cx.theme().primary)
-                                                    .child(format!("{:?}", node.category))
-                                                    .w_fit()
-                                            )
+
                                             // Description
                                             .child(
                                                 v_flex()
@@ -411,7 +385,7 @@ impl Render for NodePicker {
                                                     )
                                             )
                                             // Input pins
-                                            .when(!node.input_pins.is_empty(), |this| {
+                                            .when(!node.inputs.is_empty(), |this| {
                                                 this.child(
                                                     v_flex()
                                                         .gap_2()
@@ -423,7 +397,7 @@ impl Render for NodePicker {
                                                                 .child("Input Pins")
                                                         )
                                                         .children(
-                                                            node.input_pins.iter().map(|pin| {
+                                                            node.inputs.iter().map(|pin| {
                                                                 h_flex()
                                                                     .gap_2()
                                                                     .items_start()
@@ -474,7 +448,7 @@ impl Render for NodePicker {
                                                 )
                                             })
                                             // Output pins
-                                            .when(!node.output_pins.is_empty(), |this| {
+                                            .when(!node.outputs.is_empty(), |this| {
                                                 this.child(
                                                     v_flex()
                                                         .gap_2()
@@ -486,7 +460,7 @@ impl Render for NodePicker {
                                                                 .child("Output Pins")
                                                         )
                                                         .children(
-                                                            node.output_pins.iter().map(|pin| {
+                                                            node.outputs.iter().map(|pin| {
                                                                 h_flex()
                                                                     .gap_2()
                                                                     .items_start()

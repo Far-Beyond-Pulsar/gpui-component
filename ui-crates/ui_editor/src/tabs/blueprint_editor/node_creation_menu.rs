@@ -273,31 +273,8 @@ impl NodeCreationMenu {
             .pl_6() // Indent under category
             .hover(|style| style.bg(cx.theme().accent.opacity(0.1)))
             .cursor_pointer()
-            .on_mouse_move(cx.listener(move |_, event: &MouseMoveEvent, window, cx| {
-                // Show hoverable tooltip via panel (only if not already showing or pending)
-                if let Some(panel_entity) = panel.upgrade() {
-                    let panel_read = panel_entity.read(cx);
-                    let should_show = panel_read.hoverable_tooltip.is_none() && panel_read.pending_tooltip.is_none();
-                    let _ = panel_read;
-
-                    if should_show {
-                        // Position tooltip to the right of the menu item
-                        let tooltip_pos_pixels = Point::new(event.position.x + px(30.0), event.position.y - px(50.0));
-                        let tooltip_pos = Point::new(tooltip_pos_pixels.x.to_f64() as f32, tooltip_pos_pixels.y.to_f64() as f32);
-                        panel_entity.update(cx, |panel, cx| {
-                            panel.show_hoverable_tooltip(tooltip_content.clone(), tooltip_pos, window, cx);
-                        });
-                    }
-                }
-            }))
             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                 cx.stop_propagation();
-                // Hide tooltip when clicking
-                if let Some(panel) = this.panel.upgrade() {
-                    panel.update(cx, |panel, cx| {
-                        panel.hide_hoverable_tooltip(cx);
-                    });
-                }
                 let new_node = this.create_node(&node_def);
                 // Emit the event and also close the menu
                 cx.emit(NodeCreationEvent::CreateNode(new_node));

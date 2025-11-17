@@ -814,18 +814,7 @@ impl NodeGraphRenderer {
                                         .child("MACRO")
                                 )
                             })
-                            .on_mouse_move(cx.listener({
-                                let tooltip_content = tooltip_content.clone();
-                                move |panel, event: &MouseMoveEvent, window, cx| {
-                                    // Only show tooltip if it's not already visible or pending
-                                    if panel.hoverable_tooltip.is_none() && panel.pending_tooltip.is_none() {
-                                        // Position tooltip near the mouse, offset right and up
-                                        // Use raw window coordinates (tooltip is rendered as overlay)
-                                        let tooltip_pos = Point::new(event.position.x.as_f32() + 20.0, event.position.y.as_f32() - 60.0);
-                                        panel.show_hoverable_tooltip(tooltip_content.clone(), tooltip_pos, window, cx);
-                                    }
-                                }
-                            }))
+                            // Tooltip removed - use node picker for documentation
                             .on_mouse_down(gpui::MouseButton::Left, {
                                 let node_id = node_id.clone();
                                 let node_definition_id = node.definition_id.clone();
@@ -836,9 +825,6 @@ impl NodeGraphRenderer {
 
                                     // Ensure graph has focus for keyboard events
                                     panel.focus_handle().focus(window);
-
-                                    // Hide tooltip when interacting
-                                    panel.hide_hoverable_tooltip(cx);
 
                                     // Check for double-click on sub-graph nodes
                                     let now = std::time::Instant::now();
