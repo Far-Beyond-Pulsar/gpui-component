@@ -258,10 +258,8 @@ impl NodeGraphRenderer {
                         // Show node creation menu when dropping connection on empty space
                         let element_pos = Self::window_to_graph_element_pos(event.position, panel);
                         let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
-                        // Convert graph position back to screen coordinates for menu positioning
-                        let screen_pos = Self::graph_to_screen_pos(graph_pos, &panel.graph);
-                        let screen_pos_pixels = Point::new(px(screen_pos.x), px(screen_pos.y));
-                        panel.show_node_creation_menu(screen_pos_pixels, graph_pos, _window, cx);
+                        // Use event.position directly - it's already in window coordinates!
+                        panel.show_node_creation_menu(event.position, graph_pos, _window, cx);
                         panel.cancel_connection_drag(cx);
                     } else if panel.is_selecting() {
                         // End selection drag
@@ -281,19 +279,10 @@ impl NodeGraphRenderer {
                         panel.right_click_start = None;
                         let element_pos = Self::window_to_graph_element_pos(event.position, panel);
                         let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
-                        // Convert graph position back to screen coordinates for menu positioning (same as selection box)
-                        let screen_pos = Self::graph_to_screen_pos(graph_pos, &panel.graph);
-                        let screen_pos_pixels = Point::new(px(screen_pos.x), px(screen_pos.y));
                         
-                        println!("🖱️ Right-click event:");
-                        println!("   event.position (element-relative): {:?}", event.position);
-                        println!("   element_pos (relative to graph element): {:?}", element_pos);
-                        println!("   graph_pos (in graph space): {:?}", graph_pos);
-                        println!("   screen_pos (converted for menu): {:?}", screen_pos_pixels);
-                        println!("   graph pan_offset: {:?}", panel.graph.pan_offset);
-                        println!("   graph zoom_level: {:?}", panel.graph.zoom_level);
-                        
-                        panel.show_node_creation_menu(screen_pos_pixels, graph_pos, _window, cx);
+                        // Use event.position directly - it's already in window coordinates!
+                        // event.position is in WINDOW coordinates per GPUI docs
+                        panel.show_node_creation_menu(event.position, graph_pos, _window, cx);
                     }
                 }),
             )

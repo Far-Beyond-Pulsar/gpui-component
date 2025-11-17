@@ -18,13 +18,8 @@ impl BlueprintEditorPanel {
         cx: &mut Context<Self>,
     ) {
         // Store BOTH positions:
-        // - graph_pos: for placing the created node in the correct graph location
+        // - graph_pos: for placing the created node in the correct graph location  
         // - window_pos: for rendering the menu at the correct window location (in Pixels)
-
-        println!("📍 Opening node creation menu:");
-        println!("   Window pos (raw from event): {:?}", window_pos);
-        println!("   Graph pos: {:?}", graph_pos);
-        println!("   Graph element bounds: {:?}", self.graph_element_bounds);
 
         // Create search input for the menu
         let search_input = cx.new(|cx| ui::input::InputState::new(window, cx));
