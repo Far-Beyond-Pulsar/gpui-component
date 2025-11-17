@@ -412,16 +412,33 @@ impl Render for NodeCreationMenu {
                             .flex_1()
                             .overflow_y_hidden()
                             .child(
-                                v_flex()
-                                    .w_full()
-                                    .gap_0p5()
-                                    .p_1()
-                                    .scrollable(Axis::Vertical)
-                                    .children(
-                                        self.filtered_categories.iter().map(|category| {
-                                            self.render_category(category, cx)
-                                        })
-                                    )
+                                if self.filtered_categories.is_empty() {
+                                    // Show "No results found" when search has no matches
+                                    v_flex()
+                                        .w_full()
+                                        .h_full()
+                                        .items_center()
+                                        .justify_center()
+                                        .p_4()
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child("No results found")
+                                        )
+                                } else {
+                                    // Show category list when there are results
+                                    v_flex()
+                                        .w_full()
+                                        .gap_0p5()
+                                        .p_1()
+                                        .scrollable(Axis::Vertical)
+                                        .children(
+                                            self.filtered_categories.iter().map(|category| {
+                                                self.render_category(category, cx)
+                                            })
+                                        )
+                                }
                             )
                     )
             )
