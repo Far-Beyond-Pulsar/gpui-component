@@ -10,9 +10,11 @@ pub mod hoverable_tooltip;
 pub mod node_library;
 pub mod minimap;
 pub mod node_palette;
+pub mod events;
 
 // Re-export the main panel
 pub use panel::BlueprintEditorPanel;
+pub use events::{ShowNodePickerRequest, NodeAddedFromPicker};
 
 use gpui::*;
 use std::collections::HashMap;

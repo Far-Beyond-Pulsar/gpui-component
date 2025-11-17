@@ -1,9 +1,11 @@
 // Generic palette system
 pub mod palette;
 pub mod generic_palette;
+pub mod command_delegate;
 
 pub use palette::{PaletteDelegate, PaletteItem};
 pub use generic_palette::GenericPalette;
+pub use command_delegate::{CommandDelegate, CommandOrFile};
 
 use gpui::{prelude::*, div, px, Axis, Context, DismissEvent, Entity, EventEmitter, KeyDownEvent, MouseButton, Render, Window};
 use ui::{

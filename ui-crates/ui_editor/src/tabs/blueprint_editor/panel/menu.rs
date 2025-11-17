@@ -1,46 +1,32 @@
 //! Menu operations - node picker (command palette-style)
 
 use gpui::*;
-use ui_common::command_palette::GenericPalette;
 use super::core::BlueprintEditorPanel;
-use super::super::node_palette::NodePalette;
-use super::super::BlueprintNode;
+use super::super::events::ShowNodePickerRequest;
 
 impl BlueprintEditorPanel {
     /// Show node picker at graph position
+    /// Emits an event that the parent app handles by showing the global palette
     pub fn show_node_picker(
         &mut self,
         graph_pos: Point<f32>,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Create palette delegate
-        let palette = NodePalette::new(graph_pos);
-        let picker = cx.new(|cx| GenericPalette::new(palette, window, cx));
-
-        cx.subscribe(&picker, move |panel, picker, _event: &DismissEvent, cx| {
-            // Check if a node was selected
-            let node_to_add = picker.update(cx, |picker_state, _cx| {
-                picker_state.delegate_mut().take_selected_node()
-            });
-
-            if let Some((node_def, pos)) = node_to_add {
-                // Create and add the node
-                let node = BlueprintNode::from_definition(&node_def, pos);
-                panel.add_node(node, cx);
-            }
-
-            panel.dismiss_node_picker(cx);
-        })
-        .detach();
-
-        self.node_picker = Some(picker);
-        cx.notify();
+        // Emit event to request node picker from global palette
+        cx.emit(ShowNodePickerRequest {
+            graph_position: graph_pos,
+        });
     }
 
-    /// Dismiss node picker
-    pub fn dismiss_node_picker(&mut self, cx: &mut Context<Self>) {
-        self.node_picker = None;
-        cx.notify();
+    /// Add a node to the graph (called by parent when node is selected from picker)
+    pub fn add_node_from_definition(
+        &mut self,
+        node_def: &super::super::NodeDefinition,
+        pos: Point<f32>,
+        cx: &mut Context<Self>,
+    ) {
+        let node = super::super::BlueprintNode::from_definition(node_def, pos);
+        self.add_node(node, cx);
     }
 }

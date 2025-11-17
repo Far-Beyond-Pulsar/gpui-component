@@ -75,6 +75,39 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         &mut self.delegate
     }
 
+    /// Swap the delegate and update all state
+    /// This allows the same GenericPalette instance to show different content
+    pub fn swap_delegate(&mut self, new_delegate: D, window: &mut Window, cx: &mut Context<Self>) {
+        // Get data from new delegate
+        let placeholder = new_delegate.placeholder().to_string();
+        let categories = new_delegate.categories();
+        let collapsed = new_delegate.categories_collapsed_by_default();
+
+        // Update delegate
+        self.delegate = new_delegate;
+
+        // Update placeholder
+        self.search_input.update(cx, |input, cx| {
+            input.set_placeholder(&placeholder, window, cx);
+            input.set_value("", window, cx);  // Clear search
+        });
+
+        // Update categories
+        self.category_states = categories
+            .iter()
+            .map(|(name, _)| CategoryState {
+                name: name.clone(),
+                expanded: !collapsed,
+            })
+            .collect();
+
+        self.filtered_categories = categories;
+        self.selected_index = 0;
+        self.show_docs = false;
+
+        cx.notify();
+    }
+
     fn update_filter(&mut self, query: &str) {
         self.filtered_categories = self.delegate.filter(query);
 
@@ -158,6 +191,7 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
             .child(
                 h_flex()
                     .gap_0()
+                    .items_center()
                     .on_mouse_down(MouseButton::Left, |_, _, cx| {
                         cx.stop_propagation();
                     })

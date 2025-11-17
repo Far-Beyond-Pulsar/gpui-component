@@ -12,17 +12,19 @@ use std::{sync::Arc, time::Duration};
 
 // Import from new modular ui-crates
 use ui_common::{
-    command_palette::{CommandPalette, CommandSelected, CommandType, FileSelected as PaletteFileSelected},
+    command_palette::{GenericPalette, CommandOrFile, CommandType},
     menu::AppTitleBar,
 };
+use crate::unified_palette::AnyPaletteDelegate;
 use engine_backend::services::rust_analyzer_manager::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};
 
 // Editor panels and drawers (all from ui_editor)
 use ui_editor::{
     BlueprintEditorPanel, DawEditorPanel, LevelEditorPanel, ScriptEditorPanel,
-    FileManagerDrawer, TerminalDrawer, ProblemsDrawer, TextEditorEvent,
+    FileManagerDrawer, TerminalDrawer, ProblemsDrawer,
     FileSelected, DrawerFileType as FileType, PopoutFileManagerEvent,
 };
+use ui_editor::tabs::blueprint_editor::ShowNodePickerRequest;
 
 // Standalone windows
 use ui_entry::{EntryScreen, ProjectSelected};
@@ -148,9 +150,11 @@ pub struct PulsarApp {
     window_id: Option<u64>,
     // Notification tracking
     shown_welcome_notification: bool,
-    // Command Palette
+    // Command Palette (unified generic palette)
     command_palette_open: bool,
-    command_palette: Option<Entity<CommandPalette>>,
+    command_palette: Option<Entity<GenericPalette<AnyPaletteDelegate>>>,
+    // Track which blueprint editor requested the node picker (for node selection callback)
+    active_node_picker_editor: Option<Entity<BlueprintEditorPanel>>,
     // Focus management
     focus_handle: FocusHandle,
 }
@@ -417,6 +421,7 @@ impl PulsarApp {
             shown_welcome_notification: false,
             command_palette_open: false,
             command_palette: None,
+            active_node_picker_editor: None,
             focus_handle: cx.focus_handle(),
         };
         
@@ -831,35 +836,49 @@ impl PulsarApp {
         self.command_palette_open = !self.command_palette_open;
 
         if self.command_palette_open {
-            // Create the command palette entity with project root for file search
-            let palette = cx.new(|cx| {
-                CommandPalette::new_with_project(self.project_path.clone(), window, cx)
-            });
+            if let Some(palette) = &self.command_palette {
+                // Palette already exists, just swap in command delegate
+                palette.update(cx, |palette, cx| {
+                    let delegate = AnyPaletteDelegate::command(self.project_path.clone());
+                    palette.swap_delegate(delegate, window, cx);
+                });
 
-            // Subscribe to dismiss events
-            cx.subscribe_in(&palette, window, |this: &mut PulsarApp, _palette, _event: &DismissEvent, window, cx| {
-                this.command_palette_open = false;
-                this.command_palette = None;
-                // Restore focus to the app so shortcuts work immediately
-                this.focus_handle.focus(window);
-                cx.notify();
-            }).detach();
+                // Focus the input
+                let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
+                input_handle.focus(window);
+            } else {
+                // Create the palette for the first time
+                let delegate = AnyPaletteDelegate::command(self.project_path.clone());
+                let palette = cx.new(|cx| {
+                    GenericPalette::new(delegate, window, cx)
+                });
 
-            // Subscribe to command selected events
-            cx.subscribe_in(&palette, window, Self::on_command_selected)
-                .detach();
+                // Subscribe to dismiss events
+                cx.subscribe_in(&palette, window, |this: &mut PulsarApp, palette, _event: &DismissEvent, window, cx| {
+                    // Extract the selected item first
+                    let selected_item = palette.update(cx, |palette, _cx| {
+                        palette.delegate_mut().take_selected_command()
+                    });
 
-            // Subscribe to file selected events
-            cx.subscribe_in(&palette, window, Self::on_palette_file_selected)
-                .detach();
+                    // Handle it outside the update call
+                    if let Some(item) = selected_item {
+                        this.handle_command_or_file_selected(item, window, cx);
+                    }
 
-            // Focus the input AFTER creation using the correct method
-            let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
-            input_handle.focus(window);  // Correct: focus_handle.focus(window)
+                    this.command_palette_open = false;
+                    // Restore focus to the app so shortcuts work immediately
+                    this.focus_handle.focus(window);
+                    cx.notify();
+                }).detach();
 
-            self.command_palette = Some(palette);
+                // Focus the input AFTER creation
+                let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
+                input_handle.focus(window);
+
+                self.command_palette = Some(palette);
+            }
         } else {
-            self.command_palette = None;
+            // Don't destroy the palette, just mark as closed for reuse
             // Restore focus to the app so shortcuts work immediately
             self.focus_handle.focus(window);
         }
@@ -867,86 +886,72 @@ impl PulsarApp {
         cx.notify();
     }
 
-    fn on_command_selected(
+    fn handle_command_or_file_selected(
         &mut self,
-        _palette: &Entity<CommandPalette>,
-        event: &CommandSelected,
+        item: CommandOrFile,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Close the palette
-        self.command_palette_open = false;
-        cx.notify();
+        use ui_common::command_palette::CommandOrFile;
 
-        // Handle the command
-        match event.command.command_type {
-            CommandType::Files => {
-                // This is now handled by the command palette switching to file mode
-                // Don't close the palette or show notifications
-                self.command_palette_open = true;
-                return;
+        match item {
+            CommandOrFile::Command(cmd) => {
+                // Handle the command
+                match cmd.command_type {
+                    CommandType::Files => {
+                        // This is now handled by the command palette switching to file mode
+                        // Don't close the palette or show notifications
+                        self.command_palette_open = true;
+                        return;
+                    }
+                    CommandType::ToggleFileManager => {
+                        self.toggle_drawer(window, cx);
+                    }
+                    CommandType::ToggleTerminal => {
+                        self.toggle_terminal(window, cx);
+                    }
+                    CommandType::ToggleMultiplayer => {
+                        self.toggle_multiplayer(window, cx);
+                    }
+                    CommandType::ToggleProblems => {
+                        self.toggle_problems(window, cx);
+                    }
+                    CommandType::OpenSettings => {
+                        cx.dispatch_action(&ui::OpenSettings);
+                    }
+                    CommandType::BuildProject => {
+                        window.push_notification(
+                            Notification::info("Build")
+                                .message("Building project..."),
+                            cx
+                        );
+                        // TODO: Implement build
+                    }
+                    CommandType::RunProject => {
+                        window.push_notification(
+                            Notification::info("Run")
+                                .message("Running project..."),
+                            cx
+                        );
+                        // TODO: Implement run
+                    }
+                    CommandType::RestartAnalyzer => {
+                        self.rust_analyzer.update(cx, |analyzer, cx| {
+                            analyzer.restart(window, cx);
+                        });
+                    }
+                    CommandType::StopAnalyzer => {
+                        self.rust_analyzer.update(cx, |analyzer, cx| {
+                            analyzer.stop(window, cx);
+                        });
+                    }
+                }
             }
-            CommandType::ToggleFileManager => {
-                self.toggle_drawer(window, cx);
-            }
-            CommandType::ToggleTerminal => {
-                self.toggle_terminal(window, cx);
-            }
-            CommandType::ToggleMultiplayer => {
-                self.toggle_multiplayer(window, cx);
-            }
-            CommandType::ToggleProblems => {
-                self.toggle_problems(window, cx);
-            }
-            CommandType::OpenSettings => {
-                cx.dispatch_action(&ui::OpenSettings);
-            }
-            CommandType::BuildProject => {
-                window.push_notification(
-                    Notification::info("Build")
-                        .message("Building project..."),
-                    cx
-                );
-                // TODO: Implement build
-            }
-            CommandType::RunProject => {
-                window.push_notification(
-                    Notification::info("Run")
-                        .message("Running project..."),
-                    cx
-                );
-                // TODO: Implement run
-            }
-            CommandType::RestartAnalyzer => {
-                self.rust_analyzer.update(cx, |analyzer, cx| {
-                    analyzer.restart(window, cx);
-                });
-            }
-            CommandType::StopAnalyzer => {
-                self.rust_analyzer.update(cx, |analyzer, cx| {
-                    analyzer.stop(window, cx);
-                });
+            CommandOrFile::File(file) => {
+                // Open the selected file
+                self.open_path(file.path, window, cx);
             }
         }
-    }
-
-    fn on_palette_file_selected(
-        &mut self,
-        _palette: &Entity<CommandPalette>,
-        event: &PaletteFileSelected,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        // Close the palette
-        self.command_palette_open = false;
-        self.command_palette = None;
-        cx.notify();
-
-        // Open the selected file
-        self.open_path(event.path.clone(), window, cx);
-
-        // Restore focus to the app
-        self.focus_handle.focus(window);
     }
 
     fn on_navigate_to_diagnostic(
@@ -1055,8 +1060,10 @@ impl PulsarApp {
             panel
         });
 
-        // Subscribe to blueprint editor events (OpenEngineLibraryRequest)
+        // Subscribe to blueprint editor events
         cx.subscribe_in(&blueprint_editor, window, Self::on_blueprint_editor_event)
+            .detach();
+        cx.subscribe_in(&blueprint_editor, window, Self::on_show_node_picker_request)
             .detach();
 
         // Load the blueprint from the class path
@@ -1116,6 +1123,78 @@ impl PulsarApp {
         }
     }
 
+    fn on_show_node_picker_request(
+        &mut self,
+        editor: &Entity<BlueprintEditorPanel>,
+        event: &ShowNodePickerRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Store which editor requested the picker so we can send the node back
+        self.active_node_picker_editor = Some(editor.clone());
+
+        // Show the palette with node delegate
+        if let Some(palette) = &self.command_palette {
+            // Palette already exists, swap in node delegate
+            palette.update(cx, |palette, cx| {
+                let delegate = AnyPaletteDelegate::node(event.graph_position);
+                palette.swap_delegate(delegate, window, cx);
+            });
+
+            // Focus the input
+            let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
+            input_handle.focus(window);
+        } else {
+            // Create the palette for the first time
+            let delegate = AnyPaletteDelegate::node(event.graph_position);
+            let palette = cx.new(|cx| {
+                GenericPalette::new(delegate, window, cx)
+            });
+
+            // Subscribe to dismiss events
+            cx.subscribe_in(&palette, window, |this: &mut PulsarApp, palette, _event: &DismissEvent, window, cx| {
+                // Extract the selected item
+                let selected_item = palette.update(cx, |palette, _cx| {
+                    palette.delegate_mut().take_selected_command()
+                });
+
+                // Check if we're in node picker mode
+                let selected_node = palette.update(cx, |palette, _cx| {
+                    palette.delegate_mut().take_selected_node()
+                });
+
+                // Handle command/file selection
+                if let Some(item) = selected_item {
+                    this.handle_command_or_file_selected(item, window, cx);
+                }
+
+                // Handle node selection
+                if let Some((node_def, pos)) = selected_node {
+                    if let Some(editor) = &this.active_node_picker_editor {
+                        editor.update(cx, |ed, cx| {
+                            ed.add_node_from_definition(&node_def, pos, cx);
+                        });
+                    }
+                    this.active_node_picker_editor = None;
+                }
+
+                this.command_palette_open = false;
+                // Restore focus to the app so shortcuts work immediately
+                this.focus_handle.focus(window);
+                cx.notify();
+            }).detach();
+
+            // Focus the input
+            let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
+            input_handle.focus(window);
+
+            self.command_palette = Some(palette);
+        }
+
+        self.command_palette_open = true;
+        cx.notify();
+    }
+
     /// Open a blueprint editor tab for an engine library (virtual blueprint class)
     /// This opens the library as if it were a blueprint, allowing users to browse and edit its macros
     pub fn open_engine_library_tab(
@@ -1161,6 +1240,8 @@ impl PulsarApp {
 
         // Subscribe to blueprint editor events
         cx.subscribe_in(&blueprint_editor, window, Self::on_blueprint_editor_event)
+            .detach();
+        cx.subscribe_in(&blueprint_editor, window, Self::on_show_node_picker_request)
             .detach();
 
         // Add the tab

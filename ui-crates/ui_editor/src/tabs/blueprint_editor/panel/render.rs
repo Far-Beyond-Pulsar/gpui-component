@@ -5,7 +5,7 @@ use gpui::prelude::*;
 use ui::{dock::{Panel, PanelEvent, PanelState}, h_flex, v_flex, ActiveTheme, PixelsExt};
 use super::core::BlueprintEditorPanel;
 use super::super::toolbar::ToolbarRenderer;
-use super::super::{DuplicateNode, DeleteNode, CopyNode, PasteNode, DisconnectPin, OpenEngineLibraryRequest};
+use super::super::{DuplicateNode, DeleteNode, CopyNode, PasteNode, DisconnectPin, OpenEngineLibraryRequest, ShowNodePickerRequest};
 
 impl Panel for BlueprintEditorPanel {
     fn panel_name(&self) -> &'static str {
@@ -41,6 +41,7 @@ impl Focusable for BlueprintEditorPanel {
 
 impl EventEmitter<PanelEvent> for BlueprintEditorPanel {}
 impl EventEmitter<OpenEngineLibraryRequest> for BlueprintEditorPanel {}
+impl EventEmitter<ShowNodePickerRequest> for BlueprintEditorPanel {}
 
 impl Render for BlueprintEditorPanel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -52,10 +53,6 @@ impl Render for BlueprintEditorPanel {
         v_flex()
             .size_full()
             .bg(cx.theme().background)
-            .when_some(self.node_picker.clone(), |this, picker| {
-                // GenericPalette already renders as a full-screen overlay
-                this.child(picker)
-            })
             .on_action(cx.listener(|panel, action: &DuplicateNode, _window, cx| {
                 panel.duplicate_node(action.node_id.clone(), cx);
             }))

@@ -72,7 +72,8 @@
       "Bash(cargo doc:*)",
       "Bash(timeout 60 cargo check:*)",
       "Bash(awk:*)",
-      "Bash(timeout 90 cargo check:*)"
+      "Bash(timeout 90 cargo check:*)",
+      "Bash(timeout 180 cargo check:*)"
     ],
     "deny": [],
     "ask": []
