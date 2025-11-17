@@ -152,11 +152,44 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
         })
         .collect();
 
-    let docs_array = if docs.is_empty() {
-        quote! { &[] }
+    // Create a clean function without macro attributes for source code display
+    let mut clean_input = input.clone();
+    clean_input.attrs.retain(|attr| attr.path().is_ident("doc"));
+    clean_input.attrs.clear(); // Remove all attributes including doc comments
+    let fn_source = quote!(#clean_input).to_string();
+    
+    // Find first heading in docs (line starting with #)
+    let first_heading_idx = docs.iter().position(|line| line.trim_start().starts_with('#'));
+    
+    let mut final_docs = Vec::new();
+    
+    if let Some(heading_idx) = first_heading_idx {
+        // Add docs before first heading
+        final_docs.extend(docs[..heading_idx].iter().cloned());
+        
+        // Add source code block
+        if !final_docs.is_empty() {
+            final_docs.push("".to_string()); // Empty line separator
+        }
+        final_docs.push("```rust".to_string());
+        final_docs.push(fn_source.clone());
+        final_docs.push("```".to_string());
+        
+        // Add rest of docs (from heading onwards)
+        final_docs.push("".to_string()); // Empty line separator
+        final_docs.extend(docs[heading_idx..].iter().cloned());
     } else {
-        quote! { &[#(#docs),*] }
-    };
+        // No heading found, add all docs first, then source
+        final_docs.extend(docs);
+        if !final_docs.is_empty() {
+            final_docs.push("".to_string()); // Empty line separator
+        }
+        final_docs.push("```rust".to_string());
+        final_docs.push(fn_source.clone());
+        final_docs.push("```".to_string());
+    }
+
+    let docs_array = quote! { &[#(#final_docs),*] };
 
     // Extract bp_import attributes
     let imports = extract_bp_imports(&input);
@@ -165,9 +198,6 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
     } else {
         quote! { &[#(#imports),*] }
     };
-
-    // Convert function source to string for storage
-    let fn_source = quote!(#input).to_string();
 
     // Generate the registration const
     let registry_ident = syn::Ident::new(
