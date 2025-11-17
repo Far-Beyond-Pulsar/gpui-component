@@ -334,7 +334,7 @@ impl Render for NodePicker {
                                 .gap_2()
                                 .items_center()
                                 .child(
-                                    Icon::new(IconName::FileText)
+                                    Icon::new(IconName::SubmitDocument)
                                         .size(px(18.0))
                                         .text_color(cx.theme().muted_foreground)
                                 )
