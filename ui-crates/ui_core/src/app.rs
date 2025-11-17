@@ -843,7 +843,12 @@ impl PulsarApp {
                     palette.swap_delegate(delegate, window, cx);
                 });
 
-                // Focus the input
+                // Focus the palette so it receives key events (ESC)
+                palette.update(cx, |palette, cx| {
+                    palette.focus_handle(cx).focus(window);
+                });
+
+                // Also focus the input for typing
                 let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
                 input_handle.focus(window);
             } else {
@@ -871,7 +876,12 @@ impl PulsarApp {
                     cx.notify();
                 }).detach();
 
-                // Focus the input AFTER creation
+                // Focus the palette so it receives key events (ESC)
+                palette.update(cx, |palette, cx| {
+                    palette.focus_handle(cx).focus(window);
+                });
+
+                // Also focus the input for typing
                 let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
                 input_handle.focus(window);
 
@@ -1141,7 +1151,12 @@ impl PulsarApp {
                 palette.swap_delegate(delegate, window, cx);
             });
 
-            // Focus the input
+            // Focus the palette so it receives key events (ESC)
+            palette.update(cx, |palette, cx| {
+                palette.focus_handle(cx).focus(window);
+            });
+
+            // Also focus the input for typing
             let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
             input_handle.focus(window);
         } else {
@@ -1184,7 +1199,12 @@ impl PulsarApp {
                 cx.notify();
             }).detach();
 
-            // Focus the input
+            // Focus the palette so it receives key events (ESC)
+            palette.update(cx, |palette, cx| {
+                palette.focus_handle(cx).focus(window);
+            });
+
+            // Also focus the input for typing
             let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
             input_handle.focus(window);
 

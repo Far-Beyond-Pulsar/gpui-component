@@ -1,4 +1,4 @@
-use gpui::{prelude::*, div, px, Axis, Context, DismissEvent, Entity, EventEmitter, KeyDownEvent, MouseButton, Render, Window};
+use gpui::{prelude::*, div, px, Axis, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, KeyDownEvent, MouseButton, Render, Window};
 use ui::{h_flex, input::{InputEvent, InputState, TextInput}, v_flex, ActiveTheme as _, Icon, IconName, StyledExt};
 
 use super::palette::{PaletteDelegate, PaletteItem};
@@ -11,6 +11,7 @@ struct CategoryState {
 /// Generic palette component that works with any PaletteDelegate
 /// Handles all rendering - delegates just provide data
 pub struct GenericPalette<D: PaletteDelegate> {
+    focus_handle: FocusHandle,
     pub search_input: Entity<InputState>,
     delegate: D,
     filtered_categories: Vec<(String, Vec<D::Item>)>,
@@ -58,6 +59,7 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         .detach();
 
         Self {
+            focus_handle: cx.focus_handle(),
             search_input,
             delegate,
             filtered_categories,
@@ -181,6 +183,7 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
             .items_center()
             .justify_center()
             .bg(gpui::rgba(0x00000099))
+            .track_focus(&self.focus_handle)
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|_this, _event, _window, cx| {
@@ -188,9 +191,12 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                 }),
             )
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
-                if event.keystroke.key.as_str() == "escape" {
-                    cx.emit(DismissEvent);
-                    cx.stop_propagation();
+                match event.keystroke.key.as_str() {
+                    "escape" => {
+                        cx.emit(DismissEvent);
+                        cx.stop_propagation();
+                    }
+                    _ => {}
                 }
             }))
             .child(
@@ -507,6 +513,12 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                         )
                     })
             )
+    }
+}
+
+impl<D: PaletteDelegate> Focusable for GenericPalette<D> {
+    fn focus_handle(&self, _cx: &gpui::App) -> FocusHandle {
+        self.focus_handle.clone()
     }
 }
 
