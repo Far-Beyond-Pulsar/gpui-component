@@ -24,84 +24,74 @@ impl PropertiesRenderer {
                         // Main header with professional styling
                         h_flex()
                             .w_full()
-                            .px_3()
-                            .py_2()
+                            .px_2()
+                            .py_1p5()
                             .bg(cx.theme().secondary)
-                            .border_b_2()
+                            .border_b_1()
                             .border_color(cx.theme().border)
                             .items_center()
                             .gap_2()
                             .child(
-                                // Icon container with glow
-                                div()
-                                    .flex_shrink_0()
-                                    .w(px(28.0))
-                                    .h(px(28.0))
-                                    .rounded(px(5.0))
-                                    .bg(cx.theme().info.opacity(0.15))
-                                    .border_1()
-                                    .border_color(cx.theme().info.opacity(0.3))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .child(
-                                        div()
-                                            .text_base()
-                                            .child("🔍")
-                                    )
+                                ui::Icon::new(IconName::Settings)
+                                    .size(px(16.0))
+                                    .text_color(cx.theme().info)
                             )
                             .child(
-                                v_flex()
-                                    .gap_0p5()
-                                    .child(
-                                        div()
-                                            .text_sm()
-                                            .font_bold()
-                                            .text_color(cx.theme().foreground)
-                                            .child("Details")
-                                    )
+                                div()
+                                    .text_sm()
+                                    .font_semibold()
+                                    .text_color(cx.theme().foreground)
+                                    .child("Details")
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .text_right()
                                     .child(
                                         div()
                                             .text_xs()
                                             .text_color(cx.theme().muted_foreground)
                                             .child(if panel.graph.selected_nodes.len() > 1 {
-                                                format!("{} items selected", panel.graph.selected_nodes.len())
+                                                format!("{} items", panel.graph.selected_nodes.len())
                                             } else if panel.graph.selected_nodes.len() == 1 {
-                                                "1 item selected".to_string()
+                                                "1 item".to_string()
                                             } else {
-                                                "Nothing selected".to_string()
+                                                "None".to_string()
                                             })
                                     )
                             )
                     )
                     .child(
-                        // Selection type indicator bar
+                        // Compact selection type indicator
                         h_flex()
                             .w_full()
-                            .px_3()
-                            .py_1p5()
-                            .bg(cx.theme().sidebar.darken(0.03))
+                            .px_2()
+                            .py_1()
+                            .bg(cx.theme().sidebar.darken(0.02))
                             .border_b_1()
-                            .border_color(cx.theme().border.opacity(0.3))
+                            .border_color(cx.theme().border.opacity(0.2))
                             .items_center()
-                            .justify_between()
+                            .gap_1p5()
                             .child(
-                                h_flex()
-                                    .gap_2()
-                                    .items_center()
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .font_semibold()
-                                            .text_color(cx.theme().info)
-                                            .child(if panel.graph.selected_nodes.len() > 1 {
-                                                "MULTIPLE SELECTION"
-                                            } else if panel.graph.selected_nodes.len() == 1 {
-                                                "NODE PROPERTIES"
-                                            } else {
-                                                "NO SELECTION"
-                                            })
-                                    )
+                                ui::Icon::new(if panel.graph.selected_nodes.len() > 1 {
+                                    IconName::Copy
+                                } else {
+                                    IconName::Component
+                                })
+                                .size(px(12.0))
+                                .text_color(cx.theme().info.opacity(0.8))
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(if panel.graph.selected_nodes.len() > 1 {
+                                        "Multiple"
+                                    } else if panel.graph.selected_nodes.len() == 1 {
+                                        "Properties"
+                                    } else {
+                                        "NO SELECTION"
+                                    })
                             )
                             .child(
                                 if !panel.graph.selected_nodes.is_empty() {

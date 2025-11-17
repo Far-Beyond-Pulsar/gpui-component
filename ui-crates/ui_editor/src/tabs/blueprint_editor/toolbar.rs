@@ -39,15 +39,8 @@ impl ToolbarRenderer {
                                     .items_center()
                                     .px_3()
                                     .py_2()
-                                    .rounded(px(6.0))
-                                    .bg(cx.theme().background.opacity(0.5))
-                                    .child(
-                                        div()
-                                            .text_lg()
-                                            .font_semibold()
-                                            .text_color(cx.theme().accent)
-                                            .child("⚡")
-                                    )
+                                    .rounded(px(4.0))
+                                    .bg(cx.theme().background.opacity(0.3))
                                     .child(
                                         div()
                                             .text_sm()
@@ -55,7 +48,7 @@ impl ToolbarRenderer {
                                             .text_color(cx.theme().foreground)
                                             .child(
                                                 panel.tab_title.clone()
-                                                    .unwrap_or_else(|| "Blueprint Editor".to_string())
+                                                    .unwrap_or_else(|| "Blueprint".to_string())
                                             )
                                     )
                             )

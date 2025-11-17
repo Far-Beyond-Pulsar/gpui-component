@@ -100,10 +100,10 @@ impl VariablesRenderer {
                         // Main header with gradient background
                         h_flex()
                             .w_full()
-                            .px_3()
-                            .py_2()
+                            .px_2()
+                            .py_1p5()
                             .bg(cx.theme().secondary)
-                            .border_b_2()
+                            .border_b_1()
                             .border_color(cx.theme().border)
                             .items_center()
                             .justify_between()
@@ -112,88 +112,82 @@ impl VariablesRenderer {
                                     .gap_2()
                                     .items_center()
                                     .child(
-                                        // Icon with subtle glow effect
-                                        div()
-                                            .flex_shrink_0()
-                                            .w(px(28.0))
-                                            .h(px(28.0))
-                                            .rounded(px(5.0))
-                                            .bg(cx.theme().accent.opacity(0.15))
-                                            .border_1()
-                                            .border_color(cx.theme().accent.opacity(0.3))
-                                            .flex()
-                                            .items_center()
-                                            .justify_center()
-                                            .child(
-                                                div()
-                                                    .text_base()
-                                                    .child("📋")
-                                            )
+                                        ui::Icon::new(IconName::Code)
+                                            .size(px(16.0))
+                                            .text_color(cx.theme().accent)
                                     )
                                     .child(
-                                        v_flex()
-                                            .gap_0p5()
-                                            .child(
-                                                div()
-                                                    .text_sm()
-                                                    .font_bold()
-                                                    .text_color(cx.theme().foreground)
-                                                    .child("My Blueprint")
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_xs()
-                                                    .text_color(cx.theme().muted_foreground)
-                                                    .child(format!("{} variable{}", 
-                                                        panel.class_variables.len(),
-                                                        if panel.class_variables.len() == 1 { "" } else { "s" }
-                                                    ))
-                                            )
+                                        div()
+                                            .text_sm()
+                                            .font_semibold()
+                                            .text_color(cx.theme().foreground)
+                                            .child("My Blueprint")
                                     )
                             )
                             .child(
-                                Button::new("add-variable")
-                                    .icon(IconName::Plus)
-                                    .primary()
-                                    .tooltip("Add New Variable")
-                                    .on_click(cx.listener(|panel, _, window, cx| {
-                                        panel.start_creating_variable(window, cx);
-                                    }))
-                            )
-                    )
-                    .child(
-                        // Category/Section bar
-                        h_flex()
-                            .w_full()
-                            .px_4()
-                            .py_2()
-                            .bg(cx.theme().sidebar.darken(0.03))
-                            .border_b_1()
-                            .border_color(cx.theme().border.opacity(0.3))
-                            .items_center()
-                            .justify_between()
-                            .child(
                                 h_flex()
-                                    .gap_2()
+                                    .gap_1()
                                     .items_center()
                                     .child(
                                         div()
                                             .text_xs()
-                                            .font_semibold()
-                                            .text_color(cx.theme().accent)
-                                            .child("VARIABLES")
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child(format!("{}", panel.class_variables.len()))
                                     )
+                                    .child(
+                                        Button::new("add-variable")
+                                            .icon(IconName::Plus)
+                                            .ghost()
+                                            .compact()
+                                            .tooltip("Add Variable (Ctrl+Shift+V)")
+                                            .on_click(cx.listener(|panel, _, window, cx| {
+                                                panel.start_creating_variable(window, cx);
+                                            }))
+                                    )
+                            )
+                    )
+                    .child(
+                        // Compact category bar with search
+                        h_flex()
+                            .w_full()
+                            .px_2()
+                            .py_1()
+                            .bg(cx.theme().sidebar.darken(0.02))
+                            .border_b_1()
+                            .border_color(cx.theme().border.opacity(0.2))
+                            .items_center()
+                            .gap_1p5()
+                            .child(
+                                ui::Icon::new(IconName::Code)
+                                    .size(px(12.0))
+                                    .text_color(cx.theme().accent.opacity(0.8))
                             )
                             .child(
                                 div()
-                                    .px_2()
-                                    .py_1()
-                                    .rounded(px(4.0))
-                                    .bg(cx.theme().accent.opacity(0.15))
+                                    .flex_1()
                                     .text_xs()
-                                    .font_family("JetBrainsMono-Regular")
-                                    .text_color(cx.theme().accent)
-                                    .child(format!("{}", panel.class_variables.len()))
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Variables")
+                            )
+                            .child(
+                                Button::new("functions-section")
+                                    .icon(IconName::Code)
+                                    .ghost()
+                                    .compact()
+                                    .tooltip("Functions")
+                                    .on_click(cx.listener(|_panel, _, _window, _cx| {
+                                        // TODO: Switch to functions view
+                                    }))
+                            )
+                            .child(
+                                Button::new("macros-section")
+                                    .icon(IconName::Component)
+                                    .ghost()
+                                    .compact()
+                                    .tooltip("Macros")
+                                    .on_click(cx.listener(|_panel, _, _window, _cx| {
+                                        // TODO: Switch to macros view
+                                    }))
                             )
                     )
             )
@@ -202,8 +196,7 @@ impl VariablesRenderer {
                 v_flex()
                     .flex_1()
                     .overflow_hidden()
-                    .p_3()
-                    .gap_2()
+                    .p_1p5()
                     .scrollable(Axis::Vertical)
                     .child(Self::render_variables_list(panel, cx))
             )
@@ -211,7 +204,7 @@ impl VariablesRenderer {
 
     fn render_variables_list(panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
         v_flex()
-            .gap_2()
+            .gap_1()
             .children(if panel.is_creating_variable {
                 vec![Self::render_variable_creation_form(panel, cx).into_any_element()]
             } else {
@@ -255,104 +248,73 @@ impl VariablesRenderer {
         let drag_var_name = var_name.clone();
         let drag_var_type = var_type.clone();
 
-        // STUDIO-QUALITY VARIABLE ROW (Unreal Engine style)
+        // Compact variable row
         h_flex()
             .w_full()
-            .px_3()
-            .py_3()
-            .gap_3()
+            .px_2()
+            .py_1p5()
+            .gap_2()
             .bg(cx.theme().background)
             .border_1()
-            .border_color(cx.theme().border.opacity(0.4))
-            .rounded(px(8.0))
+            .border_color(cx.theme().border.opacity(0.3))
+            .rounded(px(4.0))
             .cursor_grab()
             .hover(|style| {
                 style
-                    .bg(cx.theme().accent.opacity(0.08))
-                    .border_color(cx.theme().accent.opacity(0.6))
-                    .shadow_md()
+                    .bg(cx.theme().accent.opacity(0.05))
+                    .border_color(cx.theme().accent.opacity(0.5))
             })
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |panel, _event, _window, cx| {
                 panel.start_dragging_variable(drag_var_name.clone(), drag_var_type.clone(), cx);
             }))
             .child(
-                // Type indicator with enhanced styling
+                ui::Icon::new(IconName::Menu)
+                    .size(px(12.0))
+                    .text_color(cx.theme().muted_foreground.opacity(0.5))
+            )
+            .child(
+                // Type indicator
                 div()
                     .flex_shrink_0()
-                    .w(px(14.))
-                    .h(px(14.))
+                    .w(px(10.))
+                    .h(px(10.))
                     .rounded_full()
                     .bg(gpui::Rgba { r: pin_color.r, g: pin_color.g, b: pin_color.b, a: pin_color.a })
-                    .border_2()
-                    .border_color(cx.theme().border)
-                    .shadow_sm()
+                    .border_1()
+                    .border_color(cx.theme().border.opacity(0.5))
             )
             .child(
-                // Variable info section
-                v_flex()
+                // Variable name
+                div()
                     .flex_1()
-                    .gap_1p5()
-                    .child(
-                        // Variable name with drag indicator
-                        h_flex()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_semibold()
-                                    .text_color(cx.theme().foreground)
-                                    .child(var.name.clone())
-                            )
-                            .child(
-                                // Drag handle icon
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground.opacity(0.4))
-                                    .child("⋮⋮")
-                            )
-                    )
-                    .child(
-                        // Type information with formatted name
-                        h_flex()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .px_2()
-                                    .py_1()
-                                    .rounded(px(4.0))
-                                    .bg(cx.theme().muted.opacity(0.2))
-                                    .text_xs()
-                                    .font_family("JetBrainsMono-Regular")
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(ui::compiler::type_extractor::get_type_display_name(&var.var_type))
-                            )
-                    )
-                    .children(var.default_value.as_ref().map(|default| {
-                        div()
-                            .px_2()
-                            .py_1()
-                            .rounded(px(4.0))
-                            .bg(cx.theme().success.opacity(0.1))
-                            .text_xs()
-                            .text_color(cx.theme().success)
-                            .child(format!("= {}", default))
-                    }))
+                    .text_sm()
+                    .font_medium()
+                    .text_color(cx.theme().foreground)
+                    .child(var.name.clone())
             )
             .child(
-                // Action buttons (on hover)
-                h_flex()
-                    .gap_1()
+                // Type badge
+                div()
+                    .px_1p5()
+                    .py_0p5()
+                    .rounded(px(3.0))
+                    .bg(gpui::Rgba { r: pin_color.r, g: pin_color.g, b: pin_color.b, a: 0.15 })
                     .child(
-                        Button::new(("delete-var", var_hash))
-                            .icon(IconName::Close)
-                            .ghost()
-                            .tooltip("Remove Variable")
-                            .on_click(cx.listener(move |panel, _, _, cx| {
-                                panel.remove_variable(&var_name, cx);
-                            }))
+                        div()
+                            .text_xs()
+                            .text_color(gpui::Rgba { r: pin_color.r, g: pin_color.g, b: pin_color.b, a: 1.0 })
+                            .child(ui::compiler::type_extractor::get_type_display_name(&var.var_type))
                     )
+            )
+            .child(
+                Button::new(("delete-var", var_hash))
+                    .icon(IconName::Trash)
+                    .ghost()
+                    .compact()
+                    .tooltip("Delete")
+                    .on_click(cx.listener(move |panel, _, _, cx| {
+                        panel.remove_variable(&var_name, cx);
+                    }))
             )
             .into_any_element()
     }

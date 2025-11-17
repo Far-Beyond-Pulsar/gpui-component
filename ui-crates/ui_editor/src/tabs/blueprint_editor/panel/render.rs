@@ -16,7 +16,7 @@ impl Panel for BlueprintEditorPanel {
         h_flex()
             .gap_2()
             .items_center()
-            .child(div().text_sm().child("⚡"))
+
             .child(div().text_sm().child(if let Some(title) = &self.tab_title {
                 title.clone()
             } else {
