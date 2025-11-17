@@ -22,7 +22,7 @@ use ui::{
     IconName,
     StyledExt,
 };
-use crate::tabs::blueprint_editor::{ NodeDefinition, NodeCategory };
+use crate::tabs::blueprint_editor::{ NodeDefinition, NodeCategory, NodeDefinitions };
 
 #[derive(Clone, Debug)]
 pub struct NodeSelected {
@@ -50,8 +50,12 @@ impl NodePicker {
             state
         });
 
-        // TODO: Load from node_library
-        let all_nodes = vec![];
+        // Load nodes from definitions
+        let node_defs = NodeDefinitions::load();
+        let all_nodes: Vec<NodeDefinition> = node_defs.categories
+            .iter()
+            .flat_map(|cat| cat.nodes.iter().cloned())
+            .collect();
         let filtered_nodes = all_nodes.clone();
 
         // Subscribe to input changes to update the filter
@@ -130,7 +134,17 @@ impl Render for NodePicker {
         let selected_node = self.filtered_nodes.get(selected_index).cloned();
         let show_docs = self.show_docs;
 
-        h_flex()
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .w_full()
+            .h_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(gpui::rgba(0x00000099))
+            .child(h_flex()
             .gap_0()
             .on_mouse_down(MouseButton::Left, |_, _, cx| {
                 cx.stop_propagation();
@@ -561,6 +575,6 @@ impl Render for NodePicker {
                                 )
                         )
                 )
-            })
+            }))
     }
 }
