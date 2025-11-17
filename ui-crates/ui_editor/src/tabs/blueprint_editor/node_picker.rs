@@ -144,6 +144,10 @@ impl Render for NodePicker {
             .items_center()
             .justify_center()
             .bg(gpui::rgba(0x00000099))
+            .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                cx.emit(DismissEvent);
+                cx.stop_propagation();
+            }))
             .child(h_flex()
             .gap_0()
             .on_mouse_down(MouseButton::Left, |_, _, cx| {
