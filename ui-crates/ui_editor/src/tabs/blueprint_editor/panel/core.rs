@@ -11,8 +11,7 @@ use ui::{
 use std::collections::HashMap;
 
 use super::super::{BlueprintGraph, BlueprintNode, Connection, NodeType, Pin, PinType, DataType, VirtualizationStats, Size};
-use super::super::hoverable_tooltip::HoverableTooltip;
-use super::super::node_creation_menu::NodeCreationMenu;
+use super::super::node_picker::NodePicker;
 use super::super::variables::ClassVariable;
 use super::tabs::GraphTab;
 use ui::graph::{DataType as GraphDataType, LibraryManager, SubGraphDefinition};
@@ -46,18 +45,12 @@ pub struct BlueprintEditorPanel {
     pub selection_end: Option<Point<f32>>,
     pub last_mouse_pos: Option<Point<f32>>,
     
-    // Node creation menu
-    pub node_creation_menu: Option<Entity<NodeCreationMenu>>,
-    pub node_creation_menu_position: Option<Point<f32>>, // Graph space coordinates for placing nodes
-    pub node_creation_menu_position_window: Option<Point<Pixels>>, // Window coordinates for rendering menu
+    // Node picker (command palette-style)
+    pub node_picker: Option<Entity<NodePicker>>,
     
     // Right-click gesture detection
     pub right_click_start: Option<Point<f32>>,
     pub right_click_threshold: f32,
-    
-    // Tooltip system
-    pub hoverable_tooltip: Option<Entity<HoverableTooltip>>,
-    pub pending_tooltip: Option<(String, Point<f32>)>,
     
     // Double-click for reroute nodes
     pub last_click_time: Option<std::time::Instant>,
@@ -205,13 +198,9 @@ impl BlueprintEditorPanel {
             selection_start: None,
             selection_end: None,
             last_mouse_pos: None,
-            node_creation_menu: None,
-            node_creation_menu_position: None,
-            node_creation_menu_position_window: None,
+            node_picker: None,
             right_click_start: None,
             right_click_threshold: 5.0,
-            hoverable_tooltip: None,
-            pending_tooltip: None,
             last_click_time: None,
             last_click_pos: None,
             graph_element_bounds: None,

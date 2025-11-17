@@ -80,11 +80,7 @@ impl NodeGraphRenderer {
                     panel.finish_comment_editing(cx);
                 }
 
-                // Close node creation menu if it's open
-                if panel.node_creation_menu_position.is_some() {
-                    panel.node_creation_menu_position = None;
-                    cx.notify();
-                }
+
 
                 // Close variable drop menu if it's open
                 if panel.variable_drop_menu_position.is_some() {
@@ -142,18 +138,7 @@ impl NodeGraphRenderer {
                     println!("[MOUSE] Pan offset: x={}, y={}", panel.graph.pan_offset.x, panel.graph.pan_offset.y);
                     println!("[MOUSE] Zoom level: {}", panel.graph.zoom_level);
 
-                    // Dismiss context menu if clicking outside of it
-                    if panel.node_creation_menu.is_some() {
-                        // Use window coordinates for menu position checking
-                        let window_pos = Point::new(event.position.x.as_f32(), event.position.y.as_f32());
-                        let inside_menu = panel.is_position_inside_menu(window_pos);
-                        println!("[MENU] Click at window pos ({}, {}), inside_menu: {}", window_pos.x, window_pos.y, inside_menu);
-                        if !inside_menu {
-                            println!("[MENU] Dismissing menu (clicked outside)");
-                            panel.dismiss_node_creation_menu(cx);
-                            return; // Don't process other clicks when dismissing menu
-                        }
-                    }
+                    // Node picker handles its own dismissal
 
                     // Check if clicking on a node (check ALL nodes, not just rendered ones)
                     let clicked_node = panel.graph.nodes.iter().find(|node| {
@@ -180,15 +165,7 @@ impl NodeGraphRenderer {
                         if !panel.graph.selected_nodes.contains(&node.id) {
                             panel.select_node(Some(node.id.clone()), cx);
                         }
-                        // Dismiss context menu when clicking on a node
-                        if panel.node_creation_menu.is_some() {
-                            panel.dismiss_node_creation_menu(cx);
-                        }
                     } else {
-                        // Dismiss context menu when clicking on empty space
-                        if panel.node_creation_menu.is_some() {
-                            panel.dismiss_node_creation_menu(cx);
-                        }
                         
                         // Check for double-click on connection (for creating reroute nodes)
                         let handled_double_click = panel.handle_empty_space_click(graph_pos, cx);
@@ -213,10 +190,7 @@ impl NodeGraphRenderer {
                         // Start panning if we've moved beyond threshold
                         panel.start_panning(right_start, cx);
                         panel.right_click_start = None; // Clear the right-click state
-                        // Dismiss any context menu that might be showing
-                        if panel.node_creation_menu.is_some() {
-                            panel.dismiss_node_creation_menu(cx);
-                        }
+
                     }
                 }
 
@@ -258,8 +232,7 @@ impl NodeGraphRenderer {
                         // Show node creation menu when dropping connection on empty space
                         let element_pos = Self::window_to_graph_element_pos(event.position, panel);
                         let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
-                        // Use event.position directly - it's already in window coordinates!
-                        panel.show_node_creation_menu(event.position, graph_pos, _window, cx);
+                        panel.show_node_picker(graph_pos, _window, cx);
                         panel.cancel_connection_drag(cx);
                     } else if panel.is_selecting() {
                         // End selection drag
@@ -280,9 +253,7 @@ impl NodeGraphRenderer {
                         let element_pos = Self::window_to_graph_element_pos(event.position, panel);
                         let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
                         
-                        // Use event.position directly - it's already in window coordinates!
-                        // event.position is in WINDOW coordinates per GPUI docs
-                        panel.show_node_creation_menu(event.position, graph_pos, _window, cx);
+                        panel.show_node_picker(graph_pos, _window, cx);
                     }
                 }),
             )
@@ -315,10 +286,7 @@ impl NodeGraphRenderer {
                     }
                 } else if key_lower == "escape" {
                     // Escape key dismisses menus and cancels operations
-                    if panel.node_creation_menu_position.is_some() {
-                        panel.node_creation_menu_position = None;
-                        cx.notify();
-                    } else if panel.variable_drop_menu_position.is_some() {
+                    if panel.variable_drop_menu_position.is_some() {
                         panel.variable_drop_menu_position = None;
                         cx.notify();
                     } else if panel.dragging_connection.is_some() {

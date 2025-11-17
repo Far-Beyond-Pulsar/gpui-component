@@ -52,6 +52,13 @@ impl Render for BlueprintEditorPanel {
         v_flex()
             .size_full()
             .bg(cx.theme().background)
+            .when_some(self.node_picker.clone(), |this, picker| {
+                this.child(deferred(
+                    anchored()
+                        .snap_to_window()
+                        .child(div().size_full().child(picker))
+                ))
+            })
             .on_action(cx.listener(|panel, action: &DuplicateNode, _window, cx| {
                 panel.duplicate_node(action.node_id.clone(), cx);
             }))
@@ -110,89 +117,6 @@ impl Render for BlueprintEditorPanel {
                             )
                     )
             )
-            .when_some(self.node_creation_menu.clone(), |this, menu| {
-                // Menu position is stored in window coordinates (Point<Pixels>)
-                let menu_pos = self.node_creation_menu_position_window.unwrap_or(Point::new(px(0.0), px(0.0)));
-                
-                this.child(
-                    deferred(
-                        anchored()
-                            .position(menu_pos)
-                            .snap_to_window_with_margin(px(8.))
-                            .anchor(Corner::TopLeft)
-                            .child(
-                                div()
-                                    .occlude()
-                                    // Stop propagation on menu itself so clicks don't dismiss
-                                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                                    .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
-                                    .child(menu)
-                            )
-                    )
-                    .with_priority(1)
-                )
-            })
-            .when_some(self.hoverable_tooltip.clone(), |this, tooltip| {
-                let tooltip_pos = self.pending_tooltip.as_ref().map(|(_, pos)| *pos).unwrap_or(Point::new(0.0, 0.0));
-                // Use a reasonable size estimate for tooltip hover area (300x200 px)
-                let tooltip_width = 300.0;
-                let tooltip_height = 200.0;
-                this.child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .w_full()
-                        .h_full()
-                        // Dismiss on mouse move (hover away)
-                        .on_mouse_move(cx.listener(move |panel, event: &MouseMoveEvent, _window, cx| {
-                            // Check if mouse is outside tooltip area
-                            let mouse_pos = event.position;
-                            let mouse_x = mouse_pos.x.as_f32();
-                            let mouse_y = mouse_pos.y.as_f32();
-                            
-                            let outside = mouse_x < tooltip_pos.x ||
-                                         mouse_x > tooltip_pos.x + tooltip_width ||
-                                         mouse_y < tooltip_pos.y ||
-                                         mouse_y > tooltip_pos.y + tooltip_height;
-                            
-                            if outside {
-                                panel.hoverable_tooltip = None;
-                                panel.pending_tooltip = None;
-                                cx.notify();
-                            }
-                        }))
-                        // Dismiss on click
-                        .on_mouse_down(MouseButton::Left, cx.listener(|panel, _, _window, cx| {
-                            panel.hoverable_tooltip = None;
-                            panel.pending_tooltip = None;
-                            cx.notify();
-                        }))
-                        .on_mouse_down(MouseButton::Right, cx.listener(|panel, _, _window, cx| {
-                            panel.hoverable_tooltip = None;
-                            panel.pending_tooltip = None;
-                            cx.notify();
-                        }))
-                        // Dismiss on escape key
-                        .on_key_down(cx.listener(|panel, event: &KeyDownEvent, _window, cx| {
-                            if event.keystroke.key == "escape" {
-                                panel.hoverable_tooltip = None;
-                                panel.pending_tooltip = None;
-                                cx.notify();
-                                cx.stop_propagation();
-                            }
-                        }))
-                        .child(
-                            div()
-                                .absolute()
-                                .left(px(tooltip_pos.x))
-                                .top(px(tooltip_pos.y))
-                                // Stop propagation on tooltip itself
-                                .on_mouse_move(|_, _, cx| cx.stop_propagation())
-                                .child(tooltip)
-                        )
-                )
-            })
     }
 }
 
