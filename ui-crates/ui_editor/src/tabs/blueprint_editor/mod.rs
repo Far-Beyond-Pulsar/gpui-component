@@ -9,7 +9,7 @@ pub mod node_creation_menu;
 pub mod hoverable_tooltip;
 pub mod node_library;
 pub mod minimap;
-pub mod node_picker;
+pub mod node_palette;
 
 // Re-export the main panel
 pub use panel::BlueprintEditorPanel;

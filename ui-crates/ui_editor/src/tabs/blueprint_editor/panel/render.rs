@@ -53,11 +53,8 @@ impl Render for BlueprintEditorPanel {
             .size_full()
             .bg(cx.theme().background)
             .when_some(self.node_picker.clone(), |this, picker| {
-                this.child(deferred(
-                    anchored()
-                        .snap_to_window()
-                        .child(div().size_full().child(picker))
-                ))
+                // GenericPalette already renders as a full-screen overlay
+                this.child(picker)
             })
             .on_action(cx.listener(|panel, action: &DuplicateNode, _window, cx| {
                 panel.duplicate_node(action.node_id.clone(), cx);

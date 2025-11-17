@@ -32,7 +32,6 @@ use smol::Timer;
 use std::time::Duration;
 
 use super::hoverable_tooltip::HoverableTooltip;
-use super::node_picker::{NodePicker, NodeSelected};
 use super::node_graph::NodeGraphRenderer;
 use super::toolbar::ToolbarRenderer;
 use super::*;

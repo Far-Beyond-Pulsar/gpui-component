@@ -1,9 +1,10 @@
 //! Menu operations - node picker (command palette-style)
 
 use gpui::*;
+use ui_common::command_palette::GenericPalette;
 use super::core::BlueprintEditorPanel;
-use super::super::node_picker::{NodePicker, NodeSelected};
-use super::super::{BlueprintNode, NodeDefinitions};
+use super::super::node_palette::NodePalette;
+use super::super::BlueprintNode;
 
 impl BlueprintEditorPanel {
     /// Show node picker at graph position
@@ -13,31 +14,28 @@ impl BlueprintEditorPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let graph_pos_tuple = (graph_pos.x, graph_pos.y);
-        let picker = cx.new(|cx| NodePicker::new(graph_pos_tuple, window, cx));
-        
-        cx.subscribe(&picker, move |panel, _picker, event: &NodeSelected, cx| {
-            panel.on_node_selected(event, cx);
-        })
-        .detach();
-        
-        cx.subscribe(&picker, move |panel, _picker, _event: &DismissEvent, cx| {
+        // Create palette delegate
+        let palette = NodePalette::new(graph_pos);
+        let picker = cx.new(|cx| GenericPalette::new(palette, window, cx));
+
+        cx.subscribe(&picker, move |panel, picker, _event: &DismissEvent, cx| {
+            // Check if a node was selected
+            let node_to_add = picker.update(cx, |picker_state, _cx| {
+                picker_state.delegate_mut().take_selected_node()
+            });
+
+            if let Some((node_def, pos)) = node_to_add {
+                // Create and add the node
+                let node = BlueprintNode::from_definition(&node_def, pos);
+                panel.add_node(node, cx);
+            }
+
             panel.dismiss_node_picker(cx);
         })
         .detach();
 
         self.node_picker = Some(picker);
         cx.notify();
-    }
-
-    /// Handle node selection from picker
-    fn on_node_selected(&mut self, event: &NodeSelected, cx: &mut Context<Self>) {
-        // Convert NodeDefinition to BlueprintNode
-        let graph_pos = Point::new(event.position.0, event.position.1);
-        let node = BlueprintNode::from_definition(&event.node_def, graph_pos);
-        self.add_node(node, cx);
-        
-        self.dismiss_node_picker(cx);
     }
 
     /// Dismiss node picker

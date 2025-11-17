@@ -10,8 +10,9 @@ use ui::{
 };
 use std::collections::HashMap;
 
+use ui_common::command_palette::GenericPalette;
 use super::super::{BlueprintGraph, BlueprintNode, Connection, NodeType, Pin, PinType, DataType, VirtualizationStats, Size};
-use super::super::node_picker::NodePicker;
+use super::super::node_palette::NodePalette;
 use super::super::variables::ClassVariable;
 use super::tabs::GraphTab;
 use ui::graph::{DataType as GraphDataType, LibraryManager, SubGraphDefinition};
@@ -46,7 +47,7 @@ pub struct BlueprintEditorPanel {
     pub last_mouse_pos: Option<Point<f32>>,
     
     // Node picker (command palette-style)
-    pub node_picker: Option<Entity<NodePicker>>,
+    pub node_picker: Option<Entity<GenericPalette<NodePalette>>>,
     
     // Right-click gesture detection
     pub right_click_start: Option<Point<f32>>,

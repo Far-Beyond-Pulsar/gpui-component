@@ -1,4 +1,11 @@
-use gpui::{prelude::*, div, px, Context, DismissEvent, Entity, EventEmitter, MouseButton, Render, Window};
+// Generic palette system
+pub mod palette;
+pub mod generic_palette;
+
+pub use palette::{PaletteDelegate, PaletteItem};
+pub use generic_palette::GenericPalette;
+
+use gpui::{prelude::*, div, px, Axis, Context, DismissEvent, Entity, EventEmitter, KeyDownEvent, MouseButton, Render, Window};
 use ui::{
     button::ButtonVariants as _,
     h_flex, input::{InputState, InputEvent}, input::TextInput, v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
@@ -54,27 +61,46 @@ impl Command {
         if query.is_empty() {
             return true;
         }
-        
+
         let query = query.to_lowercase();
-        
+
         // Check name
         if self.name.to_lowercase().contains(&query) {
             return true;
         }
-        
+
         // Check description
         if self.description.to_lowercase().contains(&query) {
             return true;
         }
-        
+
         // Check keywords
         for keyword in &self.keywords {
             if keyword.to_lowercase().contains(&query) {
                 return true;
             }
         }
-        
+
         false
+    }
+}
+
+// Implement PaletteItem for Command so it can be used with generic palettes
+impl PaletteItem for Command {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn description(&self) -> &str {
+        &self.description
+    }
+
+    fn icon(&self) -> IconName {
+        self.icon.clone()
+    }
+
+    fn keywords(&self) -> Vec<&str> {
+        self.keywords.iter().map(|s| s.as_str()).collect()
     }
 }
 
