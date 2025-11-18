@@ -1048,6 +1048,7 @@ impl TabPanel {
                     ),
             )
             .when(state.droppable, |this| {
+                let channel = state.channel;
                 this.on_drag_move(cx.listener(Self::on_panel_drag_move))
                     .child(
                         div()
@@ -1070,7 +1071,14 @@ impl TabPanel {
                                 }
                                 None => this.top_0().left_0().size_full(),
                             })
-                            .group_drag_over::<DragPanel>("", |this| this.visible())
+                            .drag_over::<DragPanel>(move |this, drag, _window, _cx| {
+                                // Only show drop visual if same channel
+                                if drag.channel == channel {
+                                    this.visible()
+                                } else {
+                                    this
+                                }
+                            })
                             .on_drop(cx.listener(|this, drag: &DragPanel, window, cx| {
                                 this.on_drop(drag, None, true, window, cx)
                             })),
