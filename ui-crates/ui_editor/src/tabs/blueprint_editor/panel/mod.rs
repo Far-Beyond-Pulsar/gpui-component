@@ -48,6 +48,7 @@ mod tabs;
 mod file_io;
 mod compilation;
 mod graph_conversion;
+mod workspace_panels;
 mod node_ops;
 mod connection_ops;
 mod comment_ops;

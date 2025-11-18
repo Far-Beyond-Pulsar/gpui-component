@@ -104,8 +104,8 @@ impl Render for BlueprintEditorPanel {
 }
 
 impl BlueprintEditorPanel {
-    /// Render professional tab bar for graph navigation (Unreal-style)
-    fn render_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    /// Render professional tab bar for graph navigation (Unreal-style) - OLD LAYOUT - DEPRECATED
+    fn _old_render_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         use ui::{button::{Button, ButtonVariants}, IconName};
         
         h_flex()
@@ -403,8 +403,8 @@ impl BlueprintEditorPanel {
             }))
     }
     
-    /// Render compiler results panel with full history
-    fn render_compiler_results(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    /// OLD RENDER METHODS - DEPRECATED - NOW IN render_workspace.rs
+    fn _old_render_compiler_results(&self, cx: &mut Context<Self>) -> impl IntoElement {
         use super::super::CompilationState;
         use ui::{button::{Button, ButtonVariants}, IconName};
         
@@ -525,8 +525,7 @@ impl BlueprintEditorPanel {
             )
     }
     
-    /// Render find panel
-    fn render_find_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn _old_render_find_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .size_full()
             .p_2()
