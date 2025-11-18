@@ -20,8 +20,8 @@ use crate::{
 };
 
 use super::{
-    ClosePanel, DockArea, DockPlacement, Panel, PanelControl, PanelEvent, PanelState, PanelStyle,
-    PanelView, StackPanel, ToggleZoom,
+    ClosePanel, DockArea, DockItem, DockPlacement, Panel, PanelControl, PanelEvent, PanelState,
+    PanelStyle, PanelView, StackPanel, ToggleZoom,
 };
 
 #[derive(Clone)]
@@ -1049,6 +1049,7 @@ impl TabPanel {
             )
             .when(state.droppable, |this| {
                 let channel = state.channel;
+                let view = cx.entity().clone();
                 this.on_drag_move(cx.listener(Self::on_panel_drag_move))
                     .child(
                         div()
@@ -1071,9 +1072,14 @@ impl TabPanel {
                                 }
                                 None => this.top_0().left_0().size_full(),
                             })
-                            .drag_over::<DragPanel>(move |this, drag, _window, _cx| {
+                            .drag_over::<DragPanel>(move |this, drag, _window, cx| {
                                 // Only show drop visual if same channel
                                 if drag.channel == channel {
+                                    // Mark that we're in a valid drag
+                                    view.update(cx, |v, cx| {
+                                        v.in_valid_drag = true;
+                                        cx.notify();
+                                    });
                                     this.visible()
                                 } else {
                                     this
@@ -1422,8 +1428,71 @@ impl TabPanel {
                 panel
             },
             None => {
-                println!("SPLIT: ERROR - No parent StackPanel! Cannot split. stack_panel is None.");
-                return;
+                println!("SPLIT: No parent StackPanel - handling root-level split");
+                // Handle root-level split: create a new StackPanel and update DockArea
+                let axis = placement.axis();
+                let current_tab_panel = cx.entity().clone();
+
+                // Create new StackPanel with the appropriate axis
+                let new_stack_panel = cx.new(|cx| {
+                    let mut stack = StackPanel::new(axis, window, cx);
+                    stack.parent = None; // This is the root level StackPanel
+                    stack
+                });
+
+                // Defer all updates to avoid borrow conflicts
+                let dock_area_clone = dock_area.clone();
+                let new_stack_clone = new_stack_panel.clone();
+                let new_tab_clone = new_tab_panel.clone();
+                let current_tab_clone = current_tab_panel.clone();
+
+                window.defer(cx, move |window, cx| {
+                    // Update current TabPanel to reference the new StackPanel
+                    _ = current_tab_clone.update(cx, |view, cx| {
+                        view.stack_panel = Some(new_stack_clone.downgrade());
+                        cx.notify();
+                    });
+
+                    // Update new TabPanel to reference the new StackPanel
+                    _ = new_tab_clone.update(cx, |view, cx| {
+                        view.stack_panel = Some(new_stack_clone.downgrade());
+                        cx.notify();
+                    });
+
+                    // Add both TabPanels to the StackPanel in the correct order
+                    _ = new_stack_clone.update(cx, |stack, cx| {
+                        match placement {
+                            Placement::Left | Placement::Top => {
+                                // New panel goes first
+                                stack.add_panel(Arc::new(new_tab_clone.clone()), size, dock_area_clone.clone(), window, cx);
+                                stack.add_panel(Arc::new(current_tab_clone.clone()), None, dock_area_clone.clone(), window, cx);
+                            }
+                            Placement::Right | Placement::Bottom => {
+                                // Current panel goes first
+                                stack.add_panel(Arc::new(current_tab_clone.clone()), None, dock_area_clone.clone(), window, cx);
+                                stack.add_panel(Arc::new(new_tab_clone.clone()), size, dock_area_clone.clone(), window, cx);
+                            }
+                        }
+                    });
+
+                    // Update DockArea to use the new StackPanel as its root
+                    _ = dock_area_clone.upgrade().map(|dock| {
+                        dock.update(cx, |dock_area, cx| {
+                            // Create a new DockItem::Split with the StackPanel
+                            dock_area.items = DockItem::Split {
+                                axis,
+                                items: vec![],  // items will be managed by the StackPanel
+                                sizes: vec![None, None],
+                                view: new_stack_clone.clone(),
+                            };
+                            cx.notify();
+                        })
+                    });
+
+                    println!("SPLIT: Created root-level split with StackPanel");
+                });
+
+                return; // Early return since we've deferred everything
             }
         };
 
