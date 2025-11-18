@@ -1345,15 +1345,9 @@ impl TabPanel {
                 return;
             }
 
-            // If target is same tab, and it is only one panel, do nothing.
-            if is_same_tab && ix.is_none() {
-                if will_split.is_none() {
-                    return;
-                } else {
-                    if panels_count == 1 {
-                        return;
-                    }
-                }
+            // If target is same tab, not splitting, and no specific index, do nothing.
+            if is_same_tab && ix.is_none() && will_split.is_none() {
+                return;
             }
 
             // Detach from source (if different tab panel)
