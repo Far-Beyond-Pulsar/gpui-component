@@ -415,7 +415,7 @@ impl Render for StackPanel {
         h_flex()
             .size_full()
             .overflow_hidden()
-            .bg(cx.theme().tab_bar)
+            // NO BACKGROUND - allow transparency for viewports (same as TabPanel)
             .child(
                 ResizablePanelGroup::new("stack-panel-group", self.state.clone())
                     .axis(self.axis)
