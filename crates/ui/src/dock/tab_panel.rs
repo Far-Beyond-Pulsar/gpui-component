@@ -1359,17 +1359,28 @@ impl TabPanel {
             }
 
             // Insert into target (and detach if same tab, all in one update)
-            println!("DROP: Inserting panel into target");
+            println!("DROP: Inserting panel into target, will_split={:?}, is_same_tab={}", will_split, is_same_tab);
             _ = target_entity.update(cx, |view, cx| {
-                // If same tab, detach first within this same update
-                if is_same_tab {
-                    view.detach_panel(panel.clone(), window, cx);
-                }
-                
                 if let Some(placement) = will_split {
                     println!("DROP: Splitting with placement {:?}", placement);
-                    view.split_panel(panel.clone(), placement, None, window, cx);
+                    // When splitting, handle detach differently
+                    if is_same_tab {
+                        println!("DROP: Splitting from same tab - split_panel will handle panel management");
+                        // Don't detach yet - split_panel needs the current panel structure intact
+                        view.split_panel(panel.clone(), placement, None, window, cx);
+                        // Now detach from the original tab after split is created
+                        view.detach_panel(panel.clone(), window, cx);
+                    } else {
+                        println!("DROP: Splitting from different tab");
+                        view.split_panel(panel.clone(), placement, None, window, cx);
+                    }
                 } else {
+                    // If same tab, detach first within this same update
+                    if is_same_tab {
+                        println!("DROP: Not splitting, detaching from same tab first");
+                        view.detach_panel(panel.clone(), window, cx);
+                    }
+
                     if let Some(ix) = ix {
                         println!("DROP: Inserting at index {}", ix);
                         view.insert_panel_at(panel.clone(), ix, window, cx)
@@ -1395,6 +1406,7 @@ impl TabPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        println!("SPLIT: split_panel called with placement {:?}", placement);
         let dock_area = self.dock_area.clone();
         // wrap the panel in a TabPanel
         let channel = self.channel;
@@ -1402,10 +1414,17 @@ impl TabPanel {
         new_tab_panel.update(cx, |view, cx| {
             view.add_panel(panel, window, cx);
         });
+        println!("SPLIT: Created new tab panel");
 
         let stack_panel = match self.stack_panel.as_ref().and_then(|panel| panel.upgrade()) {
-            Some(panel) => panel,
-            None => return,
+            Some(panel) => {
+                println!("SPLIT: Found parent StackPanel");
+                panel
+            },
+            None => {
+                println!("SPLIT: ERROR - No parent StackPanel! Cannot split. stack_panel is None.");
+                return;
+            }
         };
 
         let parent_axis = stack_panel.read(cx).axis;
