@@ -145,6 +145,15 @@ impl BlueprintEditorPanel {
                             progress: 1.0,
                             is_compiling: false,
                         };
+                        
+                        // Add to history
+                        let now = chrono::Local::now();
+                        panel.compilation_history.push(super::core::CompilationHistoryEntry {
+                            timestamp: now.format("%H:%M:%S").to_string(),
+                            state: super::super::CompilationState::Success,
+                            message: "Compilation successful".to_string(),
+                        });
+                        
                         cx.notify();
                     });
                 }
@@ -157,6 +166,15 @@ impl BlueprintEditorPanel {
                             progress: 0.0,
                             is_compiling: false,
                         };
+                        
+                        // Add to history
+                        let now = chrono::Local::now();
+                        panel.compilation_history.push(super::core::CompilationHistoryEntry {
+                            timestamp: now.format("%H:%M:%S").to_string(),
+                            state: super::super::CompilationState::Error,
+                            message: format!("Compilation failed: {}", e),
+                        });
+                        
                         cx.notify();
                     });
                 }

@@ -20,8 +20,9 @@ use ui::graph::{DataType as GraphDataType, LibraryManager, SubGraphDefinition};
 pub struct BlueprintEditorPanel {
     pub(super) focus_handle: FocusHandle,
     pub graph: BlueprintGraph,
-    pub(super) resizable_state: Entity<ResizableState>,
-    pub(super) left_sidebar_resizable_state: Entity<ResizableState>,
+    
+    // Workspace with full docking support
+    pub(super) workspace: Option<Entity<ui::workspace::Workspace>>,
     
     // File I/O
     pub current_class_path: Option<std::path::PathBuf>,
@@ -75,6 +76,7 @@ pub struct BlueprintEditorPanel {
     
     // Compilation
     pub compilation_status: super::super::CompilationStatus,
+    pub compilation_history: Vec<CompilationHistoryEntry>,
     
     // Library/macro system
     pub library_manager: LibraryManager,
@@ -88,6 +90,31 @@ pub struct BlueprintEditorPanel {
     pub show_debug_overlay: bool,
     pub show_minimap: bool,
     pub show_graph_controls: bool,
+    
+    // Sidebar tab states
+    pub left_top_tab: usize,      // 0=Variables, 1=Functions, 2=Macros
+    pub left_bottom_tab: usize,   // 0=Library, 1=Compiler
+    pub right_tab: usize,          // 0=Details, 1=Palette
+    
+    // Tab drag state
+    pub dragging_tab: Option<TabDragInfo>,
+}
+
+/// Information about a tab being dragged
+#[derive(Clone, Debug)]
+pub struct TabDragInfo {
+    pub panel_id: usize,  // Which panel the tab came from
+    pub tab_index: usize, // Which tab is being dragged
+    pub label: String,
+    pub icon: ui::IconName,
+}
+
+/// Compilation history entry
+#[derive(Clone, Debug)]
+pub struct CompilationHistoryEntry {
+    pub timestamp: String,
+    pub state: super::super::CompilationState,
+    pub message: String,
 }
 
 /// Resize handle for comment boxes
@@ -181,8 +208,7 @@ impl BlueprintEditorPanel {
         Self {
             focus_handle: cx.focus_handle(),
             graph: main_graph.clone(),
-            resizable_state,
-            left_sidebar_resizable_state,
+            workspace: None,  // Will be initialized in render
             current_class_path: None,
             tab_title: None,
             dragging_node: None,
@@ -218,6 +244,7 @@ impl BlueprintEditorPanel {
             }),
             subscriptions: Vec::new(),
             compilation_status: super::super::CompilationStatus::default(),
+            compilation_history: Vec::new(),
             library_manager: {
                 let mut lib_manager = LibraryManager::default();
                 if let Err(e) = lib_manager.load_all_libraries() {
@@ -239,6 +266,10 @@ impl BlueprintEditorPanel {
             show_debug_overlay: true,
             show_minimap: true,
             show_graph_controls: true,
+            left_top_tab: 0,
+            left_bottom_tab: 0,
+            right_tab: 0,
+            dragging_tab: None,
         }
     }
 

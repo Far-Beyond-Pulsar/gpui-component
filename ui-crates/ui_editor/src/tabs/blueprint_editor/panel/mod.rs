@@ -56,6 +56,7 @@ mod variables;
 mod viewport;
 mod menu;
 mod render;
+mod render_workspace;
 
 // Constants
 pub const NODE_MENU_WIDTH: f32 = 280.0;

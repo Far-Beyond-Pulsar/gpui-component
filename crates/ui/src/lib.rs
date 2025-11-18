@@ -80,6 +80,7 @@ pub mod theme;
 pub mod tooltip;
 #[cfg(feature = "webview")]
 pub mod webview;
+pub mod workspace;
 
 use gpui::{App, SharedString};
 // re-export
