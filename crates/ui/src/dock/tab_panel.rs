@@ -20,7 +20,7 @@ use crate::{
 };
 
 use super::{
-    ClosePanel, DockArea, DockItem, DockPlacement, Panel, PanelControl, PanelEvent, PanelState,
+    ClosePanel, Dock, DockArea, DockItem, DockPlacement, Panel, PanelControl, PanelEvent, PanelState,
     PanelStyle, PanelView, StackPanel, ToggleZoom,
 };
 
@@ -1416,9 +1416,10 @@ impl TabPanel {
         let dock_area = self.dock_area.clone();
         // wrap the panel in a TabPanel
         let channel = self.channel;
+        let panel_for_new_tab = panel.clone();
         let new_tab_panel = cx.new(|cx| Self::new(None, dock_area.clone(), channel, window, cx));
         new_tab_panel.update(cx, |view, cx| {
-            view.add_panel(panel, window, cx);
+            view.add_panel(panel_for_new_tab, window, cx);
         });
         println!("SPLIT: Created new tab panel");
 
@@ -1429,6 +1430,9 @@ impl TabPanel {
             },
             None => {
                 println!("SPLIT: No parent StackPanel - handling root-level split");
+                println!("SPLIT: Current TabPanel entity: {:?}", cx.entity());
+                println!("SPLIT: Current TabPanel has {} panels", self.panels.len());
+
                 // Handle root-level split: create a new StackPanel and update DockArea
                 let axis = placement.axis();
                 let current_tab_panel = cx.entity().clone();
@@ -1445,8 +1449,19 @@ impl TabPanel {
                 let new_stack_clone = new_stack_panel.clone();
                 let new_tab_clone = new_tab_panel.clone();
                 let current_tab_clone = current_tab_panel.clone();
+                let panel_clone = panel.clone();
 
                 window.defer(cx, move |window, cx| {
+                    // Detach the panel from current tab if it exists there
+                    // This handles the same-tab case where the panel hasn't been detached yet
+                    _ = current_tab_clone.update(cx, |view, cx| {
+                        // Check if the panel exists in current tab before detaching
+                        if view.panels.iter().any(|p| Arc::ptr_eq(p, &panel_clone)) {
+                            view.detach_panel(panel_clone.clone(), window, cx);
+                            println!("SPLIT: Detached panel from current tab");
+                        }
+                    });
+
                     // Update current TabPanel to reference the new StackPanel
                     _ = current_tab_clone.update(cx, |view, cx| {
                         view.stack_panel = Some(new_stack_clone.downgrade());
@@ -1475,16 +1490,78 @@ impl TabPanel {
                         }
                     });
 
-                    // Update DockArea to use the new StackPanel as its root
+                    // Update DockArea to use the new StackPanel in the correct location
                     _ = dock_area_clone.upgrade().map(|dock| {
                         dock.update(cx, |dock_area, cx| {
-                            // Create a new DockItem::Split with the StackPanel
-                            dock_area.items = DockItem::Split {
+                            let current_tab_id = current_tab_clone.entity_id();
+                            println!("SPLIT: Looking for TabPanel {:?} in DockArea", current_tab_id);
+
+                            // Helper to check if a DockItem contains our TabPanel
+                            let contains_tab_panel = |item: &DockItem| -> bool {
+                                match item {
+                                    DockItem::Tabs { view, .. } => view.entity_id() == current_tab_id,
+                                    _ => false,
+                                }
+                            };
+
+                            // Create the new DockItem::Split
+                            let new_dock_item = DockItem::Split {
                                 axis,
                                 items: vec![],  // items will be managed by the StackPanel
                                 sizes: vec![None, None],
                                 view: new_stack_clone.clone(),
                             };
+
+                            let mut found = false;
+
+                            // Check center (items)
+                            if contains_tab_panel(&dock_area.items) {
+                                println!("SPLIT: Found in center (items), replacing it");
+                                dock_area.items = new_dock_item.clone();
+                                found = true;
+                            }
+                            // Check left dock
+                            else if let Some(left_dock) = &dock_area.left_dock {
+                                if contains_tab_panel(&left_dock.read(cx).panel) {
+                                    println!("SPLIT: Found in left_dock, replacing its panel");
+                                    let left_dock_entity = left_dock.clone();
+                                    left_dock_entity.update(cx, |dock, cx| {
+                                        dock.set_panel(new_dock_item.clone(), window, cx);
+                                    });
+                                    found = true;
+                                }
+                            }
+                            // Check right dock
+                            if !found {
+                                if let Some(right_dock) = &dock_area.right_dock {
+                                    if contains_tab_panel(&right_dock.read(cx).panel) {
+                                        println!("SPLIT: Found in right_dock, replacing its panel");
+                                        let right_dock_entity = right_dock.clone();
+                                        right_dock_entity.update(cx, |dock, cx| {
+                                            dock.set_panel(new_dock_item.clone(), window, cx);
+                                        });
+                                        found = true;
+                                    }
+                                }
+                            }
+                            // Check bottom dock
+                            if !found {
+                                if let Some(bottom_dock) = &dock_area.bottom_dock {
+                                    if contains_tab_panel(&bottom_dock.read(cx).panel) {
+                                        println!("SPLIT: Found in bottom_dock, replacing its panel");
+                                        let bottom_dock_entity = bottom_dock.clone();
+                                        bottom_dock_entity.update(cx, |dock, cx| {
+                                            dock.set_panel(new_dock_item.clone(), window, cx);
+                                        });
+                                        found = true;
+                                    }
+                                }
+                            }
+
+                            if !found {
+                                println!("SPLIT: WARNING - Could not find TabPanel in any dock location!");
+                            }
+
                             cx.notify();
                         })
                     });
