@@ -68,6 +68,9 @@ pub struct DockArea {
     /// The panel style, default is [`PanelStyle::Default`](PanelStyle::Default).
     pub(crate) panel_style: PanelStyle,
 
+    /// Dock channel - isolates this DockArea from others
+    channel: tab_panel::DockChannel,
+
     _subscriptions: Vec<Subscription>,
 }
 
@@ -274,7 +277,8 @@ impl DockItem {
     ) -> Self {
         let active_ix = active_ix.unwrap_or(0);
         let tab_panel = cx.new(|cx| {
-            let mut tab_panel = TabPanel::new(None, dock_area.clone(), window, cx);
+            let channel = dock_area.upgrade().map(|d| d.read(cx).channel).unwrap_or_default();
+            let mut tab_panel = TabPanel::new(None, dock_area.clone(), channel, window, cx);
             for item in items.iter() {
                 tab_panel.add_panel(item.clone(), window, cx)
             }
@@ -354,7 +358,8 @@ impl DockItem {
             Self::Tiles { view, items } => {
                 let tile_item = TileItem::new(
                     Arc::new(cx.new(|cx| {
-                        let mut tab_panel = TabPanel::new(None, dock_area.clone(), window, cx);
+                        let channel = dock_area.upgrade().map(|d| d.read(cx).channel).unwrap_or_default();
+                        let mut tab_panel = TabPanel::new(None, dock_area.clone(), channel, window, cx);
                         tab_panel.add_panel(panel.clone(), window, cx);
                         tab_panel
                     })),
@@ -442,6 +447,16 @@ impl DockArea {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        Self::new_with_channel(id, version, tab_panel::DockChannel::default(), window, cx)
+    }
+
+    pub fn new_with_channel(
+        id: impl Into<SharedString>,
+        version: Option<usize>,
+        channel: tab_panel::DockChannel,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let stack_panel = cx.new(|cx| StackPanel::new(Axis::Horizontal, window, cx));
 
         let dock_item = DockItem::Split {
@@ -464,6 +479,7 @@ impl DockArea {
             bottom_dock: None,
             locked: false,
             panel_style: PanelStyle::Default,
+            channel,
             _subscriptions: vec![],
         };
 
@@ -520,7 +536,6 @@ impl DockArea {
     pub fn set_center(&mut self, item: DockItem, window: &mut Window, cx: &mut Context<Self>) {
         self.subscribe_item(&item, window, cx);
         self.items = item;
-        self.update_toggle_button_tab_panels(window, cx);
         cx.notify();
     }
 
@@ -534,8 +549,9 @@ impl DockArea {
     ) {
         self.subscribe_item(&panel, window, cx);
         let weak_self = cx.entity().downgrade();
+        let channel = self.channel;
         self.left_dock = Some(cx.new(|cx| {
-            let mut dock = Dock::left(weak_self.clone(), window, cx);
+            let mut dock = Dock::left(weak_self.clone(), channel, window, cx);
             if let Some(size) = size {
                 dock.set_size(size, window, cx);
             }
@@ -543,7 +559,6 @@ impl DockArea {
             dock.set_open(open, window, cx);
             dock
         }));
-        self.update_toggle_button_tab_panels(window, cx);
     }
 
     pub fn set_bottom_dock(
@@ -556,8 +571,9 @@ impl DockArea {
     ) {
         self.subscribe_item(&panel, window, cx);
         let weak_self = cx.entity().downgrade();
+        let channel = self.channel;
         self.bottom_dock = Some(cx.new(|cx| {
-            let mut dock = Dock::bottom(weak_self.clone(), window, cx);
+            let mut dock = Dock::bottom(weak_self.clone(), channel, window, cx);
             if let Some(size) = size {
                 dock.set_size(size, window, cx);
             }
@@ -565,7 +581,6 @@ impl DockArea {
             dock.set_open(open, window, cx);
             dock
         }));
-        self.update_toggle_button_tab_panels(window, cx);
     }
 
     pub fn set_right_dock(
@@ -577,9 +592,10 @@ impl DockArea {
         cx: &mut Context<Self>,
     ) {
         self.subscribe_item(&panel, window, cx);
+        let channel = self.channel;
         let weak_self = cx.entity().downgrade();
         self.right_dock = Some(cx.new(|cx| {
-            let mut dock = Dock::right(weak_self.clone(), window, cx);
+            let mut dock = Dock::right(weak_self.clone(), channel, window, cx);
             if let Some(size) = size {
                 dock.set_size(size, window, cx);
             }
@@ -587,7 +603,6 @@ impl DockArea {
             dock.set_open(open, window, cx);
             dock
         }));
-        self.update_toggle_button_tab_panels(window, cx);
     }
 
     /// Set locked state of the dock area, if locked, the dock area cannot be split or move, but allows to resize panels.
@@ -841,7 +856,6 @@ impl DockArea {
         }
 
         self.items = state.center.to_item(weak_self, window, cx);
-        self.update_toggle_button_tab_panels(window, cx);
         Ok(())
     }
 
@@ -888,12 +902,6 @@ impl DockArea {
                     window,
                     move |_, _, event, window, cx| match event {
                         PanelEvent::LayoutChanged => {
-                            cx.spawn_in(window, async move |view, window| {
-                                _ = view.update_in(window, |view, window, cx| {
-                                    view.update_toggle_button_tab_panels(window, cx)
-                                });
-                            })
-                            .detach();
                             cx.emit(DockEvent::LayoutChanged);
                         }
                         _ => {}
@@ -942,12 +950,6 @@ impl DockArea {
                         })
                         .detach(),
                     PanelEvent::LayoutChanged => {
-                        cx.spawn_in(window, async move |view, window| {
-                            _ = view.update_in(window, |view, window, cx| {
-                                view.update_toggle_button_tab_panels(window, cx)
-                            });
-                        })
-                        .detach();
                         cx.emit(DockEvent::LayoutChanged);
                     }
                     PanelEvent::TabClosed(_) => {
@@ -1015,8 +1017,9 @@ impl DockArea {
 impl EventEmitter<DockEvent> for DockArea {}
 impl Render for DockArea {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let view = cx.entity().clone();
-
+        // Store bounds directly - we already have mutable access via &mut self
+        let bounds_setter = cx.entity().downgrade();
+        
         div()
             .id("dock-area")
             .relative()
@@ -1024,7 +1027,14 @@ impl Render for DockArea {
             .overflow_hidden()
             .child(
                 canvas(
-                    move |bounds, _, cx| view.update(cx, |r, _| r.bounds = bounds),
+                    move |bounds, _, cx| {
+                        // Defer bounds update to avoid nested entity access
+                        if let Some(view) = bounds_setter.upgrade() {
+                            cx.defer(move |cx| {
+                                _ = view.update(cx, |r, _| r.bounds = bounds);
+                            });
+                        }
+                    },
                     |_, _, _, _| {},
                 )
                 .absolute()

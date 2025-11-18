@@ -81,11 +81,12 @@ impl Dock {
     pub(crate) fn new(
         dock_area: WeakEntity<DockArea>,
         placement: DockPlacement,
+        channel: super::DockChannel,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let panel = cx.new(|cx| {
-            let mut tab = TabPanel::new(None, dock_area.clone(), window, cx);
+            let mut tab = TabPanel::new(None, dock_area.clone(), channel, window, cx);
             tab.closable = false;
             tab
         });
@@ -111,26 +112,29 @@ impl Dock {
 
     pub fn left(
         dock_area: WeakEntity<DockArea>,
+        channel: super::DockChannel,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::new(dock_area, DockPlacement::Left, window, cx)
+        Self::new(dock_area, DockPlacement::Left, channel, window, cx)
     }
 
     pub fn bottom(
         dock_area: WeakEntity<DockArea>,
+        channel: super::DockChannel,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::new(dock_area, DockPlacement::Bottom, window, cx)
+        Self::new(dock_area, DockPlacement::Bottom, channel, window, cx)
     }
 
     pub fn right(
         dock_area: WeakEntity<DockArea>,
+        channel: super::DockChannel,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::new(dock_area, DockPlacement::Right, window, cx)
+        Self::new(dock_area, DockPlacement::Right, channel, window, cx)
     }
 
     /// Update the Dock to be collapsible or not.
@@ -395,12 +399,14 @@ impl Render for Dock {
             .child(self.render_resize_handle(window, cx))
             .child(DockElement {
                 view: cx.entity().clone(),
+                resizing: self.resizing,
             })
     }
 }
 
 struct DockElement {
     view: Entity<Dock>,
+    resizing: bool,
 }
 
 impl IntoElement for DockElement {
@@ -457,7 +463,7 @@ impl Element for DockElement {
     ) {
         window.on_mouse_event({
             let view = self.view.clone();
-            let resizing = view.read(cx).resizing;
+            let resizing = self.resizing;
             move |e: &MouseMoveEvent, phase, window, cx| {
                 if !resizing {
                     return;

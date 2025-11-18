@@ -24,8 +24,17 @@ impl BlueprintEditorPanel {
 
         let editor_weak = cx.entity().downgrade();
         let workspace = cx.new(|cx| {
-            let mut workspace = Workspace::new("blueprint-editor-workspace", window, cx);
+            // Use channel 1 for blueprint editor to isolate from main app dock (channel 0)
+            Workspace::new_with_channel(
+                "blueprint-editor-workspace",
+                ui::dock::DockChannel(1),
+                window,
+                cx
+            )
+        });
 
+        // Initialize workspace AFTER creation to avoid entity borrow issues
+        workspace.update(cx, |workspace, cx| {
             // Get the dock area weak reference
             let dock_area_weak = workspace.dock_area().downgrade();
 
@@ -76,7 +85,6 @@ impl BlueprintEditorPanel {
             );
 
             workspace.initialize(center, Some(left), Some(right), Some(bottom), window, cx);
-            workspace
         });
 
         self.workspace = Some(workspace);

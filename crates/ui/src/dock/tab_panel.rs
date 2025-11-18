@@ -31,6 +31,18 @@ struct TabState {
     draggable: bool,
     droppable: bool,
     active_panel: Option<Arc<dyn PanelView>>,
+    channel: DockChannel,
+}
+
+/// Drag channel identifier - used to isolate different dock systems
+/// Each DockArea should use a unique channel to prevent interference
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DockChannel(pub u32);
+
+impl Default for DockChannel {
+    fn default() -> Self {
+        DockChannel(0)
+    }
 }
 
 #[derive(Clone)]
@@ -39,15 +51,17 @@ pub(crate) struct DragPanel {
     pub(crate) tab_panel: Entity<TabPanel>,
     pub(crate) source_index: usize,
     pub(crate) drag_start_position: Option<Point<Pixels>>,
+    pub(crate) channel: DockChannel,
 }
 
 impl DragPanel {
-    pub(crate) fn new(panel: Arc<dyn PanelView>, tab_panel: Entity<TabPanel>) -> Self {
+    pub(crate) fn new(panel: Arc<dyn PanelView>, tab_panel: Entity<TabPanel>, channel: DockChannel) -> Self {
         Self {
             panel,
             tab_panel,
             source_index: 0,
             drag_start_position: None,
+            channel,
         }
     }
 
@@ -123,6 +137,10 @@ pub struct TabPanel {
     pending_reorder_index: Option<usize>,
     /// Track if we're currently dragging outside window bounds
     dragging_outside_window: bool,
+    /// Dock channel - isolates this TabPanel to only interact with same-channel drags
+    pub(crate) channel: DockChannel,
+    /// Track if we're in a valid same-channel drag (set by drag_over predicate)
+    in_valid_drag: bool,
 }
 
 impl Panel for TabPanel {
@@ -186,6 +204,7 @@ impl TabPanel {
     pub fn new(
         stack_panel: Option<WeakEntity<StackPanel>>,
         dock_area: WeakEntity<DockArea>,
+        channel: DockChannel,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -203,6 +222,8 @@ impl TabPanel {
             in_tiles: false,
             pending_reorder_index: None,
             dragging_outside_window: false,
+            channel,
+            in_valid_drag: false,
         }
     }
 
@@ -488,7 +509,21 @@ impl TabPanel {
     ///
     /// E.g. if the tab panel is locked, it is not droppable.
     fn droppable(&self, cx: &App) -> bool {
-        !self.is_locked(cx)
+        let Some(dock_area) = self.dock_area.upgrade() else {
+            return false;
+        };
+
+        if dock_area.read(cx).is_locked() {
+            return false;
+        }
+
+        if self.zoomed {
+            return false;
+        }
+
+        // Allow dropping on top-level tabs (those without a stack_panel parent)
+        // as they are the main dockable areas
+        true
     }
 
     fn render_toolbar(
@@ -723,8 +758,9 @@ impl TabPanel {
                         .whitespace_nowrap()
                         .child(panel.title(window, cx))
                         .when(state.draggable, |this| {
+                            let channel = state.channel;
                             this.on_drag(
-                                DragPanel::new(panel.clone(), view.clone())
+                                DragPanel::new(panel.clone(), view.clone(), channel)
                                     .with_index(0),
                                 move |drag, position, _, cx| {
                                     // Capture the drag start position for window creation
@@ -819,43 +855,54 @@ impl TabPanel {
                                 }
                             }
                         }))
-                        .when(!droppable, |this| {
-                            this.when(state.draggable, |this| {
-                                this.on_drag(
-                                    DragPanel::new(panel.clone(), view.clone())
-                                        .with_index(ix),
-                                    move |drag, position, _, cx| {
-                                        // Capture the drag start position for window creation
-                                        let mut drag_with_pos = drag.clone();
-                                        drag_with_pos.drag_start_position = Some(position);
-                                        cx.stop_propagation();
-                                        cx.new(|_| drag_with_pos)
-                                    },
-                                )
-                                .on_drag_move(cx.listener(|this, event: &DragMoveEvent<DragPanel>, window, cx| {
-                                    // Track mouse position to detect when dragging outside window
-                                    let is_outside = this.check_drag_outside_window(event.event.position, window, cx);
+                        .when(state.draggable, |this| {
+                            let channel = state.channel;
+                            this.on_drag(
+                                DragPanel::new(panel.clone(), view.clone(), channel)
+                                    .with_index(ix),
+                                move |drag, position, _, cx| {
+                                    // Capture the drag start position for window creation
+                                    let mut drag_with_pos = drag.clone();
+                                    drag_with_pos.drag_start_position = Some(position);
+                                    cx.stop_propagation();
+                                    cx.new(|_| drag_with_pos)
+                                },
+                            )
+                            .on_drag_move(cx.listener(|this, event: &DragMoveEvent<DragPanel>, window, cx| {
+                                // Track mouse position to detect when dragging outside window
+                                let is_outside = this.check_drag_outside_window(event.event.position, window, cx);
 
-                                    // Clear split placement when dragging outside window
-                                    if is_outside {
-                                        this.will_split_placement = None;
-                                    }
-                                }))
-                            })
-                            .when(state.droppable, |this| {
-                                this.drag_over::<DragPanel>(|this, _, _, cx| {
+                                // Clear split placement when dragging outside window
+                                if is_outside {
+                                    this.will_split_placement = None;
+                                }
+                            }))
+                        })
+                        .when(state.droppable, |this| {
+                            let channel = state.channel;
+                            let view = view.clone();
+                            this.drag_over::<DragPanel>(move |this, drag, window, cx| {
+                                // Only show drop visual if same channel
+                                if drag.channel == channel {
+                                    // Mark that we're in a valid drag
+                                    view.update(cx, |v, cx| {
+                                        v.in_valid_drag = true;
+                                        cx.notify();
+                                    });
                                     this.rounded_l_none()
                                         .border_l_2()
                                         .border_r_0()
                                         .border_color(cx.theme().drag_border)
-                                })
-                                .on_drop(cx.listener(
-                                    move |this, drag: &DragPanel, window, cx| {
-                                        this.will_split_placement = None;
-                                        this.on_drop(drag, Some(ix), true, window, cx)
-                                    },
-                                ))
+                                } else {
+                                    this
+                                }
                             })
+                            .on_drop(cx.listener(
+                                move |this, drag: &DragPanel, window, cx| {
+                                    this.will_split_placement = None;
+                                    this.on_drop(drag, Some(ix), true, window, cx)
+                                },
+                            ))
                         })
                         .suffix(h_flex().gap_1().when(!is_level_editor, |this| {
                             let panel = panel_for_menu.clone();
@@ -913,8 +960,20 @@ impl TabPanel {
                     .flex_grow()
                     .min_w_16()
                     .when(state.droppable, |this| {
-                        this.drag_over::<DragPanel>(|this, _, _, cx| {
-                            this.bg(cx.theme().drop_target)
+                        let channel = state.channel;
+                        let view_entity = view.clone();
+                        this.drag_over::<DragPanel>(move |this, drag, window, cx| {
+                            // Only show drop visual if same channel
+                            if drag.channel == channel {
+                                // Mark that we're in a valid drag
+                                view_entity.update(cx, |v, cx| {
+                                    v.in_valid_drag = true;
+                                    cx.notify();
+                                });
+                                this.bg(cx.theme().drop_target)
+                            } else {
+                                this
+                            }
                         })
                         .on_drop(cx.listener(
                             move |this, drag: &DragPanel, window, cx| {
@@ -1098,7 +1157,8 @@ impl TabPanel {
 
             // Create a tab panel with just the one panel
             let new_tab_panel = cx.new(|cx| {
-                let mut tab_panel = Self::new(None, weak_new_dock.clone(), window, cx);
+                let channel = weak_new_dock.upgrade().map(|d| d.read(cx).channel).unwrap_or_default();
+                let mut tab_panel = Self::new(None, weak_new_dock.clone(), channel, window, cx);
                 tab_panel.closable = true; // Allow closing this detached window
                 tab_panel
             });
@@ -1128,6 +1188,11 @@ impl TabPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Only process if we're in a valid same-channel drag
+        if !self.in_valid_drag {
+            return;
+        }
+        
         let bounds = drag.bounds;
         let position = drag.event.position;
 
@@ -1164,124 +1229,159 @@ impl TabPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let panel = drag.panel.clone();
-        let is_same_tab = drag.tab_panel == cx.entity();
-
-        // Check if we should create a new window (dragged outside bounds)
-        if self.dragging_outside_window {
-            // Get the current cursor position for window placement
-            if let Some(start_pos) = drag.drag_start_position {
-                // Remove from source tab panel
-                let source_panel = drag.tab_panel.clone();
-                let panel_to_extract = panel.clone();
-                let dock_area = self.dock_area.clone();
-
-                // Detach the panel from the source
-                if is_same_tab {
-                    self.detach_panel(panel_to_extract.clone(), window, cx);
-                } else {
-                    let _ = source_panel.update(cx, |view, cx| {
-                        view.detach_panel(panel_to_extract.clone(), window, cx);
-                        view.remove_self_if_empty(window, cx);
-                    });
-                }
-
-                // Close the current window if it was the last tab and we're not in the main window
-                let should_close_window = self.panels.is_empty() && !self.in_tiles;
-
-                // Defer window creation and closing to avoid update conflicts
-                window.defer(cx, move |window, cx| {
-                    if should_close_window {
-                        window.remove_window();
-                    }
-
-                    // Create new window with the panel
-                    Self::create_window_with_panel(
-                        panel_to_extract,
-                        start_pos,
-                        dock_area,
-                        cx,
-                    );
-                });
-
-                self.dragging_outside_window = false;
-                cx.emit(PanelEvent::LayoutChanged);
-                return;
-            }
-        }
-
-        // Handle reordering within the same tab panel
-        if is_same_tab && ix.is_some() && self.will_split_placement.is_none() {
-            let target_ix = ix.unwrap();
-            let source_ix = drag.source_index;
-
-            // Only reorder if different positions
-            if source_ix != target_ix {
-                // Remove panel from old position
-                let panel = self.panels.remove(source_ix);
-
-                // Calculate new insert position
-                let insert_ix = if target_ix > source_ix {
-                    target_ix - 1
-                } else {
-                    target_ix
-                };
-
-                // Insert at new position
-                self.panels.insert(insert_ix, panel);
-
-                // Update active index if needed
-                if self.active_ix == source_ix {
-                    self.active_ix = insert_ix;
-                } else if source_ix < self.active_ix && insert_ix >= self.active_ix {
-                    self.active_ix -= 1;
-                } else if source_ix > self.active_ix && insert_ix <= self.active_ix {
-                    self.active_ix += 1;
-                }
-
-                cx.emit(PanelEvent::LayoutChanged);
-                cx.notify();
-            }
+        println!("DROP: Panel being dropped on channel {:?}, drag from channel {:?}", self.channel, drag.channel);
+        
+        // Reset drag state
+        self.in_valid_drag = false;
+        
+        // Verify that the drag is from the same channel
+        // This prevents tabs from different dock systems from interfering with each other
+        if drag.channel != self.channel {
+            println!("DROP: Rejected - drag from different channel (cross-channel drops not allowed)");
             return;
         }
+        
+        // Clone all needed data BEFORE any entity access to avoid borrow conflicts
+        let panel = drag.panel.clone();
+        let is_same_tab = drag.tab_panel == cx.entity();
+        let will_split = self.will_split_placement;
+        let dragging_outside = self.dragging_outside_window;
+        let drag_start_position = drag.drag_start_position;
+        let source_panel = drag.tab_panel.clone();
+        let source_index = drag.source_index;
+        let dock_area = self.dock_area.clone();
+        let target_entity = cx.entity().clone();
+        let panels_count = self.panels.len();
+        let in_tiles = self.in_tiles;
+        println!("DROP: is_same_tab={}, ix={:?}, will_split={:?}", is_same_tab, ix, will_split);
+        
+        // Defer ALL drop handling to avoid entity borrow conflicts
+        // Use window.defer instead of cx.defer_in to ensure we're outside the render phase
+        window.defer(cx, move |window, cx| {
+            // Check if we should create a new window (dragged outside bounds)
+            if dragging_outside {
+                if let Some(start_pos) = drag_start_position {
+                    let panel_to_extract = panel.clone();
 
-        // If target is same tab, and it is only one panel, do nothing.
-        if is_same_tab && ix.is_none() {
-            if self.will_split_placement.is_none() {
-                return;
-            } else {
-                if self.panels.len() == 1 {
+                    // Detach the panel from the source
+                    if is_same_tab {
+                        _ = target_entity.update(cx, |view, cx| {
+                            view.detach_panel(panel_to_extract.clone(), window, cx);
+                        });
+                    } else {
+                        _ = source_panel.update(cx, |view, cx| {
+                            view.detach_panel(panel_to_extract.clone(), window, cx);
+                            view.remove_self_if_empty(window, cx);
+                        });
+                    }
+
+                    // Close the current window if it was the last tab and we're not in the main window
+                    let should_close_window = panels_count == 1 && !in_tiles;
+
+                    // Defer window creation and closing to avoid update conflicts
+                    window.defer(cx, move |window, cx| {
+                        if should_close_window {
+                            window.remove_window();
+                        }
+
+                        // Create new window with the panel
+                        TabPanel::create_window_with_panel(
+                            panel_to_extract,
+                            start_pos,
+                            dock_area,
+                            cx,
+                        );
+                    });
+
+                    _ = target_entity.update(cx, |view, cx| {
+                        view.dragging_outside_window = false;
+                        cx.emit(PanelEvent::LayoutChanged);
+                    });
                     return;
                 }
             }
-        }
 
-        // Here is looks like remove_panel on a same item, but it difference.
-        //
-        // We must to split it to remove_panel, unless it will be crash by error:
-        // Cannot update ui::dock::tab_panel::TabPanel while it is already being updated
-        if is_same_tab {
-            self.detach_panel(panel.clone(), window, cx);
-        } else {
-            let _ = drag.tab_panel.update(cx, |view, cx| {
-                view.detach_panel(panel.clone(), window, cx);
-                view.remove_self_if_empty(window, cx);
-            });
-        }
+            // Handle reordering within the same tab panel
+            if is_same_tab && ix.is_some() && will_split.is_none() {
+                let target_ix = ix.unwrap();
 
-        // Insert into new tabs
-        if let Some(placement) = self.will_split_placement {
-            self.split_panel(panel, placement, None, window, cx);
-        } else {
-            if let Some(ix) = ix {
-                self.insert_panel_at(panel, ix, window, cx)
-            } else {
-                self.add_panel_with_active(panel, active, window, cx)
+                _ = target_entity.update(cx, |view, cx| {
+                    // Only reorder if different positions
+                    if source_index != target_ix {
+                        // Remove panel from old position
+                        let panel = view.panels.remove(source_index);
+
+                        // Calculate new insert position
+                        let insert_ix = if target_ix > source_index {
+                            target_ix - 1
+                        } else {
+                            target_ix
+                        };
+
+                        // Insert at new position
+                        view.panels.insert(insert_ix, panel);
+
+                        // Update active index if needed
+                        if view.active_ix == source_index {
+                            view.active_ix = insert_ix;
+                        } else if source_index < view.active_ix && insert_ix >= view.active_ix {
+                            view.active_ix -= 1;
+                        } else if source_index > view.active_ix && insert_ix <= view.active_ix {
+                            view.active_ix += 1;
+                        }
+
+                        cx.emit(PanelEvent::LayoutChanged);
+                        cx.notify();
+                    }
+                });
+                return;
             }
-        }
 
-        self.remove_self_if_empty(window, cx);
-        cx.emit(PanelEvent::LayoutChanged);
+            // If target is same tab, and it is only one panel, do nothing.
+            if is_same_tab && ix.is_none() {
+                if will_split.is_none() {
+                    return;
+                } else {
+                    if panels_count == 1 {
+                        return;
+                    }
+                }
+            }
+
+            // Detach from source (if different tab panel)
+            if !is_same_tab {
+                _ = source_panel.update(cx, |view, cx| {
+                    view.detach_panel(panel.clone(), window, cx);
+                    view.remove_self_if_empty(window, cx);
+                });
+            }
+
+            // Insert into target (and detach if same tab, all in one update)
+            println!("DROP: Inserting panel into target");
+            _ = target_entity.update(cx, |view, cx| {
+                // If same tab, detach first within this same update
+                if is_same_tab {
+                    view.detach_panel(panel.clone(), window, cx);
+                }
+                
+                if let Some(placement) = will_split {
+                    println!("DROP: Splitting with placement {:?}", placement);
+                    view.split_panel(panel.clone(), placement, None, window, cx);
+                } else {
+                    if let Some(ix) = ix {
+                        println!("DROP: Inserting at index {}", ix);
+                        view.insert_panel_at(panel.clone(), ix, window, cx)
+                    } else {
+                        println!("DROP: Adding panel with active={}", active);
+                        view.add_panel_with_active(panel.clone(), active, window, cx)
+                    }
+                }
+
+                println!("DROP: Drop complete, checking if empty");
+                view.remove_self_if_empty(window, cx);
+                cx.emit(PanelEvent::LayoutChanged);
+            });
+        });
     }
 
     /// Add panel with split placement
@@ -1295,7 +1395,8 @@ impl TabPanel {
     ) {
         let dock_area = self.dock_area.clone();
         // wrap the panel in a TabPanel
-        let new_tab_panel = cx.new(|cx| Self::new(None, dock_area.clone(), window, cx));
+        let channel = self.channel;
+        let new_tab_panel = cx.new(|cx| Self::new(None, dock_area.clone(), channel, window, cx));
         new_tab_panel.update(cx, |view, cx| {
             view.add_panel(panel, window, cx);
         });
@@ -1494,6 +1595,7 @@ impl Render for TabPanel {
             droppable: self.droppable(cx),
             zoomable: self.zoomable(cx),
             active_panel,
+            channel: self.channel,
         };
 
         // 1. When is the final panel in the dock, it will not able to close.

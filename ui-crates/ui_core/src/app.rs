@@ -328,16 +328,15 @@ impl PulsarApp {
             )
         };
 
-        dock_area.update(cx, |dock, cx| {
-            dock.set_center(center_dock_item, window, cx);
-        });
-
-        // Get the center TabPanel for dynamic tab management
-        let center_tabs = if let DockItem::Tabs { view, .. } = dock_area.read(cx).items() {
+        let center_tabs = if let DockItem::Tabs { view, .. } = &center_dock_item {
             view.clone()
         } else {
             panic!("Expected tabs dock item");
         };
+        
+        dock_area.update(cx, |dock, cx| {
+            dock.set_center(center_dock_item, window, cx);
+        });
 
         // Initialize editor tracking
         let script_editor = None;
