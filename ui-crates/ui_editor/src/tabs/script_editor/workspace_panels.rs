@@ -1,51 +1,119 @@
 //! Workspace panels for Script Editor
 
 use gpui::*;
-use ui::{ActiveTheme, StyledExt, dock::{Panel, PanelEvent}, v_flex};
+use ui::{ActiveTheme, StyledExt, dock::{Panel, PanelEvent}, v_flex, input::InputState};
 use std::path::PathBuf;
 use super::text_editor::TextEditor;
 use super::file_explorer::FileExplorer;
 
-/// Text Editor Panel - wraps the text editor with all open files
-/// Note: Individual file tabs are managed internally by TextEditor
-/// Future enhancement: Split each file into its own draggable panel
-pub struct TextEditorPanel {
-    text_editor: Entity<TextEditor>,
+/// Individual File Panel - wraps a single file's editor
+pub struct FilePanelWrapper {
+    text_editor: WeakEntity<TextEditor>,
+    file_index: usize,
+    file_path: PathBuf,
+    input_state: Entity<InputState>,
     focus_handle: FocusHandle,
 }
 
-impl TextEditorPanel {
-    pub fn new(text_editor: Entity<TextEditor>, cx: &mut Context<Self>) -> Self {
+impl FilePanelWrapper {
+    pub fn new(
+        text_editor: WeakEntity<TextEditor>,
+        file_index: usize,
+        file_path: PathBuf,
+        input_state: Entity<InputState>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         Self {
             text_editor,
+            file_index,
+            file_path,
+            input_state,
             focus_handle: cx.focus_handle(),
         }
     }
 }
 
-impl EventEmitter<PanelEvent> for TextEditorPanel {}
+impl EventEmitter<PanelEvent> for FilePanelWrapper {}
 
-impl Render for TextEditorPanel {
+impl Render for FilePanelWrapper {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .size_full()
-            .child(self.text_editor.clone())
+            .child(ui::input::TextInput::new(&self.input_state).h_full().w_full())
     }
 }
 
-impl Focusable for TextEditorPanel {
+impl Focusable for FilePanelWrapper {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus_handle.clone()
     }
 }
 
-impl Panel for TextEditorPanel {
+impl Panel for FilePanelWrapper {
     fn panel_name(&self) -> &'static str {
-        "text_editor"
+        "file"
     }
 
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
-        "Editor".into_any_element()
+        let filename = self.file_path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("untitled")
+            .to_string();
+        filename.into_any_element()
+    }
+}
+
+/// Welcome Panel - shown when no files are open
+pub struct WelcomePanelWrapper {
+    focus_handle: FocusHandle,
+}
+
+impl WelcomePanelWrapper {
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        Self {
+            focus_handle: cx.focus_handle(),
+        }
+    }
+}
+
+impl EventEmitter<PanelEvent> for WelcomePanelWrapper {}
+
+impl Render for WelcomePanelWrapper {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .size_full()
+            .items_center()
+            .justify_center()
+            .gap_4()
+            .child(
+                div()
+                    .text_xl()
+                    .font_weight(gpui::FontWeight::BOLD)
+                    .text_color(cx.theme().foreground)
+                    .child("Welcome to Script Editor")
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("Open a file from the explorer to start editing")
+            )
+    }
+}
+
+impl Focusable for WelcomePanelWrapper {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+impl Panel for WelcomePanelWrapper {
+    fn panel_name(&self) -> &'static str {
+        "welcome"
+    }
+
+    fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
+        "Welcome".into_any_element()
     }
 }
 

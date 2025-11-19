@@ -61,22 +61,35 @@ pub struct TextEditor {
     markdown_split_state: Entity<ResizableState>,
     /// Pending navigation (path, line, character) to be handled when we have window access
     pending_navigation: Option<(PathBuf, u32, u32)>,
+    /// Internal workspace for draggable file tabs
+    workspace: Option<Entity<ui::workspace::Workspace>>,
 }
 
 impl TextEditor {
-    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let markdown_split_state = ResizableState::new(cx);
+        
+        // Create internal workspace for file tabs
+        let workspace = cx.new(|cx| {
+            ui::workspace::Workspace::new_with_channel(
+                "text-editor-workspace",
+                ui::dock::DockChannel(4), // Unique channel for text editor internal workspace
+                window,
+                cx
+            )
+        });
         
         Self {
             focus_handle: cx.focus_handle(),
             open_files: Vec::new(),
             current_file_index: None,
             last_render_time: None,
-            show_performance_stats: false, // Toggle with F12 or button
+            show_performance_stats: false,
             subscriptions: Vec::new(),
             rust_analyzer: None,
             markdown_split_state,
             pending_navigation: None,
+            workspace: Some(workspace),
         }
     }
     
@@ -97,6 +110,71 @@ impl TextEditor {
     /// Set the global rust analyzer manager
     pub fn set_rust_analyzer(&mut self, analyzer: Entity<RustAnalyzerManager>, _cx: &mut Context<Self>) {
         self.rust_analyzer = Some(analyzer);
+    }
+    
+    /// Sync the workspace tabs with currently open files
+    fn sync_workspace_tabs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(ref workspace) = self.workspace {
+            let text_editor_weak = cx.entity().downgrade();
+            
+            // Create file panels for each open file
+            let file_panels: Vec<std::sync::Arc<dyn ui::dock::PanelView>> = self.open_files.iter().enumerate().map(|(index, open_file)| {
+                let panel = cx.new(|cx| {
+                    use crate::tabs::script_editor::FilePanelWrapper;
+                    FilePanelWrapper::new(
+                        text_editor_weak.clone(),
+                        index,
+                        open_file.path.clone(),
+                        open_file.input_state.clone(),
+                        cx
+                    )
+                });
+                std::sync::Arc::new(panel) as std::sync::Arc<dyn ui::dock::PanelView>
+            }).collect();
+            
+            workspace.update(cx, |workspace, cx| {
+                let dock_area = workspace.dock_area().downgrade();
+                
+                if file_panels.is_empty() {
+                    // Show welcome panel if no files open
+                    let welcome_panel = cx.new(|cx| {
+                        use crate::tabs::script_editor::WelcomePanelWrapper;
+                        WelcomePanelWrapper::new(cx)
+                    });
+                    
+                    workspace.initialize(
+                        ui::dock::DockItem::tabs(
+                            vec![std::sync::Arc::new(welcome_panel) as std::sync::Arc<dyn ui::dock::PanelView>],
+                            Some(0),
+                            &dock_area,
+                            window,
+                            cx,
+                        ),
+                        None,
+                        None,
+                        None,
+                        window,
+                        cx,
+                    );
+                } else {
+                    // Show file tabs
+                    workspace.initialize(
+                        ui::dock::DockItem::tabs(
+                            file_panels,
+                            self.current_file_index,
+                            &dock_area,
+                            window,
+                            cx,
+                        ),
+                        None,
+                        None,
+                        None,
+                        window,
+                        cx,
+                    );
+                }
+            });
+        }
     }
 
     /// Create a new empty file
@@ -1167,6 +1245,9 @@ impl Focusable for TextEditor {
 
 impl Render for TextEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Sync workspace with open files
+        self.sync_workspace_tabs(window, cx);
+        
         // Process any pending navigation requests (from go-to-definition)
         self.process_pending_navigation(window, cx);
         
@@ -1180,11 +1261,18 @@ impl Render for TextEditor {
             .size_full()
             .bg(cx.theme().background)
             .child(self.render_toolbar(cx))
-            .child(self.render_tab_bar(cx))
             .child(
                 div()
                     .flex_1()
-                    .child(self.render_editor_content(window, cx))
+                    .min_h_0()
+                    .overflow_hidden()
+                    .child(
+                        if let Some(ref workspace) = self.workspace {
+                            workspace.clone().into_any_element()
+                        } else {
+                            div().child("Loading...").into_any_element()
+                        }
+                    )
             )
             .child(self.render_status_bar(cx));
         
