@@ -78,20 +78,30 @@ impl ScriptEditor {
         
         // Initialize workspace with text editor in center
         workspace.update(cx, |workspace, cx| {
+            let dock_area = workspace.dock_area().downgrade();
+            
             // Create a wrapper panel for the text editor
             let text_editor_panel = cx.new(|cx| {
                 TextEditorPanel::new(self.text_editor.clone(), cx)
             });
             
-            // Create file explorer panel
+            // Create file explorer panel (as tabs so it's draggable)
             let file_explorer_panel = cx.new(|cx| {
                 FileExplorerPanel::new(self.file_explorer.clone(), cx)
             });
             
-            // Initialize with file explorer on left, text editor in center
+            // Initialize with file explorer as tabs on left, text editor in center
             workspace.initialize(
-                DockItem::Panel { view: std::sync::Arc::new(text_editor_panel) },
-                Some(DockItem::Panel { view: std::sync::Arc::new(file_explorer_panel) }),
+                DockItem::panel(std::sync::Arc::new(text_editor_panel)),
+                Some(DockItem::tabs(
+                    vec![
+                        std::sync::Arc::new(file_explorer_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
+                    ],
+                    Some(0),
+                    &dock_area,
+                    window,
+                    cx,
+                )),
                 None,
                 None,
                 window,

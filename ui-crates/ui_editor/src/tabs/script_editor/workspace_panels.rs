@@ -7,6 +7,8 @@ use super::text_editor::TextEditor;
 use super::file_explorer::FileExplorer;
 
 /// Text Editor Panel - wraps the text editor with all open files
+/// Note: Individual file tabs are managed internally by TextEditor
+/// Future enhancement: Split each file into its own draggable panel
 pub struct TextEditorPanel {
     text_editor: Entity<TextEditor>,
     focus_handle: FocusHandle,

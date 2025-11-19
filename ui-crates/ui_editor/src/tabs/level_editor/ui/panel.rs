@@ -212,13 +212,13 @@ impl LevelEditorPanel {
                 HierarchyPanelWrapper::new(shared_state.clone(), cx)
             });
             
-            // Create right panel
+            // Create right panels (as tabs)
             let properties_panel = cx.new(|cx| {
                 use crate::tabs::level_editor::PropertiesPanelWrapper;
                 PropertiesPanelWrapper::new(shared_state.clone(), cx)
             });
             
-            // Initialize workspace with draggable tabs on left
+            // Initialize workspace with draggable tabs on both sides
             workspace.initialize(
                 DockItem::panel(std::sync::Arc::new(viewport_panel)),
                 Some(DockItem::tabs(
@@ -231,7 +231,15 @@ impl LevelEditorPanel {
                     window,
                     cx,
                 )),
-                Some(DockItem::panel(std::sync::Arc::new(properties_panel))),
+                Some(DockItem::tabs(
+                    vec![
+                        std::sync::Arc::new(properties_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
+                    ],
+                    Some(0),
+                    &dock_area,
+                    window,
+                    cx,
+                )),
                 None,
                 window,
                 cx,
