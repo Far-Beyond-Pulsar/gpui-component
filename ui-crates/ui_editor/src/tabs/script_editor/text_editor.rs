@@ -115,79 +115,84 @@ impl TextEditor {
         self.rust_analyzer = Some(analyzer);
     }
     
-    /// Initialize workspace on first render - only called once
+    /// Initialize/reinitialize workspace with current files
     fn initialize_workspace_once(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.workspace_initialized {
             return;
         }
         
         if let Some(ref workspace) = self.workspace {
+            let text_editor_weak = cx.entity().downgrade();
+            
             workspace.update(cx, |workspace, cx| {
                 let dock_area = workspace.dock_area().downgrade();
                 
-                // Initialize with empty welcome panel - files will be added dynamically
-                let welcome_panel = cx.new(|cx| {
-                    use crate::tabs::script_editor::WelcomePanelWrapper;
-                    WelcomePanelWrapper::new(cx)
-                });
-                
-                workspace.initialize(
-                    ui::dock::DockItem::tabs(
-                        vec![std::sync::Arc::new(welcome_panel) as std::sync::Arc<dyn ui::dock::PanelView>],
-                        Some(0),
-                        &dock_area,
+                if self.open_files.is_empty() {
+                    // Show welcome panel when no files
+                    let welcome_panel = cx.new(|cx| {
+                        use crate::tabs::script_editor::WelcomePanelWrapper;
+                        WelcomePanelWrapper::new(cx)
+                    });
+                    
+                    workspace.initialize(
+                        ui::dock::DockItem::tabs(
+                            vec![std::sync::Arc::new(welcome_panel) as std::sync::Arc<dyn ui::dock::PanelView>],
+                            Some(0),
+                            &dock_area,
+                            window,
+                            cx,
+                        ),
+                        None,
+                        None,
+                        None,
                         window,
                         cx,
-                    ),
-                    None,
-                    None,
-                    None,
-                    window,
-                    cx,
-                );
+                    );
+                } else {
+                    // Create panels for all open files
+                    let file_panels: Vec<std::sync::Arc<dyn ui::dock::PanelView>> = self.open_files
+                        .iter()
+                        .enumerate()
+                        .map(|(index, open_file)| {
+                            let panel = cx.new(|cx| {
+                                use crate::tabs::script_editor::FilePanelWrapper;
+                                FilePanelWrapper::new(
+                                    text_editor_weak.clone(),
+                                    index,
+                                    open_file.path.clone(),
+                                    open_file.input_state.clone(),
+                                    cx
+                                )
+                            });
+                            std::sync::Arc::new(panel) as std::sync::Arc<dyn ui::dock::PanelView>
+                        })
+                        .collect();
+                    
+                    workspace.initialize(
+                        ui::dock::DockItem::tabs(
+                            file_panels,
+                            self.current_file_index,
+                            &dock_area,
+                            window,
+                            cx,
+                        ),
+                        None,
+                        None,
+                        None,
+                        window,
+                        cx,
+                    );
+                }
             });
             
             self.workspace_initialized = true;
         }
     }
     
-    /// Add a file as a tab to the workspace
-    fn add_file_to_workspace(&mut self, file_index: usize, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(open_file) = self.open_files.get(file_index) {
-            if let Some(ref workspace) = self.workspace {
-                let text_editor_weak = cx.entity().downgrade();
-                let file_path = open_file.path.clone();
-                let input_state = open_file.input_state.clone();
-                
-                // Get dock_area before creating panel
-                let dock_area = workspace.read(cx).dock_area().clone();
-                
-                // Create file panel
-                let panel = cx.new(|cx| {
-                    use crate::tabs::script_editor::FilePanelWrapper;
-                    FilePanelWrapper::new(
-                        text_editor_weak.clone(),
-                        file_index,
-                        file_path,
-                        input_state,
-                        cx
-                    )
-                });
-                
-                // Defer adding to dock_area to avoid nested updates
-                window.defer(cx, move |window, cx| {
-                    dock_area.update(cx, |dock_area, cx| {
-                        dock_area.add_panel(
-                            std::sync::Arc::new(panel),
-                            ui::dock::DockPlacement::Center,
-                            None,
-                            window,
-                            cx
-                        );
-                    });
-                });
-            }
-        }
+    /// Mark that files have changed (workspace will re-render)
+    fn mark_files_changed(&mut self, cx: &mut Context<Self>) {
+        // Just notify - the workspace will pick up changes on next render
+        cx.notify();
     }
 
     /// Create a new empty file
@@ -234,8 +239,8 @@ impl TextEditor {
         let new_index = self.open_files.len() - 1;
         self.current_file_index = Some(new_index);
         
-        // Add file to workspace
-        self.add_file_to_workspace(new_index, window, cx);
+        // Mark workspace needs refresh
+        self.workspace_initialized = false;
 
         // Create subscription for this file
         let analyzer = self.rust_analyzer.clone();
@@ -488,8 +493,8 @@ impl TextEditor {
         let new_index = self.open_files.len() - 1;
         self.current_file_index = Some(new_index);
         
-        // Add file to workspace
-        self.add_file_to_workspace(new_index, window, cx);
+        // Mark workspace needs refresh
+        self.workspace_initialized = false;
         
         // Create subscription for this file
         let analyzer = self.rust_analyzer.clone();
