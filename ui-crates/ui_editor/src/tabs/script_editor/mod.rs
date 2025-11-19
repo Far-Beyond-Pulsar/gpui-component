@@ -11,7 +11,7 @@ pub use workspace_panels::*;
 use std::path::PathBuf;
 use gpui::*;
 use ui::{
-    dock::{Panel, PanelEvent, DockItem, DockPlacement},
+    dock::{Panel, PanelEvent, DockItem, DockPlacement, DockChannel},
     workspace::Workspace,
     resizable::{h_resizable, resizable_panel, ResizableState},
     h_flex,
@@ -67,7 +67,13 @@ impl ScriptEditor {
         }
         
         let workspace = cx.new(|cx| {
-            Workspace::new("script-editor-workspace", window, cx)
+            // Use channel 2 for script editor to isolate from main app dock (channel 0) and BP editor (channel 1)
+            Workspace::new_with_channel(
+                "script-editor-workspace",
+                ui::dock::DockChannel(2),
+                window,
+                cx
+            )
         });
         
         // Initialize workspace with text editor in center

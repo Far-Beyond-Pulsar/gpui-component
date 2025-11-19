@@ -1,9 +1,10 @@
 use gpui::*;
 use ui::{
-    dock::{Panel, PanelEvent},
+    dock::{Panel, PanelEvent, DockItem, DockPlacement, DockChannel},
+    workspace::Workspace,
     resizable::{h_resizable, v_resizable, resizable_panel, ResizableState},
-    v_flex,
-    ActiveTheme as _,
+    v_flex, h_flex,
+    ActiveTheme as _, StyledExt,
 };
 // Zero-copy Bevy viewport for 3D rendering
 use ui::bevy_viewport::{BevyViewport, BevyViewportState};
@@ -14,8 +15,6 @@ use ui::settings::EngineSettings;
 // use ui::ui::wgpu_3d_renderer::Wgpu3DRenderer;
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use ui_common::StatusBar;
-use ui::workspace::Workspace;
-use ui::dock::DockItem;
 use engine_backend::GameThread;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -169,7 +168,13 @@ impl LevelEditorPanel {
         }
         
         let workspace = cx.new(|cx| {
-            Workspace::new("level-editor-workspace", window, cx)
+            // Use channel 3 for level editor to isolate from main app dock (channel 0), BP editor (channel 1), and script editor (channel 2)
+            Workspace::new_with_channel(
+                "level-editor-workspace",
+                ui::dock::DockChannel(3),
+                window,
+                cx
+            )
         });
         
         let shared_state = self.shared_state.clone();
