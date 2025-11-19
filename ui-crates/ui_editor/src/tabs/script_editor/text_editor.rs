@@ -159,7 +159,10 @@ impl TextEditor {
                 let file_path = open_file.path.clone();
                 let input_state = open_file.input_state.clone();
                 
-                // Create file panel outside the workspace update
+                // Get dock_area before creating panel
+                let dock_area = workspace.read(cx).dock_area().clone();
+                
+                // Create file panel
                 let panel = cx.new(|cx| {
                     use crate::tabs::script_editor::FilePanelWrapper;
                     FilePanelWrapper::new(
@@ -171,20 +174,16 @@ impl TextEditor {
                     )
                 });
                 
-                // Defer adding to workspace to avoid nested updates
-                let workspace_clone = workspace.clone();
+                // Defer adding to dock_area to avoid nested updates
                 window.defer(cx, move |window, cx| {
-                    workspace_clone.update(cx, |workspace, cx| {
-                        let dock_area = workspace.dock_area();
-                        dock_area.update(cx, |dock_area, cx| {
-                            dock_area.add_panel(
-                                std::sync::Arc::new(panel),
-                                ui::dock::DockPlacement::Center,
-                                None,
-                                window,
-                                cx
-                            );
-                        });
+                    dock_area.update(cx, |dock_area, cx| {
+                        dock_area.add_panel(
+                            std::sync::Arc::new(panel),
+                            ui::dock::DockPlacement::Center,
+                            None,
+                            window,
+                            cx
+                        );
                     });
                 });
             }
