@@ -1,15 +1,18 @@
 mod file_explorer;
 pub mod text_editor;
 mod autocomplete_integration;
+mod workspace_panels;
 
 pub use file_explorer::FileExplorer;
 pub use text_editor::{TextEditor, TextEditorEvent};
 pub use autocomplete_integration::*;
+pub use workspace_panels::*;
 
 use std::path::PathBuf;
 use gpui::*;
 use ui::{
-    dock::{Panel, PanelEvent},
+    dock::{Panel, PanelEvent, DockItem, DockPlacement},
+    workspace::Workspace,
     resizable::{h_resizable, resizable_panel, ResizableState},
     h_flex,
     ActiveTheme,
@@ -26,6 +29,8 @@ pub struct ScriptEditor {
     horizontal_resizable_state: Entity<ResizableState>,
     /// Global rust analyzer for LSP support
     rust_analyzer: Option<Entity<RustAnalyzerManager>>,
+    /// Workspace for draggable file tabs
+    workspace: Option<Entity<Workspace>>,
 }
 
 impl ScriptEditor {
@@ -51,7 +56,44 @@ impl ScriptEditor {
             text_editor,
             horizontal_resizable_state,
             rust_analyzer: None,
+            workspace: None,
         }
+    }
+    
+    /// Initialize workspace with text editor as center panel
+    fn initialize_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.workspace.is_some() {
+            return;
+        }
+        
+        let workspace = cx.new(|cx| {
+            Workspace::new("script-editor-workspace", window, cx)
+        });
+        
+        // Initialize workspace with text editor in center
+        workspace.update(cx, |workspace, cx| {
+            // Create a wrapper panel for the text editor
+            let text_editor_panel = cx.new(|cx| {
+                TextEditorPanel::new(self.text_editor.clone(), cx)
+            });
+            
+            // Create file explorer panel
+            let file_explorer_panel = cx.new(|cx| {
+                FileExplorerPanel::new(self.file_explorer.clone(), cx)
+            });
+            
+            // Initialize with file explorer on left, text editor in center
+            workspace.initialize(
+                DockItem::panel(text_editor_panel),
+                Some(DockItem::panel(file_explorer_panel)),
+                None,
+                None,
+                window,
+                cx,
+            );
+        });
+        
+        self.workspace = Some(workspace);
     }
 
     /// Set the global rust analyzer manager
@@ -191,39 +233,26 @@ impl EventEmitter<crate::tabs::script_editor::text_editor::TextEditorEvent> for 
 
 impl Render for ScriptEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Initialize workspace on first render
+        self.initialize_workspace(window, cx);
+        
         // Check for file opening requests from the file explorer
         if let Some(path) = self.file_explorer.update(cx, |explorer, _| explorer.get_last_opened_file()) {
             self.open_file(path, window, cx);
         }
-        h_flex()
+        
+        div()
             .size_full()
             .bg(cx.theme().background)
             .key_context("ScriptEditor")
             .on_action(cx.listener(Self::save_current_file))
             .on_action(cx.listener(Self::close_current_file))
             .child(
-                h_resizable("script-editor-horizontal", self.horizontal_resizable_state.clone())
-                    .child(
-                        resizable_panel()
-                            .size(px(300.))
-                            .size_range(px(200.)..px(500.))
-                            .child(
-                                div()
-                                    .size_full()
-                                    .bg(cx.theme().sidebar)
-                                    .border_r_1()
-                                    .border_color(cx.theme().border)
-                                    .child(self.file_explorer.clone())
-                            )
-                    )
-                    .child(
-                        resizable_panel()
-                            .child(
-                                div()
-                                    .size_full()
-                                    .child(self.text_editor.clone())
-                            )
-                    )
+                if let Some(ref workspace) = self.workspace {
+                    workspace.clone().into_any_element()
+                } else {
+                    div().child("Loading workspace...").into_any_element()
+                }
             )
     }
 }

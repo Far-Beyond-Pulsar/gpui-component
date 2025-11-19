@@ -14,6 +14,7 @@ use ui::settings::EngineSettings;
 // use ui::ui::wgpu_3d_renderer::Wgpu3DRenderer;
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use ui_common::StatusBar;
+use ui::workspace::{Workspace, DockItem};
 use engine_backend::GameThread;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -58,6 +59,12 @@ pub struct LevelEditorPanel {
     
     // Game thread for object movement and game logic
     game_thread: Arc<GameThread>,
+    
+    // Shared state for panels
+    shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
+    
+    // Workspace for draggable panels
+    workspace: Option<Entity<Workspace>>,
 }
 
 impl LevelEditorPanel {
@@ -132,9 +139,11 @@ impl LevelEditorPanel {
         
         println!("[LEVEL-EDITOR] Modular level editor initialized");
 
+        let state = LevelEditorState::new();
+        
         Self {
             focus_handle: cx.focus_handle(),
-            state: LevelEditorState::new(),
+            state: LevelEditorState::new(), // Will be moved to shared_state
             fps_graph_is_line: Rc::new(RefCell::new(true)),  // Default to line graph
             scene_browser: SceneBrowser::new(),
             hierarchy: HierarchyPanel::new(),
@@ -145,10 +154,77 @@ impl LevelEditorPanel {
             vertical_resizable_state,
             viewport,
             viewport_state,
-            gpu_engine,
+            gpu_engine: gpu_engine.clone(),
             render_enabled,
-            game_thread,
+            game_thread: game_thread.clone(),
+            shared_state: Arc::new(parking_lot::RwLock::new(state)),
+            workspace: None,
         }
+    }
+    
+    fn initialize_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.workspace.is_some() {
+            return;
+        }
+        
+        let workspace = cx.new(|cx| {
+            Workspace::new("level-editor-workspace", window, cx)
+        });
+        
+        let shared_state = self.shared_state.clone();
+        let fps_graph = self.fps_graph_is_line.clone();
+        let gpu = self.gpu_engine.clone();
+        let game = self.game_thread.clone();
+        let viewport = self.viewport.clone();
+        let render_enabled = self.render_enabled.clone();
+        
+        workspace.update(cx, |workspace, cx| {
+            // Create viewport in center
+            let viewport_panel_inner = ViewportPanel::new(viewport.clone(), render_enabled.clone(), window, cx);
+            let viewport_panel = cx.new(|cx| {
+                use crate::tabs::level_editor::ViewportPanelWrapper;
+                ViewportPanelWrapper::new(
+                    viewport_panel_inner,
+                    shared_state.clone(),
+                    fps_graph.clone(),
+                    gpu.clone(),
+                    game.clone(),
+                    cx,
+                )
+            });
+            
+            // Create left panels (as tabs)
+            let scene_panel = cx.new(|cx| {
+                use crate::tabs::level_editor::SceneBrowserPanel;
+                SceneBrowserPanel::new(cx)
+            });
+            
+            let hierarchy_panel = cx.new(|cx| {
+                use crate::tabs::level_editor::HierarchyPanelWrapper;
+                HierarchyPanelWrapper::new(shared_state.clone(), cx)
+            });
+            
+            // Create right panel
+            let properties_panel = cx.new(|cx| {
+                use crate::tabs::level_editor::PropertiesPanelWrapper;
+                PropertiesPanelWrapper::new(shared_state.clone(), cx)
+            });
+            
+            // Initialize workspace with draggable tabs on left
+            workspace.initialize(
+                DockItem::panel(viewport_panel),
+                Some(DockItem::tabs(vec![
+                    std::sync::Arc::new(scene_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
+                    std::sync::Arc::new(hierarchy_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
+                ])),
+                Some(DockItem::panel(properties_panel)),
+                None,
+                window,
+                cx,
+            );
+        });
+        
+        self.workspace = Some(workspace);
     }
 
     pub fn toggle_rendering(&mut self) {
@@ -509,6 +585,9 @@ impl EventEmitter<PanelEvent> for LevelEditorPanel {}
 
 impl Render for LevelEditorPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Initialize workspace on first render
+        self.initialize_workspace(window, cx);
+        
         // Sync viewport buffer index with Bevy's read index each frame
         if let Ok(engine_guard) = self.gpu_engine.try_lock() {
             if let Some(ref bevy_renderer) = engine_guard.bevy_renderer {
@@ -597,79 +676,12 @@ impl Render for LevelEditorPanel {
                 self.toolbar.render(&self.state, cx)
             )
             .child(
-                // Main content area with resizable panels
-                div()
-                    .flex_1() // Grow to fill remaining space
-                    .flex() // Enable flexbox
-                    .flex_row() // Row direction for resizable panels
-                    .min_h_0() // Allow shrinking below content size
-                    .child(
-                        h_resizable("level-editor-main", self.horizontal_resizable_state.clone())
-                            .child(
-                                // Left sidebar: Scene Browser + Hierarchy
-                                resizable_panel()
-                                    .size(px(280.))
-                                    .size_range(px(200.)..px(400.))
-                                    .child(
-                                        div()
-                                            .size_full()
-                                            .bg(cx.theme().sidebar)
-                                            .border_r_1()
-                                            .border_color(cx.theme().border)
-                                            .child(
-                                                v_resizable("level-editor-left", self.vertical_resizable_state.clone())
-                                                    .child(
-                                                        resizable_panel()
-                                                            .size(px(200.))
-                                                            .size_range(px(100.)..px(400.))
-                                                            .child(self.scene_browser.render(cx))
-                                                    )
-                                                    .child(
-                                                        resizable_panel()
-                                                            .child(
-                                                                div()
-                                                                    .size_full()
-                                                                    .p_1()
-                                                                    .child(self.hierarchy.render(&self.state, cx))
-                                                            )
-                                                    )
-                                            )
-                                    )
-                            )
-                            .child(
-                                // Center: Viewport
-                                resizable_panel()
-                                    .child(
-                                        div()
-                                            .size_full()
-                                            .p_1()
-                                            .child(
-                                                self.viewport_panel.render(
-                                                    &mut self.state,
-                                                    self.fps_graph_is_line.clone(),
-                                                    &self.gpu_engine,
-                                                    &self.game_thread,
-                                                    cx
-                                                )
-                                            )
-                                    )
-                            )
-                            .child(
-                                // Right sidebar: Properties
-                                resizable_panel()
-                                    .size(px(300.))
-                                    .size_range(px(250.)..px(450.))
-                                    .child(
-                                        div()
-                                            .size_full()
-                                            .bg(cx.theme().sidebar)
-                                            .border_l_1()
-                                            .border_color(cx.theme().border)
-                                            .p_1()
-                                            .child(self.properties.render(&self.state, cx))
-                                    )
-                            )
-                    )
+                // Workspace with draggable panels
+                if let Some(ref workspace) = self.workspace {
+                    workspace.clone().into_any_element()
+                } else {
+                    div().child("Loading workspace...").into_any_element()
+                }
             )
             .child(
                 // Status bar at the bottom
