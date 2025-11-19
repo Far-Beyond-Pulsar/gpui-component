@@ -426,9 +426,9 @@ impl ApplicationHandler for WinitGpuiApp {
                             }
                             // If GPUI didn't render, we just reuse the last frame from persistent_texture
 
-                            // Clear to green (bottom layer) - immediate mode background
-                            let green = [0.0f32, 1.0, 0.0, 1.0];
-                            context.ClearRenderTargetView(render_target_view, &green);
+                            // Clear to black (bottom layer) - immediate mode background
+                            let black = [0.0f32, 0.0, 0.0, 1.0];
+                            context.ClearRenderTargetView(render_target_view, &black);
 
                             // Set render target
                             context.OMSetRenderTargets(Some(&[Some(render_target_view.clone())]), None);

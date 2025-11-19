@@ -42,6 +42,7 @@ pub struct EntryScreen {
 pub struct DependencyStatus {
     pub rust_installed: bool,
     pub build_tools_installed: bool,
+    pub compiler_info: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -107,28 +108,49 @@ impl EntryScreen {
                     .output()
                     .is_ok();
                 
-                // Check for build tools
+                // Check for build tools - accept ANY compiler toolchain
                 #[cfg(target_os = "windows")]
-                let build_tools_installed = Command::new("cl")
-                    .arg("/?")
-                    .output()
-                    .is_ok();
+                let (build_tools_installed, compiler_info) = {
+                    // Try MSVC first
+                    if Command::new("cl").arg("/?").output().is_ok() {
+                        (true, Some("MSVC".to_string()))
+                    } else if Command::new("gcc").arg("--version").output().is_ok() {
+                        (true, Some("GCC (MinGW)".to_string()))
+                    } else if Command::new("clang").arg("--version").output().is_ok() {
+                        (true, Some("Clang".to_string()))
+                    } else {
+                        (false, None)
+                    }
+                };
                 
                 #[cfg(target_os = "linux")]
-                let build_tools_installed = Command::new("gcc")
-                    .arg("--version")
-                    .output()
-                    .is_ok();
+                let (build_tools_installed, compiler_info) = {
+                    // Try GCC first
+                    if Command::new("gcc").arg("--version").output().is_ok() {
+                        (true, Some("GCC".to_string()))
+                    } else if Command::new("clang").arg("--version").output().is_ok() {
+                        (true, Some("Clang".to_string()))
+                    } else {
+                        (false, None)
+                    }
+                };
                 
                 #[cfg(target_os = "macos")]
-                let build_tools_installed = Command::new("clang")
-                    .arg("--version")
-                    .output()
-                    .is_ok();
+                let (build_tools_installed, compiler_info) = {
+                    // Try Clang first (standard on macOS)
+                    if Command::new("clang").arg("--version").output().is_ok() {
+                        (true, Some("Clang".to_string()))
+                    } else if Command::new("gcc").arg("--version").output().is_ok() {
+                        (true, Some("GCC".to_string()))
+                    } else {
+                        (false, None)
+                    }
+                };
                 
                 DependencyStatus {
                     rust_installed,
                     build_tools_installed,
+                    compiler_info,
                 }
             }).await;
             

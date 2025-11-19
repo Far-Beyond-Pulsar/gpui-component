@@ -74,8 +74,13 @@ pub fn render_dependency_setup(screen: &mut EntryScreen, cx: &mut Context<EntryS
                 .child(
                     v_flex()
                         .gap_3()
-                        .child(render_dependency_item("Rust Toolchain".to_string(), rust_installed, theme))
-                        .child(render_dependency_item("Build Tools (MSVC/GCC/Clang)".to_string(), build_tools_installed, theme))
+                        .child(render_dependency_item("Rust Toolchain".to_string(), rust_installed, None, theme))
+                        .child(render_dependency_item(
+                            "C/C++ Compiler".to_string(), 
+                            build_tools_installed,
+                            screen.dependency_status.as_ref().and_then(|s| s.compiler_info.clone()),
+                            theme
+                        ))
                 )
                 // Progress section
                 .children(screen.install_progress.clone().map(|progress| {
@@ -211,11 +216,11 @@ fn render_install_progress(progress: InstallProgress, theme: &ui::Theme) -> impl
         )
 }
 
-fn render_dependency_item(name: String, installed: bool, theme: &ui::Theme) -> impl IntoElement {
+fn render_dependency_item(name: String, installed: bool, info: Option<String>, theme: &ui::Theme) -> impl IntoElement {
     let (icon, color, status_text) = if installed {
-        (IconName::Check, theme.success_foreground, "Installed")
+        (IconName::Check, theme.success_foreground, info.unwrap_or_else(|| "Installed".to_string()))
     } else {
-        (IconName::WarningTriangle, gpui::yellow(), "Missing")
+        (IconName::WarningTriangle, gpui::yellow(), "Missing".to_string())
     };
     
     h_flex()
@@ -258,18 +263,20 @@ fn run_setup_script(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) {
     });
     
     let progress = Arc::new(Mutex::new(screen.install_progress.clone().unwrap()));
-    let progress_clone = progress.clone();
+    let progress_clone = Arc::clone(&progress);
     
-    let progress_for_thread = Arc::clone(&progress);
-    
+    // Spawn directly on background executor instead of using std::thread
     cx.spawn(async move |this, cx| {
-        std::thread::spawn(move || {
-            if let Err(e) = install_rust_with_progress(progress_clone) {
-                let mut prog = progress_for_thread.lock().unwrap();
-                prog.status = InstallStatus::Error(format!("Installation failed: {}", e));
-                prog.logs.push(format!("Error: {}", e));
-            }
-        });
+        // Run installation on background thread pool
+        let result = cx.background_executor().spawn(async move {
+            install_rust_with_progress(progress_clone)
+        }).await;
+        
+        if let Err(e) = result {
+            let mut prog = progress.lock().unwrap();
+            prog.status = InstallStatus::Error(format!("Installation failed: {}", e));
+            prog.logs.push(format!("Error: {}", e));
+        }
         
         // Poll progress updates
         loop {
@@ -301,7 +308,7 @@ fn run_setup_script(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) {
     }).detach();
 }
 
-fn install_rust_with_progress(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box<dyn std::error::Error>> {
+fn install_rust_with_progress(progress: Arc<Mutex<InstallProgress>>) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         install_rust_windows(progress)
@@ -314,7 +321,7 @@ fn install_rust_with_progress(progress: Arc<Mutex<InstallProgress>>) -> Result<(
 }
 
 #[cfg(target_os = "windows")]
-fn install_rust_windows(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box<dyn std::error::Error>> {
+fn install_rust_windows(progress: Arc<Mutex<InstallProgress>>) -> Result<(), String> {
     use std::io::Write;
     use std::os::windows::process::CommandExt;
     
@@ -400,10 +407,11 @@ fn install_rust_windows(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box
     // Download using reqwest
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(300))
-        .build()?;
+        .build()
+        .map_err(|e| e.to_string())?;
     
-    let response = client.get(RUSTUP_URL).send()?;
-    let bytes = response.bytes()?;
+    let response = client.get(RUSTUP_URL).send().map_err(|e| e.to_string())?;
+    let bytes = response.bytes().map_err(|e| e.to_string())?;
     
     {
         let mut prog = progress.lock().unwrap();
@@ -412,9 +420,9 @@ fn install_rust_windows(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box
     }
     
     // Write to temp file
-    let mut file = std::fs::File::create(&exe_path)?;
-    file.write_all(&bytes)?;
-    file.flush()?;
+    let mut file = std::fs::File::create(&exe_path).map_err(|e| e.to_string())?;
+    file.write_all(&bytes).map_err(|e| e.to_string())?;
+    file.flush().map_err(|e| e.to_string())?;
     drop(file);
     
     {
@@ -429,7 +437,8 @@ fn install_rust_windows(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box
     let status = runas::Command::new(&exe_path)
         .args(&["-y", "--default-toolchain", "stable", "--profile", "default"])
         .show(false) // Don't show console window
-        .status()?;
+        .status()
+        .map_err(|e| e.to_string())?;
     
     if status.success() {
         let mut prog = progress.lock().unwrap();
@@ -437,7 +446,7 @@ fn install_rust_windows(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box
         prog.progress = 1.0;
         prog.status = InstallStatus::Complete;
     } else {
-        return Err(format!("Rustup installer exited with status: {:?}", status).into());
+        return Err(format!("Rustup installer exited with status: {:?}", status));
     }
     
     // Clean up
@@ -447,7 +456,7 @@ fn install_rust_windows(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-fn install_rust_unix(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box<dyn std::error::Error>> {
+fn install_rust_unix(progress: Arc<Mutex<InstallProgress>>) -> Result<(), String> {
     use std::io::Write;
     use std::os::unix::fs::PermissionsExt;
     
@@ -531,10 +540,11 @@ fn install_rust_unix(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box<dy
     // Download using reqwest
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(300))
-        .build()?;
+        .build()
+        .map_err(|e| e.to_string())?;
     
-    let response = client.get(RUSTUP_URL).send()?;
-    let bytes = response.bytes()?;
+    let response = client.get(RUSTUP_URL).send().map_err(|e| e.to_string())?;
+    let bytes = response.bytes().map_err(|e| e.to_string())?;
     
     {
         let mut prog = progress.lock().unwrap();
@@ -543,15 +553,15 @@ fn install_rust_unix(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box<dy
     }
     
     // Write to temp file
-    let mut file = std::fs::File::create(&script_path)?;
-    file.write_all(&bytes)?;
-    file.flush()?;
+    let mut file = std::fs::File::create(&script_path).map_err(|e| e.to_string())?;
+    file.write_all(&bytes).map_err(|e| e.to_string())?;
+    file.flush().map_err(|e| e.to_string())?;
     drop(file);
     
     // Make executable
-    let mut perms = std::fs::metadata(&script_path)?.permissions();
+    let mut perms = std::fs::metadata(&script_path).map_err(|e| e.to_string())?.permissions();
     perms.set_mode(0o755);
-    std::fs::set_permissions(&script_path, perms)?;
+    std::fs::set_permissions(&script_path, perms).map_err(|e| e.to_string())?;
     
     {
         let mut prog = progress.lock().unwrap();
@@ -564,7 +574,8 @@ fn install_rust_unix(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box<dy
     // Run installer silently with -y
     let status = Command::new("sh")
         .args(&[script_path.to_str().unwrap(), "-y", "--default-toolchain", "stable", "--profile", "default"])
-        .status()?;
+        .status()
+        .map_err(|e| e.to_string())?;
     
     if status.success() {
         let mut prog = progress.lock().unwrap();
@@ -572,7 +583,7 @@ fn install_rust_unix(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box<dy
         prog.progress = 1.0;
         prog.status = InstallStatus::Complete;
     } else {
-        return Err(format!("Rustup installer exited with status: {:?}", status).into());
+        return Err(format!("Rustup installer exited with status: {:?}", status));
     }
     
     // Clean up
