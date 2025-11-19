@@ -1,5 +1,5 @@
 use gpui::*;
-use gpui::prelude::FluentBuilder;
+use gpui::prelude::*;
 use ui::{
     button::{Button, ButtonVariants},
     h_flex, v_flex, ActiveTheme, Icon, IconName,
@@ -78,7 +78,7 @@ pub fn render_dependency_setup(screen: &mut EntryScreen, cx: &mut Context<EntryS
                         .child(render_dependency_item("Build Tools (MSVC/GCC/Clang)".to_string(), build_tools_installed, theme))
                 )
                 // Progress section
-                .children(screen.install_progress.as_ref().map(|progress| {
+                .children(screen.install_progress.clone().map(|progress| {
                     render_install_progress(progress, theme)
                 }))
                 // Actions
@@ -136,7 +136,18 @@ pub fn render_dependency_setup(screen: &mut EntryScreen, cx: &mut Context<EntryS
         )
 }
 
-fn render_install_progress(progress: &InstallProgress, theme: &ui::Theme) -> impl IntoElement {
+fn render_install_progress(progress: InstallProgress, theme: &ui::Theme) -> impl IntoElement {
+    let (icon, color, status_text) = match &progress.status {
+        InstallStatus::Idle => (IconName::Circle, theme.accent, "Ready".to_string()),
+        InstallStatus::Downloading => (IconName::Download, theme.accent, "Downloading installer...".to_string()),
+        InstallStatus::Installing => (IconName::Settings, theme.accent, "Installing dependencies...".to_string()),
+        InstallStatus::Complete => (IconName::Check, theme.success_foreground, "Installation complete!".to_string()),
+        InstallStatus::Error(e) => (IconName::WarningTriangle, gpui::red(), e.clone()),
+    };
+    
+    let progress_val = progress.progress;
+    let logs = progress.logs.clone();
+    
     v_flex()
         .gap_3()
         .p_4()
@@ -149,32 +160,16 @@ fn render_install_progress(progress: &InstallProgress, theme: &ui::Theme) -> imp
                 .items_center()
                 .gap_2()
                 .child(
-                    Icon::new(match progress.status {
-                        InstallStatus::Downloading => IconName::Download,
-                        InstallStatus::Installing => IconName::Settings,
-                        InstallStatus::Complete => IconName::Check,
-                        InstallStatus::Error(_) => IconName::WarningTriangle,
-                        InstallStatus::Idle => IconName::Circle,
-                    })
-                    .size_4()
-                    .text_color(match progress.status {
-                        InstallStatus::Complete => theme.success_foreground,
-                        InstallStatus::Error(_) => gpui::red(),
-                        _ => theme.accent,
-                    })
+                    Icon::new(icon)
+                        .size_4()
+                        .text_color(color)
                 )
                 .child(
                     div()
                         .text_sm()
                         .font_weight(FontWeight::BOLD)
                         .text_color(theme.foreground)
-                        .child(match &progress.status {
-                            InstallStatus::Idle => "Ready",
-                            InstallStatus::Downloading => "Downloading installer...",
-                            InstallStatus::Installing => "Installing dependencies...",
-                            InstallStatus::Complete => "Installation complete!",
-                            InstallStatus::Error(e) => e.as_str(),
-                        })
+                        .child(status_text)
                 )
         )
         // Progress bar
@@ -202,7 +197,6 @@ fn render_install_progress(progress: &InstallProgress, theme: &ui::Theme) -> imp
             div()
                 .w_full()
                 .max_h(px(200.))
-                .overflow_y_scroll()
                 .p_2()
                 .bg(gpui::black().opacity(0.3))
                 .rounded_sm()
@@ -322,8 +316,31 @@ fn install_rust_with_progress(progress: Arc<Mutex<InstallProgress>>) -> Result<(
 #[cfg(target_os = "windows")]
 fn install_rust_windows(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box<dyn std::error::Error>> {
     use std::io::Write;
+    use std::os::windows::process::CommandExt;
     
     let exe_path = std::env::temp_dir().join("rustup-init.exe");
+    
+    // Check if rustup already exists
+    let rustup_exists = Command::new("rustup")
+        .arg("--version")
+        .output()
+        .is_ok();
+    
+    if rustup_exists {
+        let mut prog = progress.lock().unwrap();
+        prog.logs.push("Existing Rust installation detected".to_string());
+        prog.logs.push("Uninstalling old version...".to_string());
+        prog.progress = 0.05;
+        drop(prog);
+        
+        // Try to uninstall existing rustup
+        let _ = Command::new("rustup")
+            .args(&["self", "uninstall", "-y"])
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .output();
+        
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
     
     // Update progress: Downloading
     {
@@ -339,7 +356,6 @@ fn install_rust_windows(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box
         .build()?;
     
     let response = client.get(RUSTUP_URL).send()?;
-    let total_size = response.content_length().unwrap_or(0);
     let bytes = response.bytes()?;
     
     {
@@ -356,14 +372,16 @@ fn install_rust_windows(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box
     
     {
         let mut prog = progress.lock().unwrap();
-        prog.logs.push("Running rustup installer...".to_string());
+        prog.logs.push("Running rustup installer with elevated privileges...".to_string());
+        prog.logs.push("Please accept the UAC prompt if it appears".to_string());
         prog.progress = 0.4;
         prog.status = InstallStatus::Installing;
     }
     
-    // Run installer non-interactively
-    let status = Command::new(&exe_path)
+    // Run installer with admin privileges using runas verb
+    let status = runas::Command::new(&exe_path)
         .args(&["-y", "--default-toolchain", "stable", "--profile", "default"])
+        .show(false) // Don't show console window
         .status()?;
     
     if status.success() {
@@ -387,6 +405,27 @@ fn install_rust_unix(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box<dy
     use std::os::unix::fs::PermissionsExt;
     
     let script_path = std::env::temp_dir().join("rustup-init.sh");
+    
+    // Check if rustup already exists
+    let rustup_exists = Command::new("rustup")
+        .arg("--version")
+        .output()
+        .is_ok();
+    
+    if rustup_exists {
+        let mut prog = progress.lock().unwrap();
+        prog.logs.push("Existing Rust installation detected".to_string());
+        prog.logs.push("Uninstalling old version...".to_string());
+        prog.progress = 0.05;
+        drop(prog);
+        
+        // Try to uninstall existing rustup
+        let _ = Command::new("rustup")
+            .args(&["self", "uninstall", "-y"])
+            .output();
+        
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
     
     // Update progress: Downloading
     {
@@ -424,6 +463,7 @@ fn install_rust_unix(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box<dy
     {
         let mut prog = progress.lock().unwrap();
         prog.logs.push("Running rustup installer...".to_string());
+        prog.logs.push("May require sudo password".to_string());
         prog.progress = 0.4;
         prog.status = InstallStatus::Installing;
     }

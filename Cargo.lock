@@ -10709,6 +10709,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "runas"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b96d6b6c505282b007a9b009f2aa38b2fd0359b81a0430ceacc60f69ade4c6a0"
+dependencies = [
+ "libc",
+ "security-framework-sys",
+ "which 4.4.2",
+ "windows-sys 0.48.0",
+]
+
+[[package]]
 name = "rusqlite"
 version = "0.32.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -14103,6 +14115,7 @@ dependencies = [
  "parking_lot",
  "reqwest",
  "rfd",
+ "runas",
  "serde",
  "serde_json",
  "sha2",
