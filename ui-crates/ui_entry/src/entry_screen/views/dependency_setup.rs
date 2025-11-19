@@ -329,9 +329,36 @@ fn install_rust_windows(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box
     if rustup_exists {
         let mut prog = progress.lock().unwrap();
         prog.logs.push("Existing Rust installation detected".to_string());
-        prog.logs.push("Uninstalling old version...".to_string());
-        prog.progress = 0.05;
+        prog.logs.push("Stopping all Rust processes...".to_string());
+        prog.progress = 0.02;
         drop(prog);
+        
+        // Kill all rust-related processes
+        let rust_processes = [
+            "rustc", "cargo", "rustup", "rust-analyzer", "rls",
+            "rustfmt", "cargo-clippy", "cargo-fmt", "rustdoc"
+        ];
+        
+        for process in &rust_processes {
+            let _ = Command::new("taskkill")
+                .args(&["/F", "/IM", &format!("{}.exe", process)])
+                .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                .output();
+        }
+        
+        {
+            let mut prog = progress.lock().unwrap();
+            prog.logs.push("Waiting for processes to terminate...".to_string());
+            prog.progress = 0.04;
+        }
+        
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        
+        {
+            let mut prog = progress.lock().unwrap();
+            prog.logs.push("Uninstalling old Rust version...".to_string());
+            prog.progress = 0.05;
+        }
         
         // Try to uninstall existing rustup
         let _ = Command::new("rustup")
@@ -339,7 +366,27 @@ fn install_rust_windows(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box
             .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .output();
         
-        std::thread::sleep(std::time::Duration::from_secs(2));
+        {
+            let mut prog = progress.lock().unwrap();
+            prog.logs.push("Cleaning up installation directories...".to_string());
+            prog.progress = 0.07;
+        }
+        
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        
+        // Force delete rust directories if they still exist
+        let home = std::env::var("USERPROFILE").unwrap_or_default();
+        let cargo_home = format!("{}/.cargo", home);
+        let rustup_home = format!("{}/.rustup", home);
+        
+        let _ = std::fs::remove_dir_all(&cargo_home);
+        let _ = std::fs::remove_dir_all(&rustup_home);
+        
+        {
+            let mut prog = progress.lock().unwrap();
+            prog.logs.push("Old installation cleaned up".to_string());
+            prog.progress = 0.09;
+        }
     }
     
     // Update progress: Downloading
@@ -415,16 +462,62 @@ fn install_rust_unix(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Box<dy
     if rustup_exists {
         let mut prog = progress.lock().unwrap();
         prog.logs.push("Existing Rust installation detected".to_string());
-        prog.logs.push("Uninstalling old version...".to_string());
-        prog.progress = 0.05;
+        prog.logs.push("Stopping all Rust processes...".to_string());
+        prog.progress = 0.02;
         drop(prog);
+        
+        // Kill all rust-related processes
+        let rust_processes = [
+            "rustc", "cargo", "rustup", "rust-analyzer", "rls",
+            "rustfmt", "cargo-clippy", "cargo-fmt", "rustdoc"
+        ];
+        
+        for process in &rust_processes {
+            let _ = Command::new("pkill")
+                .arg(process)
+                .output();
+        }
+        
+        {
+            let mut prog = progress.lock().unwrap();
+            prog.logs.push("Waiting for processes to terminate...".to_string());
+            prog.progress = 0.04;
+        }
+        
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        
+        {
+            let mut prog = progress.lock().unwrap();
+            prog.logs.push("Uninstalling old Rust version...".to_string());
+            prog.progress = 0.05;
+        }
         
         // Try to uninstall existing rustup
         let _ = Command::new("rustup")
             .args(&["self", "uninstall", "-y"])
             .output();
         
-        std::thread::sleep(std::time::Duration::from_secs(2));
+        {
+            let mut prog = progress.lock().unwrap();
+            prog.logs.push("Cleaning up installation directories...".to_string());
+            prog.progress = 0.07;
+        }
+        
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        
+        // Force delete rust directories if they still exist
+        let home = std::env::var("HOME").unwrap_or_default();
+        let cargo_home = format!("{}/.cargo", home);
+        let rustup_home = format!("{}/.rustup", home);
+        
+        let _ = std::fs::remove_dir_all(&cargo_home);
+        let _ = std::fs::remove_dir_all(&rustup_home);
+        
+        {
+            let mut prog = progress.lock().unwrap();
+            prog.logs.push("Old installation cleaned up".to_string());
+            prog.progress = 0.09;
+        }
     }
     
     // Update progress: Downloading
