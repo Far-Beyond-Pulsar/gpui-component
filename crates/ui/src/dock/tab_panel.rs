@@ -1037,7 +1037,6 @@ impl TabPanel {
             .id("active-panel")
             .group("")
             .flex_1()
-            .when(is_render_in_tabs, |this| this.pt_2())
             .child(
                 div()
                     .id("tab-content")
