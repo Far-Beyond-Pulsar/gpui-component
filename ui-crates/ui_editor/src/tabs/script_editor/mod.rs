@@ -84,8 +84,8 @@ impl ScriptEditor {
             
             // Initialize with file explorer on left, text editor in center
             workspace.initialize(
-                DockItem::panel(text_editor_panel),
-                Some(DockItem::panel(file_explorer_panel)),
+                DockItem::Panel { view: std::sync::Arc::new(text_editor_panel) },
+                Some(DockItem::Panel { view: std::sync::Arc::new(file_explorer_panel) }),
                 None,
                 None,
                 window,

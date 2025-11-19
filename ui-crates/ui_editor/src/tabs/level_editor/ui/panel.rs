@@ -212,12 +212,16 @@ impl LevelEditorPanel {
             
             // Initialize workspace with draggable tabs on left
             workspace.initialize(
-                DockItem::panel(viewport_panel),
-                Some(DockItem::tabs(vec![
-                    std::sync::Arc::new(scene_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
-                    std::sync::Arc::new(hierarchy_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
-                ])),
-                Some(DockItem::panel(properties_panel)),
+                DockItem::Panel { view: std::sync::Arc::new(viewport_panel) },
+                Some(DockItem::Tabs { 
+                    items: vec![
+                        std::sync::Arc::new(scene_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
+                        std::sync::Arc::new(hierarchy_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
+                    ],
+                    active_ix: 0,
+                    view: cx.new(|cx| ui::dock::TabPanel::new(window, cx)),
+                }),
+                Some(DockItem::Panel { view: std::sync::Arc::new(properties_panel) }),
                 None,
                 window,
                 cx,
