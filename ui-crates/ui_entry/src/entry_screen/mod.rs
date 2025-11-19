@@ -34,10 +34,34 @@ pub struct EntryScreen {
     pub(crate) git_upstream_url: String,
     pub(crate) project_settings: Option<views::ProjectSettings>,
     pub(crate) show_dependency_setup: bool,
+    pub(crate) dependency_status: Option<DependencyStatus>,
+    pub(crate) install_progress: Option<InstallProgress>,
+}
+
+#[derive(Clone, Debug)]
+pub struct DependencyStatus {
+    pub rust_installed: bool,
+    pub build_tools_installed: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct InstallProgress {
+    pub logs: Vec<String>,
+    pub progress: f32,
+    pub status: InstallStatus,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum InstallStatus {
+    Idle,
+    Downloading,
+    Installing,
+    Complete,
+    Error(String),
 }
 
 impl EntryScreen {
-    pub fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
+    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let recent_projects_path = directories::ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
             .map(|proj| proj.data_dir().join("recent_projects.json"))
             .unwrap_or_else(|| PathBuf::from("recent_projects.json"));
@@ -45,10 +69,7 @@ impl EntryScreen {
         let recent_projects = RecentProjectsList::load(&recent_projects_path);
         let templates = get_default_templates();
         
-        // Check if dependencies are missing
-        let missing_deps = Self::check_dependencies_missing();
-        
-        Self {
+        let mut screen = Self {
             view: EntryScreenView::Recent,
             recent_projects,
             templates,
@@ -64,40 +85,62 @@ impl EntryScreen {
             show_git_upstream_prompt: None,
             git_upstream_url: String::new(),
             project_settings: None,
-            show_dependency_setup: missing_deps,
-        }
+            show_dependency_setup: false,
+            dependency_status: None,
+            install_progress: None,
+        };
+        
+        // Check dependencies on background thread
+        screen.check_dependencies_async(cx);
+        
+        screen
     }
     
-    fn check_dependencies_missing() -> bool {
-        use std::process::Command;
-        
-        // Check for Rust
-        let rust_ok = Command::new("rustc")
-            .arg("--version")
-            .output()
-            .is_ok();
-        
-        // Check for build tools
-        #[cfg(target_os = "windows")]
-        let build_tools_ok = Command::new("cl")
-            .arg("/?")
-            .output()
-            .is_ok();
-        
-        #[cfg(target_os = "linux")]
-        let build_tools_ok = Command::new("gcc")
-            .arg("--version")
-            .output()
-            .is_ok();
-        
-        #[cfg(target_os = "macos")]
-        let build_tools_ok = Command::new("clang")
-            .arg("--version")
-            .output()
-            .is_ok();
-        
-        // Return true if anything is missing
-        !rust_ok || !build_tools_ok
+    pub(crate) fn check_dependencies_async(&mut self, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            let status = cx.background_executor().spawn(async {
+                use std::process::Command;
+                
+                // Check for Rust
+                let rust_installed = Command::new("rustc")
+                    .arg("--version")
+                    .output()
+                    .is_ok();
+                
+                // Check for build tools
+                #[cfg(target_os = "windows")]
+                let build_tools_installed = Command::new("cl")
+                    .arg("/?")
+                    .output()
+                    .is_ok();
+                
+                #[cfg(target_os = "linux")]
+                let build_tools_installed = Command::new("gcc")
+                    .arg("--version")
+                    .output()
+                    .is_ok();
+                
+                #[cfg(target_os = "macos")]
+                let build_tools_installed = Command::new("clang")
+                    .arg("--version")
+                    .output()
+                    .is_ok();
+                
+                DependencyStatus {
+                    rust_installed,
+                    build_tools_installed,
+                }
+            }).await;
+            
+            cx.update(|cx| {
+                this.update(cx, |screen, cx| {
+                    let missing = !status.rust_installed || !status.build_tools_installed;
+                    screen.dependency_status = Some(status);
+                    screen.show_dependency_setup = missing;
+                    cx.notify();
+                }).ok();
+            }).ok();
+        }).detach();
     }
     
     pub(crate) fn start_git_fetch_all(&mut self, cx: &mut Context<Self>) {
