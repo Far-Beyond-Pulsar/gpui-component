@@ -1,8 +1,10 @@
 //! Game object synchronization between game thread and render thread
 
 use bevy::prelude::*;
+use std::sync::atomic::Ordering;
 use crate::subsystems::render::bevy_renderer::core::{
     GameObjectId, GameThreadResource, SharedGizmoStateResource, SharedViewportMouseInputResource,
+    CameraInputResource, MainCamera,
 };
 use crate::subsystems::render::bevy_renderer::gizmos::rendering::GizmoStateResource;
 use crate::subsystems::render::bevy_renderer::interaction::viewport::ViewportMouseInput;
@@ -121,5 +123,91 @@ pub fn update_gizmo_target_system(
                 break;
             }
         }
+    }
+}
+
+/// Update camera viewport and resize render textures based on GPUI viewport bounds
+/// This ensures Bevy renders at the exact resolution of the viewport
+/// 
+/// Since Bevy 0.17.2's Viewport API is private, we resize the render target instead.
+/// This gives us the correct resolution rendering.
+pub fn update_camera_viewport_system(
+    camera_input_res: Res<CameraInputResource>,
+    mut camera_query: Query<&mut Camera, With<MainCamera>>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    // Read viewport bounds from shared camera input
+    let Ok(camera_input) = camera_input_res.0.try_lock() else {
+        return; // Can't lock, skip this frame
+    };
+
+    // Round to integer pixels for exact pixel alignment
+    let width = camera_input.viewport_width.round() as u32;
+    let height = camera_input.viewport_height.round() as u32;
+
+    // Only update if dimensions are valid and reasonable
+    if width < 64 || height < 64 || width > 8192 || height > 8192 {
+        return; // Invalid or extreme dimensions
+    }
+
+    // Update camera render target size if it has changed
+    for mut camera in camera_query.iter_mut() {
+        // Get the current render target - extract the actual image handle
+        let current_handle = match &camera.target {
+            bevy::camera::RenderTarget::Image(img_rt) => {
+                // ImageRenderTarget contains the Handle<Image>
+                img_rt.handle.clone()
+            }
+            _ => continue, // Not an image target, skip
+        };
+        
+        // Check if we need to resize
+        if let Some(image) = images.get(&current_handle) {
+                let current_width = image.texture_descriptor.size.width;
+                let current_height = image.texture_descriptor.size.height;
+                
+                // Only resize if dimensions changed significantly (avoid constant resizing)
+                if (current_width as i32 - width as i32).abs() > 2 || 
+                   (current_height as i32 - height as i32).abs() > 2 {
+                    
+                    // Log resize
+                    static LAST_LOG: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+                    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+                    let last = LAST_LOG.load(Ordering::Relaxed);
+                    if now - last > 1 { // Log at most once per second
+                        println!("[BEVY-VIEWPORT] 🔄 Resizing render target: {}x{} -> {}x{}", 
+                                current_width, current_height, width, height);
+                        LAST_LOG.store(now, Ordering::Relaxed);
+                    }
+                    
+                    // Create new image with correct size
+                    let bytes_per_pixel = 4; // BGRA8
+                    let texture_size = (width * height * bytes_per_pixel) as usize;
+                    
+                    let mut new_image = Image {
+                        texture_descriptor: bevy::render::render_resource::TextureDescriptor {
+                            label: Some("Resized Render Target"),
+                            size: bevy::render::render_resource::Extent3d {
+                                width,
+                                height,
+                                depth_or_array_layers: 1,
+                            },
+                            mip_level_count: 1,
+                            sample_count: 1,
+                            dimension: bevy::render::render_resource::TextureDimension::D2,
+                            format: bevy::render::render_resource::TextureFormat::Bgra8UnormSrgb,
+                            usage: bevy::render::render_resource::TextureUsages::RENDER_ATTACHMENT 
+                                 | bevy::render::render_resource::TextureUsages::TEXTURE_BINDING,
+                            view_formats: &[],
+                        },
+                        ..default()
+                    };
+                    new_image.data = Some(vec![0u8; texture_size]);
+                    
+                    // Replace the old image with the new one (reuses the same handle)
+                    let new_handle = images.add(new_image);
+                    camera.target = bevy::camera::RenderTarget::Image(new_handle.into());
+                }
+            }
     }
 }

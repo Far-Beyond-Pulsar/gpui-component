@@ -484,6 +484,9 @@ impl ViewportPanel {
         let element_bounds_for_prepaint = self.element_bounds.clone();
         let element_bounds_for_click = self.element_bounds.clone();
         
+        // Clone gpu_engine for viewport bounds update
+        let gpu_engine_clone = gpu_engine.clone();
+        
         let mut viewport_div = div()
             .flex() // Enable flexbox
             .flex_col() // Column direction
@@ -521,6 +524,19 @@ impl ViewportPanel {
                     };
                     
                     *element_bounds_for_prepaint.borrow_mut() = Some(bounds);
+                    
+                    // Update Bevy camera viewport to match GPUI viewport bounds
+                    // This ensures Bevy renders exactly to the visible region
+                    if let Ok(engine) = gpu_engine_clone.try_lock() {
+                        if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                            if let Ok(mut camera_input) = bevy_renderer.camera_input.try_lock() {
+                                camera_input.viewport_x = min_x;
+                                camera_input.viewport_y = min_y;
+                                camera_input.viewport_width = max_x - min_x;
+                                camera_input.viewport_height = max_y - min_y;
+                            }
+                        }
+                    }
                     
                     // Debug log (only occasionally to avoid spam)
                     static mut FRAME_COUNT: u32 = 0;

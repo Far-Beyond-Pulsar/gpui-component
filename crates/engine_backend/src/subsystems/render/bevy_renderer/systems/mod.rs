@@ -37,6 +37,7 @@ pub use camera::{sync_camera_input_system, camera_movement_system};
 pub use sync::{
     sync_gizmo_state_system, sync_viewport_mouse_input_system,
     sync_game_objects_system, update_gizmo_target_system,
+    update_camera_viewport_system,
 };
 pub use metrics::{update_metrics_system, update_gpu_profiler_system};
 pub use scene::{

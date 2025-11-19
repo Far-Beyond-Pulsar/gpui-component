@@ -33,6 +33,7 @@ pub struct EntryScreen {
     pub(crate) show_git_upstream_prompt: Option<(PathBuf, String)>, // (project_path, template_url_if_template)
     pub(crate) git_upstream_url: String,
     pub(crate) project_settings: Option<views::ProjectSettings>,
+    pub(crate) show_dependency_setup: bool,
 }
 
 impl EntryScreen {
@@ -43,6 +44,9 @@ impl EntryScreen {
         
         let recent_projects = RecentProjectsList::load(&recent_projects_path);
         let templates = get_default_templates();
+        
+        // Check if dependencies are missing
+        let missing_deps = Self::check_dependencies_missing();
         
         Self {
             view: EntryScreenView::Recent,
@@ -60,7 +64,40 @@ impl EntryScreen {
             show_git_upstream_prompt: None,
             git_upstream_url: String::new(),
             project_settings: None,
+            show_dependency_setup: missing_deps,
         }
+    }
+    
+    fn check_dependencies_missing() -> bool {
+        use std::process::Command;
+        
+        // Check for Rust
+        let rust_ok = Command::new("rustc")
+            .arg("--version")
+            .output()
+            .is_ok();
+        
+        // Check for build tools
+        #[cfg(target_os = "windows")]
+        let build_tools_ok = Command::new("cl")
+            .arg("/?")
+            .output()
+            .is_ok();
+        
+        #[cfg(target_os = "linux")]
+        let build_tools_ok = Command::new("gcc")
+            .arg("--version")
+            .output()
+            .is_ok();
+        
+        #[cfg(target_os = "macos")]
+        let build_tools_ok = Command::new("clang")
+            .arg("--version")
+            .output()
+            .is_ok();
+        
+        // Return true if anything is missing
+        !rust_ok || !build_tools_ok
     }
     
     pub(crate) fn start_git_fetch_all(&mut self, cx: &mut Context<Self>) {
@@ -592,6 +629,11 @@ impl Render for EntryScreen {
         // Trigger git fetch when viewing recent projects
         if view == EntryScreenView::Recent && !self.is_fetching_updates {
             self.start_git_fetch_all(cx);
+        }
+        
+        // Show dependency setup if needed
+        if self.show_dependency_setup {
+            return views::render_dependency_setup(self, cx).into_any_element();
         }
         
         // Show upstream prompt if needed

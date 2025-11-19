@@ -76,6 +76,12 @@ pub struct CameraInput {
     pub orbit_mode: bool,
     pub orbit_distance: f32,
     pub focus_point: Vec3,
+    /// Viewport bounds in pixels (x, y, width, height)
+    /// This defines the exact region of the back buffer where Bevy should render
+    pub viewport_x: f32,
+    pub viewport_y: f32,
+    pub viewport_width: f32,
+    pub viewport_height: f32,
 }
 
 impl CameraInput {
@@ -97,6 +103,10 @@ impl CameraInput {
             orbit_mode: false,
             orbit_distance: 10.0,
             focus_point: Vec3::ZERO,
+            viewport_x: 0.0,
+            viewport_y: 0.0,
+            viewport_width: 1600.0,
+            viewport_height: 900.0,
         }
     }
 }

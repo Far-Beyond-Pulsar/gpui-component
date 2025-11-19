@@ -14,6 +14,7 @@ use super::systems::{
     sync_camera_input_system, camera_movement_system,
     sync_gizmo_state_system, sync_viewport_mouse_input_system,
     sync_game_objects_system, update_gizmo_target_system,
+    update_camera_viewport_system,
     update_metrics_system, update_gpu_profiler_system,
     setup_scene, animate_objects_system, swap_render_buffers_system, debug_rendering_system,
 };
@@ -178,6 +179,7 @@ impl BevyRenderer {
             .add_systems(Update, check_shutdown)
             // Sync systems - run FIRST to get latest data from main thread
             .add_systems(Update, sync_camera_input_system)         // Sync input thread camera input to Bevy ECS
+            .add_systems(Update, update_camera_viewport_system)    // Update camera viewport to match GPUI bounds
             .add_systems(Update, sync_gizmo_state_system)          // NEW: Sync GPUI gizmo state to Bevy
             .add_systems(Update, sync_viewport_mouse_input_system) // NEW: Sync GPUI mouse clicks to Bevy
             .add_systems(Update, sync_game_objects_system)         // Sync game thread to Bevy

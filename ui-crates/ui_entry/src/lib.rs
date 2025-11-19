@@ -5,11 +5,13 @@
 pub mod entry_screen;
 pub mod loading_window;
 pub mod window;
+pub mod dependency_setup_window;
 
 // Re-export main types
 pub use window::EntryWindow;
 pub use loading_window::{LoadingWindow, LoadingComplete};
 pub use entry_screen::{EntryScreen, project_selector::ProjectSelected};
+pub use dependency_setup_window::{DependencySetupWindow, SetupComplete};
 
 // Re-export engine types that UI needs
 pub use engine_state::{EngineState, WindowRequest};

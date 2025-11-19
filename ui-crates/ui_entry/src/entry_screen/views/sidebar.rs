@@ -91,6 +91,17 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                 }))
         )
         .child(
+            Button::new("dependencies")
+                .icon(IconName::Package)
+                .label("")
+                .tooltip("Setup Dependencies")
+                .with_variant(ui::button::ButtonVariant::Ghost)
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.show_dependency_setup = true;
+                    cx.notify();
+                }))
+        )
+        .child(
             Button::new("settings")
                 .icon(IconName::Settings)
                 .label("")

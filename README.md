@@ -9,6 +9,16 @@
 ## You probably can't make a game in this yet!!
 WIP, Contribution encouraged progress checks at: https://github.com/orgs/Far-Beyond-Pulsar/projects/1
 
+## 🚀 Quick Start
+
+The Pulsar Engine automatically manages all dependencies and setup. Just run:
+
+```bash
+cargo run --release
+```
+
+The engine will detect missing dependencies and guide you through installation automatically.
+
 <img width="2515" height="1362" alt="image" src="https://github.com/user-attachments/assets/2baf8876-07ff-4de0-95ab-840c56ed8679" />
 <img width="2515" height="1362" alt="image" src="https://github.com/user-attachments/assets/cc584017-a4c4-4f16-bfa8-8ffc23a8370d" />
 <img width="2515" height="1362" alt="image" src="https://github.com/user-attachments/assets/01dc70b8-bce3-4824-b02b-fb4f3d2d755c" />
