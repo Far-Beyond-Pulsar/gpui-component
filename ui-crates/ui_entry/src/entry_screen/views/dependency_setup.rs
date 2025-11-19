@@ -434,8 +434,9 @@ fn install_rust_windows(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Str
     }
     
     // Run installer with admin privileges using runas verb
+    // Set environment to reduce thread spawning
     let status = runas::Command::new(&exe_path)
-        .args(&["-y", "--default-toolchain", "stable", "--profile", "default"])
+        .args(&["-y", "--default-toolchain", "stable", "--profile", "minimal"])
         .show(false) // Don't show console window
         .status()
         .map_err(|e| e.to_string())?;
@@ -443,6 +444,13 @@ fn install_rust_windows(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Str
     if status.success() {
         let mut prog = progress.lock().unwrap();
         prog.logs.push("✅ Rust installed successfully!".to_string());
+        prog.logs.push("Adding Windows Defender exclusions...".to_string());
+        drop(prog);
+        
+        // Add Windows Defender exclusions for Rust toolchain
+        add_windows_defender_exclusions(&progress);
+        
+        let mut prog = progress.lock().unwrap();
         prog.progress = 1.0;
         prog.status = InstallStatus::Complete;
     } else {
@@ -453,6 +461,58 @@ fn install_rust_windows(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Str
     let _ = std::fs::remove_file(&exe_path);
     
     Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn add_windows_defender_exclusions(progress: &Arc<Mutex<InstallProgress>>) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    
+    let home = match std::env::var("USERPROFILE") {
+        Ok(h) => h,
+        Err(_) => return,
+    };
+    
+    let exclusions = vec![
+        format!("{}/.cargo", home),
+        format!("{}/.rustup", home),
+    ];
+    
+    let mut prog = progress.lock().unwrap();
+    prog.logs.push("Requesting admin privileges to add exclusions...".to_string());
+    drop(prog);
+    
+    // Build PowerShell command to add all exclusions
+    let mut ps_commands = Vec::new();
+    for path in &exclusions {
+        ps_commands.push(format!("Add-MpPreference -ExclusionPath '{}'", path));
+    }
+    ps_commands.push("Add-MpPreference -ExclusionProcess 'rustc.exe'".to_string());
+    ps_commands.push("Add-MpPreference -ExclusionProcess 'cargo.exe'".to_string());
+    
+    let full_command = ps_commands.join("; ");
+    
+    // Run PowerShell with elevation to add exclusions
+    let result = runas::Command::new("powershell")
+        .args(&["-NoProfile", "-Command", &full_command])
+        .show(false)
+        .status();
+    
+    let mut prog = progress.lock().unwrap();
+    match result {
+        Ok(status) if status.success() => {
+            prog.logs.push("✅ Windows Defender exclusions added successfully!".to_string());
+            prog.logs.push("Cargo builds will no longer be blocked".to_string());
+        }
+        Ok(_) => {
+            prog.logs.push("⚠️ Failed to add Windows Defender exclusions".to_string());
+            prog.logs.push("You may need to add them manually in Windows Security".to_string());
+        }
+        Err(e) => {
+            prog.logs.push(format!("⚠️ Could not add exclusions: {}", e));
+            prog.logs.push("Builds may be slower due to antivirus scanning".to_string());
+        }
+    }
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
