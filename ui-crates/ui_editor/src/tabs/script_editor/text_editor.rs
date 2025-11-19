@@ -65,6 +65,8 @@ pub struct TextEditor {
     workspace: Option<Entity<ui::workspace::Workspace>>,
     /// Track if workspace has been initialized
     workspace_initialized: bool,
+    /// Pending panels to add (file index, path, input_state)
+    pending_panels_to_add: Vec<(usize, PathBuf, Entity<InputState>)>,
 }
 
 impl TextEditor {
@@ -93,6 +95,7 @@ impl TextEditor {
             pending_navigation: None,
             workspace: Some(workspace),
             workspace_initialized: false,
+            pending_panels_to_add: Vec::new(),
         }
     }
     
@@ -117,6 +120,41 @@ impl TextEditor {
     
     /// Initialize/reinitialize workspace with current files
     fn initialize_workspace_once(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Process pending panels to add if workspace is already initialized
+        if !self.pending_panels_to_add.is_empty() && self.workspace_initialized {
+            if let Some(workspace) = self.workspace.clone() {
+                let text_editor_weak = cx.entity().downgrade();
+                let panels_to_add = std::mem::take(&mut self.pending_panels_to_add);
+                
+                workspace.update(cx, |workspace, cx| {
+                    let dock_area = workspace.dock_area().clone();
+                    dock_area.update(cx, |dock_area, cx| {
+                        for (index, path, input_state) in panels_to_add {
+                            let panel = cx.new(|cx| {
+                                use crate::tabs::script_editor::FilePanelWrapper;
+                                FilePanelWrapper::new(
+                                    text_editor_weak.clone(),
+                                    index,
+                                    path,
+                                    input_state,
+                                    cx
+                                )
+                            });
+                            
+                            dock_area.add_panel(
+                                std::sync::Arc::new(panel) as std::sync::Arc<dyn ui::dock::PanelView>,
+                                ui::dock::DockPlacement::Center,
+                                None,
+                                window,
+                                cx
+                            );
+                        }
+                    });
+                });
+            }
+            return;
+        }
+        
         if self.workspace_initialized {
             return;
         }
@@ -239,8 +277,8 @@ impl TextEditor {
         let new_index = self.open_files.len() - 1;
         self.current_file_index = Some(new_index);
         
-        // Mark workspace needs refresh
-        self.workspace_initialized = false;
+        // Queue panel to be added on next render
+        self.pending_panels_to_add.push((new_index, new_path.clone(), input_state.clone()));
 
         // Create subscription for this file
         let analyzer = self.rust_analyzer.clone();
@@ -493,8 +531,8 @@ impl TextEditor {
         let new_index = self.open_files.len() - 1;
         self.current_file_index = Some(new_index);
         
-        // Mark workspace needs refresh
-        self.workspace_initialized = false;
+        // Queue panel to be added on next render
+        self.pending_panels_to_add.push((new_index, path.clone(), input_state.clone()));
         
         // Create subscription for this file
         let analyzer = self.rust_analyzer.clone();

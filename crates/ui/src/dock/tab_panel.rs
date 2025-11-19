@@ -735,6 +735,9 @@ impl TabPanel {
                 .when_some(title_style, |this, theme| {
                     this.bg(theme.background).text_color(theme.foreground)
                 })
+                .when(title_style.is_none(), |this| {
+                    this.bg(cx.theme().tab_bar)
+                })
                 .when(
                     left_dock_button.is_some() || bottom_dock_button.is_some(),
                     |this| {
