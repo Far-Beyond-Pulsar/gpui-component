@@ -9865,7 +9865,6 @@ dependencies = [
 name = "pulsar_docs"
 version = "0.1.0"
 dependencies = [
- "once_cell",
  "proc-macro2",
  "quote",
  "rust-embed 6.8.1",

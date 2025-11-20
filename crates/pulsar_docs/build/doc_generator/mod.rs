@@ -14,8 +14,7 @@ use std::error::Error;
 pub use workspace::{CrateInfo, discover_crates};
 pub use parser::{ParsedCrate, parse_crate};
 pub use extractor::extract_documentation;
-pub use markdown::generate_markdown;
-pub use types::*;
+pub use markdown::generate_hierarchical_docs;
 
 /// Generate documentation for an entire workspace
 /// 
@@ -65,13 +64,8 @@ fn generate_crate_docs(
     // Step 2: Extract documentation from the parsed AST
     let docs = extractor::extract_documentation(&parsed_crate)?;
     
-    // Step 3: Generate markdown
-    let markdown = markdown::generate_markdown(&docs, crate_info)?;
-    
-    // Step 4: Write to output file
-    let output_file = output_dir.join(format!("{}.md", crate_info.name));
-    std::fs::create_dir_all(output_dir)?;
-    std::fs::write(&output_file, markdown)?;
+    // Step 3: Generate hierarchical folder structure with individual pages
+    markdown::generate_hierarchical_docs(&docs, crate_info, output_dir)?;
     
     Ok(())
 }

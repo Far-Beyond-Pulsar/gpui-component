@@ -1,50 +1,72 @@
 use rust_embed::RustEmbed;
-use once_cell::sync::Lazy;
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 
 #[derive(RustEmbed)]
 #[folder = "$CARGO_MANIFEST_DIR/../../target/doc"]
 pub struct DocAssets;
 
-/// Pre-indexed documentation structure
-pub static DOCS_INDEX: Lazy<HashMap<String, Vec<String>>> = Lazy::new(|| {
-    let mut index = HashMap::new();
-    
-    for file_path in DocAssets::iter() {
-        let file_name = file_path.as_ref();
-        
-        if file_name.ends_with(".md") {
-            let parts: Vec<&str> = file_name.split('/').collect();
-            let crate_name = if parts.len() > 1 {
-                parts[0].to_string()
-            } else {
-                file_name.trim_end_matches(".md").to_string()
-            };
-            
-            index.entry(crate_name).or_insert_with(Vec::new).push(file_name.to_string());
-        }
-    }
-    
-    index
-});
+/// JSON index structures matching the build script
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CrateIndex {
+    pub name: String,
+    pub version: String,
+    pub description: Option<String>,
+    pub sections: Vec<Section>,
+}
 
-/// Get markdown content for a crate
-pub fn get_crate_docs(crate_name: &str) -> Option<String> {
-    let file_key = format!("{}.md", crate_name);
-    
-    if let Some(content) = DocAssets::get(&file_key) {
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Section {
+    pub name: String,
+    pub path: String,
+    pub count: usize,
+    pub items: Vec<IndexItem>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct IndexItem {
+    pub name: String,
+    pub path: String,
+    pub doc_summary: Option<String>,
+}
+
+/// Get markdown content for any doc page
+pub fn get_doc_content(path: &str) -> Option<String> {
+    if let Some(content) = DocAssets::get(path) {
         std::str::from_utf8(&content.data).ok().map(String::from)
     } else {
         None
     }
 }
 
-/// Get list of all documented crates
+/// Get the index.json for a crate
+pub fn get_crate_index(crate_name: &str) -> Option<CrateIndex> {
+    let index_path = format!("{}/index.json", crate_name);
+    
+    if let Some(content) = DocAssets::get(&index_path) {
+        let json_str = std::str::from_utf8(&content.data).ok()?;
+        serde_json::from_str(json_str).ok()
+    } else {
+        None
+    }
+}
+
+/// Get list of all documented crates by scanning for index.json files
 pub fn list_crates() -> Vec<String> {
-    DOCS_INDEX.keys().cloned().collect()
+    let mut crates = Vec::new();
+    
+    for file_path in DocAssets::iter() {
+        let path = file_path.as_ref();
+        if path.ends_with("/index.json") {
+            let crate_name = path.trim_end_matches("/index.json");
+            crates.push(crate_name.to_string());
+        }
+    }
+    
+    crates.sort();
+    crates
 }
 
 /// Check if docs are available
 pub fn docs_available() -> bool {
-    !DOCS_INDEX.is_empty()
+    !list_crates().is_empty()
 }

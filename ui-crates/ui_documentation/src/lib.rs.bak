@@ -1,9 +1,10 @@
 use gpui::{prelude::*, *};
 use ui::{
-    ActiveTheme, Root, Sizable, StyledExt, Selectable,
+    ActiveTheme, Root, Sizable, StyledExt,
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, IconName, Icon,
     text::TextView,
+    code_block::StyledCodeBlock,
 };
 use pulsar_docs::{get_doc_content, get_crate_index, list_crates, docs_available, CrateIndex};
 use std::collections::HashMap;
@@ -12,7 +13,7 @@ pub struct DocumentationWindow {
     focus_handle: FocusHandle,
     current_path: Option<String>,
     tree_items: Vec<TreeNode>,
-    flat_visible_items: Vec<usize>,
+    flat_visible_items: Vec<usize>, // Indices into tree_items
     expanded_paths: HashMap<String, bool>,
     markdown_content: String,
 }
@@ -104,14 +105,17 @@ impl DocumentationWindow {
         for (idx, node) in self.tree_items.iter().enumerate() {
             match node {
                 TreeNode::Crate { name, .. } => {
+                    // Always show crates
                     self.flat_visible_items.push(idx);
                 }
                 TreeNode::Section { crate_name, .. } => {
+                    // Show if parent crate is expanded
                     if self.is_expanded(crate_name) {
                         self.flat_visible_items.push(idx);
                     }
                 }
                 TreeNode::Item { crate_name, section_name, .. } => {
+                    // Show if parent section is expanded
                     let section_path = format!("{}/{}", crate_name, section_name);
                     if self.is_expanded(&section_path) {
                         self.flat_visible_items.push(idx);
@@ -154,24 +158,13 @@ impl Focusable for DocumentationWindow {
 impl Render for DocumentationWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
-        let bg = theme.background;
-        let sidebar_bg = theme.sidebar;
-        let border = theme.border;
-        let fg = theme.foreground;
-        
-        // Clone data needed for rendering to avoid borrow issues
-        let visible_items: Vec<_> = self.flat_visible_items.iter()
-            .map(|&idx| self.tree_items[idx].clone())
-            .collect();
-        
-        let markdown = self.markdown_content.clone();
         
         div()
             .track_focus(&self.focus_handle)
             .size_full()
             .flex()
             .flex_col()
-            .bg(bg)
+            .bg(theme.background)
             .child(
                 // Header
                 div()
@@ -181,14 +174,14 @@ impl Render for DocumentationWindow {
                     .items_center()
                     .px_4()
                     .gap_4()
-                    .bg(sidebar_bg)
+                    .bg(theme.sidebar)
                     .border_b_1()
-                    .border_color(border)
+                    .border_color(theme.border)
                     .child(
                         div()
                             .text_lg()
                             .font_bold()
-                            .text_color(fg)
+                            .text_color(theme.foreground)
                             .child("📚 Pulsar Engine Documentation")
                     )
                     .child(div().flex_1())
@@ -198,8 +191,7 @@ impl Render for DocumentationWindow {
                             .ghost()
                             .tooltip("Refresh Documentation")
                             .on_click(cx.listener(|this, _event, _window, cx| {
-                                this.tree_items.clear();
-                                this.expanded_paths.clear();
+                                this.crates.clear();
                                 this.load_documentation();
                                 cx.notify();
                             }))
@@ -211,32 +203,29 @@ impl Render for DocumentationWindow {
                     .flex_1()
                     .overflow_hidden()
                     .child(
-                        // Sidebar with tree
+                        // Sidebar
                         div()
                             .id("docs-sidebar")
-                            .w(px(300.0))
+                            .w_64()
                             .h_full()
-                            .bg(sidebar_bg)
+                            .bg(theme.sidebar)
                             .border_r_1()
-                            .border_color(border)
-                            .overflow_y_scroll()
-                            .font_family("monospace")
-                            .font(gpui::Font {
-                                family: "JetBrains Mono".to_string().into(),
-                                weight: gpui::FontWeight::NORMAL,
-                                style: gpui::FontStyle::Normal,
-                                features: gpui::FontFeatures::default(),
-                                fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["monospace".to_string()])),
-                            })
+                            .border_color(theme.border)
                             .child(
-                                v_flex()
-                                    .w_full()
-                                    .py_2()
-                                    .px_2()
-                                    .children(
-                                        visible_items.iter().map(|node| {
-                                            self.render_tree_node(node, cx)
-                                        })
+                                div()
+                                    .id("docs-sidebar-content")
+                                    .h_full()
+                                    .overflow_y_scroll()
+                                    .child(
+                                        v_flex()
+                                            .w_full()
+                                            .p_2()
+                                            .gap_1()
+                                            .children(
+                                                self.crates.iter().map(|crate_doc| {
+                                                    self.render_crate_item(crate_doc, cx)
+                                                })
+                                            )
                                     )
                             )
                     )
@@ -247,7 +236,6 @@ impl Render for DocumentationWindow {
                             .flex_1()
                             .h_full()
                             .overflow_y_scroll()
-                            .bg(bg)
                             .child(
                                 div()
                                     .w_full()
@@ -257,7 +245,7 @@ impl Render for DocumentationWindow {
                                     .child(
                                         TextView::markdown(
                                             "docs-markdown",
-                                            markdown,
+                                            self.markdown_content.clone(),
                                             window,
                                             cx,
                                         )
@@ -269,124 +257,83 @@ impl Render for DocumentationWindow {
 }
 
 impl DocumentationWindow {
-    fn render_tree_node(&self, node: &TreeNode, cx: &mut Context<Self>) -> AnyElement {
-        match node {
-            TreeNode::Crate { name, depth, .. } => {
-                let is_expanded = self.is_expanded(name);
-                let crate_name = name.clone();
-                let indent = px(*depth as f32 * 16.0);
-                let id = SharedString::from(format!("crate-{}", name));
-                let theme = cx.theme();
-                
-                div()
-                    .id(id)
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .h(px(28.0))
-                    .pl(indent + px(12.0))
-                    .pr_3()
-                    .rounded_md()
-                    .hover(|style| style.bg(theme.accent.opacity(0.1)))
-                    .cursor_pointer()
-                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                        this.toggle_expansion(crate_name.clone(), cx);
+    fn render_crate_item(&self, crate_item: &CrateTreeItem, cx: &mut Context<Self>) -> AnyElement {
+        let crate_name = crate_item.name.clone();
+        let crate_name_for_toggle = crate_name.clone();
+        let is_expanded = crate_item.is_expanded;
+        
+        v_flex()
+            .w_full()
+            .child(
+                Button::new(SharedString::from(format!("crate-{}", crate_name)))
+                    .w_full()
+                    .justify_start()
+                    .ghost()
+                    .label(format!("{} {}", if is_expanded { "📂" } else { "📦" }, crate_item.name))
+                    .on_click(cx.listener(move |this, _event, _window, cx| {
+                        this.toggle_crate(&crate_name_for_toggle, cx);
                     }))
-                    .child(
-                        Icon::new(if is_expanded { IconName::FolderOpen } else { IconName::Folder })
-                            .size_4()
-                            .text_color(theme.foreground.opacity(0.7))
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(theme.foreground)
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(name.clone())
-                    )
-                    .into_any_element()
-            }
-            TreeNode::Section { crate_name, section_name, count, depth } => {
-                let section_path = format!("{}/{}", crate_name, section_name);
-                let is_expanded = self.is_expanded(&section_path);
-                let section_path_clone = section_path.clone();
-                let indent = px(*depth as f32 * 16.0);
-                let id = SharedString::from(format!("section-{}-{}", crate_name, section_name));
-                let theme = cx.theme();
+            )
+            .when(is_expanded, |flex| {
+                let sections = crate_item.index.sections.clone();
+                let expanded_sections = crate_item.expanded_sections.clone();
                 
-                div()
-                    .id(id)
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .h(px(26.0))
-                    .pl(indent + px(12.0))
-                    .pr_3()
-                    .rounded_md()
-                    .hover(|style| style.bg(theme.accent.opacity(0.1)))
-                    .cursor_pointer()
-                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                        this.toggle_expansion(section_path_clone.clone(), cx);
-                    }))
-                    .child(
-                        Icon::new(if is_expanded { IconName::ChevronDown } else { IconName::ChevronRight })
-                            .size_3()
-                            .text_color(theme.foreground.opacity(0.5))
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(theme.foreground.opacity(0.8))
-                            .child(format!("{} ({})", section_name, count))
-                    )
-                    .into_any_element()
-            }
-            TreeNode::Item { item_name, path, depth, .. } => {
-                let is_selected = self.current_path.as_ref() == Some(path);
-                let path_clone = path.clone();
-                let indent = px(*depth as f32 * 16.0);
-                let id = SharedString::from(format!("item-{}", path.replace('/', "-")));
-                let theme = cx.theme();
-                
-                div()
-                    .id(id)
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .h(px(24.0))
-                    .pl(indent + px(20.0)) // Extra indent for items
-                    .pr_3()
-                    .rounded_md()
-                    .when(is_selected, |style| style.bg(theme.accent))
-                    .when(!is_selected, |style| {
-                        style.hover(|style| style.bg(theme.accent.opacity(0.1)))
+                flex.children(
+                    sections.iter().map(|section| {
+                        self.render_section(&crate_name, section, &expanded_sections, cx)
                     })
-                    .cursor_pointer()
-                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                        this.load_content(&path_clone, cx);
+                )
+            })
+            .into_any_element()
+    }
+    
+    fn render_section(&self, crate_name: &str, section: &pulsar_docs::Section, expanded_sections: &[String], cx: &mut Context<Self>) -> AnyElement {
+        let section_name = section.name.clone();
+        let crate_name_clone = crate_name.to_string();
+        let crate_name_for_toggle = crate_name.to_string();
+        let section_name_for_toggle = section_name.clone();
+        let is_expanded = expanded_sections.contains(&section_name);
+        
+        v_flex()
+            .w_full()
+            .child(
+                Button::new(SharedString::from(format!("section-{}-{}", crate_name, section_name)))
+                    .w_full()
+                    .justify_start()
+                    .ghost()
+                    .small()
+                    .pl_6()
+                    .label(format!("{} {} ({})", if is_expanded { "▼" } else { "▶" }, section.name, section.count))
+                    .on_click(cx.listener(move |this, _event, _window, cx| {
+                        this.toggle_section(&crate_name_for_toggle, &section_name_for_toggle, cx);
                     }))
-                    .child(
-                        Icon::new(IconName::Code)
-                            .size_3()
-                            .text_color(if is_selected {
-                                theme.accent_foreground
-                            } else {
-                                theme.foreground.opacity(0.6)
-                            })
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(if is_selected {
-                                theme.accent_foreground
-                            } else {
-                                theme.foreground.opacity(0.7)
-                            })
-                            .child(item_name.clone())
-                    )
-                    .into_any_element()
-            }
-        }
+            )
+            .when(is_expanded, |flex| {
+                let items = section.items.clone();
+                
+                flex.children(
+                    items.iter().map(|item| {
+                        let item_path = format!("{}/{}", crate_name_clone, item.path);
+                        let item_path_clone = item_path.clone();
+                        let is_current = self.current_path == item_path;
+                        
+                        Button::new(SharedString::from(format!("item-{}", item_path)))
+                            .w_full()
+                            .justify_start()
+                            .ghost()
+                            .small()
+                            .pl_12()
+                            .label(item.name.clone())
+                            .when(is_current, |btn| btn.selected())
+                            .on_click(cx.listener(move |this, _event, _window, cx| {
+                                this.load_content(&item_path_clone);
+                                cx.notify();
+                            }))
+                            .into_any_element()
+                    })
+                )
+            })
+            .into_any_element()
     }
 }
 
