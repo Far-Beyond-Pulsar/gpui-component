@@ -41,16 +41,36 @@ pub struct DocumentationState {
 
 impl DocumentationState {
     pub fn new(cx: &mut Context<impl Send>) -> Self {
-        let docs_data = pulsar_docs::DOCS_DATA
-            .iter()
-            .find(|(name, _)| *name == "index.json")
-            .map(|(_, content)| content);
+        // Build the doc index from all available crates
+        let crate_names = pulsar_docs::list_crates();
+        let mut crates = vec![];
 
-        let doc_index: DocIndex = if let Some(data) = docs_data {
-            serde_json::from_str(data).unwrap_or_else(|_| DocIndex { crates: vec![] })
-        } else {
-            DocIndex { crates: vec![] }
-        };
+        for crate_name in crate_names {
+            if let Some(crate_index) = pulsar_docs::get_crate_index(&crate_name) {
+                let mut items = HashMap::new();
+
+                for section in &crate_index.sections {
+                    let section_items: Vec<DocItem> = section.items.iter().map(|item| {
+                        DocItem {
+                            name: item.name.clone(),
+                            kind: section.name.clone(),
+                            path: item.path.clone(),
+                        }
+                    }).collect();
+
+                    items.insert(section.name.clone(), section_items);
+                }
+
+                crates.push(CrateInfo {
+                    name: crate_index.name,
+                    version: crate_index.version,
+                    description: crate_index.description.unwrap_or_default(),
+                    items,
+                });
+            }
+        }
+
+        let doc_index = DocIndex { crates };
 
         let mut state = Self {
             doc_index,
@@ -196,11 +216,8 @@ impl DocumentationState {
 
     pub fn load_document(&mut self, path: &str, _cx: &mut Context<impl Send>) {
         self.selected_item = Some(path.to_string());
-        
-        let doc_content = pulsar_docs::DOCS_DATA
-            .iter()
-            .find(|(name, _)| *name == path)
-            .map(|(_, content)| content.to_string())
+
+        let doc_content = pulsar_docs::get_doc_content(path)
             .unwrap_or_else(|| "# Documentation not found".to_string());
 
         self.current_doc_content = doc_content.into();

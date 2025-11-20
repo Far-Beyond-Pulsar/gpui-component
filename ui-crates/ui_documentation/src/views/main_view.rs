@@ -34,6 +34,7 @@ impl Render for MainView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let current_query = self.state.search_query.to_string();
+        let entity_id = cx.entity_id();
 
         v_flex()
             .size_full()
@@ -67,9 +68,11 @@ impl Render for MainView {
                     .child(
                         Sidebar::render(
                             &self.state,
-                            cx.listener(|this, &idx, window, cx| {
-                                this.handle_node_click(idx, window, cx);
-                            }),
+                            move |idx, window, cx| {
+                                window.update_entity(entity_id, |this: &mut MainView, cx| {
+                                    this.handle_node_click(idx, window, cx);
+                                });
+                            },
                             cx,
                         )
                     )
