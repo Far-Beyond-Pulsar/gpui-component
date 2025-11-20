@@ -1,6 +1,5 @@
 use gpui::*;
-use ui::prelude::*;
-use ui::{ActiveTheme, StyledExt}
+use ui::{prelude::*, ActiveTheme};
 use crate::state::DocumentationState;
 use crate::components::{Sidebar, ContentView, SearchBar};
 
@@ -47,7 +46,7 @@ impl Render for MainView {
                     .py_3()
                     .border_b_1()
                     .border_color(theme.border)
-                    .bg(theme.surface)
+                    .bg(theme.sidebar)
                     .child(
                         self.search_bar.update(cx, |search_bar, cx| {
                             search_bar.render_with_query(
@@ -68,7 +67,7 @@ impl Render for MainView {
                     .child(
                         Sidebar::render(
                             &self.state,
-                            cx.listener(|this, idx, window, cx| {
+                            cx.listener(|this, &idx, window, cx| {
                                 this.handle_node_click(idx, window, cx);
                             }),
                             cx,

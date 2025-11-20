@@ -1,5 +1,5 @@
 use gpui::*;
-use ui::{prelude::*, IconButton, IconName};
+use ui::{prelude::*, IconButton, IconName, ActiveTheme};
 
 pub struct SearchBar {
     focus_handle: FocusHandle,

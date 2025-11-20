@@ -34,7 +34,7 @@ pub fn open_documentation_window(app: &mut App) {
         }),
     };
 
-    app.open_window(window_options, |window, cx| {
+    app.open_window(window_options, |_window, cx| {
         cx.new(|cx| MainView::new(cx))
     })
     .ok();

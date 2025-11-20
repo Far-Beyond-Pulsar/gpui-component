@@ -1,6 +1,5 @@
 use gpui::*;
-use ui::prelude::*;
-use ui::markdown::Markdown;
+use ui::{prelude::*, ActiveTheme};
 
 pub struct ContentView;
 
@@ -21,10 +20,8 @@ impl ContentView {
                     .p_8()
                     .max_w(px(900.0))
                     .mx_auto()
-                    .child(
-                        Markdown::new(content.to_string(), cx)
-                            .base_text_size(TextSize::Default)
-                    )
+                    .text_color(theme.foreground)
+                    .child(content)
             )
     }
 }

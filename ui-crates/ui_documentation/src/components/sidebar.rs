@@ -1,5 +1,5 @@
 use gpui::*;
-use ui::prelude::*;
+use ui::{prelude::*, ActiveTheme, StyledExt};
 use crate::state::{DocumentationState, TreeNode};
 use crate::components::TreeNodeView;
 
@@ -16,21 +16,21 @@ impl Sidebar {
         v_flex()
             .w(px(280.0))
             .h_full()
-            .bg(theme.surface)
+            .bg(cx.theme().colors().panel)
             .border_r_1()
-            .border_color(theme.border)
+            .border_color(cx.theme().colors().border)
             .child(
                 // Header
                 div()
                     .px_4()
                     .py_3()
                     .border_b_1()
-                    .border_color(theme.border)
+                    .border_color(cx.theme().colors().border)
                     .child(
                         div()
                             .text_sm()
                             .font_semibold()
-                            .text_color(theme.foreground)
+                            .text_color(cx.theme().colors().text)
                             .child("Documentation")
                     )
             )

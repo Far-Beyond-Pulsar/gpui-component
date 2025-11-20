@@ -1,5 +1,5 @@
 use gpui::*;
-use ui::{prelude::*, Button, IconName, Selectable};
+use ui::{prelude::*, ActiveTheme, Button, IconName, Selectable};
 use crate::state::TreeNode;
 
 pub struct TreeNodeView;
@@ -73,7 +73,7 @@ impl TreeNodeView {
                         Button::new(format!("item-{}", name), name.clone())
                             .full_width()
                             .style(ButtonStyle::Subtle)
-                            .icon(Some(IconName::FileText))
+                            .icon(Some(IconName::File))
                             .icon_position(IconPosition::Start)
                             .icon_size(IconSize::XSmall)
                             .selected(is_selected)
