@@ -1,7 +1,8 @@
 use gpui::*;
-use ui::{ActiveTheme, h_flex, v_flex, StyledExt};
+use ui::{ActiveTheme, v_flex, StyledExt};
 use crate::state::{DocumentationState, TreeNode};
 use crate::components::TreeNodeView;
+use std::rc::Rc;
 
 pub struct Sidebar;
 

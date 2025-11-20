@@ -1,6 +1,6 @@
 use gpui::*;
 use gpui::prelude::*;
-use ui::{button::Button, IconName, ActiveTheme, Icon, IconSize};
+use ui::{button::{Button, ButtonVariants}, IconName, ActiveTheme, Icon, IconSize, Sizable};
 
 pub struct SearchBar {
     focus_handle: FocusHandle,

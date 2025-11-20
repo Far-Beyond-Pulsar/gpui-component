@@ -1,11 +1,11 @@
 use gpui::*;
-use ui::ActiveTheme;
+use ui::{ActiveTheme, v_flex, h_flex};
 use crate::state::DocumentationState;
 use crate::components::{Sidebar, ContentView, SearchBar};
 
 pub struct MainView {
     state: DocumentationState,
-    search_bar: View<SearchBar>,
+    search_bar: gpui::View<SearchBar>,
 }
 
 impl MainView {
