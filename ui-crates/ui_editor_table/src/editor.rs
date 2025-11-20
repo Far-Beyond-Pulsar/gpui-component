@@ -2,7 +2,7 @@ use gpui::{prelude::*, *};
 use ui::{
     h_flex, v_flex, button::{Button, ButtonVariants}, label::Label, divider::Divider,
     table::Table, ActiveTheme, Sizable, Size, StyleSized, StyledExt, Disableable,
-    dock::{Panel, PanelEvent},
+    dock::{Panel, PanelEvent}, IconName,
 };
 use crate::{
     database::DatabaseManager,
@@ -12,19 +12,31 @@ use crate::{
 };
 use std::path::PathBuf;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum EditorTab {
-    TableData,
-    QueryEditor,
+#[derive(Clone, Debug)]
+pub enum DataTableEvent {
+    TableOpened(String),
+    TableClosed(usize),
+    QueryExecuted(String),
+    DataModified { table: String, row_id: i64 },
+}
+
+#[derive(Clone, Debug)]
+enum TabType {
+    Table { name: String, view: Entity<Table<DataTableView>> },
+    Query { name: String, view: Entity<QueryEditorView> },
+}
+
+struct EditorTab {
+    id: usize,
+    tab_type: TabType,
 }
 
 pub struct DataTableEditor {
     pub db: DatabaseManager,
-    current_table: Option<String>,
     available_tables: Vec<String>,
-    current_tab: EditorTab,
-    table_view: Option<Entity<Table<DataTableView>>>,
-    query_editor: Option<Entity<QueryEditorView>>,
+    open_tabs: Vec<EditorTab>,
+    active_tab_idx: Option<usize>,
+    next_tab_id: usize,
     pub database_path: Option<PathBuf>,
     focus_handle: FocusHandle,
 }
@@ -35,11 +47,10 @@ impl DataTableEditor {
 
         Self {
             db,
-            current_table: None,
             available_tables: Vec::new(),
-            current_tab: EditorTab::TableData,
-            table_view: None,
-            query_editor: None,
+            open_tabs: Vec::new(),
+            active_tab_idx: None,
+            next_tab_id: 0,
             database_path: None,
             focus_handle: cx.focus_handle(),
         }
@@ -55,11 +66,10 @@ impl DataTableEditor {
 
         Ok(Self {
             db,
-            current_table: None,
             available_tables,
-            current_tab: EditorTab::TableData,
-            table_view: None,
-            query_editor: None,
+            open_tabs: Vec::new(),
+            active_tab_idx: None,
+            next_tab_id: 0,
             database_path: Some(path),
             focus_handle: cx.focus_handle(),
         })
@@ -68,79 +78,141 @@ impl DataTableEditor {
     pub fn register_type_schema(&mut self, schema: TypeSchema) -> anyhow::Result<()> {
         self.db.register_type(schema)?;
         self.available_tables = self.db.list_tables()?;
-        eprintln!("Available tables after registration: {:?}", self.available_tables);
         Ok(())
     }
 
     pub fn select_table(&mut self, table_name: String, window: &mut Window, cx: &mut Context<Self>) -> anyhow::Result<()> {
-        eprintln!("Selecting table: {}", table_name);
-        eprintln!("Available tables: {:?}", self.available_tables);
-        eprintln!("All schemas: {:?}", self.db.list_tables()?);
+        // Check if table is already open
+        if let Some(idx) = self.open_tabs.iter().position(|tab| {
+            matches!(&tab.tab_type, TabType::Table { name, .. } if name == &table_name)
+        }) {
+            self.active_tab_idx = Some(idx);
+            cx.notify();
+            return Ok(());
+        }
         
         // Check if schema exists for this table
         if self.db.get_schema(&table_name).is_none() {
             return Err(anyhow::anyhow!(
-                "No schema registered for table '{}'. \n\
-                 The database has a table named '{}' but no TypeSchema was registered for it.\n\
-                 Either:\n\
-                 1. Register a schema: editor.register_type_schema(TypeSchema::new(\"{}\"))\n\
-                 2. Delete the old database file and recreate it with proper schemas\n\
-                 3. The table was created manually and needs a schema definition",
-                table_name, table_name, table_name
+                "No schema registered for table '{}'", table_name
             ));
         }
         
-        self.current_table = Some(table_name.clone());
-
+        // Create new tab
         let delegate = DataTableView::new(self.db.clone(), table_name.clone())?;
-        eprintln!("Created delegate for table: {}", table_name);
-        self.table_view = Some(cx.new(|cx| Table::new(delegate, window, cx)));
-        eprintln!("Table view created");
-
+        let table_view = cx.new(|cx| Table::new(delegate, window, cx));
+        
+        let tab = EditorTab {
+            id: self.next_tab_id,
+            tab_type: TabType::Table { 
+                name: table_name.clone(), 
+                view: table_view 
+            },
+        };
+        
+        self.next_tab_id += 1;
+        self.open_tabs.push(tab);
+        self.active_tab_idx = Some(self.open_tabs.len() - 1);
+        
+        cx.emit(DataTableEvent::TableOpened(table_name));
+        cx.notify();
+        
         Ok(())
+    }
+    
+    pub fn open_query_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let query_view = cx.new(|cx| QueryEditorView::new(self.db.clone(), window, cx));
+        
+        let tab = EditorTab {
+            id: self.next_tab_id,
+            tab_type: TabType::Query {
+                name: format!("Query {}", self.next_tab_id),
+                view: query_view,
+            },
+        };
+        
+        self.next_tab_id += 1;
+        self.open_tabs.push(tab);
+        self.active_tab_idx = Some(self.open_tabs.len() - 1);
+        cx.notify();
+    }
+    
+    pub fn close_tab(&mut self, tab_idx: usize, cx: &mut Context<Self>) {
+        if tab_idx < self.open_tabs.len() {
+            let tab = self.open_tabs.remove(tab_idx);
+            cx.emit(DataTableEvent::TableClosed(tab.id));
+            
+            // Adjust active tab
+            if self.open_tabs.is_empty() {
+                self.active_tab_idx = None;
+            } else if let Some(active) = self.active_tab_idx {
+                if active >= self.open_tabs.len() {
+                    self.active_tab_idx = Some(self.open_tabs.len() - 1);
+                }
+            }
+            cx.notify();
+        }
     }
 
     pub fn add_new_row(&mut self, cx: &mut Context<Self>) -> anyhow::Result<()> {
-        if let Some(table_view) = &self.table_view {
-            table_view.update(cx, |table, _| {
-                if let Err(e) = table.delegate_mut().add_new_row() {
-                    eprintln!("Failed to add row: {}", e);
+        if let Some(active_idx) = self.active_tab_idx {
+            if let Some(tab) = self.open_tabs.get(active_idx) {
+                if let TabType::Table { view, name, .. } = &tab.tab_type {
+                    view.update(cx, |table, cx| {
+                        if let Err(e) = table.delegate_mut().add_new_row() {
+                            eprintln!("Failed to add row: {}", e);
+                        } else {
+                            cx.notify();
+                        }
+                    });
                 }
-            });
+            }
         }
         Ok(())
     }
 
     pub fn delete_selected_row(&mut self, cx: &mut Context<Self>) -> anyhow::Result<()> {
-        if let Some(table_view) = &self.table_view {
-            table_view.update(cx, |table, cx| {
-                let delegate = table.delegate_mut();
-                if let Some(selected_row) = delegate.state.selected_row {
-                    if let Err(e) = delegate.delete_row(selected_row) {
-                        eprintln!("Failed to delete row: {}", e);
-                    } else {
-                        delegate.state.selected_row = None;
-                        cx.notify();
-                    }
+        if let Some(active_idx) = self.active_tab_idx {
+            if let Some(tab) = self.open_tabs.get(active_idx) {
+                if let TabType::Table { view, name, .. } = &tab.tab_type {
+                    view.update(cx, |table, cx| {
+                        let delegate = table.delegate_mut();
+                        if let Some(selected_row) = delegate.state.selected_row {
+                            if let Err(e) = delegate.delete_row(selected_row) {
+                                eprintln!("Failed to delete row: {}", e);
+                            } else {
+                                delegate.state.selected_row = None;
+                                cx.notify();
+                            }
+                        }
+                    });
                 }
-            });
+            }
         }
         Ok(())
     }
 
     pub fn refresh_data(&mut self, cx: &mut Context<Self>) -> anyhow::Result<()> {
-        if let Some(table_view) = &self.table_view {
-            table_view.update(cx, |table, cx| {
-                if let Err(e) = table.delegate_mut().refresh_rows(0, 100) {
-                    eprintln!("Failed to refresh rows: {}", e);
+        if let Some(active_idx) = self.active_tab_idx {
+            if let Some(tab) = self.open_tabs.get(active_idx) {
+                if let TabType::Table { view, .. } = &tab.tab_type {
+                    view.update(cx, |table, cx| {
+                        if let Err(e) = table.delegate_mut().refresh_rows(0, 100) {
+                            eprintln!("Failed to refresh rows: {}", e);
+                        }
+                        cx.notify();
+                    });
                 }
-                cx.notify();
-            });
+            }
         }
         Ok(())
     }
 
     fn render_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let is_table_tab = self.active_tab_idx.and_then(|idx| {
+            self.open_tabs.get(idx).map(|tab| matches!(tab.tab_type, TabType::Table { .. }))
+        }).unwrap_or(false);
+        
         h_flex()
             .w_full()
             .gap_2()
@@ -153,7 +225,7 @@ impl DataTableEditor {
                     .label("Add Row")
                     .small()
                     .primary()
-                    .disabled(self.current_table.is_none())
+                    .disabled(!is_table_tab)
                     .on_click(cx.listener(|editor, _, _, cx| {
                         if let Err(e) = editor.add_new_row(cx) {
                             eprintln!("Failed to add row: {}", e);
@@ -166,7 +238,7 @@ impl DataTableEditor {
                     .label("Delete Row")
                     .small()
                     .outline()
-                    .disabled(self.current_table.is_none())
+                    .disabled(!is_table_tab)
                     .on_click(cx.listener(|editor, _, _, cx| {
                         if let Err(e) = editor.delete_selected_row(cx) {
                             eprintln!("Failed to delete row: {}", e);
@@ -180,7 +252,7 @@ impl DataTableEditor {
                     .label("Refresh")
                     .small()
                     .outline()
-                    .disabled(self.current_table.is_none())
+                    .disabled(!is_table_tab)
                     .on_click(cx.listener(|editor, _, _, cx| {
                         if let Err(e) = editor.refresh_data(cx) {
                             eprintln!("Failed to refresh: {}", e);
@@ -189,13 +261,15 @@ impl DataTableEditor {
                     }))
             )
             .child(Divider::vertical().h_6())
-            .when_some(self.current_table.as_ref(), |this, table_name| {
-                this.child(
-                    Label::new(format!("Table: {}", table_name))
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                )
-            })
+            .child(
+                Button::new("new-query")
+                    .label("New Query")
+                    .small()
+                    .outline()
+                    .on_click(cx.listener(|editor, _, window, cx| {
+                        editor.open_query_tab(window, cx);
+                    }))
+            )
     }
 
     fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -219,7 +293,9 @@ impl DataTableEditor {
                     .flex_1()
                     .gap_1()
                     .children(self.available_tables.iter().enumerate().map(|(idx, table)| {
-                        let is_selected = self.current_table.as_ref() == Some(table);
+                        let is_open = self.open_tabs.iter().any(|tab| {
+                            matches!(&tab.tab_type, TabType::Table { name, .. } if name == table)
+                        });
                         let table_name = table.clone();
                         div()
                             .id(("table-item", idx))
@@ -230,18 +306,14 @@ impl DataTableEditor {
                             .text_sm()
                             .cursor_pointer()
                             .on_click(cx.listener(move |editor, _, window, cx| {
-                                eprintln!(">>> CLICK HANDLER FIRED for table: {}", table_name);
-                                match editor.select_table(table_name.clone(), window, cx) {
-                                    Ok(_) => eprintln!(">>> select_table succeeded"),
-                                    Err(e) => eprintln!(">>> select_table FAILED: {}", e),
+                                if let Err(e) = editor.select_table(table_name.clone(), window, cx) {
+                                    eprintln!("Failed to select table: {}", e);
                                 }
-                                cx.notify();
                             }))
-                            .when(is_selected, |this| {
-                                this.bg(cx.theme().accent)
-                                    .text_color(cx.theme().accent_foreground)
+                            .when(is_open, |this| {
+                                this.bg(cx.theme().accent.opacity(0.3))
                             })
-                            .when(!is_selected, |this| {
+                            .when(!is_open, |this| {
                                 this.hover(|this| this.bg(cx.theme().muted))
                             })
                             .child(table.clone())
@@ -252,90 +324,95 @@ impl DataTableEditor {
     fn render_tabs(&self, cx: &mut Context<Self>) -> impl IntoElement {
         h_flex()
             .gap_1()
-            .p_2()
+            .p_1()
             .bg(cx.theme().muted.opacity(0.2))
             .border_b_1()
             .border_color(cx.theme().border)
-            .child(
-                Button::new("tab-data")
-                    .label("Data")
-                    .small()
-                    .when(self.current_tab == EditorTab::TableData, |this| this.primary())
-                    .when(self.current_tab != EditorTab::TableData, |this| this.ghost())
-                    .on_click(cx.listener(|editor, _, _, cx| {
-                        editor.current_tab = EditorTab::TableData;
-                        cx.notify();
-                    }))
-            )
-            .child(
-                Button::new("tab-query")
-                    .label("Query Editor")
-                    .small()
-                    .when(self.current_tab == EditorTab::QueryEditor, |this| this.primary())
-                    .when(self.current_tab != EditorTab::QueryEditor, |this| this.ghost())
-                    .on_click(cx.listener(|editor, _, _, cx| {
-                        editor.current_tab = EditorTab::QueryEditor;
-                        if editor.query_editor.is_none() {
-                            editor.query_editor = Some(cx.new(|cx| {
-                                QueryEditorView::new(editor.db.clone(), cx)
-                            }));
-                        }
-                        cx.notify();
-                    }))
-            )
+            .children(self.open_tabs.iter().enumerate().map(|(idx, tab)| {
+                let is_active = self.active_tab_idx == Some(idx);
+                let tab_name = match &tab.tab_type {
+                    TabType::Table { name, .. } => name.clone(),
+                    TabType::Query { name, .. } => name.clone(),
+                };
+                
+                h_flex()
+                    .gap_1()
+                    .px_3()
+                    .py_1()
+                    .rounded_t_md()
+                    .items_center()
+                    .when(is_active, |this| {
+                        this.bg(cx.theme().background)
+                            .border_t_2()
+                            .border_color(cx.theme().accent)
+                    })
+                    .when(!is_active, |this| {
+                        this.bg(cx.theme().muted.opacity(0.5))
+                    })
+                    .child(
+                        Button::new(("tab-button", idx))
+                            .label(tab_name)
+                            .small()
+                            .ghost()
+                            .on_click({
+                                let idx = idx;
+                                cx.listener(move |editor, _, _, cx| {
+                                    editor.active_tab_idx = Some(idx);
+                                    cx.notify();
+                                })
+                            })
+                    )
+                    .child(
+                        Button::new(("close-tab", idx))
+                            .label("×")
+                            .small()
+                            .ghost()
+                            .on_click({
+                                let idx = idx;
+                                cx.listener(move |editor, _, _, cx| {
+                                    editor.close_tab(idx, cx);
+                                })
+                            })
+                    )
+            }))
     }
 
     fn render_content(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        eprintln!("Rendering content - tab: {:?}, table_view is some: {}, current_table: {:?}", 
-                  self.current_tab, self.table_view.is_some(), self.current_table);
-        
-        match self.current_tab {
-            EditorTab::TableData => {
-                if let Some(ref table_view) = self.table_view {
-                    eprintln!("Rendering table view");
-                    div()
-                        .flex_1()
-                        .w_full()
-                        .size_full()
-                        .child(table_view.clone())
-                        .into_any_element()
-                } else {
-                    eprintln!("No table view, showing message");
-                    v_flex()
-                        .flex_1()
-                        .w_full()
-                        .size_full()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            Label::new("Select a table to view data")
-                                .text_color(cx.theme().muted_foreground)
-                        )
-                        .into_any_element()
-                }
-            }
-            EditorTab::QueryEditor => {
-                if let Some(ref query_editor) = self.query_editor {
-                    div()
-                        .flex_1()
-                        .w_full()
-                        .child(query_editor.clone())
-                        .into_any_element()
-                } else {
-                    v_flex()
-                        .flex_1()
-                        .w_full()
-                        .size_full()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            Label::new("Query editor not initialized")
-                                .text_color(cx.theme().muted_foreground)
-                        )
-                        .into_any_element()
-                }
+        if let Some(active_idx) = self.active_tab_idx {
+            if let Some(tab) = self.open_tabs.get(active_idx) {
+                return match &tab.tab_type {
+                    TabType::Table { view, .. } => {
+                        div()
+                            .flex_1()
+                            .w_full()
+                            .size_full()
+                            .child(view.clone())
+                            .into_any_element()
+                    }
+                    TabType::Query { view, .. } => {
+                        div()
+                            .flex_1()
+                            .w_full()
+                            .size_full()
+                            .child(view.clone())
+                            .into_any_element()
+                    }
+                };
             }
         }
+        
+        // No active tab
+        v_flex()
+            .flex_1()
+            .w_full()
+            .size_full()
+            .items_center()
+            .justify_center()
+            .child(
+                Label::new("Select a table or create a new query")
+                    .text_color(cx.theme().muted_foreground)
+            )
+            .into_any_element()
     }
 }
 
@@ -374,6 +451,7 @@ impl Focusable for DataTableEditor {
 }
 
 impl EventEmitter<PanelEvent> for DataTableEditor {}
+impl EventEmitter<DataTableEvent> for DataTableEditor {}
 
 impl Render for DataTableEditor {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

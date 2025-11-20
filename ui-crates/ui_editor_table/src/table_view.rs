@@ -1,6 +1,7 @@
 use gpui::{prelude::*, *};
 use ui::{
     h_flex, v_flex, button::Button, table::{Column, ColumnSort, Table, TableDelegate, TableEvent},
+    input::TextInput,
     ActiveTheme, Sizable, Size, StyleSized, StyledExt, Selectable,
 };
 use std::ops::Range;
@@ -13,6 +14,7 @@ use crate::{
 pub struct DataTableState {
     pub editing_cell: Option<(usize, usize)>, // (row_idx, col_idx)
     pub selected_row: Option<usize>,
+    pub edit_buffer: Option<String>,
 }
 
 pub struct DataTableView {
@@ -63,6 +65,7 @@ impl DataTableView {
             state: DataTableState {
                 editing_cell: None,
                 selected_row: None,
+                edit_buffer: None,
             },
         })
     }
@@ -123,6 +126,48 @@ impl DataTableView {
             }
         }
         Ok(())
+    }
+    
+    pub fn save_editing_cell(&mut self) -> anyhow::Result<()> {
+        if let (Some((row_idx, col_idx)), Some(ref buffer)) = (self.state.editing_cell, &self.state.edit_buffer) {
+            if let Some(row) = self.rows.get(row_idx) {
+                if col_idx > 0 && col_idx <= self.schema.fields.len() {
+                    let field = &self.schema.fields[col_idx - 1];
+                    
+                    // Parse value based on field type
+                    let value = match &field.sql_type {
+                        crate::reflection::SqlType::Integer => {
+                            buffer.parse::<i64>()
+                                .map(|v| serde_json::Value::Number(v.into()))
+                                .unwrap_or(serde_json::Value::Null)
+                        }
+                        crate::reflection::SqlType::Real => {
+                            buffer.parse::<f64>()
+                                .ok()
+                                .and_then(|v| serde_json::Number::from_f64(v))
+                                .map(serde_json::Value::Number)
+                                .unwrap_or(serde_json::Value::Null)
+                        }
+                        crate::reflection::SqlType::Boolean => {
+                            serde_json::Value::Bool(buffer == "true" || buffer == "1")
+                        }
+                        _ => serde_json::Value::String(buffer.clone()),
+                    };
+                    
+                    self.db.update_cell(&self.table_name, row.id, &field.name, value)?;
+                    self.refresh_rows(0, 100)?;
+                }
+            }
+            
+            self.state.editing_cell = None;
+            self.state.edit_buffer = None;
+        }
+        Ok(())
+    }
+    
+    pub fn cancel_edit(&mut self) {
+        self.state.editing_cell = None;
+        self.state.edit_buffer = None;
     }
 }
 
@@ -194,13 +239,25 @@ impl TableDelegate for DataTableView {
             let cell_idx = col_ix - 1;
             if let Some(cell) = row.cells.get(cell_idx) {
                 let is_editing = self.state.editing_cell == Some((row_ix, col_ix));
+                let display = cell.display.clone();
 
                 if is_editing {
-                    let field = &self.schema.fields[cell_idx];
-                    let editor = CellEditor::new_from_sql_type(&field.sql_type, Some(cell.value.clone()));
-                    return CellEditorView::new(editor).into_any_element();
+                    // TODO: Implement proper inline editing with TextInput
+                    // For now, show editing state visually
+                    return div()
+                        .id(("cell-edit", row_ix * 1000 + col_ix))
+                        .px_2()
+                        .py_1()
+                        .text_sm()
+                        .bg(cx.theme().accent.opacity(0.2))
+                        .border_2()
+                        .border_color(cx.theme().accent)
+                        .child("[EDITING] ")
+                        .child(display)
+                        .into_any_element();
                 }
 
+                let display_for_closure = display.clone();
                 return div()
                     .id(("cell", row_ix * 1000 + col_ix))
                     .px_2()
@@ -208,11 +265,13 @@ impl TableDelegate for DataTableView {
                     .text_sm()
                     .cursor_pointer()
                     .on_click(cx.listener(move |table, _, _, cx| {
-                        table.delegate_mut().state.editing_cell = Some((row_ix, col_ix));
+                        let delegate = table.delegate_mut();
+                        delegate.state.editing_cell = Some((row_ix, col_ix));
+                        delegate.state.edit_buffer = Some(display_for_closure.clone());
                         cx.notify();
                     }))
                     .hover(|this| this.bg(cx.theme().muted.opacity(0.5)))
-                    .child(cell.display.clone())
+                    .child(display)
                     .into_any_element();
             }
         }

@@ -1,13 +1,14 @@
 use gpui::{prelude::*, *};
 use ui::{
     h_flex, v_flex, button::{Button, ButtonVariants}, label::Label,
+    input::TextInput,
     ActiveTheme, Sizable, Size, StyleSized, StyledExt, Disableable,
 };
 use crate::database::{DatabaseManager, CellValue};
 
 pub struct QueryEditor {
     db: DatabaseManager,
-    query_text: String,
+    query_buffer: SharedString,
     results: Option<QueryResult>,
     error: Option<String>,
     is_executing: bool,
@@ -25,15 +26,15 @@ impl QueryEditor {
     pub fn new(db: DatabaseManager) -> Self {
         Self {
             db,
-            query_text: String::from("SELECT * FROM "),
+            query_buffer: "SELECT * FROM ".into(),
             results: None,
             error: None,
             is_executing: false,
         }
     }
 
-    pub fn set_query(&mut self, query: String) {
-        self.query_text = query;
+    pub fn set_query(&mut self, query: SharedString) {
+        self.query_buffer = query;
     }
 
     pub fn execute_query(&mut self) -> anyhow::Result<()> {
@@ -42,7 +43,7 @@ impl QueryEditor {
 
         let start = std::time::Instant::now();
 
-        match self.db.execute_query(&self.query_text) {
+        match self.db.execute_query(&self.query_buffer.to_string()) {
             Ok(rows) => {
                 let execution_time_ms = start.elapsed().as_millis() as u64;
                 let row_count = rows.len();
@@ -77,7 +78,8 @@ impl QueryEditor {
         self.error = None;
     }
 
-    pub fn render_query_input(&self, cx: &Context<QueryEditor>) -> impl IntoElement {
+    pub fn render_query_input(&mut self, cx: &mut Context<QueryEditor>) -> impl IntoElement {
+        let query = self.query_buffer.clone();
         v_flex()
             .gap_2()
             .child(
@@ -89,15 +91,15 @@ impl QueryEditor {
                 div()
                     .w_full()
                     .h_32()
-                    .bg(cx.theme().background)
                     .border_1()
                     .border_color(cx.theme().border)
                     .rounded_md()
                     .p_2()
+                    .bg(cx.theme().background)
                     .child(
                         div()
                             .text_sm()
-                            .child(self.query_text.clone())
+                            .child(query.to_string())
                     )
             )
     }
@@ -229,7 +231,7 @@ pub struct QueryEditorView {
 }
 
 impl QueryEditorView {
-    pub fn new(db: DatabaseManager, cx: &mut Context<Self>) -> Self {
+    pub fn new(db: DatabaseManager, _window: &mut Window, cx: &mut Context<Self>) -> Self {
         let editor = cx.new(|_| QueryEditor::new(db));
         Self { editor }
     }
@@ -237,24 +239,22 @@ impl QueryEditorView {
 
 impl Render for QueryEditorView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let query_input = self.editor.update(cx, |editor, cx| {
+            editor.render_query_input(cx)
+        });
+        let controls = self.editor.update(cx, |editor, cx| {
+            editor.render_controls(cx)
+        });
+        let results = self.editor.update(cx, |editor, cx| {
+            editor.render_results(cx)
+        });
+        
         v_flex()
             .size_full()
             .gap_4()
             .p_4()
-            .child(
-                self.editor.update(cx, |editor, cx| {
-                    editor.render_query_input(cx)
-                })
-            )
-            .child(
-                self.editor.update(cx, |editor, cx| {
-                    editor.render_controls(cx)
-                })
-            )
-            .child(
-                self.editor.update(cx, |editor, cx| {
-                    editor.render_results(cx)
-                })
-            )
+            .child(query_input)
+            .child(controls)
+            .child(results)
     }
 }
