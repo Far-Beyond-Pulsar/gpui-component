@@ -1,15 +1,15 @@
 use gpui::*;
-use ui::{prelude::*, ActiveTheme, StyledExt};
+use ui::{ActiveTheme, h_flex, v_flex, div, StyledExt};
 use crate::state::{DocumentationState, TreeNode};
 use crate::components::TreeNodeView;
 
 pub struct Sidebar;
 
 impl Sidebar {
-    pub fn render(
+    pub fn render<V: Send + 'static>(
         state: &DocumentationState,
-        on_node_click: impl Fn(usize, &mut Window, &mut Context<impl Send>) + 'static,
-        cx: &mut Context<impl Send>,
+        on_node_click: impl Fn(usize, &mut Window, &mut Context<V>) + 'static,
+        cx: &mut Context<V>,
     ) -> impl IntoElement {
         let theme = cx.theme();
         

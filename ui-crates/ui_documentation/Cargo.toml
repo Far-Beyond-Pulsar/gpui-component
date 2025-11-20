@@ -7,6 +7,8 @@ edition = "2024"
 gpui = { workspace = true }
 ui = { path = "../../crates/ui" }
 pulsar_docs = { path = "../../crates/pulsar_docs" }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

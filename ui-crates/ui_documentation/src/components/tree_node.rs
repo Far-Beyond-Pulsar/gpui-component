@@ -1,16 +1,16 @@
 use gpui::*;
-use ui::{prelude::*, ActiveTheme, button::Button, IconName, Selectable};
+use ui::{ActiveTheme, button::Button, h_flex, v_flex, div, IconName, Selectable, Sizable, ButtonVariants, Size, StyledExt};
 use crate::state::TreeNode;
 
 pub struct TreeNodeView;
 
 impl TreeNodeView {
-    pub fn render(
+    pub fn render<V: Send + 'static>(
         node: &TreeNode,
         is_selected: bool,
         indent_level: usize,
-        on_click: impl Fn(&mut Window, &mut Context<impl Send>) + 'static,
-        cx: &mut Context<impl Send>,
+        on_click: impl Fn(&mut Window, &mut Context<V>) + 'static,
+        cx: &mut Context<V>,
     ) -> impl IntoElement {
         let theme = cx.theme();
         let indent = px((indent_level * 16) as f32);
@@ -23,12 +23,12 @@ impl TreeNodeView {
                     IconName::ChevronRight
                 };
 
-                Button::new(format!("crate-{}", name), name.clone())
-                    .full_width()
-                    .style(ButtonStyle::Subtle)
-                    .icon(Some(icon))
-                    .icon_position(IconPosition::Start)
-                    .icon_size(IconSize::Small)
+                Button::new(("crate", name.as_str()))
+                    .label(name.clone())
+                    .w_full()
+                    .ghost()
+                    .icon(icon)
+                    .with_size(Size::Small)
                     .selected(is_selected)
                     .on_click(move |_event, window, cx| on_click(window, cx))
                     .into_any_element()
@@ -55,12 +55,12 @@ impl TreeNodeView {
                 div()
                     .pl(indent)
                     .child(
-                        Button::new(format!("category-{}", name), display_name)
-                            .full_width()
-                            .style(ButtonStyle::Subtle)
-                            .icon(Some(icon))
-                            .icon_position(IconPosition::Start)
-                            .icon_size(IconSize::XSmall)
+                        Button::new(("category", name.as_str()))
+                            .label(display_name)
+                            .w_full()
+                            .ghost()
+                            .icon(icon)
+                            .with_size(Size::XSmall)
                             .selected(is_selected)
                             .on_click(move |_event, window, cx| on_click(window, cx))
                     )
@@ -70,11 +70,11 @@ impl TreeNodeView {
                 div()
                     .pl(indent + px(8.0))
                     .child(
-                        Button::new(format!("item-{}", name), name.clone())
-                            .full_width()
-                            .style(ButtonStyle::Subtle)
-                            .icon_position(IconPosition::Start)
-                            .icon_size(IconSize::XSmall)
+                        Button::new(("item", name.as_str()))
+                            .label(name.clone())
+                            .w_full()
+                            .ghost()
+                            .with_size(Size::XSmall)
                             .selected(is_selected)
                             .on_click(move |_event, window, cx| on_click(window, cx))
                     )
