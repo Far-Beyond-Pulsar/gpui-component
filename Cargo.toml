@@ -20,6 +20,7 @@ members = [
     "ui-crates/ui_file_manager",
     "ui-crates/ui_loading_screen",
     "ui-crates/ui_project_launcher", "ui-crates/ui_about", "ui-crates/ui_documentation", "crates/pulsar_docs",
+    "ui-crates/ui_editor_table",
 ]
 
 default-members = ["crates/engine"] 
@@ -60,6 +61,7 @@ ui_loading_screen = { path = "ui-crates/ui_loading_screen" }
 ui_project_launcher = { path = "ui-crates/ui_project_launcher" }
 ui_about = { path = "ui-crates/ui_about" }
 ui_documentation = { path = "ui-crates/ui_documentation" }
+ui_editor_table = { path = "ui-crates/ui_editor_table" }
 
 anyhow = "1"
 log = "0.4"

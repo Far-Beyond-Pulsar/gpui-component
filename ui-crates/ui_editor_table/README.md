@@ -1,0 +1,158 @@
+# Data Table Editor
+
+A fully functional SQLite database editor for the Pulsar Native game engine, equivalent to Unreal Engine's Data Tables system. Inspired by DBeaver's editing and querying workflow.
+
+## Features
+
+- **Type-to-Schema Mapping**: Automatically create SQLite tables from Rust types
+- **Virtual Scrolling Table**: High-performance table view with virtual scrolling for large datasets
+- **Inline Editing**: Edit cells directly in the table view
+- **Foreign Key Support**: Sub-structs are represented as foreign keys with dropdown editors
+- **Query Editor**: DBeaver-style SQL query interface
+- **CRUD Operations**: Full Create, Read, Update, Delete support
+- **Type Safety**: Schema validation and type checking
+
+## Usage
+
+### Creating a Data Table Editor
+
+```rust
+use gpui::*;
+use ui_editor_table::{DatabaseManager, DataTableEditor, TypeSchema, reflection::SqlType};
+
+// Create an editor
+let editor = cx.new_view(|cx| DataTableEditor::new(cx));
+
+// Or open an existing database
+let editor = cx.new_view(|cx| {
+    DataTableEditor::open_database("path/to/database.db".into(), cx).unwrap()
+});
+```
+
+### Defining Type Schemas
+
+```rust
+// Define a schema for a Rust type
+let mut player_schema = TypeSchema::new("PlayerData");
+player_schema.add_field("name", SqlType::Text, false);
+player_schema.add_field("level", SqlType::Integer, false);
+player_schema.add_field("health", SqlType::Real, false);
+player_schema.add_field("is_online", SqlType::Boolean, false);
+
+// Register the schema
+editor.register_type_schema(player_schema).unwrap();
+```
+
+### Foreign Keys (Sub-Structs)
+
+```rust
+// Define a schema with a foreign key
+let mut item_schema = TypeSchema::new("ItemData");
+item_schema.add_field("item_name", SqlType::Text, false);
+item_schema.add_field("quantity", SqlType::Integer, false);
+item_schema.add_field(
+    "owner_id",
+    SqlType::ForeignKey {
+        table: "player_data".to_string(),
+    },
+    false,
+);
+
+editor.register_type_schema(item_schema).unwrap();
+```
+
+When editing the `owner_id` field, a dropdown will appear showing all available players. Behind the scenes, this is stored as an ID pointing to the related table.
+
+### Basic Operations
+
+```rust
+// Select a table to view
+editor.select_table("player_data".to_string(), cx).unwrap();
+
+// Add a new row
+editor.add_new_row(cx).unwrap();
+
+// Delete selected row
+editor.delete_selected_row(cx).unwrap();
+
+// Refresh data
+editor.refresh_data(cx).unwrap();
+```
+
+### Direct Database Operations
+
+```rust
+let db = DatabaseManager::new("game_data.db")?;
+
+// Insert a row
+db.insert_row(
+    "player_data",
+    vec![
+        serde_json::json!("Alice"),
+        serde_json::json!(25),
+        serde_json::json!(100.0),
+        serde_json::json!(true),
+    ],
+)?;
+
+// Update a cell
+db.update_cell(
+    "player_data",
+    1, // row_id
+    "level",
+    serde_json::json!(26),
+)?;
+
+// Delete a row
+db.delete_row("player_data", 1)?;
+
+// Execute a query
+let results = db.execute_query("SELECT * FROM player_data WHERE level > 20")?;
+```
+
+## Architecture
+
+The editor consists of several key components:
+
+1. **Type Reflection System** (`reflection.rs`): Maps Rust types to SQLite schemas
+2. **Database Manager** (`database.rs`): Handles all SQLite operations
+3. **Table View** (`table_view.rs`): Virtual scrolling table with inline editing
+4. **Cell Editors** (`cell_editors.rs`): Type-specific editors for each cell type
+5. **Query Editor** (`query_editor.rs`): SQL query interface
+6. **Main Editor** (`editor.rs`): Brings everything together in a DBeaver-style interface
+
+## Supported SQL Types
+
+- `Integer` - For `i8`, `i16`, `i32`, `i64`, `isize`, `u8`, `u16`, `u32`, `u64`, `usize`
+- `Real` - For `f32`, `f64`
+- `Text` - For `String`, `str`, `&str`
+- `Boolean` - For `bool`
+- `Blob` - For `Vec<u8>`, `[u8]`, `&[u8]`
+- `DateTime` - For `chrono::DateTime`
+- `ForeignKey` - For sub-structs (stored as INTEGER with foreign key constraint)
+
+## Example
+
+See `examples/simple_datatable.rs` for a complete working example demonstrating:
+- Creating schemas
+- Adding foreign key relationships
+- Inserting data
+- Viewing and editing tables
+
+Run the example with:
+```bash
+cargo run --example simple_datatable -p ui_editor_table
+```
+
+## Integration with Unreal-Style Workflow
+
+Like Unreal Engine's Data Tables:
+
+1. Define your Rust structs
+2. Register them as schemas
+3. The editor keeps the table synced with the type's fields
+4. Sub-structs become foreign key relationships
+5. Edit data in a spreadsheet-like interface
+6. Query data with SQL
+
+The key difference from traditional database editors: the schema is driven by your Rust types, ensuring type safety and automatic synchronization.
