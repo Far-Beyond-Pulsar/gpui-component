@@ -9915,6 +9915,7 @@ dependencies = [
  "tracing",
  "tron",
  "ui",
+ "ui_about",
  "ui_common",
  "ui_core",
  "ui_editor",
@@ -14001,6 +14002,14 @@ dependencies = [
  "wgpu 0.20.1",
  "windows 0.58.0",
  "winit 0.29.15",
+]
+
+[[package]]
+name = "ui_about"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "ui",
 ]
 
 [[package]]

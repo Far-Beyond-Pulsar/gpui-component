@@ -42,6 +42,8 @@ use ui_core::{PulsarApp, PulsarRoot, ToggleCommandPalette};
 use ui_entry::{EntryScreen, ProjectSelected, create_entry_component};
 use ui_settings::{SettingsWindow, create_settings_component};
 use ui_loading_screen::create_loading_component;
+use ui_about::create_about_window;
+use ui_common::menu::AboutApp;
 use crate::window::{convert_modifiers, convert_mouse_button, WindowState};
 use engine_state::{EngineState, WindowRequest};
 use gpui::*;
@@ -1185,6 +1187,12 @@ impl ApplicationHandler for WinitGpuiApp {
                     engine_state.request_window(WindowRequest::Settings);
                 });
 
+                let engine_state = engine_state_for_actions.clone();
+                app.on_action(move |_: &AboutApp, _app_cx| {
+                    println!("ΓäÅ  About window requested - creating new window!");
+                    engine_state.request_window(WindowRequest::About);
+                });
+
                 app.activate(true);
             });
 
@@ -1215,6 +1223,9 @@ impl ApplicationHandler for WinitGpuiApp {
                     }
                     Some(WindowRequest::Settings) => {
                         create_settings_component(window, cx, &engine_state_for_events)
+                    }
+                    Some(WindowRequest::About) => {
+                        create_about_window(window, cx)
                     }
                     Some(WindowRequest::ProjectSplash { project_path }) => {
                         // Create loading screen for project loading

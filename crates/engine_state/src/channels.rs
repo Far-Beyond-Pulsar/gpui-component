@@ -11,6 +11,8 @@ pub enum WindowRequest {
     Entry,
     /// Open settings window
     Settings,
+    /// Open about window
+    About,
     /// Open project editor
     ProjectEditor { project_path: String },
     /// Open project splash screen
