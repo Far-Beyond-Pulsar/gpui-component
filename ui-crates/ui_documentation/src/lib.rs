@@ -15,6 +15,7 @@ pub struct DocumentationWindow {
     flat_visible_items: Vec<usize>,
     expanded_paths: HashMap<String, bool>,
     markdown_content: String,
+    search_query: String,
 }
 
 #[derive(Clone, Debug)]
@@ -49,6 +50,7 @@ impl DocumentationWindow {
             flat_visible_items: Vec::new(),
             expanded_paths: HashMap::new(),
             markdown_content: "# Pulsar Engine Documentation\n\nSelect an item from the sidebar to view its documentation.".to_string(),
+            search_query: String::new(),
         };
         
         window.load_documentation();
@@ -62,7 +64,10 @@ impl DocumentationWindow {
         }
         
         // Build flat tree structure
-        for crate_name in list_crates() {
+        let mut crates = list_crates();
+        crates.sort();
+        
+        for crate_name in crates {
             if let Some(index) = get_crate_index(&crate_name) {
                 // Add crate node
                 self.tree_items.push(TreeNode::Crate {
@@ -71,8 +76,11 @@ impl DocumentationWindow {
                     depth: 0,
                 });
                 
-                // Add section nodes
-                for section in &index.sections {
+                // Add section nodes (sorted)
+                let mut sections = index.sections.clone();
+                sections.sort_by(|a, b| a.name.cmp(&b.name));
+                
+                for section in &sections {
                     self.tree_items.push(TreeNode::Section {
                         crate_name: crate_name.clone(),
                         section_name: section.name.clone(),
@@ -80,8 +88,11 @@ impl DocumentationWindow {
                         depth: 1,
                     });
                     
-                    // Add item nodes
-                    for item in &section.items {
+                    // Add item nodes (sorted)
+                    let mut items = section.items.clone();
+                    items.sort_by(|a, b| a.name.cmp(&b.name));
+                    
+                    for item in &items {
                         self.tree_items.push(TreeNode::Item {
                             crate_name: crate_name.clone(),
                             section_name: section.name.clone(),
@@ -206,6 +217,46 @@ impl Render for DocumentationWindow {
                     )
             )
             .child(
+                // Search bar
+                h_flex()
+                    .w_full()
+                    .p_2()
+                    .bg(bg)
+                    .border_b_1()
+                    .border_color(border)
+                    .child(
+                        div()
+                            .flex_1()
+                            .px_3()
+                            .py_2()
+                            .bg(sidebar_bg)
+                            .border_1()
+                            .border_color(border)
+                            .rounded_md()
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .child(Icon::new(IconName::Search).size_4().text_color(theme.muted_foreground))
+                                    .child(
+                                        div()
+                                            .id("search-input")
+                                            .flex_1()
+                                            .child(
+                                                gpui::div()
+                                                    .text_color(fg)
+                                                    .child(if self.search_query.is_empty() {
+                                                        "Search documentation..."
+                                                    } else {
+                                                        &self.search_query
+                                                    })
+                                            )
+                                    )
+                            )
+                    )
+            )
+            .child(
                 // Main content area
                 h_flex()
                     .flex_1()
@@ -255,12 +306,16 @@ impl Render for DocumentationWindow {
                                     .mx_auto()
                                     .p_8()
                                     .child(
-                                        TextView::markdown(
-                                            "docs-markdown",
-                                            markdown,
-                                            window,
-                                            cx,
-                                        )
+                                        div()
+                                            .w_full()
+                                            .child(
+                                                TextView::markdown(
+                                                    "docs-markdown",
+                                                    markdown,
+                                                    window,
+                                                    cx,
+                                                )
+                                            )
                                     )
                             )
                     )
