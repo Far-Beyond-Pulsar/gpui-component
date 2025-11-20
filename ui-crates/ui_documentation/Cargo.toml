@@ -1,12 +1,14 @@
 [package]
 name = "ui_documentation"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
 gpui = { workspace = true }
 ui = { path = "../../crates/ui" }
 pulsar_docs = { path = "../../crates/pulsar_docs" }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

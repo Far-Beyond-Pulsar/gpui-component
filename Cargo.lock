@@ -14080,6 +14080,8 @@ version = "0.1.0"
 dependencies = [
  "gpui",
  "pulsar_docs",
+ "serde",
+ "serde_json",
  "ui",
 ]
 
