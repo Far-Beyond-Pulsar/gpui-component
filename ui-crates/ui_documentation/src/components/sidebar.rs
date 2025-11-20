@@ -13,7 +13,8 @@ impl Sidebar {
         cx: &mut Context<V>,
     ) -> impl IntoElement {
         let theme = cx.theme();
-        
+        let on_node_click = Rc::new(on_node_click);
+
         v_flex()
             .w(px(280.0))
             .h_full()
@@ -53,13 +54,14 @@ impl Sidebar {
                                 _ => false,
                             };
                             let indent = TreeNodeView::get_indent_level(node);
+                            let on_click = on_node_click.clone();
 
                             items.push(TreeNodeView::render(
                                 node,
                                 idx,
                                 is_selected,
                                 indent,
-                                move |window, cx| on_node_click(idx, window, cx),
+                                move |window, cx| on_click(idx, window, cx),
                                 cx,
                             ));
                         }
