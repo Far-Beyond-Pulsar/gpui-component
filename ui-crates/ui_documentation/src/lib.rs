@@ -243,15 +243,16 @@ impl Render for DocumentationWindow {
                                         div()
                                             .id("search-input")
                                             .flex_1()
-                                            .child(
+                                            .child({
+                                                let query = self.search_query.clone();
                                                 gpui::div()
                                                     .text_color(fg)
-                                                    .child(if self.search_query.is_empty() {
-                                                        "Search documentation..."
+                                                    .child(if query.is_empty() {
+                                                        "Search documentation...".to_string()
                                                     } else {
-                                                        &self.search_query
+                                                        query
                                                     })
-                                            )
+                                            })
                                     )
                             )
                     )
