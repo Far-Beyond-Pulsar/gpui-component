@@ -73,7 +73,6 @@ impl TreeNodeView {
                         Button::new(format!("item-{}", name), name.clone())
                             .full_width()
                             .style(ButtonStyle::Subtle)
-                            .icon(Some(IconName::File))
                             .icon_position(IconPosition::Start)
                             .icon_size(IconSize::XSmall)
                             .selected(is_selected)

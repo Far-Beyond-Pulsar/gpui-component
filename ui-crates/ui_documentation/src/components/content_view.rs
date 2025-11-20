@@ -13,7 +13,7 @@ impl ContentView {
         div()
             .flex_1()
             .h_full()
-            .overflow_y_scroll()
+            .overflow_y(gpui::Overflow::Scroll)
             .bg(theme.background)
             .child(
                 div()
