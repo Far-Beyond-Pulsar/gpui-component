@@ -5,7 +5,7 @@ use crate::components::{Sidebar, ContentView, SearchBar};
 
 pub struct MainView {
     state: DocumentationState,
-    search_bar: gpui::View<SearchBar>,
+    search_bar: View<SearchBar>,
 }
 
 impl MainView {
