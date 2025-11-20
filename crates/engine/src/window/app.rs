@@ -43,7 +43,8 @@ use ui_entry::{EntryScreen, ProjectSelected, create_entry_component};
 use ui_settings::{SettingsWindow, create_settings_component};
 use ui_loading_screen::create_loading_component;
 use ui_about::create_about_window;
-use ui_common::menu::AboutApp;
+use ui_documentation::create_documentation_window;
+use ui_common::menu::{AboutApp, ShowDocumentation};
 use crate::window::{convert_modifiers, convert_mouse_button, WindowState};
 use engine_state::{EngineState, WindowRequest};
 use gpui::*;
@@ -124,6 +125,7 @@ impl WinitGpuiApp {
             WindowRequest::Entry => ("Pulsar Engine", (1280.0, 720.0)),
             WindowRequest::Settings => ("Settings", (800.0, 600.0)),
             WindowRequest::About => ("About Pulsar Engine", (600.0, 500.0)),
+            WindowRequest::Documentation => ("Documentation", (1400.0, 900.0)),
             WindowRequest::ProjectEditor { .. } => ("Pulsar Engine - Project Editor", (1280.0, 800.0)),
             WindowRequest::ProjectSplash { .. } => ("Loading Project...", (960.0, 540.0)),
             WindowRequest::CloseWindow { .. } => return, // Handled elsewhere
@@ -1195,6 +1197,12 @@ impl ApplicationHandler for WinitGpuiApp {
                     engine_state.request_window(WindowRequest::About);
                 });
 
+                let engine_state = engine_state_for_actions.clone();
+                app.on_action(move |_: &ShowDocumentation, _app_cx| {
+                    println!("≡ƒôÜ Documentation window requested - creating new window!");
+                    engine_state.request_window(WindowRequest::Documentation);
+                });
+
                 app.activate(true);
             });
 
@@ -1228,6 +1236,9 @@ impl ApplicationHandler for WinitGpuiApp {
                     }
                     Some(WindowRequest::About) => {
                         create_about_window(window, cx)
+                    }
+                    Some(WindowRequest::Documentation) => {
+                        create_documentation_window(window, cx)
                     }
                     Some(WindowRequest::ProjectSplash { project_path }) => {
                         // Create loading screen for project loading

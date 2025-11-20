@@ -9918,6 +9918,7 @@ dependencies = [
  "ui_about",
  "ui_common",
  "ui_core",
+ "ui_documentation",
  "ui_editor",
  "ui_entry",
  "ui_file_manager",
@@ -14057,6 +14058,17 @@ dependencies = [
  "ui_settings",
  "ui_terminal",
  "walkdir",
+]
+
+[[package]]
+name = "ui_documentation"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "rust-embed 6.8.1",
+ "serde",
+ "serde_json",
+ "ui",
 ]
 
 [[package]]

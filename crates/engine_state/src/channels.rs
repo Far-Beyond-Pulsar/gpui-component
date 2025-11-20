@@ -13,6 +13,8 @@ pub enum WindowRequest {
     Settings,
     /// Open about window
     About,
+    /// Open documentation window
+    Documentation,
     /// Open project editor
     ProjectEditor { project_path: String },
     /// Open project splash screen
