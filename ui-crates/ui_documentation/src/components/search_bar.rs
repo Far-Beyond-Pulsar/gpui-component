@@ -1,6 +1,6 @@
 use gpui::*;
 use gpui::prelude::*;
-use ui::{prelude::*, IconButton, IconName, ActiveTheme};
+use ui::{prelude::*, Button, IconName, ActiveTheme};
 
 pub struct SearchBar {
     focus_handle: FocusHandle,
@@ -65,8 +65,10 @@ impl SearchBar {
             )
             .when(!query.is_empty(), |div| {
                 div.child(
-                    IconButton::new("clear-search", IconName::Close)
-                        .icon_size(IconSize::Small)
+                    Button::new("clear-search")
+                        .icon(IconName::Close)
+                        .ghost()
+                        .xsmall()
                         .on_click(cx.listener(move |_this, _event, window, cx| {
                             on_change("", window, cx);
                         }))
