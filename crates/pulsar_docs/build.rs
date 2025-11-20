@@ -1,101 +1,42 @@
-/// Build script to generate rustdoc JSON and convert to Markdown
-use std::process::Command;
+/// Pulsar Documentation Generator
+/// 
+/// A comprehensive documentation generator that parses Rust source code and generates
+/// well-structured Markdown documentation with:
+/// - Full type information
+/// - Documentation comments
+/// - Source code examples
+/// - Module hierarchy
+/// - Cross-references
+/// 
+/// This runs at build time to generate documentation that is embedded into the binary.
+
+#[path = "build/doc_generator/mod.rs"]
+mod doc_generator;
+
 use std::path::Path;
-use std::fs;
 
 fn main() {
-    println!("cargo:rerun-if-changed=Cargo.toml");
-    println!("cargo:rerun-if-changed=crates/");
-    println!("cargo:rerun-if-changed=ui-crates/");
+    println!("cargo:rerun-if-changed=../../Cargo.toml");
+    println!("cargo:rerun-if-changed=../../crates/");
+    println!("cargo:rerun-if-changed=../../ui-crates/");
     
-    // Generate rustdocs as JSON then convert to Markdown
-    generate_documentation();
-}
-
-fn generate_documentation() {
     // Only generate docs in release builds
     if std::env::var("PROFILE").unwrap_or_default() != "release" {
         println!("cargo:warning=Skipping doc generation in debug mode");
         return;
     }
     
-    println!("cargo:warning=Generating workspace documentation as JSON...");
+    println!("cargo:warning=Starting Pulsar documentation generation...");
     
-    // Step 1: Generate JSON docs
-    let json_output = Command::new("cargo")
-        .env("RUSTC_BOOTSTRAP", "1")
-        .env("RUSTDOCFLAGS", "-Z unstable-options --output-format json")
-        .args([
-            "doc",
-            "--workspace",
-            "--no-deps",
-            "--target-dir",
-            "target"
-        ])
-        .output();
+    let workspace_root = Path::new("../../");
+    let output_dir = Path::new("../../target/doc");
     
-    match json_output {
-        Ok(result) if result.status.success() => {
-            println!("cargo:warning=JSON documentation generated successfully");
-            
-            // Step 2: Convert JSON to Markdown using rustdoc-md library
-            convert_json_to_markdown();
-        }
-        Ok(result) => {
-            let stderr = String::from_utf8_lossy(&result.stderr);
-            println!("cargo:warning=Failed to generate JSON docs: {}", stderr);
+    match doc_generator::generate_workspace_docs(workspace_root, output_dir) {
+        Ok(count) => {
+            println!("cargo:warning=Successfully generated documentation for {} crates", count);
         }
         Err(e) => {
-            println!("cargo:warning=Failed to run cargo doc: {}", e);
+            println!("cargo:warning=Documentation generation failed: {}", e);
         }
     }
-}
-
-fn convert_json_to_markdown() {
-    let doc_dir = Path::new("target/doc");
-    
-    if !doc_dir.exists() {
-        println!("cargo:warning=Doc directory doesn't exist");
-        return;
-    }
-    
-    // Find all .json files in target/doc
-    if let Ok(entries) = fs::read_dir(doc_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            
-            if path.extension().and_then(|s| s.to_str()) == Some("json") {
-                if let Some(file_stem) = path.file_stem().and_then(|s| s.to_str()) {
-                    let output_path = doc_dir.join(format!("{}.md", file_stem));
-                    
-                    println!("cargo:warning=Converting {} to Markdown...", file_stem);
-                    
-                    // Use rustdoc-md as a library
-                    match convert_crate_to_md(&path, &output_path) {
-                        Ok(_) => {
-                            println!("cargo:warning=Converted {}.json to Markdown", file_stem);
-                        }
-                        Err(e) => {
-                            println!("cargo:warning=Failed to convert {}: {}", file_stem, e);
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn convert_crate_to_md(json_path: &Path, output_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    use rustdoc_md::{rustdoc_json_to_markdown, rustdoc_json_types::Crate};
-    
-    // Load the JSON file
-    let data: Crate = serde_json::from_reader(fs::File::open(json_path)?)?;
-    
-    // Convert to Markdown
-    let markdown = rustdoc_json_to_markdown(data);
-    
-    // Save the Markdown file
-    fs::write(output_path, markdown)?;
-    
-    Ok(())
 }
