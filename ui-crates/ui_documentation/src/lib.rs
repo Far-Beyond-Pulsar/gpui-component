@@ -1,16 +1,12 @@
 use gpui::{prelude::*, *};
-use rust_embed::RustEmbed;
 use ui::{
     ActiveTheme, Root, Sizable, StyledExt,
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, IconName,
     markdown::Markdown,
 };
+use pulsar_docs::{get_crate_docs, list_crates, docs_available};
 use std::collections::HashMap;
-
-#[derive(RustEmbed)]
-#[folder = "$CARGO_MANIFEST_DIR/../../target/doc"]
-pub struct DocAssets;
 
 pub struct DocumentationWindow {
     focus_handle: FocusHandle,
@@ -49,27 +45,16 @@ impl DocumentationWindow {
     }
     
     fn load_documentation(&mut self) {
-        // Load all .md files from embedded docs
-        let mut crate_map: HashMap<String, Vec<String>> = HashMap::new();
-        
-        for file_path in DocAssets::iter() {
-            let file_name = file_path.as_ref();
-            
-            if file_name.ends_with(".md") {
-                // Extract crate name from path like "pulsar_engine.md" or "ui/index.md"
-                let parts: Vec<&str> = file_name.split('/').collect();
-                let crate_name = if parts.len() > 1 {
-                    parts[0].to_string()
-                } else {
-                    file_name.trim_end_matches(".md").to_string()
-                };
-                
-                crate_map.entry(crate_name).or_default().push(file_name.to_string());
-            }
+        // Check if docs are available
+        if !docs_available() {
+            return;
         }
         
+        // Get list of all crates from pulsar_docs
+        let crate_names = list_crates();
+        
         // Build crate list with sections
-        for (crate_name, _files) in crate_map {
+        for crate_name in crate_names {
             self.crates.push(CrateDoc {
                 name: crate_name.clone(),
                 path: format!("{}.md", crate_name),
@@ -91,20 +76,11 @@ impl DocumentationWindow {
         self.current_crate = Some(crate_name.to_string());
         self.current_section = section.map(String::from);
         
-        let file_key = if let Some(sec) = section {
-            format!("{}_{}.md", crate_name, sec.to_lowercase())
+        // For now, just load the main crate docs (sections can be added later)
+        if let Some(markdown) = get_crate_docs(crate_name) {
+            self.markdown_content = markdown;
         } else {
-            format!("{}.md", crate_name)
-        };
-        
-        if let Some(content) = DocAssets::get(&file_key) {
-            if let Ok(markdown) = std::str::from_utf8(&content.data) {
-                self.markdown_content = markdown.to_string();
-            } else {
-                self.markdown_content = format!("# {}\n\nNo documentation available.", crate_name);
-            }
-        } else {
-            self.markdown_content = format!("# {}\n\nNo documentation available for this section.", crate_name);
+            self.markdown_content = format!("# {}\n\nNo documentation available for this crate.", crate_name);
         }
     }
     

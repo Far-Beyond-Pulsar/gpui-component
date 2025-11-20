@@ -6,10 +6,7 @@ edition = "2024"
 [dependencies]
 gpui = { workspace = true }
 ui = { path = "../../crates/ui" }
-rust-embed = { version = "6", features = ["interpolate-folder-path"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-rustdoc-md = "0.1"
+pulsar_docs = { path = "../../crates/pulsar_docs" }
 
 [lints]
 workspace = true

@@ -19,7 +19,7 @@ members = [
     "ui-crates/ui_problems",
     "ui-crates/ui_file_manager",
     "ui-crates/ui_loading_screen",
-    "ui-crates/ui_project_launcher", "ui-crates/ui_about", "ui-crates/ui_documentation",
+    "ui-crates/ui_project_launcher", "ui-crates/ui_about", "ui-crates/ui_documentation", "crates/pulsar_docs",
 ]
 
 default-members = ["crates/engine"] 

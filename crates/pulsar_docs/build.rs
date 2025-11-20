@@ -38,7 +38,7 @@ fn generate_documentation() {
         Ok(result) if result.status.success() => {
             println!("cargo:warning=JSON documentation generated successfully");
             
-            // Step 2: Convert JSON to Markdown using rustdoc-md
+            // Step 2: Convert JSON to Markdown using rustdoc-md library
             convert_json_to_markdown();
         }
         Ok(result) => {
@@ -70,27 +70,32 @@ fn convert_json_to_markdown() {
                     
                     println!("cargo:warning=Converting {} to Markdown...", file_stem);
                     
-                    let convert_result = Command::new("rustdoc-md")
-                        .args([
-                            "--path", path.to_str().unwrap(),
-                            "--output", output_path.to_str().unwrap()
-                        ])
-                        .output();
-                    
-                    match convert_result {
-                        Ok(result) if result.status.success() => {
+                    // Use rustdoc-md as a library
+                    match convert_crate_to_md(&path, &output_path) {
+                        Ok(_) => {
                             println!("cargo:warning=Converted {}.json to Markdown", file_stem);
                         }
-                        Ok(result) => {
-                            let stderr = String::from_utf8_lossy(&result.stderr);
-                            println!("cargo:warning=Failed to convert {}: {}", file_stem, stderr);
-                        }
                         Err(e) => {
-                            println!("cargo:warning=rustdoc-md not found: {}. Install with: cargo install rustdoc-md", e);
+                            println!("cargo:warning=Failed to convert {}: {}", file_stem, e);
                         }
                     }
                 }
             }
         }
     }
+}
+
+fn convert_crate_to_md(json_path: &Path, output_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    use rustdoc_md::{rustdoc_json_to_markdown, rustdoc_json_types::Crate};
+    
+    // Load the JSON file
+    let data: Crate = serde_json::from_reader(fs::File::open(json_path)?)?;
+    
+    // Convert to Markdown
+    let markdown = rustdoc_json_to_markdown(data);
+    
+    // Save the Markdown file
+    fs::write(output_path, markdown)?;
+    
+    Ok(())
 }

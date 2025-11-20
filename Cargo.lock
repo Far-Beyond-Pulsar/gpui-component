@@ -9878,6 +9878,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_docs"
+version = "0.1.0"
+dependencies = [
+ "once_cell",
+ "rust-embed 6.8.1",
+ "rustdoc-md",
+ "serde_json",
+]
+
+[[package]]
 name = "pulsar_engine"
 version = "0.1.47"
 dependencies = [
@@ -14093,10 +14103,7 @@ name = "ui_documentation"
 version = "0.1.0"
 dependencies = [
  "gpui",
- "rust-embed 6.8.1",
- "rustdoc-md",
- "serde",
- "serde_json",
+ "pulsar_docs",
  "ui",
 ]
 
