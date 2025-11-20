@@ -1,6 +1,6 @@
 use gpui::*;
 use ui::{
-    div, h_flex, v_flex, button::Button, label::Label,
+    h_flex, v_flex, button::Button, label::Label,
     ActiveTheme, Sizable, Size, StyleSized, StyledExt,
 };
 use crate::database::{DatabaseManager, CellValue};
@@ -77,7 +77,7 @@ impl QueryEditor {
         self.error = None;
     }
 
-    pub fn render_query_input(&self, cx: &WindowContext) -> impl IntoElement {
+    pub fn render_query_input(&self, cx: &App) -> impl IntoElement {
         v_flex()
             .gap_2()
             .child(
@@ -103,7 +103,7 @@ impl QueryEditor {
             )
     }
 
-    pub fn render_controls(&self, cx: &WindowContext) -> impl IntoElement {
+    pub fn render_controls(&self, cx: &App) -> impl IntoElement {
         h_flex()
             .gap_2()
             .items_center()
@@ -132,7 +132,7 @@ impl QueryEditor {
             })
     }
 
-    pub fn render_results(&self, cx: &WindowContext) -> impl IntoElement {
+    pub fn render_results(&self, cx: &App) -> impl IntoElement {
         v_flex()
             .w_full()
             .flex_1()
@@ -221,14 +221,14 @@ pub struct QueryEditorView {
 }
 
 impl QueryEditorView {
-    pub fn new(db: DatabaseManager, cx: &mut ViewContext<Self>) -> Self {
-        let editor = cx.new_view(|_| QueryEditor::new(db));
+    pub fn new(db: DatabaseManager, cx: &mut Context<Self>) -> Self {
+        let editor = cx.new(|_| QueryEditor::new(db));
         Self { editor }
     }
 }
 
 impl Render for QueryEditorView {
-    fn render(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
+    fn render(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let editor = self.editor.read(cx);
 
         v_flex()

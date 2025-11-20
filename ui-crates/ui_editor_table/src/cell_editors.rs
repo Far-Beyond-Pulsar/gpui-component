@@ -1,6 +1,6 @@
 use gpui::*;
 use ui::{
-    h_flex, v_flex, div, ActiveTheme, Sizable, StyleSized, StyledExt,
+    h_flex, v_flex, ActiveTheme, Sizable, StyleSized, StyledExt,
 };
 use serde_json::Value;
 use crate::reflection::SqlType;
@@ -108,7 +108,7 @@ impl CellEditorView {
         }
     }
 
-    fn render_text_editor(&self, value: &str, cx: &mut WindowContext) -> impl IntoElement {
+    fn render_text_editor(&self, value: String, _cx: &mut App) -> impl IntoElement {
         div()
             .w_full()
             .h_full()
@@ -121,15 +121,15 @@ impl CellEditorView {
             )
     }
 
-    fn render_integer_editor(&self, value: &str, cx: &mut WindowContext) -> impl IntoElement {
+    fn render_integer_editor(&self, value: String, cx: &mut App) -> impl IntoElement {
         self.render_text_editor(value, cx)
     }
 
-    fn render_real_editor(&self, value: &str, cx: &mut WindowContext) -> impl IntoElement {
+    fn render_real_editor(&self, value: String, cx: &mut App) -> impl IntoElement {
         self.render_text_editor(value, cx)
     }
 
-    fn render_boolean_editor(&self, value: bool, cx: &mut WindowContext) -> impl IntoElement {
+    fn render_boolean_editor(&self, _value: bool, _cx: &mut App) -> impl IntoElement {
         div()
             .w_full()
             .h_full()
@@ -140,7 +140,7 @@ impl CellEditorView {
                 div()
                     .px_2()
                     .text_sm()
-                    .child(if value { "✓" } else { "✗" })
+                    .child(if _value { "✓" } else { "✗" })
             )
     }
 
@@ -148,7 +148,7 @@ impl CellEditorView {
         &self,
         selected_id: Option<i64>,
         options: &[(i64, String)],
-        cx: &mut WindowContext,
+        _cx: &mut App,
     ) -> impl IntoElement {
         let display = if let Some(id) = selected_id {
             options
@@ -172,23 +172,23 @@ impl CellEditorView {
             )
     }
 
-    fn render_datetime_editor(&self, value: &str, cx: &mut WindowContext) -> impl IntoElement {
+    fn render_datetime_editor(&self, value: String, cx: &mut App) -> impl IntoElement {
         self.render_text_editor(value, cx)
     }
 }
 
 impl RenderOnce for CellEditorView {
-    fn render(self, cx: &mut WindowContext) -> impl IntoElement {
+    fn render(self, _cx: &mut App) -> impl IntoElement {
         match &self.editor {
-            CellEditor::Text { value } => self.render_text_editor(value, cx).into_any_element(),
-            CellEditor::Integer { value } => self.render_integer_editor(value, cx).into_any_element(),
-            CellEditor::Real { value } => self.render_real_editor(value, cx).into_any_element(),
-            CellEditor::Boolean { value } => self.render_boolean_editor(*value, cx).into_any_element(),
+            CellEditor::Text { value } => self.render_text_editor(value.clone(), _cx).into_any_element(),
+            CellEditor::Integer { value } => self.render_integer_editor(value.clone(), _cx).into_any_element(),
+            CellEditor::Real { value } => self.render_real_editor(value.clone(), _cx).into_any_element(),
+            CellEditor::Boolean { value } => self.render_boolean_editor(*value, _cx).into_any_element(),
             CellEditor::ForeignKey { selected_id, options } => {
-                self.render_foreign_key_editor(*selected_id, options, cx)
+                self.render_foreign_key_editor(*selected_id, options, _cx)
                     .into_any_element()
             }
-            CellEditor::DateTime { value } => self.render_datetime_editor(value, cx).into_any_element(),
+            CellEditor::DateTime { value } => self.render_datetime_editor(value.clone(), _cx).into_any_element(),
         }
     }
 }

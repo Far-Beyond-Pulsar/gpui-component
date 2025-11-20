@@ -1,6 +1,6 @@
 use gpui::*;
 use ui::{
-    div, h_flex, v_flex, button::Button, table::{Column, ColumnSort, Table, TableDelegate, TableEvent},
+    h_flex, v_flex, button::Button, table::{Column, ColumnSort, Table, TableDelegate, TableEvent},
     ActiveTheme, Sizable, Size, StyleSized, StyledExt, Selectable,
 };
 use std::ops::Range;

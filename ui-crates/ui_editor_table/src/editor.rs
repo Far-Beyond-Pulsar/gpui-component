@@ -1,6 +1,6 @@
 use gpui::*;
 use ui::{
-    div, h_flex, v_flex, button::Button, label::Label, divider::Divider,
+    h_flex, v_flex, button::Button, label::Label, divider::Divider,
     table::Table, ActiveTheme, Sizable, Size, StyleSized, StyledExt,
 };
 use crate::{
@@ -28,7 +28,7 @@ pub struct DataTableEditor {
 }
 
 impl DataTableEditor {
-    pub fn new(cx: &mut ViewContext<Self>) -> Self {
+    pub fn new(_cx: &mut Context<Self>) -> Self {
         let db = DatabaseManager::in_memory().expect("Failed to create in-memory database");
 
         Self {
@@ -42,7 +42,7 @@ impl DataTableEditor {
         }
     }
 
-    pub fn open_database(path: PathBuf, _cx: &mut ViewContext<Self>) -> anyhow::Result<Self> {
+    pub fn open_database(path: PathBuf, _cx: &mut Context<Self>) -> anyhow::Result<Self> {
         let db = DatabaseManager::new(&path)?;
         let available_tables = db.list_tables()?;
 
@@ -63,16 +63,16 @@ impl DataTableEditor {
         Ok(())
     }
 
-    pub fn select_table(&mut self, table_name: String, window: &mut Window, cx: &mut ViewContext<Self>) -> anyhow::Result<()> {
+    pub fn select_table(&mut self, table_name: String, window: &mut Window, cx: &mut Context<Self>) -> anyhow::Result<()> {
         self.current_table = Some(table_name.clone());
 
         let delegate = DataTableView::new(self.db.clone(), table_name)?;
-        self.table_view = Some(cx.new_view(|cx| Table::new(delegate, window, cx)));
+        self.table_view = Some(cx.new(|cx| Table::new(delegate, window, cx)));
 
         Ok(())
     }
 
-    pub fn add_new_row(&mut self, cx: &mut ViewContext<Self>) -> anyhow::Result<()> {
+    pub fn add_new_row(&mut self, cx: &mut Context<Self>) -> anyhow::Result<()> {
         if let Some(table_view) = &self.table_view {
             table_view.update(cx, |table, _| {
                 if let Err(e) = table.delegate_mut().add_new_row() {
@@ -83,7 +83,7 @@ impl DataTableEditor {
         Ok(())
     }
 
-    pub fn delete_selected_row(&mut self, cx: &mut ViewContext<Self>) -> anyhow::Result<()> {
+    pub fn delete_selected_row(&mut self, cx: &mut Context<Self>) -> anyhow::Result<()> {
         if let Some(table_view) = &self.table_view {
             table_view.update(cx, |table, _| {
                 if let Err(e) = table.delegate_mut().delete_row(0) {
@@ -94,7 +94,7 @@ impl DataTableEditor {
         Ok(())
     }
 
-    pub fn refresh_data(&mut self, cx: &mut ViewContext<Self>) -> anyhow::Result<()> {
+    pub fn refresh_data(&mut self, cx: &mut Context<Self>) -> anyhow::Result<()> {
         if let Some(table_view) = &self.table_view {
             table_view.update(cx, |table, cx| {
                 if let Err(e) = table.delegate_mut().refresh_rows(0, 100) {
@@ -106,7 +106,7 @@ impl DataTableEditor {
         Ok(())
     }
 
-    fn render_toolbar(&self, cx: &ViewContext<Self>) -> impl IntoElement {
+    fn render_toolbar(&self, cx: &Context<Self>) -> impl IntoElement {
         h_flex()
             .w_full()
             .gap_2()
@@ -146,7 +146,7 @@ impl DataTableEditor {
             })
     }
 
-    fn render_sidebar(&self, cx: &ViewContext<Self>) -> impl IntoElement {
+    fn render_sidebar(&self, cx: &Context<Self>) -> impl IntoElement {
         v_flex()
             .w_64()
             .h_full()
@@ -187,7 +187,7 @@ impl DataTableEditor {
             )
     }
 
-    fn render_tabs(&self, cx: &ViewContext<Self>) -> impl IntoElement {
+    fn render_tabs(&self, cx: &Context<Self>) -> impl IntoElement {
         h_flex()
             .gap_1()
             .p_2()
@@ -210,7 +210,7 @@ impl DataTableEditor {
             )
     }
 
-    fn render_content(&self, cx: &ViewContext<Self>) -> impl IntoElement {
+    fn render_content(&self, cx: &Context<Self>) -> impl IntoElement {
         v_flex()
             .flex_1()
             .w_full()
@@ -252,7 +252,7 @@ impl DataTableEditor {
 }
 
 impl Render for DataTableEditor {
-    fn render(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
+    fn render(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .size_full()
             .bg(cx.theme().background)
