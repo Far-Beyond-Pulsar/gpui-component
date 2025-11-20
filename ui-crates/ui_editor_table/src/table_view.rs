@@ -12,6 +12,7 @@ use crate::{
 
 pub struct DataTableState {
     pub editing_cell: Option<(usize, usize)>, // (row_idx, col_idx)
+    pub selected_row: Option<usize>,
 }
 
 pub struct DataTableView {
@@ -61,6 +62,7 @@ impl DataTableView {
             visible_range: 0..0,
             state: DataTableState {
                 editing_cell: None,
+                selected_row: None,
             },
         })
     }
@@ -157,10 +159,19 @@ impl TableDelegate for DataTableView {
         &self,
         row_ix: usize,
         _: &mut Window,
-        _cx: &mut Context<Table<Self>>,
+        cx: &mut Context<Table<Self>>,
     ) -> Stateful<Div> {
+        let is_selected = self.state.selected_row == Some(row_ix);
         div()
             .id(row_ix)
+            .cursor_pointer()
+            .on_click(cx.listener(move |table, _, _, cx| {
+                table.delegate_mut().state.selected_row = Some(row_ix);
+                cx.notify();
+            }))
+            .when(is_selected, |this| {
+                this.bg(cx.theme().accent.opacity(0.1))
+            })
     }
 
     fn render_td(
@@ -191,9 +202,16 @@ impl TableDelegate for DataTableView {
                 }
 
                 return div()
+                    .id(("cell", row_ix * 1000 + col_ix))
                     .px_2()
                     .py_1()
                     .text_sm()
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |table, _, _, cx| {
+                        table.delegate_mut().state.editing_cell = Some((row_ix, col_ix));
+                        cx.notify();
+                    }))
+                    .hover(|this| this.bg(cx.theme().muted.opacity(0.5)))
                     .child(cell.display.clone())
                     .into_any_element();
             }

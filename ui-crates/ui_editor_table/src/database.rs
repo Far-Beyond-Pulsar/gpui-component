@@ -96,7 +96,23 @@ impl DatabaseManager {
 
     pub fn get_schema(&self, table_name: &str) -> Option<TypeSchema> {
         let schemas = self.schemas.read();
-        schemas.get(table_name).cloned()
+        
+        // First try exact match
+        if let Some(schema) = schemas.get(table_name) {
+            return Some(schema.clone());
+        }
+        
+        // If no exact match, try to find a schema whose table_name matches
+        // This handles cases where someone passes the type name instead of table name
+        for schema in schemas.values() {
+            if schema.table_name == table_name {
+                return Some(schema.clone());
+            }
+        }
+        
+        eprintln!("No schema found for table '{}'. Available schemas: {:?}", 
+                  table_name, schemas.keys().collect::<Vec<_>>());
+        None
     }
 
     pub fn list_tables(&self) -> Result<Vec<String>> {
@@ -110,6 +126,63 @@ impl DatabaseManager {
             .collect::<Result<Vec<String>, _>>()?;
 
         Ok(tables)
+    }
+    
+    pub fn introspect_and_register_schemas(&self) -> Result<()> {
+        let tables = self.list_tables()?;
+        
+        for table_name in tables {
+            // Skip if schema already registered
+            if self.get_schema(&table_name).is_some() {
+                continue;
+            }
+            
+            // Get table structure from SQLite
+            let conn = self.connection.read();
+            let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", table_name))?;
+            
+            let columns: Vec<(String, String, bool)> = stmt
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(1)?, // column name
+                        row.get::<_, String>(2)?, // column type
+                        row.get::<_, i32>(3)? == 0, // nullable (notnull == 0 means nullable)
+                    ))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            
+            drop(stmt);
+            drop(conn);
+            
+            // Create schema from introspected columns
+            let mut schema = TypeSchema::new(table_name.clone());
+            schema.table_name = table_name.clone(); // Override to use exact table name
+            
+            for (col_name, col_type, nullable) in columns {
+                // Skip 'id' column as it's automatically added
+                if col_name == "id" {
+                    continue;
+                }
+                
+                // Map SQLite types to our SqlType
+                let sql_type = match col_type.to_uppercase().as_str() {
+                    t if t.contains("INT") => crate::reflection::SqlType::Integer,
+                    t if t.contains("REAL") || t.contains("FLOAT") || t.contains("DOUBLE") => crate::reflection::SqlType::Real,
+                    t if t.contains("TEXT") || t.contains("CHAR") || t.contains("CLOB") => crate::reflection::SqlType::Text,
+                    t if t.contains("BLOB") => crate::reflection::SqlType::Blob,
+                    t if t.contains("BOOL") => crate::reflection::SqlType::Boolean,
+                    _ => crate::reflection::SqlType::Text, // Default to Text for unknown types
+                };
+                
+                schema.add_field(col_name, sql_type, nullable);
+            }
+            
+            // Register the schema
+            let mut schemas = self.schemas.write();
+            schemas.insert(table_name.clone(), schema);
+        }
+        
+        Ok(())
     }
 
     pub fn get_row_count(&self, table_name: &str) -> Result<usize> {

@@ -77,7 +77,7 @@ impl QueryEditor {
         self.error = None;
     }
 
-    pub fn render_query_input(&self, cx: &App) -> impl IntoElement {
+    pub fn render_query_input(&self, cx: &Context<QueryEditor>) -> impl IntoElement {
         v_flex()
             .gap_2()
             .child(
@@ -102,7 +102,7 @@ impl QueryEditor {
             )
     }
 
-    pub fn render_controls(&self, cx: &App) -> impl IntoElement {
+    pub fn render_controls(&self, cx: &Context<QueryEditor>) -> impl IntoElement {
         h_flex()
             .gap_2()
             .items_center()
@@ -111,11 +111,21 @@ impl QueryEditor {
                     .label(if self.is_executing { "Executing..." } else { "Execute (F5)" })
                     .disabled(self.is_executing)
                     .primary()
+                    .on_click(cx.listener(|editor, _, _, cx| {
+                        if let Err(e) = editor.execute_query() {
+                            eprintln!("Failed to execute query: {}", e);
+                        }
+                        cx.notify();
+                    }))
             )
             .child(
                 Button::new("clear")
                     .label("Clear Results")
                     .outline()
+                    .on_click(cx.listener(|editor, _, _, cx| {
+                        editor.clear_results();
+                        cx.notify();
+                    }))
             )
             .when(self.results.is_some(), |this| {
                 let result = self.results.as_ref().unwrap();
@@ -131,7 +141,7 @@ impl QueryEditor {
             })
     }
 
-    pub fn render_results(&self, cx: &App) -> impl IntoElement {
+    pub fn render_results(&self, cx: &Context<QueryEditor>) -> impl IntoElement {
         v_flex()
             .w_full()
             .flex_1()
@@ -227,14 +237,24 @@ impl QueryEditorView {
 
 impl Render for QueryEditorView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let editor = self.editor.read(cx);
-
         v_flex()
             .size_full()
             .gap_4()
             .p_4()
-            .child(editor.render_query_input(cx))
-            .child(editor.render_controls(cx))
-            .child(editor.render_results(cx))
+            .child(
+                self.editor.update(cx, |editor, cx| {
+                    editor.render_query_input(cx)
+                })
+            )
+            .child(
+                self.editor.update(cx, |editor, cx| {
+                    editor.render_controls(cx)
+                })
+            )
+            .child(
+                self.editor.update(cx, |editor, cx| {
+                    editor.render_results(cx)
+                })
+            )
     }
 }

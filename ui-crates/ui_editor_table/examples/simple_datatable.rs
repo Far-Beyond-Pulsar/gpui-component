@@ -21,7 +21,11 @@ struct ItemData {
 }
 
 fn main() {
-    App::new().run(|cx: &mut AppContext| {
+    let app = Application::new();
+
+    app.run(move |cx| {
+        cx.activate(true);
+
         // Create a window
         cx.open_window(
             WindowOptions {
@@ -39,7 +43,7 @@ fn main() {
                 }),
                 ..Default::default()
             },
-            |cx| {
+            |window, cx| {
                 // Create the editor
                 cx.new(|cx| {
                     let mut editor = DataTableEditor::new(cx);

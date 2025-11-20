@@ -6,9 +6,13 @@ A fully functional SQLite database editor for the Pulsar Native game engine, equ
 
 - **Type-to-Schema Mapping**: Automatically create SQLite tables from Rust types
 - **Virtual Scrolling Table**: High-performance table view with virtual scrolling for large datasets
-- **Inline Editing**: Edit cells directly in the table view
+- **Inline Editing**: Click on any cell to edit its value directly in the table view
+- **Row Selection**: Click on rows to select them for deletion or other operations
+- **Interactive Sidebar**: Click on table names to switch between different tables
+- **Toolbar Actions**: Add rows, delete selected rows, and refresh data with interactive buttons
+- **Tab Navigation**: Switch between Data view and Query Editor with clickable tabs
 - **Foreign Key Support**: Sub-structs are represented as foreign keys with dropdown editors
-- **Query Editor**: DBeaver-style SQL query interface
+- **Query Editor**: DBeaver-style SQL query interface with execute and clear buttons
 - **CRUD Operations**: Full Create, Read, Update, Delete support
 - **Type Safety**: Schema validation and type checking
 
@@ -65,17 +69,35 @@ When editing the `owner_id` field, a dropdown will appear showing all available 
 
 ### Basic Operations
 
-```rust
-// Select a table to view
-editor.select_table("player_data".to_string(), cx).unwrap();
+#### Selecting Tables
+Click on any table name in the left sidebar to view and edit its data. The selected table will be highlighted.
 
-// Add a new row
+#### Adding Rows
+Click the "Add Row" button in the toolbar to insert a new row with default values. The new row will appear at the bottom of the table.
+
+#### Editing Cells
+Click on any cell in the table to enter edit mode. Type your changes and the value will be updated in the database.
+
+#### Selecting and Deleting Rows
+1. Click on any row to select it (the row will be highlighted)
+2. Click the "Delete Row" button in the toolbar to remove the selected row
+3. The selection is cleared after deletion
+
+#### Refreshing Data
+Click the "Refresh" button in the toolbar to reload data from the database. Useful after external changes or to see updates.
+
+#### Programmatic Operations
+```rust
+// Select a table to view programmatically
+editor.select_table("player_data".to_string(), window, cx).unwrap();
+
+// Add a new row programmatically
 editor.add_new_row(cx).unwrap();
 
-// Delete selected row
+// Delete selected row programmatically
 editor.delete_selected_row(cx).unwrap();
 
-// Refresh data
+// Refresh data programmatically
 editor.refresh_data(cx).unwrap();
 ```
 
@@ -110,15 +132,48 @@ db.delete_row("player_data", 1)?;
 let results = db.execute_query("SELECT * FROM player_data WHERE level > 20")?;
 ```
 
+## UI Interaction Guide
+
+### Sidebar Navigation
+- **Table List**: All registered tables appear in the left sidebar
+- **Selection**: Click any table name to load and display its contents
+- **Visual Feedback**: Selected table is highlighted with accent color
+- **Hover Effects**: Tables show hover state for better discoverability
+
+### Toolbar Actions
+- **Add Row**: Creates a new row with default values based on field types
+- **Delete Row**: Removes the currently selected row (disabled if no row selected)
+- **Refresh**: Reloads all data from the database
+- **Current Table**: Displays name of currently selected table
+
+### Table Interaction
+- **Row Selection**: Click any row to select it (highlighted with accent background)
+- **Cell Editing**: Click any cell (except ID column) to enter edit mode
+- **Visual Feedback**: Cells show hover effect when mouse is over them
+- **ID Column**: Read-only, displays database row IDs
+
+### Tab Navigation
+- **Data Tab**: Main table view with inline editing (default)
+- **Query Editor Tab**: SQL query interface for advanced operations
+- **Active Tab**: Highlighted with primary button style
+
+### Query Editor
+- **SQL Input**: Enter SQL queries in the text area
+- **Execute Button**: Runs the query and displays results (shortcut: F5)
+- **Clear Results**: Removes query results from view
+- **Results Display**: Shows column names and data in a formatted table
+- **Error Display**: Shows SQL errors in a red-highlighted box
+- **Execution Stats**: Displays row count and execution time
+
 ## Architecture
 
 The editor consists of several key components:
 
 1. **Type Reflection System** (`reflection.rs`): Maps Rust types to SQLite schemas
 2. **Database Manager** (`database.rs`): Handles all SQLite operations
-3. **Table View** (`table_view.rs`): Virtual scrolling table with inline editing
+3. **Table View** (`table_view.rs`): Virtual scrolling table with inline editing and row selection
 4. **Cell Editors** (`cell_editors.rs`): Type-specific editors for each cell type
-5. **Query Editor** (`query_editor.rs`): SQL query interface
+5. **Query Editor** (`query_editor.rs`): SQL query interface with interactive execution
 6. **Main Editor** (`editor.rs`): Brings everything together in a DBeaver-style interface
 
 ## Supported SQL Types
