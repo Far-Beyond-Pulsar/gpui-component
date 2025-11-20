@@ -43,7 +43,7 @@ use ui_entry::{EntryScreen, ProjectSelected, create_entry_component};
 use ui_settings::{SettingsWindow, create_settings_component};
 use ui_loading_screen::create_loading_component;
 use ui_about::create_about_window;
-use ui_documentation::open_documentation_window;
+use ui_documentation::create_documentation_window;
 use ui_common::menu::{AboutApp, ShowDocumentation};
 use crate::window::{convert_modifiers, convert_mouse_button, WindowState};
 use engine_state::{EngineState, WindowRequest};
@@ -1238,7 +1238,7 @@ impl ApplicationHandler for WinitGpuiApp {
                         create_about_window(window, cx)
                     }
                     Some(WindowRequest::Documentation) => {
-                        open_documentation_window(cx)
+                        create_documentation_window(window, cx)
                     }
                     Some(WindowRequest::ProjectSplash { project_path }) => {
                         // Create loading screen for project loading

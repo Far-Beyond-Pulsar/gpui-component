@@ -31,7 +31,7 @@ pub fn generate_workspace_docs(
     // Step 1: Discover all crates in the workspace
     let crates = workspace::discover_crates(workspace_root)?;
     
-    println!("cargo:info=Found {} crates in workspace", crates.len());
+    println!("cargo:warning=Found {} crates in workspace", crates.len());
     
     // Step 2: Parse and generate documentation for each crate
     let mut success_count = 0;
