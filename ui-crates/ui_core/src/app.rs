@@ -140,6 +140,7 @@ pub struct PulsarApp {
     script_editor: Option<Entity<ScriptEditorPanel>>,
     blueprint_editors: Vec<Entity<BlueprintEditorPanel>>,
     daw_editors: Vec<Entity<DawEditorPanel>>,
+    database_editors: Vec<Entity<ui_editor_table::DataTableEditor>>,
     next_tab_id: usize,
     // Rust Analyzer
     rust_analyzer: Entity<RustAnalyzerManager>,
@@ -350,6 +351,7 @@ impl PulsarApp {
         let script_editor = None;
         let blueprint_editors = Vec::new();
         let daw_editors = Vec::new();
+        let database_editors = Vec::new();
 
         // Create entry screen only if no project path is provided
         let entry_screen = if project_path.is_none() {
@@ -419,6 +421,7 @@ impl PulsarApp {
             script_editor,
             blueprint_editors,
             daw_editors,
+            database_editors,
             next_tab_id: 1,
             rust_analyzer,
             analyzer_status_text: "Idle".to_string(),
@@ -585,6 +588,8 @@ impl PulsarApp {
                     .retain(|e| e.entity_id() != *entity_id);
                 self.daw_editors
                     .retain(|e| e.entity_id() != *entity_id);
+                self.database_editors
+                    .retain(|e| e.entity_id() != *entity_id);
             }
             _ => {}
         }
@@ -614,6 +619,10 @@ impl PulsarApp {
             FileType::DawProject => {
                 eprintln!("DEBUG: Opening DAW tab for path: {:?}", event.path);
                 self.open_daw_tab(event.path.clone(), window, cx);
+            }
+            FileType::Database => {
+                eprintln!("DEBUG: Opening database tab for path: {:?}", event.path);
+                self.open_database_tab(event.path.clone(), window, cx);
             }
             _ => {
                 eprintln!("DEBUG: Unknown file type, ignoring");
@@ -1010,6 +1019,10 @@ impl PulsarApp {
                 eprintln!("DEBUG: Opening DAW tab from external: {:?}", event.path);
                 self.open_daw_tab(event.path.clone(), window, cx);
             }
+            FileType::Database => {
+                eprintln!("DEBUG: Opening database tab from external: {:?}", event.path);
+                self.open_database_tab(event.path.clone(), window, cx);
+            }
             _ => {
                 eprintln!("DEBUG: Unknown file type from external, ignoring");
             }
@@ -1348,6 +1361,71 @@ impl PulsarApp {
         eprintln!("DEBUG: DAW tab opened successfully");
     }
 
+    /// Open a database editor tab for the given database path
+    fn open_database_tab(&mut self, db_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        eprintln!("DEBUG: open_database_tab called with path: {:?}", db_path);
+
+        // Check if a database editor for this path is already open
+        let already_open = self
+            .database_editors
+            .iter()
+            .enumerate()
+            .find_map(|(ix, editor)| {
+                editor
+                    .read(cx)
+                    .database_path
+                    .as_ref()
+                    .map(|p| p == &db_path)
+                    .unwrap_or(false)
+                    .then_some(ix)
+            });
+
+        if let Some(ix) = already_open {
+            eprintln!("DEBUG: Database editor already exists, focusing it");
+            // Focus the correct tab
+            if let Some(editor_entity) = self.database_editors.get(ix) {
+                let target_id = editor_entity.entity_id();
+                self.center_tabs.update(cx, |tabs, cx| {
+                    if let Some(tab_ix) = tabs.index_of_panel_by_entity_id(target_id) {
+                        tabs.set_active_tab(tab_ix, window, cx);
+                    }
+                });
+            }
+            return;
+        }
+
+        eprintln!("DEBUG: Creating new database editor");
+        self.next_tab_id += 1;
+
+        // Extract database name for tab label
+        let db_name = db_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Database")
+            .to_string();
+
+        // Create new database editor tab
+        let database_editor = cx.new(|cx| {
+            ui_editor_table::DataTableEditor::open_database(db_path.clone(), cx)
+                .unwrap_or_else(|e| {
+                    eprintln!("Failed to open database: {}", e);
+                    ui_editor_table::DataTableEditor::new(cx)
+                })
+        });
+
+        eprintln!("DEBUG: Adding database editor to tab panel");
+        // Add the tab to the tab panel
+        self.center_tabs.update(cx, |tabs, cx| {
+            tabs.add_panel(Arc::new(database_editor.clone()), window, cx);
+        });
+
+        eprintln!("DEBUG: Storing database editor reference");
+        // Store the database editor reference
+        self.database_editors.push(database_editor);
+
+        eprintln!("DEBUG: Database tab opened successfully");
+    }
+
     fn on_text_editor_event(
         &mut self,
         _editor: &Entity<ScriptEditorPanel>,
@@ -1386,6 +1464,9 @@ impl PulsarApp {
             match extension.to_str() {
                 Some("pdaw") => {
                     self.open_daw_tab(path, window, cx);
+                }
+                Some("db") | Some("sqlite") | Some("sqlite3") => {
+                    self.open_database_tab(path, window, cx);
                 }
                 Some("rs") | Some("js") | Some("ts") | Some("py") | Some("lua") => {
                     self.open_script_tab(path, window, cx);

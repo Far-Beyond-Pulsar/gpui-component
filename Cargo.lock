@@ -14063,6 +14063,7 @@ dependencies = [
  "ui",
  "ui_common",
  "ui_editor",
+ "ui_editor_table",
  "ui_entry",
  "ui_file_manager",
  "ui_loading_screen",

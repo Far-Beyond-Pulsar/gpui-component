@@ -1,4 +1,4 @@
-use gpui::*;
+use gpui::{prelude::*, *};
 use ui::{
     h_flex, v_flex, ActiveTheme, Sizable, StyleSized, StyledExt,
 };
@@ -177,18 +177,31 @@ impl CellEditorView {
     }
 }
 
-impl RenderOnce for CellEditorView {
-    fn render(self, _cx: &mut App) -> impl IntoElement {
+impl IntoElement for CellEditorView {
+    type Element = Div;
+
+    fn into_element(self) -> Self::Element {
         match &self.editor {
-            CellEditor::Text { value } => self.render_text_editor(value.clone(), _cx).into_any_element(),
-            CellEditor::Integer { value } => self.render_integer_editor(value.clone(), _cx).into_any_element(),
-            CellEditor::Real { value } => self.render_real_editor(value.clone(), _cx).into_any_element(),
-            CellEditor::Boolean { value } => self.render_boolean_editor(*value, _cx).into_any_element(),
+            CellEditor::Text { value } => div().child(value.clone()),
+            CellEditor::Integer { value } => div().child(value.clone()),
+            CellEditor::Real { value } => div().child(value.clone()),
+            CellEditor::Boolean { value } => div().child(if *value { "✓" } else { "✗" }),
             CellEditor::ForeignKey { selected_id, options } => {
-                self.render_foreign_key_editor(*selected_id, options, _cx)
-                    .into_any_element()
+                let display = if let Some(id) = selected_id {
+                    options
+                        .iter()
+                        .find(|(opt_id, _)| *opt_id == *id)
+                        .map(|(_, label)| label.clone())
+                        .unwrap_or_else(|| format!("ID: {}", id))
+                } else {
+                    "None".to_string()
+                };
+                div().child(display)
             }
-            CellEditor::DateTime { value } => self.render_datetime_editor(value.clone(), _cx).into_any_element(),
+            CellEditor::DateTime { value } => div().child(value.clone()),
         }
+        .px_2()
+        .py_1()
+        .text_sm()
     }
 }

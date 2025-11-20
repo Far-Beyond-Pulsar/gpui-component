@@ -1,4 +1,4 @@
-use gpui::*;
+use gpui::{prelude::*, *};
 use ui::{
     h_flex, v_flex, button::Button, table::{Column, ColumnSort, Table, TableDelegate, TableEvent},
     ActiveTheme, Sizable, Size, StyleSized, StyledExt, Selectable,
@@ -141,7 +141,7 @@ impl TableDelegate for DataTableView {
         &self,
         col_ix: usize,
         _: &mut Window,
-        cx: &mut Context<Table<Self>>,
+        _cx: &mut Context<Table<Self>>,
     ) -> impl IntoElement {
         let col = &self.columns[col_ix];
 
@@ -182,13 +182,12 @@ impl TableDelegate for DataTableView {
 
             let cell_idx = col_ix - 1;
             if let Some(cell) = row.cells.get(cell_idx) {
-                let is_editing = self.state.editing_cell == Some((row_idx, col_ix));
+                let is_editing = self.state.editing_cell == Some((row_ix, col_ix));
 
                 if is_editing {
                     let field = &self.schema.fields[cell_idx];
                     let editor = CellEditor::new_from_sql_type(&field.sql_type, Some(cell.value.clone()));
-                    return CellEditorView::new(editor)
-                        .into_any_element();
+                    return CellEditorView::new(editor).into_any_element();
                 }
 
                 return div()

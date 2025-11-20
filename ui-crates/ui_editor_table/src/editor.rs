@@ -1,7 +1,8 @@
-use gpui::*;
+use gpui::{prelude::*, *};
 use ui::{
-    h_flex, v_flex, button::Button, label::Label, divider::Divider,
-    table::Table, ActiveTheme, Sizable, Size, StyleSized, StyledExt,
+    h_flex, v_flex, button::{Button, ButtonVariants}, label::Label, divider::Divider,
+    table::Table, ActiveTheme, Sizable, Size, StyleSized, StyledExt, Disableable,
+    dock::{Panel, PanelEvent},
 };
 use crate::{
     database::DatabaseManager,
@@ -24,11 +25,12 @@ pub struct DataTableEditor {
     current_tab: EditorTab,
     table_view: Option<Entity<Table<DataTableView>>>,
     query_editor: Option<Entity<QueryEditorView>>,
-    database_path: Option<PathBuf>,
+    pub database_path: Option<PathBuf>,
+    focus_handle: FocusHandle,
 }
 
 impl DataTableEditor {
-    pub fn new(_cx: &mut Context<Self>) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
         let db = DatabaseManager::in_memory().expect("Failed to create in-memory database");
 
         Self {
@@ -39,10 +41,11 @@ impl DataTableEditor {
             table_view: None,
             query_editor: None,
             database_path: None,
+            focus_handle: cx.focus_handle(),
         }
     }
 
-    pub fn open_database(path: PathBuf, _cx: &mut Context<Self>) -> anyhow::Result<Self> {
+    pub fn open_database(path: PathBuf, cx: &mut Context<Self>) -> anyhow::Result<Self> {
         let db = DatabaseManager::new(&path)?;
         let available_tables = db.list_tables()?;
 
@@ -54,6 +57,7 @@ impl DataTableEditor {
             table_view: None,
             query_editor: None,
             database_path: Some(path),
+            focus_handle: cx.focus_handle(),
         })
     }
 
@@ -166,7 +170,6 @@ impl DataTableEditor {
                 v_flex()
                     .flex_1()
                     .gap_1()
-                    .overflow_y_scroll()
                     .children(self.available_tables.iter().map(|table| {
                         let is_selected = self.current_table.as_ref() == Some(table);
                         div()
@@ -251,8 +254,44 @@ impl DataTableEditor {
     }
 }
 
+impl Panel for DataTableEditor {
+    fn panel_name(&self) -> &'static str {
+        "Database Editor"
+    }
+
+    fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
+        let title = if let Some(path) = &self.database_path {
+            path.file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Database")
+                .to_string()
+        } else {
+            "Database".to_string()
+        };
+
+        div()
+            .child(title)
+            .into_any_element()
+    }
+
+    fn dump(&self, _cx: &App) -> ui::dock::PanelState {
+        ui::dock::PanelState {
+            panel_name: self.panel_name().to_string(),
+            ..Default::default()
+        }
+    }
+}
+
+impl Focusable for DataTableEditor {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+impl EventEmitter<PanelEvent> for DataTableEditor {}
+
 impl Render for DataTableEditor {
-    fn render(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .size_full()
             .bg(cx.theme().background)

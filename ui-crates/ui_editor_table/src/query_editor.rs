@@ -1,7 +1,7 @@
-use gpui::*;
+use gpui::{prelude::*, *};
 use ui::{
-    h_flex, v_flex, button::Button, label::Label,
-    ActiveTheme, Sizable, Size, StyleSized, StyledExt,
+    h_flex, v_flex, button::{Button, ButtonVariants}, label::Label,
+    ActiveTheme, Sizable, Size, StyleSized, StyledExt, Disableable,
 };
 use crate::database::{DatabaseManager, CellValue};
 
@@ -97,8 +97,7 @@ impl QueryEditor {
                     .child(
                         div()
                             .text_sm()
-                            .font_mono()
-                            .child(&self.query_text)
+                            .child(self.query_text.clone())
                     )
             )
     }
@@ -142,14 +141,14 @@ impl QueryEditor {
                     div()
                         .w_full()
                         .p_4()
-                        .bg(cx.theme().destructive.opacity(0.1))
+                        .bg(cx.theme().red.opacity(0.1))
                         .border_1()
-                        .border_color(cx.theme().destructive)
+                        .border_color(cx.theme().red)
                         .rounded_md()
                         .child(
                             div()
                                 .text_sm()
-                                .text_color(cx.theme().destructive)
+                                .text_color(cx.theme().red)
                                 .child(error.clone())
                         )
                 )
@@ -186,7 +185,6 @@ impl QueryEditor {
                             v_flex()
                                 .w_full()
                                 .flex_1()
-                                .overflow_y_scroll()
                                 .border_1()
                                 .border_color(cx.theme().border)
                                 .rounded_b_md()
@@ -228,7 +226,7 @@ impl QueryEditorView {
 }
 
 impl Render for QueryEditorView {
-    fn render(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let editor = self.editor.read(cx);
 
         v_flex()

@@ -71,6 +71,7 @@ pub enum FileType {
     Class, // A folder containing graph_save.json
     Script,
     DawProject, // .pdaw files
+    Database, // .db, .sqlite, .sqlite3 files
     Config, // .toml files
     Other,
 }
@@ -122,6 +123,7 @@ impl FileItem {
             match path.extension().and_then(|s| s.to_str()) {
                 Some("rs") => FileType::Script,
                 Some("pdaw") => FileType::DawProject,
+                Some("db") | Some("sqlite") | Some("sqlite3") => FileType::Database,
                 Some("toml") => FileType::Config,
                 _ => FileType::Other,
             }
@@ -924,6 +926,7 @@ impl FileManagerDrawer {
             FileType::Class => IconName::Component,
             FileType::Script => IconName::Code,
             FileType::DawProject => IconName::MusicNote,
+            FileType::Database => IconName::Database,
             FileType::Config => IconName::Settings,
             FileType::Other => IconName::Page,
         };
