@@ -80,10 +80,6 @@ impl LoadingScreen {
                 name: "Starting Rust Analyzer...".to_string(),
                 status: TaskStatus::Pending,
             },
-            LoadingTask {
-                name: "Analyzing project...".to_string(),
-                status: TaskStatus::Pending,
-            },
         ];
 
         let mut loading_screen = Self {
@@ -101,13 +97,6 @@ impl LoadingScreen {
         };
 
         let analyzer = cx.new(|cx| RustAnalyzerManager::new(window, cx));
-        let subscription = cx.subscribe(&analyzer, Self::on_analyzer_event);
-        loading_screen._analyzer_subscription = Some(subscription);
-        
-        analyzer.update(cx, |analyzer, cx| {
-            analyzer.start(project_path.clone(), window, cx);
-        });
-        
         loading_screen.rust_analyzer = Some(analyzer.clone());
         loading_screen.start_loading(window, cx);
         loading_screen
@@ -115,28 +104,6 @@ impl LoadingScreen {
 
     fn start_loading(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.start_init_tasks(window, cx);
-        self.start_analyzer_polling(window, cx);
-    }
-    
-    fn start_analyzer_polling(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        cx.spawn_in(window, async move |this, cx| {
-            loop {
-                cx.background_executor().timer(Duration::from_millis(100)).await;
-                
-                let should_continue = this.update(cx, |this, cx| {
-                    if let Some(analyzer) = &this.rust_analyzer {
-                        analyzer.update(cx, |analyzer, cx| {
-                            analyzer.update_progress_from_thread(cx);
-                        });
-                    }
-                    !this.analyzer_ready
-                }).ok().unwrap_or(false);
-                
-                if !should_continue {
-                    break;
-                }
-            }
-        }).detach();
     }
 
     fn start_init_tasks(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -149,7 +116,7 @@ impl LoadingScreen {
             cx.background_executor().timer(Duration::from_millis(100)).await;
             let _ = this.update(cx, |this, cx| {
                 this.loading_tasks[0].status = TaskStatus::Completed;
-                this.progress = 25.0;
+                this.progress = 33.0;
                 this.loading_tasks[1].status = TaskStatus::InProgress;
                 this.analyzer_message = "Loading project data...".to_string();
                 cx.notify();
@@ -158,100 +125,27 @@ impl LoadingScreen {
             cx.background_executor().timer(Duration::from_millis(100)).await;
             let _ = this.update(cx, |this, cx| {
                 this.loading_tasks[1].status = TaskStatus::Completed;
-                this.progress = 50.0;
+                this.progress = 66.0;
                 this.loading_tasks[2].status = TaskStatus::InProgress;
-                this.analyzer_message = "Starting Rust Analyzer...".to_string();
+                this.analyzer_message = "Opening editor...".to_string();
                 cx.notify();
             });
             
             cx.background_executor().timer(Duration::from_millis(100)).await;
             let _ = this.update(cx, |this, cx| {
                 this.loading_tasks[2].status = TaskStatus::Completed;
-                this.progress = 75.0;
+                this.progress = 100.0;
                 this.initial_tasks_complete = true;
-                this.loading_tasks[3].status = TaskStatus::InProgress;
-                this.analyzer_message = "Starting analysis...".to_string();
+                this.analyzer_message = "Ready!".to_string();
                 cx.notify();
                 this.check_completion(cx);
             });
         }).detach();
     }
-    
-    fn on_analyzer_event(
-        &mut self,
-        _analyzer: Entity<RustAnalyzerManager>,
-        event: &AnalyzerEvent,
-        cx: &mut Context<Self>,
-    ) {        
-        match event {
-            AnalyzerEvent::StatusChanged(status) => {
-                match status {
-                    AnalyzerStatus::Indexing { progress, message } => {
-                        if !self.analyzer_ready {
-                            self.loading_tasks[3].status = TaskStatus::InProgress;
-                            self.loading_tasks[3].name = "Analyzing project...".to_string();
-                            self.analyzer_message = message.clone();
-                            self.progress = 75.0 + (progress * 25.0);
-                            cx.notify();
-                        }
-                    }
-                    AnalyzerStatus::Ready => {
-                        self.mark_analyzer_ready(cx);
-                    }
-                    AnalyzerStatus::Error(err) => {
-                        if !self.analyzer_ready {
-                            self.loading_tasks[3].status = TaskStatus::Completed;
-                            self.loading_tasks[3].name = "Analyzing project...".to_string();
-                            self.analyzer_message = format!("Error: {}", err);
-                            self.progress = 100.0;
-                            self.analyzer_ready = true;
-                            cx.notify();
-                            self.check_completion(cx);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            AnalyzerEvent::IndexingProgress { progress, message } => {
-                if !self.analyzer_ready {
-                    self.loading_tasks[3].status = TaskStatus::InProgress;
-                    self.loading_tasks[3].name = "Analyzing project...".to_string();
-                    self.analyzer_message = message.clone();
-                    self.progress = 75.0 + (progress * 25.0);
-                    cx.notify();
-                }
-            }
-            AnalyzerEvent::Ready => {
-                self.mark_analyzer_ready(cx);
-            }
-            AnalyzerEvent::Error(err) => {
-                if !self.analyzer_ready {
-                    self.loading_tasks[3].status = TaskStatus::Completed;
-                    self.loading_tasks[3].name = format!("Analyzer error: {}", err);
-                    self.progress = 1.0;
-                    self.analyzer_ready = true;
-                    cx.notify();
-                    self.check_completion(cx);
-                }
-            }
-            AnalyzerEvent::Diagnostics(_) => {}
-        }
-    }
-    
-    fn mark_analyzer_ready(&mut self, cx: &mut Context<Self>) {
-        if !self.analyzer_ready {
-            self.loading_tasks[3].status = TaskStatus::Completed;
-            self.loading_tasks[3].name = "Analyzing project...".to_string();
-            self.analyzer_message = "Analysis complete".to_string();
-            self.progress = 100.0;
-            self.analyzer_ready = true;
-            cx.notify();
-            self.check_completion(cx);
-        }
-    }
-    
+
+
     fn check_completion(&mut self, cx: &mut Context<Self>) {
-        if self.initial_tasks_complete && self.analyzer_ready {
+        if self.initial_tasks_complete {
             let project_path = self.project_path.clone();
             let rust_analyzer = self.rust_analyzer.clone().expect("Rust Analyzer should be initialized");
 

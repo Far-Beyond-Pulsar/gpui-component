@@ -192,6 +192,7 @@ impl PulsarApp {
 
     /// Create a new PulsarApp with a pre-initialized rust analyzer
     /// This is used when loading from the loading screen to avoid re-initializing
+    /// The analyzer is started in the background immediately after the editor opens
     pub fn new_with_project_and_analyzer(
         project_path: PathBuf,
         rust_analyzer: Entity<RustAnalyzerManager>,
@@ -202,7 +203,14 @@ impl PulsarApp {
             "DEBUG: PulsarApp::new_with_project_and_analyzer called with path: {:?}",
             project_path
         );
-        Self::new_internal(Some(project_path), Some(rust_analyzer), None, true, window, cx)
+        let app = Self::new_internal(Some(project_path.clone()), Some(rust_analyzer.clone()), None, true, window, cx);
+        
+        // Start rust-analyzer in the background NOW - don't block editor opening
+        rust_analyzer.update(cx, |analyzer, cx| {
+            analyzer.start(project_path, window, cx);
+        });
+        
+        app
     }
 
     /// Create a new window that shares the rust analyzer from an existing window
