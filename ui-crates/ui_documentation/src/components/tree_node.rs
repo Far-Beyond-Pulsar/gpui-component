@@ -1,5 +1,5 @@
 use gpui::*;
-use ui::{ActiveTheme, button::Button, h_flex, v_flex, div, IconName, Selectable, Sizable, ButtonVariants, Size, StyledExt};
+use ui::{ActiveTheme, button::{Button, ButtonVariants}, h_flex, v_flex, IconName, Selectable, Sizable, Size, StyledExt};
 use crate::state::TreeNode;
 
 pub struct TreeNodeView;
@@ -7,6 +7,7 @@ pub struct TreeNodeView;
 impl TreeNodeView {
     pub fn render<V: Send + 'static>(
         node: &TreeNode,
+        node_idx: usize,
         is_selected: bool,
         indent_level: usize,
         on_click: impl Fn(&mut Window, &mut Context<V>) + 'static,
@@ -23,7 +24,7 @@ impl TreeNodeView {
                     IconName::ChevronRight
                 };
 
-                Button::new(("crate", name.as_str()))
+                Button::new(("crate", node_idx))
                     .label(name.clone())
                     .w_full()
                     .ghost()
@@ -39,7 +40,7 @@ impl TreeNodeView {
                 } else {
                     IconName::ChevronRight
                 };
-                
+
                 let display_name = match name.as_str() {
                     "functions" => "Functions",
                     "structs" => "Structs",
@@ -55,7 +56,7 @@ impl TreeNodeView {
                 div()
                     .pl(indent)
                     .child(
-                        Button::new(("category", name.as_str()))
+                        Button::new(("category", node_idx))
                             .label(display_name)
                             .w_full()
                             .ghost()
@@ -70,7 +71,7 @@ impl TreeNodeView {
                 div()
                     .pl(indent + px(8.0))
                     .child(
-                        Button::new(("item", name.as_str()))
+                        Button::new(("item", node_idx))
                             .label(name.clone())
                             .w_full()
                             .ghost()

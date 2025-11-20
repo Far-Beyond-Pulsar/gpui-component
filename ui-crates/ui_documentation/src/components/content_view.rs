@@ -1,5 +1,5 @@
 use gpui::*;
-use ui::{prelude::*, ActiveTheme};
+use ui::ActiveTheme;
 
 pub struct ContentView;
 

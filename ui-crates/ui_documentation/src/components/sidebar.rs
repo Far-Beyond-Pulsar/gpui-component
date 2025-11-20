@@ -1,5 +1,5 @@
 use gpui::*;
-use ui::{ActiveTheme, h_flex, v_flex, div, StyledExt};
+use ui::{ActiveTheme, h_flex, v_flex, StyledExt};
 use crate::state::{DocumentationState, TreeNode};
 use crate::components::TreeNodeView;
 
@@ -52,9 +52,10 @@ impl Sidebar {
                                 _ => false,
                             };
                             let indent = TreeNodeView::get_indent_level(node);
-                            
+
                             items.push(TreeNodeView::render(
                                 node,
+                                idx,
                                 is_selected,
                                 indent,
                                 move |window, cx| on_node_click(idx, window, cx),
