@@ -113,6 +113,7 @@ impl WinitGpuiApp {
         }
     }
 
+    // TODO: Refactor window creation into a trait based system for modular window types
     /// Create a new window based on a request
     ///
     /// # Arguments
@@ -122,6 +123,7 @@ impl WinitGpuiApp {
         let (title, size) = match &request {
             WindowRequest::Entry => ("Pulsar Engine", (1280.0, 720.0)),
             WindowRequest::Settings => ("Settings", (800.0, 600.0)),
+            WindowRequest::About => ("About Pulsar Engine", (600.0, 500.0)),
             WindowRequest::ProjectEditor { .. } => ("Pulsar Engine - Project Editor", (1280.0, 800.0)),
             WindowRequest::ProjectSplash { .. } => ("Loading Project...", (960.0, 540.0)),
             WindowRequest::CloseWindow { .. } => return, // Handled elsewhere
