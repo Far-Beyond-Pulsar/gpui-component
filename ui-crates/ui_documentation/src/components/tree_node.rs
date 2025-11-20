@@ -10,10 +10,10 @@ impl TreeNodeView {
         node_idx: usize,
         is_selected: bool,
         indent_level: usize,
-        on_click: impl Fn(&mut Window, &mut Context<V>) + 'static,
+        on_click: impl Fn(&mut Window, &mut App) + 'static,
         cx: &mut Context<V>,
     ) -> impl IntoElement {
-        let theme = cx.theme();
+        let _theme = cx.theme();
         let indent = px((indent_level * 16) as f32);
 
         match node {
@@ -31,7 +31,7 @@ impl TreeNodeView {
                     .icon(icon)
                     .with_size(Size::Small)
                     .selected(is_selected)
-                    .on_click(move |_event, window, cx| on_click(window, cx))
+                    .on_click(move |_, window, cx| on_click(window, cx))
                     .into_any_element()
             }
             TreeNode::Category { name, expanded, .. } => {
@@ -42,15 +42,15 @@ impl TreeNodeView {
                 };
 
                 let display_name = match name.as_str() {
-                    "functions" => "Functions",
-                    "structs" => "Structs",
-                    "enums" => "Enums",
-                    "traits" => "Traits",
-                    "macros" => "Macros",
-                    "modules" => "Modules",
-                    "constants" => "Constants",
-                    "type_aliases" => "Type Aliases",
-                    _ => name.as_str(),
+                    "functions" => "Functions".to_string(),
+                    "structs" => "Structs".to_string(),
+                    "enums" => "Enums".to_string(),
+                    "traits" => "Traits".to_string(),
+                    "macros" => "Macros".to_string(),
+                    "modules" => "Modules".to_string(),
+                    "constants" => "Constants".to_string(),
+                    "type_aliases" => "Type Aliases".to_string(),
+                    _ => name.clone(),
                 };
 
                 div()
@@ -63,7 +63,7 @@ impl TreeNodeView {
                             .icon(icon)
                             .with_size(Size::XSmall)
                             .selected(is_selected)
-                            .on_click(move |_event, window, cx| on_click(window, cx))
+                            .on_click(move |_, window, cx| on_click(window, cx))
                     )
                     .into_any_element()
             }
@@ -77,7 +77,7 @@ impl TreeNodeView {
                             .ghost()
                             .with_size(Size::XSmall)
                             .selected(is_selected)
-                            .on_click(move |_event, window, cx| on_click(window, cx))
+                            .on_click(move |_, window, cx| on_click(window, cx))
                     )
                     .into_any_element()
             }

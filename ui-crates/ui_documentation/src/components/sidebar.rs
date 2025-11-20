@@ -9,7 +9,7 @@ pub struct Sidebar;
 impl Sidebar {
     pub fn render<V: Send + 'static>(
         state: &DocumentationState,
-        on_node_click: impl Fn(usize, &mut Window, &mut Context<V>) + 'static,
+        on_node_click: impl Fn(&usize, &mut Window, &mut App) + 'static,
         cx: &mut Context<V>,
     ) -> impl IntoElement {
         let theme = cx.theme();
@@ -61,7 +61,7 @@ impl Sidebar {
                                 idx,
                                 is_selected,
                                 indent,
-                                move |window, cx| on_click(idx, window, cx),
+                                move |window, cx| on_click(&idx, window, cx),
                                 cx,
                             ));
                         }

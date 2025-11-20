@@ -5,7 +5,7 @@ use crate::components::{Sidebar, ContentView, SearchBar};
 
 pub struct MainView {
     state: DocumentationState,
-    search_bar: View<SearchBar>,
+    search_bar: Entity<SearchBar>,
 }
 
 impl MainView {
@@ -34,7 +34,6 @@ impl Render for MainView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let current_query = self.state.search_query.to_string();
-        let entity_id = cx.entity_id();
 
         v_flex()
             .size_full()
@@ -49,13 +48,13 @@ impl Render for MainView {
                     .border_color(theme.border)
                     .bg(theme.sidebar)
                     .child(
-                        self.search_bar.update(cx, |search_bar, cx| {
+                        self.search_bar.update(cx, |search_bar, search_cx| {
                             search_bar.render_with_query(
                                 &current_query,
-                                cx.listener(|this, query: &str, window, cx| {
-                                    this.handle_search_change(query, window, cx);
+                                cx.listener(|this, query: &str, _window, cx| {
+                                    this.handle_search_change(query, _window, cx);
                                 }),
-                                cx,
+                                search_cx,
                             )
                         })
                     )
@@ -68,11 +67,9 @@ impl Render for MainView {
                     .child(
                         Sidebar::render(
                             &self.state,
-                            move |idx, window, cx| {
-                                window.update_entity(entity_id, |this: &mut MainView, cx| {
-                                    this.handle_node_click(idx, window, cx);
-                                });
-                            },
+                            cx.listener(|this, idx, window, cx| {
+                                this.handle_node_click(*idx, window, cx);
+                            }),
                             cx,
                         )
                     )

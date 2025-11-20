@@ -40,7 +40,7 @@ pub struct DocumentationState {
 }
 
 impl DocumentationState {
-    pub fn new(cx: &mut Context<impl Send>) -> Self {
+    pub fn new(_cx: &mut Context<impl Send>) -> Self {
         // Build the doc index from all available crates
         let crate_names = pulsar_docs::list_crates();
         let mut crates = vec![];

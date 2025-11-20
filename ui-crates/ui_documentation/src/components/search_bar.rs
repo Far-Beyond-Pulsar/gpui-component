@@ -16,7 +16,7 @@ impl SearchBar {
     pub fn render_with_query(
         &self,
         query: &str,
-        on_change: impl Fn(&str, &mut Window, &mut Context<Self>) + 'static,
+        on_change: impl Fn(&str) + 'static,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let theme = cx.theme();
@@ -34,7 +34,6 @@ impl SearchBar {
             .rounded_lg()
             .child(
                 Icon::new(IconName::Search)
-                    .size(IconSize::Small)
                     .text_color(theme.muted)
             )
             .child(
@@ -69,9 +68,9 @@ impl SearchBar {
                         .icon(IconName::Close)
                         .ghost()
                         .xsmall()
-                        .on_click(cx.listener(move |_this, _event, window, cx| {
-                            on_change("", window, cx);
-                        }))
+                        .on_click(move |_, _, _| {
+                            on_change("");
+                        })
                 )
             })
     }
