@@ -3,7 +3,7 @@ use ui::{
     ActiveTheme, Root, Sizable, StyledExt,
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, IconName,
-    text::{TextView, TextViewTheme},
+    text::{TextView},
 };
 use pulsar_docs::{get_crate_docs, list_crates, docs_available};
 use std::collections::HashMap;
