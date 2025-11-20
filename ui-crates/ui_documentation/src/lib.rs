@@ -3,7 +3,7 @@ use ui::{
     ActiveTheme, Root, Sizable, StyledExt,
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, IconName,
-    markdown::Markdown,
+    text::{TextView, TextViewTheme},
 };
 use pulsar_docs::{get_crate_docs, list_crates, docs_available};
 use std::collections::HashMap;
@@ -108,7 +108,7 @@ impl Focusable for DocumentationWindow {
 }
 
 impl Render for DocumentationWindow {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         
         div()
@@ -195,10 +195,10 @@ impl Render for DocumentationWindow {
                                     .mx_auto()
                                     .p_8()
                                     .child(
-                                        Markdown::new(
+                                        TextView::markdown(
+                                            "docs-markdown",
                                             self.markdown_content.clone(),
-                                            None,
-                                            None,
+                                            window,
                                             cx,
                                         )
                                     )
@@ -211,8 +211,10 @@ impl Render for DocumentationWindow {
 impl DocumentationWindow {
     fn render_crate_item(&self, crate_doc: &CrateDoc, cx: &mut Context<Self>) -> AnyElement {
         let crate_name = crate_doc.name.clone();
+        let crate_name_for_toggle = crate_name.clone();
         let is_expanded = crate_doc.is_expanded;
         let is_selected = self.current_crate.as_deref() == Some(&crate_doc.name);
+        let sections = crate_doc.sections.clone();
         
         v_flex()
             .w_full()
@@ -223,12 +225,12 @@ impl DocumentationWindow {
                     .ghost()
                     .label(format!("📦 {}", crate_doc.name))
                     .on_click(cx.listener(move |this, _event, _window, cx| {
-                        this.toggle_crate(&crate_name, cx);
+                        this.toggle_crate(&crate_name_for_toggle, cx);
                     }))
             )
             .when(is_expanded, |this| {
                 this.children(
-                    crate_doc.sections.iter().map(|section| {
+                    sections.iter().map(|section| {
                         let section_name = section.name.clone();
                         let crate_name_clone = crate_name.clone();
                         let is_current = self.current_crate.as_deref() == Some(&crate_name) 
