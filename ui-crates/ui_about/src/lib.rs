@@ -39,7 +39,7 @@ impl Render for AboutWindow {
                     .gap_6()
                     .p_8()
                     .rounded_lg()
-                    .bg(theme.card)
+                    .bg(theme.sidebar)
                     .border_1()
                     .border_color(theme.border)
                     .shadow_lg()
