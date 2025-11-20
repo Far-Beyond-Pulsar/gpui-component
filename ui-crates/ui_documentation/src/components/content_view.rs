@@ -5,7 +5,7 @@ pub struct ContentView;
 
 impl ContentView {
     pub fn render(
-        content: &str,
+        content: String,
         cx: &mut Context<impl Send>,
     ) -> impl IntoElement {
         let theme = cx.theme();
@@ -13,7 +13,7 @@ impl ContentView {
         div()
             .flex_1()
             .h_full()
-            .overflow_y(gpui::Overflow::Scroll)
+            .overflow_hidden()
             .bg(theme.background)
             .child(
                 div()

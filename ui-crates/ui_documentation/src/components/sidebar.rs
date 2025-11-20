@@ -38,7 +38,7 @@ impl Sidebar {
                 // Tree view
                 v_flex()
                     .flex_1()
-                    .overflow_y(gpui::Overflow::Scroll)
+                    .overflow_hidden()
                     .gap_px()
                     .py_2()
                     .children({

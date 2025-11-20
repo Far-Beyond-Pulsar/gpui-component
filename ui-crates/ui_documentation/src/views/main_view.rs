@@ -75,7 +75,7 @@ impl Render for MainView {
                     )
                     .child(
                         ContentView::render(
-                            &self.state.current_doc_content,
+                            self.state.current_doc_content.to_string(),
                             cx,
                         )
                     )
