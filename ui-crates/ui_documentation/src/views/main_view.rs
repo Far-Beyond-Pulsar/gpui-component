@@ -39,7 +39,7 @@ impl Render for MainView {
             .size_full()
             .bg(theme.background)
             .child(
-                // Top bar with search
+                // Top bar with search - NOTE: Search functionality is currently display-only
                 div()
                     .w_full()
                     .px_4()
@@ -51,9 +51,9 @@ impl Render for MainView {
                         self.search_bar.update(cx, |search_bar, search_cx| {
                             search_bar.render_with_query(
                                 &current_query,
-                                cx.listener(|this, query: &str, _window, cx| {
-                                    this.handle_search_change(query, _window, cx);
-                                }),
+                                |_query: &str| {
+                                    // TODO: Implement search callback
+                                },
                                 search_cx,
                             )
                         })

@@ -84,6 +84,6 @@ impl Focusable for SearchBar {
 
 impl Render for SearchBar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.render_with_query("", |_, _, _| {}, cx)
+        self.render_with_query("", |_| {}, cx)
     }
 }
