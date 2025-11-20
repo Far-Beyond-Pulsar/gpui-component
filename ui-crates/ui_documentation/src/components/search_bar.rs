@@ -27,14 +27,14 @@ impl SearchBar {
             .gap_2()
             .px_3()
             .py_2()
-            .bg(theme.surface)
+            .bg(theme.background)
             .border_1()
             .border_color(theme.border)
             .rounded_lg()
             .child(
                 Icon::new(IconName::Search)
                     .size(IconSize::Small)
-                    .text_color(theme.muted_foreground)
+                    .text_color(theme.muted)
             )
             .child(
                 div()
@@ -49,7 +49,7 @@ impl SearchBar {
                             .child(
                                 div()
                                     .text_color(if query.is_empty() {
-                                        theme.muted_foreground
+                                        theme.muted
                                     } else {
                                         theme.foreground
                                     })
