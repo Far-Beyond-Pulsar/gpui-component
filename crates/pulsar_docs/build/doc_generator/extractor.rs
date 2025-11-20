@@ -4,10 +4,78 @@
 /// system - it walks the AST and builds comprehensive documentation structures.
 
 use std::error::Error;
-use syn::{Item, ItemStruct, ItemEnum, ItemTrait, ItemFn, ItemMacro, ItemConst, ItemType, ItemImpl, Attribute};
+use syn::{Item, ItemStruct, ItemEnum, ItemTrait, ItemFn, ItemMacro, ItemConst, ItemType, Attribute};
+use syn::spanned::Spanned;
 use quote::ToTokens;
 use super::parser::ParsedCrate;
 use super::types::*;
+
+/// Extract exact source code for a syntax node - LITERAL extraction from source
+fn extract_source_from_span<T: ToTokens>(node: &T, source_code: &str) -> String {
+    // Get the span of the node
+    let span = node.span();
+    
+    // Extract positions (1-indexed lines, 0-indexed columns)
+    let start = span.start();
+    let end = span.end();
+    
+    // Split source into lines but keep newlines for byte counting
+    let mut byte_offset = 0;
+    let mut start_byte = None;
+    let mut end_byte = None;
+    
+    for (line_num, line) in source_code.lines().enumerate() {
+        let line_index = line_num + 1; // lines() is 0-indexed, span is 1-indexed
+        
+        if line_index == start.line && start_byte.is_none() {
+            // Use char_indices to handle multi-byte chars correctly
+            let mut char_col = 0;
+            for (byte_idx, _) in line.char_indices() {
+                if char_col == start.column {
+                    start_byte = Some(byte_offset + byte_idx);
+                    break;
+                }
+                char_col += 1;
+            }
+            // If column is at end of line
+            if start_byte.is_none() && char_col == start.column {
+                start_byte = Some(byte_offset + line.len());
+            }
+        }
+        
+        if line_index == end.line && end_byte.is_none() {
+            // Use char_indices to handle multi-byte chars correctly
+            let mut char_col = 0;
+            for (byte_idx, _) in line.char_indices() {
+                if char_col == end.column {
+                    end_byte = Some(byte_offset + byte_idx);
+                    break;
+                }
+                char_col += 1;
+            }
+            // If column is at end of line
+            if end_byte.is_none() && char_col == end.column {
+                end_byte = Some(byte_offset + line.len());
+            }
+        }
+        
+        byte_offset += line.len() + 1; // +1 for the newline character
+        
+        if start_byte.is_some() && end_byte.is_some() {
+            break;
+        }
+    }
+    
+    // Extract the exact slice - preserves ALL formatting
+    if let (Some(start), Some(end)) = (start_byte, end_byte) {
+        if start < source_code.len() && end <= source_code.len() && start < end {
+            return source_code[start..end].to_string();
+        }
+    }
+    
+    // Fallback to token stream if span extraction fails
+    node.to_token_stream().to_string()
+}
 
 /// Extract documentation from a parsed crate
 /// 
@@ -96,7 +164,7 @@ fn extract_struct(item: &ItemStruct, file_path: &std::path::Path, path: &[String
                 name: f.ident.as_ref().unwrap().to_string(),
                 doc_comment: extract_doc_comments(&f.attrs),
                 visibility: extract_visibility(&f.vis),
-                type_: f.ty.to_token_stream().to_string(),
+                type_: extract_source_from_span(&f.ty, source_code),
             }).collect()
         }
         syn::Fields::Unnamed(fields) => {
@@ -104,7 +172,7 @@ fn extract_struct(item: &ItemStruct, file_path: &std::path::Path, path: &[String
                 name: format!("{}", i),
                 doc_comment: extract_doc_comments(&f.attrs),
                 visibility: extract_visibility(&f.vis),
-                type_: f.ty.to_token_stream().to_string(),
+                type_: extract_source_from_span(&f.ty, source_code),
             }).collect()
         }
         syn::Fields::Unit => Vec::new(),
@@ -123,7 +191,7 @@ fn extract_struct(item: &ItemStruct, file_path: &std::path::Path, path: &[String
             line: 0, // Line info not available
             column: 0,
         },
-        source_code: extract_source_code(item, source_code),
+        source_code: extract_source_from_span(item, source_code),
         impls: Vec::new(), // Will be filled later
     }
 }
@@ -141,13 +209,13 @@ fn extract_enum(item: &ItemEnum, file_path: &std::path::Path, path: &[String], s
                     name: f.ident.as_ref().unwrap().to_string(),
                     doc_comment: extract_doc_comments(&f.attrs),
                     visibility: extract_visibility(&f.vis),
-                    type_: f.ty.to_token_stream().to_string(),
+                    type_: extract_source_from_span(&f.ty, source_code),
                 }).collect())
             }
             syn::Fields::Unnamed(fields) => {
                 VariantFields::Tuple(
                     fields.unnamed.iter()
-                        .map(|f| f.ty.to_token_stream().to_string())
+                        .map(|f| extract_source_from_span(&f.ty, source_code))
                         .collect()
                 )
             }
@@ -173,7 +241,7 @@ fn extract_enum(item: &ItemEnum, file_path: &std::path::Path, path: &[String], s
             line: 0, // Line info not available
             column: 0,
         },
-        source_code: extract_source_code(item, source_code),
+        source_code: extract_source_from_span(item, source_code),
         impls: Vec::new(),
     }
 }
@@ -202,7 +270,7 @@ fn extract_trait(item: &ItemTrait, file_path: &std::path::Path, path: &[String],
                 });
             }
             syn::TraitItem::Fn(method) => {
-                methods.push(extract_trait_method(method));
+                methods.push(extract_trait_method(method, source_code));
             }
             _ => {}
         }
@@ -222,7 +290,7 @@ fn extract_trait(item: &ItemTrait, file_path: &std::path::Path, path: &[String],
             line: 0, // Line info not available
             column: 0,
         },
-        source_code: extract_source_code(item, source_code),
+        source_code: extract_source_from_span(item, source_code),
     }
 }
 
@@ -236,8 +304,8 @@ fn extract_function(item: &ItemFn, file_path: &std::path::Path, path: &[String],
         match arg {
             syn::FnArg::Typed(pat_type) => {
                 ParameterDoc {
-                    name: pat_type.pat.to_token_stream().to_string(),
-                    type_: pat_type.ty.to_token_stream().to_string(),
+                    name: extract_source_from_span(&*pat_type.pat, source_code),
+                    type_: extract_source_from_span(&*pat_type.ty, source_code),
                 }
             }
             syn::FnArg::Receiver(_) => {
@@ -251,7 +319,7 @@ fn extract_function(item: &ItemFn, file_path: &std::path::Path, path: &[String],
     
     let return_type = match &item.sig.output {
         syn::ReturnType::Default => None,
-        syn::ReturnType::Type(_, ty) => Some(ty.to_token_stream().to_string()),
+        syn::ReturnType::Type(_, ty) => Some(extract_source_from_span(&**ty, source_code)),
     };
     
     FunctionDoc {
@@ -270,7 +338,7 @@ fn extract_function(item: &ItemFn, file_path: &std::path::Path, path: &[String],
             line: 0,
             column: 0,
         },
-        source_code: extract_source_code(item, source_code),
+        source_code: extract_source_from_span(item, source_code),
     }
 }
 
@@ -289,13 +357,13 @@ fn extract_macro(item: &ItemMacro, file_path: &std::path::Path, path: &[String],
             line: 0, // Macro span handling is complex
             column: 0,
         },
-        source_code: extract_source_code(item, source_code),
+        source_code: extract_source_from_span(item, source_code),
         example_usage: Vec::new(),
     }
 }
 
 /// Extract documentation from a constant
-fn extract_constant(item: &ItemConst, file_path: &std::path::Path, path: &[String], _source_code: &str) -> ConstantDoc {
+fn extract_constant(item: &ItemConst, file_path: &std::path::Path, path: &[String], source_code: &str) -> ConstantDoc {
     let doc_comment = extract_doc_comments(&item.attrs);
     let visibility = extract_visibility(&item.vis);
     
@@ -304,8 +372,8 @@ fn extract_constant(item: &ItemConst, file_path: &std::path::Path, path: &[Strin
         path: path.to_vec(),
         doc_comment,
         visibility,
-        type_: item.ty.to_token_stream().to_string(),
-        value: Some(item.expr.to_token_stream().to_string()),
+        type_: extract_source_from_span(&*item.ty, source_code),
+        value: Some(extract_source_from_span(&*item.expr, source_code)),
         source_location: SourceLocation {
             file: file_path.to_path_buf(),
             line: 0, // Line info not available
@@ -315,7 +383,7 @@ fn extract_constant(item: &ItemConst, file_path: &std::path::Path, path: &[Strin
 }
 
 /// Extract documentation from a type alias
-fn extract_type_alias(item: &ItemType, file_path: &std::path::Path, path: &[String], _source_code: &str) -> TypeAliasDoc {
+fn extract_type_alias(item: &ItemType, file_path: &std::path::Path, path: &[String], source_code: &str) -> TypeAliasDoc {
     let doc_comment = extract_doc_comments(&item.attrs);
     let visibility = extract_visibility(&item.vis);
     let generics = extract_generics(&item.generics);
@@ -326,7 +394,7 @@ fn extract_type_alias(item: &ItemType, file_path: &std::path::Path, path: &[Stri
         doc_comment,
         visibility,
         generics,
-        target_type: item.ty.to_token_stream().to_string(),
+        target_type: extract_source_from_span(&*item.ty, source_code),
         source_location: SourceLocation {
             file: file_path.to_path_buf(),
             line: 0, // Line info not available
@@ -336,7 +404,7 @@ fn extract_type_alias(item: &ItemType, file_path: &std::path::Path, path: &[Stri
 }
 
 /// Extract method from trait item
-fn extract_trait_method(item: &syn::TraitItemFn) -> MethodDoc {
+fn extract_trait_method(item: &syn::TraitItemFn, source_code: &str) -> MethodDoc {
     let doc_comment = extract_doc_comments(&item.attrs);
     let generics = extract_generics(&item.sig.generics);
     
@@ -355,8 +423,8 @@ fn extract_trait_method(item: &syn::TraitItemFn) -> MethodDoc {
     let parameters = item.sig.inputs.iter().filter_map(|arg| {
         match arg {
             syn::FnArg::Typed(pat_type) => Some(ParameterDoc {
-                name: pat_type.pat.to_token_stream().to_string(),
-                type_: pat_type.ty.to_token_stream().to_string(),
+                name: extract_source_from_span(&*pat_type.pat, source_code),
+                type_: extract_source_from_span(&*pat_type.ty, source_code),
             }),
             _ => None,
         }
@@ -364,7 +432,7 @@ fn extract_trait_method(item: &syn::TraitItemFn) -> MethodDoc {
     
     let return_type = match &item.sig.output {
         syn::ReturnType::Default => None,
-        syn::ReturnType::Type(_, ty) => Some(ty.to_token_stream().to_string()),
+        syn::ReturnType::Type(_, ty) => Some(extract_source_from_span(&**ty, source_code)),
     };
     
     MethodDoc {
@@ -378,74 +446,11 @@ fn extract_trait_method(item: &syn::TraitItemFn) -> MethodDoc {
         is_async: item.sig.asyncness.is_some(),
         is_unsafe: item.sig.unsafety.is_some(),
         is_const: item.sig.constness.is_some(),
-        source_code: format_rust_code(&item.to_token_stream().to_string()),
+        source_code: extract_source_from_span(item, source_code),
     }
 }
 
 // Helper functions
-
-/// Extract source code from a token stream using proc_macro2 span
-fn extract_source_code<T: ToTokens>(item: &T, _source_code: &str) -> String {
-    // For now, use formatted token stream as fallback
-    // In future, we could use span information to extract directly
-    let tokens = item.to_token_stream().to_string();
-    
-    // Apply basic formatting to make it more readable
-    format_rust_code(&tokens)
-}
-
-/// Basic Rust code formatter
-fn format_rust_code(code: &str) -> String {
-    let mut formatted = String::new();
-    let mut indent_level: usize = 0;
-    let indent = "    ";
-    let mut in_string = false;
-    let mut prev_char = ' ';
-    
-    for ch in code.chars() {
-        // Track string literals
-        if ch == '"' && prev_char != '\\' {
-            in_string = !in_string;
-        }
-        
-        if !in_string {
-            match ch {
-                '{' => {
-                    formatted.push(ch);
-                    formatted.push('\n');
-                    indent_level += 1;
-                    for _ in 0..indent_level {
-                        formatted.push_str(indent);
-                    }
-                }
-                '}' => {
-                    if !formatted.is_empty() && formatted.chars().last() != Some('\n') {
-                        formatted.push('\n');
-                    }
-                    indent_level = indent_level.saturating_sub(1);
-                    for _ in 0..indent_level {
-                        formatted.push_str(indent);
-                    }
-                    formatted.push(ch);
-                }
-                ';' => {
-                    formatted.push(ch);
-                    formatted.push('\n');
-                    for _ in 0..indent_level {
-                        formatted.push_str(indent);
-                    }
-                }
-                _ => formatted.push(ch),
-            }
-        } else {
-            formatted.push(ch);
-        }
-        
-        prev_char = ch;
-    }
-    
-    formatted.trim().to_string()
-}
 
 /// Extract doc comments from attributes
 fn extract_doc_comments(attrs: &[Attribute]) -> Option<String> {
