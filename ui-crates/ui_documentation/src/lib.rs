@@ -15,6 +15,7 @@ pub struct DocumentationWindow {
     focus_handle: FocusHandle,
     current_page: String,
     search_query: String,
+    search_input_state: Entity<ui::input::InputState>,
     search_results: Vec<SearchResult>,
     doc_index: HashMap<String, DocPage>,
     sidebar_items: Vec<SidebarItem>,
@@ -47,11 +48,14 @@ struct SidebarItem {
 }
 
 impl DocumentationWindow {
-    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let search_input_state = cx.new(|cx| ui::input::InputState::new(window, cx));
+        
         let mut window = Self {
             focus_handle: cx.focus_handle(),
             current_page: String::from("index.html"),
             search_query: String::new(),
+            search_input_state,
             search_results: Vec::new(),
             doc_index: HashMap::new(),
             sidebar_items: Vec::new(),
@@ -156,7 +160,7 @@ impl DocumentationWindow {
                     path: format!("{}/index.html", crate_name),
                     level: 0,
                     children: Vec::new(),
-                    is_expanded: false,
+                    is_expanded: true, // Start expanded
                 }
             });
             
@@ -175,6 +179,16 @@ impl DocumentationWindow {
         
         self.sidebar_items = root_items.into_values().collect();
         self.sidebar_items.sort_by(|a, b| a.name.cmp(&b.name));
+    }
+    
+    fn toggle_sidebar_item(&mut self, path: &str, cx: &mut Context<Self>) {
+        for item in &mut self.sidebar_items {
+            if item.path == path {
+                item.is_expanded = !item.is_expanded;
+                cx.notify();
+                return;
+            }
+        }
     }
     
     fn perform_search(&mut self, query: &str) {
@@ -247,12 +261,7 @@ impl DocumentationWindow {
         cx.notify();
     }
     
-    fn toggle_sidebar_item(&mut self, index: usize, cx: &mut Context<Self>) {
-        if let Some(item) = self.sidebar_items.get_mut(index) {
-            item.is_expanded = !item.is_expanded;
-            cx.notify();
-        }
-    }
+
 }
 
 impl Focusable for DocumentationWindow {
@@ -294,18 +303,22 @@ impl Render for DocumentationWindow {
                         div()
                             .flex_1()
                             .max_w_96()
-                            .px_3()
-                            .py_1p5()
-                            .rounded(theme.radius)
-                            .bg(theme.muted)
-                            .text_color(theme.muted_foreground)
-                            .child("🔍 Search documentation...")
+                            .child(
+                                ui::input::TextInput::new(&self.search_input_state)
+                            )
                     )
                     .child(
                         Button::new("refresh-docs")
                             .icon(IconName::Refresh)
                             .ghost()
                             .tooltip("Refresh Documentation")
+                            .on_click(cx.listener(|this, _event, _window, cx| {
+                                this.doc_index.clear();
+                                this.sidebar_items.clear();
+                                this.index_documentation();
+                                this.build_sidebar();
+                                cx.notify();
+                            }))
                     )
             )
             .child(
@@ -396,35 +409,47 @@ impl Render for DocumentationWindow {
 }
 
 impl DocumentationWindow {
-    fn render_sidebar_item(&self, item: &SidebarItem, index: usize, cx: &mut Context<Self>) -> AnyElement {
+    fn render_sidebar_item(&self, item: &SidebarItem, _index: usize, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme();
         let is_current = self.current_page == item.path;
-        let path = item.path.clone();
+        let has_children = !item.children.is_empty();
+        
+        let item_path = item.path.clone();
+        let children = item.children.clone();
+        let is_expanded = item.is_expanded;
         
         v_flex()
             .w_full()
             .child(
-                div()
+                Button::new(SharedString::from(format!("sidebar-item-{}", item_path)))
                     .w_full()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .px_2()
-                    .py_1p5()
-                    .rounded(theme.radius)
-                    .when(is_current, |d| d.bg(theme.accent.opacity(0.1)))
-                    .hover(|s| s.bg(theme.muted.opacity(0.5)))
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(if is_current {
-                                theme.accent
-                            } else {
-                                theme.foreground
-                            })
-                            .child(item.name.clone())
-                    )
+                    .justify_start()
+                    .ghost()
+                    .on_click(cx.listener(move |this, _event, _window, cx| {
+                        this.navigate_to(&item_path, cx);
+                    }))
+                    .label(item.name.clone())
             )
+            .when(is_expanded && has_children, |this| {
+                this.children(
+                    children.iter().map(|child| {
+                        let child_path = child.path.clone();
+                        let child_is_current = self.current_page == child.path;
+                        
+                        Button::new(SharedString::from(format!("sidebar-child-{}", child_path)))
+                            .w_full()
+                            .justify_start()
+                            .ghost()
+                            .small()
+                            .pl_6()
+                            .label(child.name.clone())
+                            .on_click(cx.listener(move |this, _event, _window, cx| {
+                                this.navigate_to(&child_path, cx);
+                            }))
+                            .into_any_element()
+                    })
+                )
+            })
             .into_any_element()
     }
     
@@ -449,14 +474,19 @@ impl DocumentationWindow {
                     )
                     .children(
                         self.search_results.iter().map(|result| {
-                            div()
+                            let result_path = result.path.clone();
+                            
+                            Button::new(SharedString::from(format!("search-result-{}", result_path)))
                                 .w_full()
-                                .p_4()
-                                .rounded(theme.radius)
-                                .bg(theme.sidebar)
-                                .border_1()
-                                .border_color(theme.border)
-                                .hover(|s| s.border_color(theme.accent))
+                                .ghost()
+                                .justify_start()
+                                .on_click(cx.listener(move |this, _event, _window, cx| {
+                                    this.navigate_to(&result_path, cx);
+                                    // Clear search
+                                    this.search_query.clear();
+                                    this.search_results.clear();
+                                    cx.notify();
+                                }))
                                 .child(
                                     v_flex()
                                         .gap_2()
@@ -472,6 +502,12 @@ impl DocumentationWindow {
                                                 .text_sm()
                                                 .text_color(theme.muted_foreground)
                                                 .child(result.snippet.clone())
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(theme.muted_foreground.opacity(0.7))
+                                                .child(result.path.clone())
                                         )
                                 )
                                 .into_any_element()
