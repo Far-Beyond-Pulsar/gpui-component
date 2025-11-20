@@ -173,15 +173,20 @@ impl DocumentationState {
             return;
         }
 
-        match &mut self.tree_items[idx] {
-            TreeNode::Crate { expanded, .. } => {
-                *expanded = !*expanded;
+        let node = self.tree_items[idx].clone();
+        match node {
+            TreeNode::Crate { .. } => {
+                if let TreeNode::Crate { ref mut expanded, .. } = self.tree_items[idx] {
+                    *expanded = !*expanded;
+                }
             }
-            TreeNode::Category { expanded, .. } => {
-                *expanded = !*expanded;
+            TreeNode::Category { .. } => {
+                if let TreeNode::Category { ref mut expanded, .. } = self.tree_items[idx] {
+                    *expanded = !*expanded;
+                }
             }
             TreeNode::Item { path, .. } => {
-                self.load_document(path, cx);
+                self.load_document(&path, cx);
                 return;
             }
         }
@@ -201,7 +206,7 @@ impl DocumentationState {
         self.current_doc_content = doc_content.into();
     }
 
-    pub fn update_search(&mut self, query: String, cx: &mut Context<impl Send>) {
+    pub fn update_search(&mut self, query: String, _cx: &mut Context<impl Send>) {
         self.search_query = query.clone().into();
         
         if query.is_empty() {

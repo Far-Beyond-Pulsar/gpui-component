@@ -1,5 +1,6 @@
 use gpui::*;
 use ui::prelude::*;
+use ui::{ActiveTheme, StyledExt}
 use crate::state::DocumentationState;
 use crate::components::{Sidebar, ContentView, SearchBar};
 

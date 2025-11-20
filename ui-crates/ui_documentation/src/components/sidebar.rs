@@ -8,7 +8,7 @@ pub struct Sidebar;
 impl Sidebar {
     pub fn render(
         state: &DocumentationState,
-        on_node_click: impl Fn(usize, &mut Window, &mut Context<impl Send>) + 'static + Clone,
+        on_node_click: impl Fn(usize, &mut Window, &mut Context<impl Send>) + 'static,
         cx: &mut Context<impl Send>,
     ) -> impl IntoElement {
         let theme = cx.theme();
@@ -41,8 +41,9 @@ impl Sidebar {
                     .overflow_y_scroll()
                     .gap_px()
                     .py_2()
-                    .children(
-                        state.flat_visible_items.iter().map(|&idx| {
+                    .children({
+                        let mut items = vec![];
+                        for &idx in &state.flat_visible_items {
                             let node = &state.tree_items[idx];
                             let is_selected = match node {
                                 TreeNode::Item { path, .. } => {
@@ -51,17 +52,17 @@ impl Sidebar {
                                 _ => false,
                             };
                             let indent = TreeNodeView::get_indent_level(node);
-                            let on_click = on_node_click.clone();
                             
-                            TreeNodeView::render(
+                            items.push(TreeNodeView::render(
                                 node,
                                 is_selected,
                                 indent,
-                                move |window, cx| on_click(idx, window, cx),
+                                move |window, cx| on_node_click(idx, window, cx),
                                 cx,
-                            )
-                        })
-                    )
+                            ));
+                        }
+                        items
+                    })
             )
     }
 }

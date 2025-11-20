@@ -18,6 +18,8 @@ pub fn open_documentation_window(app: &mut App) {
             traffic_light_position: None,
         }),
         window_background: WindowBackgroundAppearance::Opaque,
+        window_decorations: None,
+        tabbing_identifier: None,
         focus: true,
         show: true,
         kind: WindowKind::Normal,
