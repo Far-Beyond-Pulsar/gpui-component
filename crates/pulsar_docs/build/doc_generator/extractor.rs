@@ -33,7 +33,8 @@ pub fn extract_documentation(parsed_crate: &ParsedCrate) -> Result<CrateDocument
     
     // Extract from each file
     for file in &parsed_crate.files {
-        extract_from_items(&file.ast.items, &mut docs, &file.path, vec![]);
+        let source_code = std::fs::read_to_string(&file.path)?;
+        extract_from_items(&file.ast.items, &mut docs, &file.path, vec![], &source_code);
     }
     
     Ok(docs)
@@ -45,36 +46,37 @@ fn extract_from_items(
     docs: &mut CrateDocumentation,
     file_path: &std::path::Path,
     current_path: Vec<String>,
+    source_code: &str,
 ) {
     for item in items {
         match item {
             Item::Struct(item_struct) => {
-                docs.structs.push(extract_struct(item_struct, file_path, &current_path));
+                docs.structs.push(extract_struct(item_struct, file_path, &current_path, source_code));
             }
             Item::Enum(item_enum) => {
-                docs.enums.push(extract_enum(item_enum, file_path, &current_path));
+                docs.enums.push(extract_enum(item_enum, file_path, &current_path, source_code));
             }
             Item::Trait(item_trait) => {
-                docs.traits.push(extract_trait(item_trait, file_path, &current_path));
+                docs.traits.push(extract_trait(item_trait, file_path, &current_path, source_code));
             }
             Item::Fn(item_fn) => {
-                docs.functions.push(extract_function(item_fn, file_path, &current_path));
+                docs.functions.push(extract_function(item_fn, file_path, &current_path, source_code));
             }
             Item::Macro(item_macro) => {
-                docs.macros.push(extract_macro(item_macro, file_path, &current_path));
+                docs.macros.push(extract_macro(item_macro, file_path, &current_path, source_code));
             }
             Item::Const(item_const) => {
-                docs.constants.push(extract_constant(item_const, file_path, &current_path));
+                docs.constants.push(extract_constant(item_const, file_path, &current_path, source_code));
             }
             Item::Type(item_type) => {
-                docs.type_aliases.push(extract_type_alias(item_type, file_path, &current_path));
+                docs.type_aliases.push(extract_type_alias(item_type, file_path, &current_path, source_code));
             }
             Item::Mod(item_mod) => {
                 // Recursively process module
                 if let Some((_, items)) = &item_mod.content {
                     let mut mod_path = current_path.clone();
                     mod_path.push(item_mod.ident.to_string());
-                    extract_from_items(items, docs, file_path, mod_path);
+                    extract_from_items(items, docs, file_path, mod_path, source_code);
                 }
             }
             _ => {}
@@ -83,7 +85,7 @@ fn extract_from_items(
 }
 
 /// Extract documentation from a struct
-fn extract_struct(item: &ItemStruct, file_path: &std::path::Path, path: &[String]) -> StructDoc {
+fn extract_struct(item: &ItemStruct, file_path: &std::path::Path, path: &[String], source_code: &str) -> StructDoc {
     let doc_comment = extract_doc_comments(&item.attrs);
     let visibility = extract_visibility(&item.vis);
     let generics = extract_generics(&item.generics);
@@ -121,13 +123,13 @@ fn extract_struct(item: &ItemStruct, file_path: &std::path::Path, path: &[String
             line: 0, // Line info not available
             column: 0,
         },
-        source_code: item.to_token_stream().to_string(),
+        source_code: extract_source_code(item, source_code),
         impls: Vec::new(), // Will be filled later
     }
 }
 
 /// Extract documentation from an enum
-fn extract_enum(item: &ItemEnum, file_path: &std::path::Path, path: &[String]) -> EnumDoc {
+fn extract_enum(item: &ItemEnum, file_path: &std::path::Path, path: &[String], source_code: &str) -> EnumDoc {
     let doc_comment = extract_doc_comments(&item.attrs);
     let visibility = extract_visibility(&item.vis);
     let generics = extract_generics(&item.generics);
@@ -171,13 +173,13 @@ fn extract_enum(item: &ItemEnum, file_path: &std::path::Path, path: &[String]) -
             line: 0, // Line info not available
             column: 0,
         },
-        source_code: item.to_token_stream().to_string(),
+        source_code: extract_source_code(item, source_code),
         impls: Vec::new(),
     }
 }
 
 /// Extract documentation from a trait
-fn extract_trait(item: &ItemTrait, file_path: &std::path::Path, path: &[String]) -> TraitDoc {
+fn extract_trait(item: &ItemTrait, file_path: &std::path::Path, path: &[String], source_code: &str) -> TraitDoc {
     let doc_comment = extract_doc_comments(&item.attrs);
     let visibility = extract_visibility(&item.vis);
     let generics = extract_generics(&item.generics);
@@ -220,12 +222,12 @@ fn extract_trait(item: &ItemTrait, file_path: &std::path::Path, path: &[String])
             line: 0, // Line info not available
             column: 0,
         },
-        source_code: item.to_token_stream().to_string(),
+        source_code: extract_source_code(item, source_code),
     }
 }
 
 /// Extract documentation from a function
-fn extract_function(item: &ItemFn, file_path: &std::path::Path, path: &[String]) -> FunctionDoc {
+fn extract_function(item: &ItemFn, file_path: &std::path::Path, path: &[String], source_code: &str) -> FunctionDoc {
     let doc_comment = extract_doc_comments(&item.attrs);
     let visibility = extract_visibility(&item.vis);
     let generics = extract_generics(&item.sig.generics);
@@ -268,12 +270,12 @@ fn extract_function(item: &ItemFn, file_path: &std::path::Path, path: &[String])
             line: 0,
             column: 0,
         },
-        source_code: item.to_token_stream().to_string(),
+        source_code: extract_source_code(item, source_code),
     }
 }
 
 /// Extract documentation from a macro
-fn extract_macro(item: &ItemMacro, file_path: &std::path::Path, path: &[String]) -> MacroDoc {
+fn extract_macro(item: &ItemMacro, file_path: &std::path::Path, path: &[String], source_code: &str) -> MacroDoc {
     let doc_comment = extract_doc_comments(&item.attrs);
     let name = item.ident.as_ref().map(|i| i.to_string()).unwrap_or_default();
     
@@ -287,13 +289,13 @@ fn extract_macro(item: &ItemMacro, file_path: &std::path::Path, path: &[String])
             line: 0, // Macro span handling is complex
             column: 0,
         },
-        source_code: item.to_token_stream().to_string(),
+        source_code: extract_source_code(item, source_code),
         example_usage: Vec::new(),
     }
 }
 
 /// Extract documentation from a constant
-fn extract_constant(item: &ItemConst, file_path: &std::path::Path, path: &[String]) -> ConstantDoc {
+fn extract_constant(item: &ItemConst, file_path: &std::path::Path, path: &[String], _source_code: &str) -> ConstantDoc {
     let doc_comment = extract_doc_comments(&item.attrs);
     let visibility = extract_visibility(&item.vis);
     
@@ -313,7 +315,7 @@ fn extract_constant(item: &ItemConst, file_path: &std::path::Path, path: &[Strin
 }
 
 /// Extract documentation from a type alias
-fn extract_type_alias(item: &ItemType, file_path: &std::path::Path, path: &[String]) -> TypeAliasDoc {
+fn extract_type_alias(item: &ItemType, file_path: &std::path::Path, path: &[String], _source_code: &str) -> TypeAliasDoc {
     let doc_comment = extract_doc_comments(&item.attrs);
     let visibility = extract_visibility(&item.vis);
     let generics = extract_generics(&item.generics);
@@ -376,11 +378,74 @@ fn extract_trait_method(item: &syn::TraitItemFn) -> MethodDoc {
         is_async: item.sig.asyncness.is_some(),
         is_unsafe: item.sig.unsafety.is_some(),
         is_const: item.sig.constness.is_some(),
-        source_code: item.to_token_stream().to_string(),
+        source_code: format_rust_code(&item.to_token_stream().to_string()),
     }
 }
 
 // Helper functions
+
+/// Extract source code from a token stream using proc_macro2 span
+fn extract_source_code<T: ToTokens>(item: &T, _source_code: &str) -> String {
+    // For now, use formatted token stream as fallback
+    // In future, we could use span information to extract directly
+    let tokens = item.to_token_stream().to_string();
+    
+    // Apply basic formatting to make it more readable
+    format_rust_code(&tokens)
+}
+
+/// Basic Rust code formatter
+fn format_rust_code(code: &str) -> String {
+    let mut formatted = String::new();
+    let mut indent_level: usize = 0;
+    let indent = "    ";
+    let mut in_string = false;
+    let mut prev_char = ' ';
+    
+    for ch in code.chars() {
+        // Track string literals
+        if ch == '"' && prev_char != '\\' {
+            in_string = !in_string;
+        }
+        
+        if !in_string {
+            match ch {
+                '{' => {
+                    formatted.push(ch);
+                    formatted.push('\n');
+                    indent_level += 1;
+                    for _ in 0..indent_level {
+                        formatted.push_str(indent);
+                    }
+                }
+                '}' => {
+                    if !formatted.is_empty() && formatted.chars().last() != Some('\n') {
+                        formatted.push('\n');
+                    }
+                    indent_level = indent_level.saturating_sub(1);
+                    for _ in 0..indent_level {
+                        formatted.push_str(indent);
+                    }
+                    formatted.push(ch);
+                }
+                ';' => {
+                    formatted.push(ch);
+                    formatted.push('\n');
+                    for _ in 0..indent_level {
+                        formatted.push_str(indent);
+                    }
+                }
+                _ => formatted.push(ch),
+            }
+        } else {
+            formatted.push(ch);
+        }
+        
+        prev_char = ch;
+    }
+    
+    formatted.trim().to_string()
+}
 
 /// Extract doc comments from attributes
 fn extract_doc_comments(attrs: &[Attribute]) -> Option<String> {
