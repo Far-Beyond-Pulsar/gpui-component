@@ -1,4 +1,5 @@
 use gpui::*;
+use gpui::prelude::*;
 use ui::{prelude::*, IconButton, IconName, ActiveTheme};
 
 pub struct SearchBar {

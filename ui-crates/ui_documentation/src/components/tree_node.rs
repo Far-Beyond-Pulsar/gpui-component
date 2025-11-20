@@ -1,5 +1,5 @@
 use gpui::*;
-use ui::{prelude::*, ActiveTheme, Button, IconName, Selectable};
+use ui::{prelude::*, ActiveTheme, button::Button, IconName, Selectable};
 use crate::state::TreeNode;
 
 pub struct TreeNodeView;
