@@ -625,20 +625,14 @@ impl QueryEditor {
             })
             .when_some(self.results_table.as_ref(), |this, table| {
                 this.child(
-                    v_flex()
-                        .size_full()
-                        .gap_2()
-                        .child(
-                            div()
-                                .w_full()
-                                .flex_1()
-                                .min_h_0()
-                                .border_1()
-                                .border_color(cx.theme().border)
-                                .rounded_md()
-                                .overflow_hidden()
-                                .child(table.clone())
-                        )
+                    div()
+                        .w_full()
+                        .flex_1()
+                        .min_h_0()
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .rounded_md()
+                        .child(table.clone())
                 )
             })
             .when(self.results_table.is_none() && self.error.is_none(), |this| {
