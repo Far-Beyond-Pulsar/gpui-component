@@ -1,17 +1,30 @@
 use gpui::{prelude::*, *};
 use ui::{
     h_flex, v_flex, button::{Button, ButtonVariants}, label::Label,
-    input::TextInput,
+    input::{TextInput, InputState, TabSize, InputEvent},
+    divider::Divider, IconName,
     ActiveTheme, Sizable, Size, StyleSized, StyledExt, Disableable,
 };
 use crate::database::{DatabaseManager, CellValue};
+use std::time::Instant;
 
 pub struct QueryEditor {
     db: DatabaseManager,
-    query_buffer: SharedString,
+    query_input: Entity<InputState>,
     results: Option<QueryResult>,
     error: Option<String>,
     is_executing: bool,
+    query_history: Vec<SavedQuery>,
+    focus_handle: FocusHandle,
+    show_schema_sidebar: bool,
+    available_tables: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SavedQuery {
+    pub name: String,
+    pub sql: String,
+    pub timestamp: Instant,
 }
 
 #[derive(Clone)]
@@ -23,27 +36,84 @@ pub struct QueryResult {
 }
 
 impl QueryEditor {
-    pub fn new(db: DatabaseManager) -> Self {
+    pub fn new(db: DatabaseManager, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // Get available tables for schema browser
+        let available_tables = db.list_tables().unwrap_or_default();
+
+        // Create query input with SQL syntax highlighting
+        let query_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx)
+                .code_editor("sql")
+                .line_number(true)
+                .minimap(false)
+                .tab_size(TabSize {
+                    tab_size: 2,
+                    hard_tabs: false,
+                })
+                .soft_wrap(false);
+
+            state.set_value("SELECT * FROM ", window, cx);
+            state
+        });
+
         Self {
             db,
-            query_buffer: "SELECT * FROM ".into(),
+            query_input,
             results: None,
             error: None,
             is_executing: false,
+            query_history: Vec::new(),
+            focus_handle: cx.focus_handle(),
+            show_schema_sidebar: true,
+            available_tables,
         }
     }
 
-    pub fn set_query(&mut self, query: SharedString) {
-        self.query_buffer = query;
+    pub fn set_query(&mut self, query: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.query_input.update(cx, |state, cx| {
+            state.set_value(&query, window, cx);
+        });
     }
 
-    pub fn execute_query(&mut self) -> anyhow::Result<()> {
+    pub fn get_query(&self, cx: &App) -> String {
+        self.query_input.read(cx).value().to_string()
+    }
+
+    pub fn toggle_schema_sidebar(&mut self) {
+        self.show_schema_sidebar = !self.show_schema_sidebar;
+    }
+
+    pub fn save_query(&mut self, name: String, cx: &App) {
+        let sql = self.get_query(cx);
+        self.query_history.push(SavedQuery {
+            name,
+            sql,
+            timestamp: Instant::now(),
+        });
+    }
+
+    pub fn load_query(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(saved) = self.query_history.get(index) {
+            self.set_query(saved.sql.clone(), window, cx);
+        }
+    }
+
+    pub fn insert_table_name(&mut self, table_name: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.query_input.update(cx, |state, cx| {
+            let current = state.value().to_string();
+            let new_value = format!("{}{}", current, table_name);
+            state.set_value(&new_value, window, cx);
+        });
+    }
+
+    pub fn execute_query(&mut self, cx: &App) -> anyhow::Result<()> {
         self.is_executing = true;
         self.error = None;
 
         let start = std::time::Instant::now();
+        let query = self.get_query(cx);
 
-        match self.db.execute_query(&self.query_buffer.to_string()) {
+        match self.db.execute_query(&query) {
             Ok(rows) => {
                 let execution_time_ms = start.elapsed().as_millis() as u64;
                 let row_count = rows.len();
@@ -78,28 +148,59 @@ impl QueryEditor {
         self.error = None;
     }
 
-    pub fn render_query_input(&mut self, cx: &mut Context<QueryEditor>) -> impl IntoElement {
-        let query = self.query_buffer.clone();
+    pub fn render_query_input(&self, cx: &mut Context<QueryEditor>) -> impl IntoElement {
         v_flex()
+            .flex_1()
+            .min_h_0()
             .gap_2()
             .child(
-                Label::new("SQL Query")
-                    .text_sm()
-                    .font_semibold()
+                h_flex()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        Label::new("SQL Query Editor")
+                            .text_sm()
+                            .font_semibold()
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("toggle-schema")
+                                    .icon(if self.show_schema_sidebar { IconName::PanelLeft } else { IconName::PanelRight })
+                                    .tooltip("Toggle Schema Browser")
+                                    .ghost()
+                                    .xsmall()
+                                    .on_click(cx.listener(|editor, _, _, cx| {
+                                        editor.toggle_schema_sidebar();
+                                        cx.notify();
+                                    }))
+                            )
+                    )
             )
             .child(
                 div()
                     .w_full()
-                    .h_32()
+                    .flex_1()
+                    .min_h_0()
                     .border_1()
                     .border_color(cx.theme().border)
                     .rounded_md()
-                    .p_2()
-                    .bg(cx.theme().background)
+                    .overflow_hidden()
                     .child(
-                        div()
-                            .text_sm()
-                            .child(query.to_string())
+                        TextInput::new(&self.query_input)
+                            .h_full()
+                            .w_full()
+                            .font_family("monospace")
+                            .font(gpui::Font {
+                                family: "Jetbrains Mono".to_string().into(),
+                                weight: gpui::FontWeight::NORMAL,
+                                style: gpui::FontStyle::Normal,
+                                features: gpui::FontFeatures::default(),
+                                fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["monospace".to_string()])),
+                            })
+                            .text_size(px(14.0))
+                            .border_0()
                     )
             )
     }
@@ -108,13 +209,20 @@ impl QueryEditor {
         h_flex()
             .gap_2()
             .items_center()
+            .p_2()
+            .bg(cx.theme().muted.opacity(0.3))
+            .border_y_1()
+            .border_color(cx.theme().border)
             .child(
                 Button::new("execute")
-                    .label(if self.is_executing { "Executing..." } else { "Execute (F5)" })
+                    .icon(IconName::ArrowRight)
+                    .label(if self.is_executing { "Executing..." } else { "Execute" })
+                    .tooltip("Execute Query (F5 or Ctrl+Enter)")
                     .disabled(self.is_executing)
                     .primary()
+                    .small()
                     .on_click(cx.listener(|editor, _, _, cx| {
-                        if let Err(e) = editor.execute_query() {
+                        if let Err(e) = editor.execute_query(cx) {
                             eprintln!("Failed to execute query: {}", e);
                         }
                         cx.notify();
@@ -122,32 +230,241 @@ impl QueryEditor {
             )
             .child(
                 Button::new("clear")
-                    .label("Clear Results")
+                    .icon(IconName::Close)
+                    .label("Clear")
+                    .tooltip("Clear Results")
                     .outline()
+                    .small()
                     .on_click(cx.listener(|editor, _, _, cx| {
                         editor.clear_results();
                         cx.notify();
                     }))
             )
+            .child(Divider::vertical().h_6())
+            .child(
+                Button::new("save-query")
+                    .icon(IconName::FloppyDisk)
+                    .label("Save")
+                    .tooltip("Save Query to History")
+                    .outline()
+                    .small()
+                    .on_click(cx.listener(|editor, _, _, cx| {
+                        let name = format!("Query {}", editor.query_history.len() + 1);
+                        editor.save_query(name, cx);
+                        cx.notify();
+                    }))
+            )
+            .child(
+                Button::new("export-csv")
+                    .icon(IconName::Download)
+                    .label("Export CSV")
+                    .tooltip("Export Results to CSV")
+                    .outline()
+                    .small()
+                    .disabled(self.results.is_none())
+                    .on_click(cx.listener(|editor, _, _, cx| {
+                        if let Some(ref results) = editor.results {
+                            if let Err(e) = editor.export_to_csv(results) {
+                                eprintln!("Failed to export CSV: {}", e);
+                            }
+                        }
+                        cx.notify();
+                    }))
+            )
+            .child(
+                Button::new("export-json")
+                    .icon(IconName::Download)
+                    .label("Export JSON")
+                    .tooltip("Export Results to JSON")
+                    .outline()
+                    .small()
+                    .disabled(self.results.is_none())
+                    .on_click(cx.listener(|editor, _, _, cx| {
+                        if let Some(ref results) = editor.results {
+                            if let Err(e) = editor.export_to_json(results) {
+                                eprintln!("Failed to export JSON: {}", e);
+                            }
+                        }
+                        cx.notify();
+                    }))
+            )
             .when(self.results.is_some(), |this| {
                 let result = self.results.as_ref().unwrap();
-                this.child(
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(format!(
-                            "{} rows in {} ms",
-                            result.row_count, result.execution_time_ms
-                        ))
-                )
+                this.child(Divider::vertical().h_6())
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!(
+                                "📊 {} rows in {} ms",
+                                result.row_count, result.execution_time_ms
+                            ))
+                    )
             })
+    }
+
+    pub fn export_to_csv(&self, results: &QueryResult) -> anyhow::Result<()> {
+        use std::fs::File;
+        use std::io::Write;
+
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs();
+        let filename = format!("query_results_{}.csv", timestamp);
+
+        let mut file = File::create(&filename)?;
+
+        // Write header
+        writeln!(file, "{}", results.columns.join(","))?;
+
+        // Write rows
+        for row in &results.rows {
+            let row_str = row.iter()
+                .map(|cell| {
+                    let val = cell.display.replace("\"", "\"\"");
+                    if val.contains(',') || val.contains('"') || val.contains('\n') {
+                        format!("\"{}\"", val)
+                    } else {
+                        val
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(",");
+            writeln!(file, "{}", row_str)?;
+        }
+
+        println!("✓ Exported {} rows to {}", results.row_count, filename);
+        Ok(())
+    }
+
+    pub fn export_to_json(&self, results: &QueryResult) -> anyhow::Result<()> {
+        use std::fs::File;
+        use std::io::Write;
+
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs();
+        let filename = format!("query_results_{}.json", timestamp);
+
+        let mut rows_json = Vec::new();
+        for row in &results.rows {
+            let mut row_map = serde_json::Map::new();
+            for (i, cell) in row.iter().enumerate() {
+                if let Some(col_name) = results.columns.get(i) {
+                    row_map.insert(col_name.clone(), cell.value.clone());
+                }
+            }
+            rows_json.push(serde_json::Value::Object(row_map));
+        }
+
+        let json = serde_json::to_string_pretty(&rows_json)?;
+        let mut file = File::create(&filename)?;
+        file.write_all(json.as_bytes())?;
+
+        println!("✓ Exported {} rows to {}", results.row_count, filename);
+        Ok(())
+    }
+
+    pub fn render_schema_sidebar(&self, cx: &Context<QueryEditor>) -> impl IntoElement {
+        v_flex()
+            .w_64()
+            .h_full()
+            .bg(cx.theme().muted.opacity(0.2))
+            .border_r_1()
+            .border_color(cx.theme().border)
+            .gap_2()
+            .p_2()
+            .child(
+                Label::new("Database Schema")
+                    .text_sm()
+                    .font_semibold()
+                    .px_2()
+            )
+            .child(Divider::horizontal())
+            .child(
+                v_flex()
+                    .flex_1()
+                    .gap_1()
+                    .children(self.available_tables.iter().enumerate().map(|(idx, table)| {
+                        let table_name = table.clone();
+                        v_flex()
+                            .w_full()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .id(("schema-table", idx))
+                                    .w_full()
+                                    .px_3()
+                                    .py_2()
+                                    .rounded_md()
+                                    .text_sm()
+                                    .font_semibold()
+                                    .cursor_pointer()
+                                    .on_click(cx.listener(move |editor, _, window, cx| {
+                                        editor.insert_table_name(&table_name, window, cx);
+                                        cx.notify();
+                                    }))
+                                    .hover(|this| this.bg(cx.theme().muted))
+                                    .child(format!("📋 {}", table))
+                            )
+                            .when_some(self.db.get_schema(table), |this, schema| {
+                                this.child(
+                                    v_flex()
+                                        .pl_4()
+                                        .gap_px()
+                                        .children(schema.fields.iter().map(|field| {
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .px_2()
+                                                .py_1()
+                                                .child(format!("  • {} ({:?})", field.name, field.sql_type))
+                                        }))
+                                )
+                            })
+                    }))
+            )
+            .child(Divider::horizontal())
+            .child(
+                v_flex()
+                    .gap_1()
+                    .child(
+                        Label::new("Query History")
+                            .text_xs()
+                            .font_semibold()
+                            .px_2()
+                    )
+                    .child(
+                        v_flex()
+                            .max_h_32()
+                            .gap_1()
+                            .children(self.query_history.iter().enumerate().rev().map(|(idx, saved)| {
+                                div()
+                                    .id(("history", idx))
+                                    .w_full()
+                                    .px_2()
+                                    .py_1()
+                                    .rounded_md()
+                                    .text_xs()
+                                    .cursor_pointer()
+                                    .on_click(cx.listener(move |editor, _, window, cx| {
+                                        editor.load_query(idx, window, cx);
+                                        cx.notify();
+                                    }))
+                                    .hover(|this| this.bg(cx.theme().muted))
+                                    .child(saved.name.clone())
+                            }))
+                    )
+            )
     }
 
     pub fn render_results(&self, cx: &Context<QueryEditor>) -> impl IntoElement {
         v_flex()
             .w_full()
             .flex_1()
+            .min_h_0()
             .gap_2()
+            .overflow_hidden()
             .when_some(self.error.as_ref(), |this, error| {
                 this.child(
                     div()
@@ -158,10 +475,21 @@ impl QueryEditor {
                         .border_color(cx.theme().red)
                         .rounded_md()
                         .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().red)
-                                .child(error.clone())
+                            v_flex()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .font_semibold()
+                                        .text_color(cx.theme().red)
+                                        .child("❌ Query Error")
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(cx.theme().red)
+                                        .child(error.clone())
+                                )
                         )
                 )
             })
@@ -170,56 +498,92 @@ impl QueryEditor {
                     v_flex()
                         .w_full()
                         .flex_1()
-                        .gap_1()
+                        .min_h_0()
+                        .gap_2()
+                        .overflow_hidden()
                         .child(
                             div()
-                                .w_full()
-                                .bg(cx.theme().muted)
-                                .border_1()
-                                .border_color(cx.theme().border)
-                                .rounded_t_md()
-                                .child(
-                                    h_flex()
-                                        .children(result.columns.iter().map(|col| {
-                                            div()
-                                                .flex_1()
-                                                .px_3()
-                                                .py_2()
-                                                .text_sm()
-                                                .font_semibold()
-                                                .border_r_1()
-                                                .border_color(cx.theme().border)
-                                                .child(col.clone())
-                                        }))
-                                )
-                        )
-                        .child(
-                            v_flex()
                                 .w_full()
                                 .flex_1()
                                 .border_1()
                                 .border_color(cx.theme().border)
-                                .rounded_b_md()
-                                .children(result.rows.iter().enumerate().map(|(row_idx, row)| {
-                                    h_flex()
-                                        .w_full()
-                                        .when(row_idx % 2 == 0, |this| {
-                                            this.bg(cx.theme().background)
-                                        })
-                                        .when(row_idx % 2 == 1, |this| {
-                                            this.bg(cx.theme().muted.opacity(0.3))
-                                        })
-                                        .children(row.iter().map(|cell| {
-                                            div()
-                                                .flex_1()
-                                                .px_3()
-                                                .py_2()
-                                                .text_sm()
-                                                .border_r_1()
+                                .rounded_md()
+                                .child(
+                                    div()
+                                        .min_w_full()
+                                        .child(
+                                            // Header row
+                                            h_flex()
+                                                .w_full()
+                                                .bg(cx.theme().muted)
+                                                .border_b_1()
                                                 .border_color(cx.theme().border)
-                                                .child(cell.display.clone())
-                                        }))
-                                }))
+                                                .children(result.columns.iter().map(|col| {
+                                                    div()
+                                                        .min_w_32()
+                                                        .px_3()
+                                                        .py_2()
+                                                        .text_sm()
+                                                        .font_semibold()
+                                                        .border_r_1()
+                                                        .border_color(cx.theme().border)
+                                                        .child(col.clone())
+                                                }))
+                                        )
+                                        .child(
+                                            // Data rows
+                                            v_flex()
+                                                .w_full()
+                                                .children(result.rows.iter().enumerate().map(|(row_idx, row)| {
+                                                    h_flex()
+                                                        .w_full()
+                                                        .when(row_idx % 2 == 0, |this| {
+                                                            this.bg(cx.theme().background)
+                                                        })
+                                                        .when(row_idx % 2 == 1, |this| {
+                                                            this.bg(cx.theme().muted.opacity(0.3))
+                                                        })
+                                                        .hover(|this| this.bg(cx.theme().accent.opacity(0.1)))
+                                                        .children(row.iter().map(|cell| {
+                                                            div()
+                                                                .min_w_32()
+                                                                .px_3()
+                                                                .py_2()
+                                                                .text_sm()
+                                                                .border_r_1()
+                                                                .border_color(cx.theme().border)
+                                                                .child(cell.display.clone())
+                                                        }))
+                                                }))
+                                        )
+                                )
+                        )
+                )
+            })
+            .when(self.results.is_none() && self.error.is_none(), |this| {
+                this.child(
+                    div()
+                        .flex_1()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            v_flex()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .text_lg()
+                                        .font_semibold()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("💻 Ready to execute query")
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Press F5 or click Execute to run your SQL query")
+                                )
                         )
                 )
             })
@@ -231,30 +595,67 @@ pub struct QueryEditorView {
 }
 
 impl QueryEditorView {
-    pub fn new(db: DatabaseManager, _window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let editor = cx.new(|_| QueryEditor::new(db));
+    pub fn new(db: DatabaseManager, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let editor = cx.new(|cx| QueryEditor::new(db, window, cx));
         Self { editor }
     }
 }
 
+impl Focusable for QueryEditorView {
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.editor.read(cx).focus_handle.clone()
+    }
+}
+
 impl Render for QueryEditorView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let show_sidebar = self.editor.read(cx).show_schema_sidebar;
+
+        let schema_sidebar = self.editor.update(cx, |editor, cx| {
+            editor.render_schema_sidebar(cx)
+        });
+
         let query_input = self.editor.update(cx, |editor, cx| {
             editor.render_query_input(cx)
         });
+
         let controls = self.editor.update(cx, |editor, cx| {
             editor.render_controls(cx)
         });
+
         let results = self.editor.update(cx, |editor, cx| {
             editor.render_results(cx)
         });
-        
-        v_flex()
+
+        h_flex()
             .size_full()
-            .gap_4()
-            .p_4()
-            .child(query_input)
-            .child(controls)
-            .child(results)
+            .bg(cx.theme().background)
+            .when(show_sidebar, |this| {
+                this.child(schema_sidebar)
+            })
+            .child(
+                v_flex()
+                    .flex_1()
+                    .size_full()
+                    .child(controls)
+                    .child(
+                        h_flex()
+                            .flex_1()
+                            .min_h_0()
+                            .gap_2()
+                            .p_4()
+                            .child(
+                                v_flex()
+                                    .flex_1()
+                                    .min_w_96()
+                                    .child(query_input)
+                            )
+                            .child(
+                                v_flex()
+                                    .flex_1()
+                                    .child(results)
+                            )
+                    )
+            )
     }
 }

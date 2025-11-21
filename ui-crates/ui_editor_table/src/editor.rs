@@ -369,7 +369,7 @@ impl DataTableEditor {
         let is_table_tab = self.active_tab_idx.and_then(|idx| {
             self.open_tabs.get(idx).map(|tab| matches!(tab.tab_type, TabType::Table { .. }))
         }).unwrap_or(false);
-        
+
         h_flex()
             .w_full()
             .gap_2()
@@ -379,6 +379,7 @@ impl DataTableEditor {
             .border_color(cx.theme().border)
             .child(
                 Button::new("add-row")
+                    .icon(IconName::Plus)
                     .label("Add Row")
                     .small()
                     .primary()
@@ -392,6 +393,7 @@ impl DataTableEditor {
             )
             .child(
                 Button::new("delete-row")
+                    .icon(IconName::Close)
                     .label("Delete Row")
                     .small()
                     .outline()
@@ -406,6 +408,7 @@ impl DataTableEditor {
             .child(Divider::vertical().h_6())
             .child(
                 Button::new("refresh")
+                    .icon(IconName::Refresh)
                     .label("Refresh")
                     .small()
                     .outline()
@@ -420,12 +423,25 @@ impl DataTableEditor {
             .child(Divider::vertical().h_6())
             .child(
                 Button::new("new-query")
+                    .icon(IconName::Code)
                     .label("New Query")
                     .small()
                     .outline()
                     .on_click(cx.listener(|editor, _, window, cx| {
                         editor.open_query_tab(window, cx);
                     }))
+            )
+            .child(Divider::vertical().h_6())
+            .child(
+                Label::new("Keyboard Shortcuts:")
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+            )
+            .child(
+                Label::new("Click cell to edit • Enter to save • Esc to cancel")
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .italic()
             )
     }
 

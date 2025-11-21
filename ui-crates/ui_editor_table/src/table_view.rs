@@ -1,7 +1,8 @@
 use gpui::{prelude::*, *};
 use ui::{
     h_flex, v_flex, button::Button, table::{Column, ColumnSort, Table, TableDelegate, TableEvent},
-    input::TextInput,
+    input::{TextInput, InputState, TabSize},
+    label::Label, IconName,
     ActiveTheme, Sizable, Size, StyleSized, StyledExt, Selectable,
 };
 use std::ops::Range;
@@ -14,7 +15,9 @@ use crate::{
 pub struct DataTableState {
     pub editing_cell: Option<(usize, usize)>, // (row_idx, col_idx)
     pub selected_row: Option<usize>,
-    pub edit_buffer: Option<String>,
+    pub edit_input: Option<Entity<InputState>>,
+    pub filter_text: String,
+    pub validation_error: Option<String>,
 }
 
 pub struct DataTableView {
@@ -65,9 +68,95 @@ impl DataTableView {
             state: DataTableState {
                 editing_cell: None,
                 selected_row: None,
-                edit_buffer: None,
+                edit_input: None,
+                filter_text: String::new(),
+                validation_error: None,
             },
         })
+    }
+
+    pub fn set_filter(&mut self, filter: String) -> anyhow::Result<()> {
+        self.state.filter_text = filter.clone();
+
+        // If filter is empty, fetch all rows
+        if filter.is_empty() {
+            self.refresh_rows(0, 100)?;
+            return Ok(());
+        }
+
+        // Apply filter by fetching rows that match
+        // This is a simple implementation - could be improved with SQL WHERE clauses
+        self.refresh_rows(0, 1000)?; // Fetch more rows for filtering
+
+        // Filter rows based on text match in any column
+        self.rows.retain(|row| {
+            row.cells.iter().any(|cell| {
+                cell.display.to_lowercase().contains(&filter.to_lowercase())
+            })
+        });
+
+        Ok(())
+    }
+
+    pub fn start_edit_cell(&mut self, row_idx: usize, col_idx: usize, window: &mut Window, cx: &mut Context<Table<Self>>) {
+        if let Some(row) = self.rows.get(row_idx) {
+            if col_idx > 0 && col_idx <= self.schema.fields.len() {
+                let cell_idx = col_idx - 1;
+                if let Some(cell) = row.cells.get(cell_idx) {
+                    // Create an input state for editing
+                    let edit_input = cx.new(|cx| {
+                        let mut state = InputState::new(window, cx)
+                            .tab_size(TabSize {
+                                tab_size: 4,
+                                hard_tabs: false,
+                            });
+                        state.set_value(&cell.display, window, cx);
+                        state
+                    });
+
+                    self.state.editing_cell = Some((row_idx, col_idx));
+                    self.state.edit_input = Some(edit_input);
+                    self.state.validation_error = None;
+                }
+            }
+        }
+    }
+
+    pub fn validate_cell_value(&self, col_idx: usize, value: &str) -> Result<serde_json::Value, String> {
+        if col_idx == 0 || col_idx > self.schema.fields.len() {
+            return Err("Invalid column index".to_string());
+        }
+
+        let field = &self.schema.fields[col_idx - 1];
+
+        match &field.sql_type {
+            crate::reflection::SqlType::Integer => {
+                value.parse::<i64>()
+                    .map(|v| serde_json::Value::Number(v.into()))
+                    .map_err(|_| format!("'{}' is not a valid integer", value))
+            }
+            crate::reflection::SqlType::Real => {
+                value.parse::<f64>()
+                    .ok()
+                    .and_then(|v| serde_json::Number::from_f64(v))
+                    .map(serde_json::Value::Number)
+                    .ok_or_else(|| format!("'{}' is not a valid number", value))
+            }
+            crate::reflection::SqlType::Boolean => {
+                match value.to_lowercase().as_str() {
+                    "true" | "1" | "yes" | "t" | "y" => Ok(serde_json::Value::Bool(true)),
+                    "false" | "0" | "no" | "f" | "n" => Ok(serde_json::Value::Bool(false)),
+                    _ => Err(format!("'{}' is not a valid boolean (use true/false)", value))
+                }
+            }
+            _ => {
+                if field.nullable && value.trim().is_empty() {
+                    Ok(serde_json::Value::Null)
+                } else {
+                    Ok(serde_json::Value::String(value.to_string()))
+                }
+            }
+        }
     }
 
     pub fn refresh_rows(&mut self, offset: usize, limit: usize) -> anyhow::Result<()> {
@@ -128,46 +217,38 @@ impl DataTableView {
         Ok(())
     }
     
-    pub fn save_editing_cell(&mut self) -> anyhow::Result<()> {
-        if let (Some((row_idx, col_idx)), Some(ref buffer)) = (self.state.editing_cell, &self.state.edit_buffer) {
-            if let Some(row) = self.rows.get(row_idx) {
-                if col_idx > 0 && col_idx <= self.schema.fields.len() {
-                    let field = &self.schema.fields[col_idx - 1];
-                    
-                    // Parse value based on field type
-                    let value = match &field.sql_type {
-                        crate::reflection::SqlType::Integer => {
-                            buffer.parse::<i64>()
-                                .map(|v| serde_json::Value::Number(v.into()))
-                                .unwrap_or(serde_json::Value::Null)
+    pub fn save_editing_cell(&mut self, cx: &App) -> anyhow::Result<()> {
+        if let (Some((row_idx, col_idx)), Some(ref edit_input)) = (self.state.editing_cell, &self.state.edit_input) {
+            let value_str = edit_input.read(cx).value().to_string();
+
+            // Validate the value
+            match self.validate_cell_value(col_idx, &value_str) {
+                Ok(value) => {
+                    if let Some(row) = self.rows.get(row_idx) {
+                        if col_idx > 0 && col_idx <= self.schema.fields.len() {
+                            let field = &self.schema.fields[col_idx - 1];
+                            self.db.update_cell(&self.table_name, row.id, &field.name, value)?;
+                            self.refresh_rows(0, 100)?;
                         }
-                        crate::reflection::SqlType::Real => {
-                            buffer.parse::<f64>()
-                                .ok()
-                                .and_then(|v| serde_json::Number::from_f64(v))
-                                .map(serde_json::Value::Number)
-                                .unwrap_or(serde_json::Value::Null)
-                        }
-                        crate::reflection::SqlType::Boolean => {
-                            serde_json::Value::Bool(buffer == "true" || buffer == "1")
-                        }
-                        _ => serde_json::Value::String(buffer.clone()),
-                    };
-                    
-                    self.db.update_cell(&self.table_name, row.id, &field.name, value)?;
-                    self.refresh_rows(0, 100)?;
+                    }
+
+                    self.state.editing_cell = None;
+                    self.state.edit_input = None;
+                    self.state.validation_error = None;
+                }
+                Err(err) => {
+                    self.state.validation_error = Some(err);
+                    return Err(anyhow::anyhow!("Validation error"));
                 }
             }
-            
-            self.state.editing_cell = None;
-            self.state.edit_buffer = None;
         }
         Ok(())
     }
-    
+
     pub fn cancel_edit(&mut self) {
         self.state.editing_cell = None;
-        self.state.edit_buffer = None;
+        self.state.edit_input = None;
+        self.state.validation_error = None;
     }
 }
 
@@ -223,7 +304,7 @@ impl TableDelegate for DataTableView {
         &self,
         row_ix: usize,
         col_ix: usize,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Table<Self>>,
     ) -> impl IntoElement {
         if let Some(row) = self.rows.get(row_ix) {
@@ -232,6 +313,8 @@ impl TableDelegate for DataTableView {
                     .px_2()
                     .py_1()
                     .text_sm()
+                    .font_semibold()
+                    .text_color(cx.theme().muted_foreground)
                     .child(row.id.to_string())
                     .into_any_element();
             }
@@ -242,36 +325,78 @@ impl TableDelegate for DataTableView {
                 let display = cell.display.clone();
 
                 if is_editing {
-                    // TODO: Implement proper inline editing with TextInput
-                    // For now, show editing state visually
-                    return div()
-                        .id(("cell-edit", row_ix * 1000 + col_ix))
-                        .px_2()
-                        .py_1()
-                        .text_sm()
-                        .bg(cx.theme().accent.opacity(0.2))
-                        .border_2()
-                        .border_color(cx.theme().accent)
-                        .child("[EDITING] ")
-                        .child(display)
-                        .into_any_element();
+                    if let Some(ref edit_input) = self.state.edit_input {
+                        // Show proper text input for editing
+                        let has_error = self.state.validation_error.is_some();
+
+                        return div()
+                            .id(("cell-edit", row_ix * 1000 + col_ix))
+                            .w_full()
+                            .h_full()
+                            .relative()
+                            .child(
+                                div()
+                                    .size_full()
+                                    .border_2()
+                                    .border_color(if has_error {
+                                        cx.theme().red
+                                    } else {
+                                        cx.theme().accent
+                                    })
+                                    .rounded_sm()
+                                    .overflow_hidden()
+                                    .child(
+                                        TextInput::new(edit_input)
+                                            .w_full()
+                                            .h_full()
+                                            .text_sm()
+                                            .px_2()
+                                            .py_1()
+                                            .border_0()
+                                    )
+                            )
+                            .when_some(self.state.validation_error.as_ref(), |this, error| {
+                                this.child(
+                                    div()
+                                        .absolute()
+                                        .top_full()
+                                        .left_0()
+                                        .mt_1()
+                                        .px_2()
+                                        .py_1()
+                                        .bg(cx.theme().red)
+                                        .text_color(cx.theme().background)
+                                        .text_xs()
+                                        .rounded_sm()
+                                        .shadow_lg()
+                                        .child(error.clone())
+                                )
+                            })
+                            .into_any_element();
+                    }
                 }
 
-                let display_for_closure = display.clone();
+                // Regular cell display
                 return div()
                     .id(("cell", row_ix * 1000 + col_ix))
                     .px_2()
                     .py_1()
                     .text_sm()
                     .cursor_pointer()
-                    .on_click(cx.listener(move |table, _, _, cx| {
+                    .on_click(cx.listener(move |table, _, window, cx| {
                         let delegate = table.delegate_mut();
-                        delegate.state.editing_cell = Some((row_ix, col_ix));
-                        delegate.state.edit_buffer = Some(display_for_closure.clone());
+                        delegate.start_edit_cell(row_ix, col_ix, window, cx);
                         cx.notify();
                     }))
                     .hover(|this| this.bg(cx.theme().muted.opacity(0.5)))
-                    .child(display)
+                    .when(display.is_empty() || display == "NULL", |this| {
+                        this.text_color(cx.theme().muted_foreground)
+                            .italic()
+                            .child(if display.is_empty() { "empty" } else { "NULL" })
+                    })
+                    .when(!display.is_empty() && display != "NULL", |this| {
+                        this.child(display)
+                    })
                     .into_any_element();
             }
         }
@@ -280,6 +405,7 @@ impl TableDelegate for DataTableView {
             .px_2()
             .py_1()
             .text_sm()
+            .text_color(cx.theme().muted_foreground)
             .child("—")
             .into_any_element()
     }
