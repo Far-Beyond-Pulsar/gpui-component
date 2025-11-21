@@ -354,8 +354,93 @@ impl DataTableEditor {
             if let Some(tab) = self.open_tabs.get(active_idx) {
                 if let TabType::Table { view, .. } = &tab.tab_type {
                     view.update(cx, |table, cx| {
-                        if let Err(e) = table.delegate_mut().refresh_rows(0, 100) {
+                        let delegate = table.delegate_mut();
+                        let page_size = delegate.state.page_size;
+                        if let Err(e) = delegate.refresh_rows(0, page_size) {
                             eprintln!("Failed to refresh rows: {}", e);
+                        }
+                        cx.notify();
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn duplicate_selected_row(&mut self, cx: &mut Context<Self>) -> anyhow::Result<()> {
+        if let Some(active_idx) = self.active_tab_idx {
+            if let Some(tab) = self.open_tabs.get(active_idx) {
+                if let TabType::Table { view, .. } = &tab.tab_type {
+                    view.update(cx, |table, cx| {
+                        let delegate = table.delegate_mut();
+                        if let Some(selected_row) = delegate.state.selected_row {
+                            if let Err(e) = delegate.duplicate_row(selected_row) {
+                                eprintln!("Failed to duplicate row: {}", e);
+                            } else {
+                                println!("✓ Row duplicated successfully");
+                            }
+                        }
+                        cx.notify();
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn copy_row_as_sql(&mut self, cx: &mut Context<Self>) {
+        if let Some(active_idx) = self.active_tab_idx {
+            if let Some(tab) = self.open_tabs.get(active_idx) {
+                if let TabType::Table { view, .. } = &tab.tab_type {
+                    view.update(cx, |table, cx| {
+                        let delegate = table.delegate();
+                        if let Some(selected_row) = delegate.state.selected_row {
+                            if let Some(sql) = delegate.copy_row_as_insert(selected_row) {
+                                println!("✓ Copied SQL: {}", sql);
+                                // TODO: Copy to clipboard when available
+                            }
+                        }
+                        cx.notify();
+                    });
+                }
+            }
+        }
+    }
+
+    pub fn get_table_stats(&self, cx: &App) -> String {
+        if let Some(active_idx) = self.active_tab_idx {
+            if let Some(tab) = self.open_tabs.get(active_idx) {
+                if let TabType::Table { view, .. } = &tab.tab_type {
+                    return view.read(cx).delegate().get_table_stats();
+                }
+            }
+        }
+        "No table selected".to_string()
+    }
+
+    pub fn next_page(&mut self, cx: &mut Context<Self>) -> anyhow::Result<()> {
+        if let Some(active_idx) = self.active_tab_idx {
+            if let Some(tab) = self.open_tabs.get(active_idx) {
+                if let TabType::Table { view, .. } = &tab.tab_type {
+                    view.update(cx, |table, cx| {
+                        if let Err(e) = table.delegate_mut().next_page() {
+                            eprintln!("Failed to go to next page: {}", e);
+                        }
+                        cx.notify();
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn previous_page(&mut self, cx: &mut Context<Self>) -> anyhow::Result<()> {
+        if let Some(active_idx) = self.active_tab_idx {
+            if let Some(tab) = self.open_tabs.get(active_idx) {
+                if let TabType::Table { view, .. } = &tab.tab_type {
+                    view.update(cx, |table, cx| {
+                        if let Err(e) = table.delegate_mut().previous_page() {
+                            eprintln!("Failed to go to previous page: {}", e);
                         }
                         cx.notify();
                     });
@@ -370,79 +455,169 @@ impl DataTableEditor {
             self.open_tabs.get(idx).map(|tab| matches!(tab.tab_type, TabType::Table { .. }))
         }).unwrap_or(false);
 
-        h_flex()
+        v_flex()
             .w_full()
-            .gap_2()
-            .p_2()
-            .bg(cx.theme().muted.opacity(0.3))
-            .border_b_1()
-            .border_color(cx.theme().border)
+            .gap_0()
             .child(
-                Button::new("add-row")
-                    .icon(IconName::Plus)
-                    .label("Add Row")
-                    .small()
-                    .primary()
-                    .disabled(!is_table_tab)
-                    .on_click(cx.listener(|editor, _, _, cx| {
-                        if let Err(e) = editor.add_new_row(cx) {
-                            eprintln!("Failed to add row: {}", e);
-                        }
-                        cx.notify();
-                    }))
+                // Main toolbar
+                h_flex()
+                    .w_full()
+                    .gap_2()
+                    .p_2()
+                    .bg(cx.theme().muted.opacity(0.3))
+                    .border_b_1()
+                    .border_color(cx.theme().border)
+                    .child(
+                        Button::new("add-row")
+                            .icon(IconName::Plus)
+                            .label("Add Row")
+                            .small()
+                            .primary()
+                            .disabled(!is_table_tab)
+                            .on_click(cx.listener(|editor, _, _, cx| {
+                                if let Err(e) = editor.add_new_row(cx) {
+                                    eprintln!("Failed to add row: {}", e);
+                                }
+                                cx.notify();
+                            }))
+                    )
+                    .child(
+                        Button::new("duplicate-row")
+                            .icon(IconName::Copy)
+                            .label("Duplicate")
+                            .tooltip("Duplicate selected row")
+                            .small()
+                            .outline()
+                            .disabled(!is_table_tab)
+                            .on_click(cx.listener(|editor, _, _, cx| {
+                                if let Err(e) = editor.duplicate_selected_row(cx) {
+                                    eprintln!("Failed to duplicate row: {}", e);
+                                }
+                                cx.notify();
+                            }))
+                    )
+                    .child(
+                        Button::new("delete-row")
+                            .icon(IconName::Close)
+                            .label("Delete")
+                            .small()
+                            .outline()
+                            .disabled(!is_table_tab)
+                            .on_click(cx.listener(|editor, _, _, cx| {
+                                if let Err(e) = editor.delete_selected_row(cx) {
+                                    eprintln!("Failed to delete row: {}", e);
+                                }
+                                cx.notify();
+                            }))
+                    )
+                    .child(Divider::vertical().h_6())
+                    .child(
+                        Button::new("copy-as-insert")
+                            .icon(IconName::Code)
+                            .label("Copy as SQL")
+                            .tooltip("Copy selected row as INSERT statement")
+                            .small()
+                            .outline()
+                            .disabled(!is_table_tab)
+                            .on_click(cx.listener(|editor, _, _, cx| {
+                                editor.copy_row_as_sql(cx);
+                                cx.notify();
+                            }))
+                    )
+                    .child(Divider::vertical().h_6())
+                    .child(
+                        Button::new("refresh")
+                            .icon(IconName::Refresh)
+                            .label("Refresh")
+                            .small()
+                            .outline()
+                            .disabled(!is_table_tab)
+                            .on_click(cx.listener(|editor, _, _, cx| {
+                                if let Err(e) = editor.refresh_data(cx) {
+                                    eprintln!("Failed to refresh: {}", e);
+                                }
+                                cx.notify();
+                            }))
+                    )
+                    .child(Divider::vertical().h_6())
+                    .child(
+                        Button::new("new-query")
+                            .icon(IconName::Code)
+                            .label("New Query")
+                            .small()
+                            .outline()
+                            .on_click(cx.listener(|editor, _, window, cx| {
+                                editor.open_query_tab(window, cx);
+                            }))
+                    )
+                    .child(
+                        div().flex_1() // Spacer
+                    )
+                    .child(
+                        Label::new("💡 Click cell to edit • Enter to save • Esc to cancel")
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                    )
             )
-            .child(
-                Button::new("delete-row")
-                    .icon(IconName::Close)
-                    .label("Delete Row")
-                    .small()
-                    .outline()
-                    .disabled(!is_table_tab)
-                    .on_click(cx.listener(|editor, _, _, cx| {
-                        if let Err(e) = editor.delete_selected_row(cx) {
-                            eprintln!("Failed to delete row: {}", e);
-                        }
-                        cx.notify();
-                    }))
-            )
-            .child(Divider::vertical().h_6())
-            .child(
-                Button::new("refresh")
-                    .icon(IconName::Refresh)
-                    .label("Refresh")
-                    .small()
-                    .outline()
-                    .disabled(!is_table_tab)
-                    .on_click(cx.listener(|editor, _, _, cx| {
-                        if let Err(e) = editor.refresh_data(cx) {
-                            eprintln!("Failed to refresh: {}", e);
-                        }
-                        cx.notify();
-                    }))
-            )
-            .child(Divider::vertical().h_6())
-            .child(
-                Button::new("new-query")
-                    .icon(IconName::Code)
-                    .label("New Query")
-                    .small()
-                    .outline()
-                    .on_click(cx.listener(|editor, _, window, cx| {
-                        editor.open_query_tab(window, cx);
-                    }))
-            )
-            .child(Divider::vertical().h_6())
-            .child(
-                Label::new("Keyboard Shortcuts:")
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-            )
-            .child(
-                Label::new("Click cell to edit • Enter to save • Esc to cancel")
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .italic()
-            )
+            .when(is_table_tab, |this| {
+                this.child(
+                    // Status/info bar
+                    h_flex()
+                        .w_full()
+                        .gap_2()
+                        .px_2()
+                        .py_1()
+                        .bg(cx.theme().muted.opacity(0.2))
+                        .border_b_1()
+                        .border_color(cx.theme().border)
+                        .child(
+                            Label::new("📊")
+                                .text_sm()
+                        )
+                        .child(
+                            Label::new(self.get_table_stats(cx))
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                        )
+                        .child(
+                            div().flex_1() // Spacer
+                        )
+                        .child(
+                            h_flex()
+                                .gap_1()
+                                .items_center()
+                                .child(
+                                    Button::new("page-prev")
+                                        .icon(IconName::ChevronLeft)
+                                        .xsmall()
+                                        .ghost()
+                                        .on_click(cx.listener(|editor, _, _, cx| {
+                                            if let Err(e) = editor.previous_page(cx) {
+                                                eprintln!("Failed to go to previous page: {}", e);
+                                            }
+                                            cx.notify();
+                                        }))
+                                )
+                                .child(
+                                    Label::new("Page")
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                )
+                                .child(
+                                    Button::new("page-next")
+                                        .icon(IconName::ChevronRight)
+                                        .xsmall()
+                                        .ghost()
+                                        .on_click(cx.listener(|editor, _, _, cx| {
+                                            if let Err(e) = editor.next_page(cx) {
+                                                eprintln!("Failed to go to next page: {}", e);
+                                            }
+                                            cx.notify();
+                                        }))
+                                )
+                        )
+                )
+            })
     }
 
     fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {

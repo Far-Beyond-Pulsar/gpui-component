@@ -15,9 +15,14 @@ use crate::{
 pub struct DataTableState {
     pub editing_cell: Option<(usize, usize)>, // (row_idx, col_idx)
     pub selected_row: Option<usize>,
+    pub selected_rows: Vec<usize>, // Multi-select support
     pub edit_input: Option<Entity<InputState>>,
     pub filter_text: String,
     pub validation_error: Option<String>,
+    pub page_size: usize,
+    pub current_page: usize,
+    pub show_only_modified: bool,
+    pub copied_cell: Option<String>,
 }
 
 pub struct DataTableView {
@@ -68,9 +73,14 @@ impl DataTableView {
             state: DataTableState {
                 editing_cell: None,
                 selected_row: None,
+                selected_rows: Vec::new(),
                 edit_input: None,
                 filter_text: String::new(),
                 validation_error: None,
+                page_size: 100,
+                current_page: 0,
+                show_only_modified: false,
+                copied_cell: None,
             },
         })
     }
@@ -249,6 +259,91 @@ impl DataTableView {
         self.state.editing_cell = None;
         self.state.edit_input = None;
         self.state.validation_error = None;
+    }
+
+    pub fn copy_cell_value(&mut self, row_idx: usize, col_idx: usize) {
+        if let Some(row) = self.rows.get(row_idx) {
+            if col_idx == 0 {
+                self.state.copied_cell = Some(row.id.to_string());
+            } else if let Some(cell) = row.cells.get(col_idx - 1) {
+                self.state.copied_cell = Some(cell.display.clone());
+            }
+        }
+    }
+
+    pub fn duplicate_row(&mut self, row_idx: usize) -> anyhow::Result<()> {
+        if let Some(row) = self.rows.get(row_idx) {
+            let values: Vec<serde_json::Value> = row.cells.iter()
+                .map(|cell| cell.value.clone())
+                .collect();
+
+            self.db.insert_row(&self.table_name, values)?;
+            self.refresh_rows(0, self.state.page_size)?;
+        }
+        Ok(())
+    }
+
+    pub fn copy_row_as_insert(&self, row_idx: usize) -> Option<String> {
+        if let Some(row) = self.rows.get(row_idx) {
+            let field_names: Vec<String> = self.schema.fields.iter()
+                .map(|f| f.name.clone())
+                .collect();
+
+            let values: Vec<String> = row.cells.iter()
+                .map(|cell| match &cell.value {
+                    serde_json::Value::Null => "NULL".to_string(),
+                    serde_json::Value::String(s) => format!("'{}'", s.replace("'", "''")),
+                    serde_json::Value::Number(n) => n.to_string(),
+                    serde_json::Value::Bool(b) => if *b { "1" } else { "0" }.to_string(),
+                    _ => format!("'{}'", cell.display.replace("'", "''")),
+                })
+                .collect();
+
+            Some(format!(
+                "INSERT INTO {} ({}) VALUES ({});",
+                self.table_name,
+                field_names.join(", "),
+                values.join(", ")
+            ))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_table_stats(&self) -> String {
+        format!(
+            "Total: {} rows | Showing: {} rows | Page: {}/{}",
+            self.total_rows,
+            self.rows.len(),
+            self.state.current_page + 1,
+            (self.total_rows + self.state.page_size - 1) / self.state.page_size
+        )
+    }
+
+    pub fn next_page(&mut self) -> anyhow::Result<()> {
+        let max_page = (self.total_rows + self.state.page_size - 1) / self.state.page_size;
+        if self.state.current_page < max_page - 1 {
+            self.state.current_page += 1;
+            let offset = self.state.current_page * self.state.page_size;
+            self.refresh_rows(offset, self.state.page_size)?;
+        }
+        Ok(())
+    }
+
+    pub fn previous_page(&mut self) -> anyhow::Result<()> {
+        if self.state.current_page > 0 {
+            self.state.current_page -= 1;
+            let offset = self.state.current_page * self.state.page_size;
+            self.refresh_rows(offset, self.state.page_size)?;
+        }
+        Ok(())
+    }
+
+    pub fn set_page_size(&mut self, size: usize) -> anyhow::Result<()> {
+        self.state.page_size = size;
+        self.state.current_page = 0;
+        self.refresh_rows(0, size)?;
+        Ok(())
     }
 }
 

@@ -39,7 +39,20 @@ impl Render for FilePanelWrapper {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .size_full()
-            .child(ui::input::TextInput::new(&self.input_state).h_full().w_full())
+            .child(
+                ui::input::TextInput::new(&self.input_state)
+                    .h_full()
+                    .w_full()
+                    .font_family("monospace")
+                    .font(gpui::Font {
+                        family: "Jetbrains Mono".to_string().into(),
+                        weight: gpui::FontWeight::NORMAL,
+                        style: gpui::FontStyle::Normal,
+                        features: gpui::FontFeatures::default(),
+                        fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["monospace".to_string()])),
+                    })
+                    .text_size(px(14.0))
+            )
     }
 }
 

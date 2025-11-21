@@ -150,8 +150,7 @@ impl QueryEditor {
 
     pub fn render_query_input(&self, cx: &mut Context<QueryEditor>) -> impl IntoElement {
         v_flex()
-            .flex_1()
-            .min_h_0()
+            .size_full()
             .gap_2()
             .child(
                 h_flex()
@@ -189,8 +188,7 @@ impl QueryEditor {
                     .overflow_hidden()
                     .child(
                         TextInput::new(&self.query_input)
-                            .h_full()
-                            .w_full()
+                            .size_full()
                             .font_family("monospace")
                             .font(gpui::Font {
                                 family: "Jetbrains Mono".to_string().into(),
@@ -460,11 +458,8 @@ impl QueryEditor {
 
     pub fn render_results(&self, cx: &Context<QueryEditor>) -> impl IntoElement {
         v_flex()
-            .w_full()
-            .flex_1()
-            .min_h_0()
+            .size_full()
             .gap_2()
-            .overflow_hidden()
             .when_some(self.error.as_ref(), |this, error| {
                 this.child(
                     div()
@@ -642,17 +637,20 @@ impl Render for QueryEditorView {
                         h_flex()
                             .flex_1()
                             .min_h_0()
-                            .gap_2()
+                            .gap_4()
                             .p_4()
+                            .items_start()
                             .child(
                                 v_flex()
                                     .flex_1()
+                                    .h_full()
                                     .min_w_96()
                                     .child(query_input)
                             )
                             .child(
                                 v_flex()
                                     .flex_1()
+                                    .h_full()
                                     .child(results)
                             )
                     )
