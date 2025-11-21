@@ -268,6 +268,11 @@ impl Dock {
         cx.notify();
     }
 
+    /// Get mutable access to the root panel
+    pub fn panel_mut(&mut self) -> &mut DockItem {
+        &mut self.panel
+    }
+
     /// Add item to the Dock.
     pub fn add_panel(
         &mut self,

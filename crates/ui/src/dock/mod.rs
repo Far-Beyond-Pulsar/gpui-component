@@ -724,6 +724,11 @@ impl DockArea {
         self.toggle_button_visible = visible;
     }
 
+    /// Get mutable access to the root items DockItem
+    pub fn items_mut(&mut self) -> &mut DockItem {
+        &mut self.items
+    }
+
     /// Add a panel item to the dock area at the given placement.
     pub fn add_panel(
         &mut self,

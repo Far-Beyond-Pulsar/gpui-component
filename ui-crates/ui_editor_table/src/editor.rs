@@ -32,11 +32,6 @@ struct EditorTab {
     tab_type: TabType,
 }
 
-/// Pending tab to add - queued for next render
-struct PendingTab {
-    tab_type: TabType,
-}
-
 pub struct DataTableEditor {
     pub db: DatabaseManager,
     available_tables: Vec<String>,
@@ -49,8 +44,6 @@ pub struct DataTableEditor {
     workspace: Option<Entity<ui::workspace::Workspace>>,
     /// Track if workspace has been initialized
     workspace_initialized: bool,
-    /// Pending tabs to add (queued for next render)
-    pending_tabs_to_add: Vec<PendingTab>,
 }
 
 impl DataTableEditor {
@@ -77,7 +70,6 @@ impl DataTableEditor {
             focus_handle: cx.focus_handle(),
             workspace: Some(workspace),
             workspace_initialized: false,
-            pending_tabs_to_add: Vec::new(),
         }
     }
 
@@ -109,7 +101,6 @@ impl DataTableEditor {
             focus_handle: cx.focus_handle(),
             workspace: Some(workspace),
             workspace_initialized: false,
-            pending_tabs_to_add: Vec::new(),
         })
     }
 
@@ -121,44 +112,6 @@ impl DataTableEditor {
 
     /// Initialize/reinitialize workspace with current tabs
     fn initialize_workspace_once(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        // Process pending tabs to add if workspace is already initialized
-        if !self.pending_tabs_to_add.is_empty() && self.workspace_initialized {
-            if let Some(workspace) = self.workspace.clone() {
-                let pending_tabs = std::mem::take(&mut self.pending_tabs_to_add);
-                
-                workspace.update(cx, |workspace, cx| {
-                    let dock_area = workspace.dock_area().clone();
-                    dock_area.update(cx, |dock_area, cx| {
-                        for pending_tab in pending_tabs {
-                            let panel: std::sync::Arc<dyn ui::dock::PanelView> = match pending_tab.tab_type {
-                                TabType::Table { name, view } => {
-                                    let panel = cx.new(|cx| {
-                                        TablePanelWrapper::new(name, view, cx)
-                                    });
-                                    std::sync::Arc::new(panel)
-                                }
-                                TabType::Query { name, view } => {
-                                    let panel = cx.new(|cx| {
-                                        QueryPanelWrapper::new(name, view, cx)
-                                    });
-                                    std::sync::Arc::new(panel)
-                                }
-                            };
-                            
-                            dock_area.add_panel(
-                                panel,
-                                ui::dock::DockPlacement::Center,
-                                None,
-                                window,
-                                cx
-                            );
-                        }
-                    });
-                });
-            }
-            return;
-        }
-        
         if self.workspace_initialized {
             return;
         }
@@ -265,8 +218,8 @@ impl DataTableEditor {
         self.open_tabs.push(tab);
         self.active_tab_idx = Some(self.open_tabs.len() - 1);
         
-        // Queue tab to be added to workspace on next render
-        self.pending_tabs_to_add.push(PendingTab { tab_type });
+        // Force workspace reinit on next render to pick up new tab
+        self.workspace_initialized = false;
         
         cx.emit(DataTableEvent::TableOpened(table_name));
         cx.notify();
@@ -291,8 +244,8 @@ impl DataTableEditor {
         self.open_tabs.push(tab);
         self.active_tab_idx = Some(self.open_tabs.len() - 1);
         
-        // Queue tab to be added to workspace on next render
-        self.pending_tabs_to_add.push(PendingTab { tab_type });
+        // Force workspace reinit on next render to pick up new tab
+        self.workspace_initialized = false;
         
         cx.notify();
     }
