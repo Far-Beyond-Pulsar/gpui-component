@@ -110,6 +110,50 @@ impl DataTableEditor {
         Ok(())
     }
 
+    /// Add pending tabs to the first available TabPanel
+    fn add_pending_tabs_to_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.open_tabs.is_empty() || !self.workspace_initialized {
+            return;
+        }
+        
+        // Find the first TabPanel in the workspace and add new tabs to it
+        if let Some(workspace) = self.workspace.clone() {
+            let num_existing_panels = self.open_tabs.len() - 1; // All but the last one
+            
+            // Get the last tab that was just added
+            if let Some(last_tab) = self.open_tabs.last() {
+                let panel: std::sync::Arc<dyn ui::dock::PanelView> = match &last_tab.tab_type {
+                    TabType::Table { name, view } => {
+                        let panel = cx.new(|cx| {
+                            TablePanelWrapper::new(name.clone(), view.clone(), cx)
+                        });
+                        std::sync::Arc::new(panel)
+                    }
+                    TabType::Query { name, view } => {
+                        let panel = cx.new(|cx| {
+                            QueryPanelWrapper::new(name.clone(), view.clone(), cx)
+                        });
+                        std::sync::Arc::new(panel)
+                    }
+                };
+                
+                // Defer adding the panel to avoid reentrant updates
+                window.defer(cx, move |window, cx| {
+                    _ = workspace.update(cx, |workspace, cx| {
+                        let dock_area = workspace.dock_area();
+                        
+                        // Get the first TabPanel from the center items
+                        if let Some(tab_panel) = dock_area.read(cx).items().left_top_tab_panel(cx) {
+                            _ = tab_panel.update(cx, |tab_panel, cx| {
+                                tab_panel.add_panel(panel, window, cx);
+                            });
+                        }
+                    });
+                });
+            }
+        }
+    }
+
     /// Initialize/reinitialize workspace with current tabs
     fn initialize_workspace_once(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.workspace_initialized {
@@ -218,8 +262,8 @@ impl DataTableEditor {
         self.open_tabs.push(tab);
         self.active_tab_idx = Some(self.open_tabs.len() - 1);
         
-        // Force workspace reinit on next render to pick up new tab
-        self.workspace_initialized = false;
+        // Add the new tab to the workspace efficiently
+        self.add_pending_tabs_to_workspace(window, cx);
         
         cx.emit(DataTableEvent::TableOpened(table_name));
         cx.notify();
@@ -244,8 +288,8 @@ impl DataTableEditor {
         self.open_tabs.push(tab);
         self.active_tab_idx = Some(self.open_tabs.len() - 1);
         
-        // Force workspace reinit on next render to pick up new tab
-        self.workspace_initialized = false;
+        // Add the new tab to the workspace efficiently
+        self.add_pending_tabs_to_workspace(window, cx);
         
         cx.notify();
     }

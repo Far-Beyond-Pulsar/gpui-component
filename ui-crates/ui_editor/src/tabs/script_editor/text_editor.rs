@@ -118,17 +118,23 @@ impl TextEditor {
         self.rust_analyzer = Some(analyzer);
     }
     
-    /// Initialize/reinitialize workspace with current files
-    fn initialize_workspace_once(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        // Process pending panels to add if workspace is already initialized
-        if !self.pending_panels_to_add.is_empty() && self.workspace_initialized {
-            if let Some(workspace) = self.workspace.clone() {
-                let text_editor_weak = cx.entity().downgrade();
-                let panels_to_add = std::mem::take(&mut self.pending_panels_to_add);
-                
-                workspace.update(cx, |workspace, cx| {
-                    let dock_area = workspace.dock_area().clone();
-                    dock_area.update(cx, |dock_area, cx| {
+    /// Add pending file panels to the first available TabPanel
+    fn add_pending_panels_to_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.pending_panels_to_add.is_empty() || !self.workspace_initialized {
+            return;
+        }
+        
+        if let Some(workspace) = self.workspace.clone() {
+            let text_editor_weak = cx.entity().downgrade();
+            let panels_to_add = std::mem::take(&mut self.pending_panels_to_add);
+            
+            // Defer adding panels to avoid reentrant updates
+            window.defer(cx, move |window, cx| {
+                _ = workspace.update(cx, |workspace, cx| {
+                    let dock_area = workspace.dock_area();
+                    
+                    // Get the first TabPanel from the center items
+                    if let Some(tab_panel) = dock_area.read(cx).items().left_top_tab_panel(cx) {
                         for (index, path, input_state) in panels_to_add {
                             let panel = cx.new(|cx| {
                                 use crate::tabs::script_editor::FilePanelWrapper;
@@ -141,17 +147,25 @@ impl TextEditor {
                                 )
                             });
                             
-                            dock_area.add_panel(
-                                std::sync::Arc::new(panel) as std::sync::Arc<dyn ui::dock::PanelView>,
-                                ui::dock::DockPlacement::Center,
-                                None,
-                                window,
-                                cx
-                            );
+                            _ = tab_panel.update(cx, |tab_panel, cx| {
+                                tab_panel.add_panel(
+                                    std::sync::Arc::new(panel) as std::sync::Arc<dyn ui::dock::PanelView>,
+                                    window,
+                                    cx
+                                );
+                            });
                         }
-                    });
+                    }
                 });
-            }
+            });
+        }
+    }
+
+    /// Initialize/reinitialize workspace with current files
+    fn initialize_workspace_once(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Process pending panels by adding them efficiently
+        if !self.pending_panels_to_add.is_empty() && self.workspace_initialized {
+            self.add_pending_panels_to_workspace(window, cx);
             return;
         }
         

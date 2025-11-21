@@ -420,7 +420,7 @@ impl DockItem {
     }
 
     /// Recursively traverses to find the left-most and top-most TabPanel.
-    pub(crate) fn left_top_tab_panel(&self, cx: &App) -> Option<Entity<TabPanel>> {
+    pub fn left_top_tab_panel(&self, cx: &App) -> Option<Entity<TabPanel>> {
         match self {
             DockItem::Tabs { view, .. } => Some(view.clone()),
             DockItem::Split { view, .. } => view.read(cx).left_top_tab_panel(true, cx),
