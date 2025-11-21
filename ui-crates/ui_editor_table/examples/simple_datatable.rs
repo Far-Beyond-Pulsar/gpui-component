@@ -46,7 +46,7 @@ fn main() {
             |window, cx| {
                 // Create the editor
                 cx.new(|cx| {
-                    let mut editor = DataTableEditor::new(cx);
+                    let mut editor = DataTableEditor::new(window, cx);
 
                     // Define PlayerData schema
                     let mut player_schema = TypeSchema::new("PlayerData");

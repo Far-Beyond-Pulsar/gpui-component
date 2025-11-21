@@ -1406,10 +1406,10 @@ impl PulsarApp {
 
         // Create new database editor tab
         let database_editor = cx.new(|cx| {
-            ui_editor_table::DataTableEditor::open_database(db_path.clone(), cx)
+            ui_editor_table::DataTableEditor::open_database(db_path.clone(), window, cx)
                 .unwrap_or_else(|e| {
                     eprintln!("Failed to open database: {}", e);
-                    ui_editor_table::DataTableEditor::new(cx)
+                    ui_editor_table::DataTableEditor::new(window, cx)
                 })
         });
 

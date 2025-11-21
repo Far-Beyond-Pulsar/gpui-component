@@ -2,13 +2,14 @@ use gpui::{prelude::*, *};
 use ui::{
     h_flex, v_flex, button::{Button, ButtonVariants}, label::Label, divider::Divider,
     table::Table, ActiveTheme, Sizable, Size, StyleSized, StyledExt, Disableable,
-    dock::{Panel, PanelEvent}, IconName,
+    dock::{Panel, PanelEvent, DockChannel}, IconName,
 };
 use crate::{
     database::DatabaseManager,
     table_view::DataTableView,
     query_editor::QueryEditorView,
     reflection::TypeSchema,
+    workspace_panels::{TablePanelWrapper, QueryPanelWrapper, WelcomePanelWrapper},
 };
 use std::path::PathBuf;
 
@@ -31,6 +32,11 @@ struct EditorTab {
     tab_type: TabType,
 }
 
+/// Pending tab to add - queued for next render
+struct PendingTab {
+    tab_type: TabType,
+}
+
 pub struct DataTableEditor {
     pub db: DatabaseManager,
     available_tables: Vec<String>,
@@ -39,11 +45,27 @@ pub struct DataTableEditor {
     next_tab_id: usize,
     pub database_path: Option<PathBuf>,
     focus_handle: FocusHandle,
+    /// Internal workspace for draggable tabs
+    workspace: Option<Entity<ui::workspace::Workspace>>,
+    /// Track if workspace has been initialized
+    workspace_initialized: bool,
+    /// Pending tabs to add (queued for next render)
+    pending_tabs_to_add: Vec<PendingTab>,
 }
 
 impl DataTableEditor {
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let db = DatabaseManager::in_memory().expect("Failed to create in-memory database");
+
+        // Create internal workspace for table/query tabs
+        let workspace = cx.new(|cx| {
+            ui::workspace::Workspace::new_with_channel(
+                "table-editor-workspace",
+                DockChannel(5), // Unique channel for table editor
+                window,
+                cx
+            )
+        });
 
         Self {
             db,
@@ -53,16 +75,29 @@ impl DataTableEditor {
             next_tab_id: 0,
             database_path: None,
             focus_handle: cx.focus_handle(),
+            workspace: Some(workspace),
+            workspace_initialized: false,
+            pending_tabs_to_add: Vec::new(),
         }
     }
 
-    pub fn open_database(path: PathBuf, cx: &mut Context<Self>) -> anyhow::Result<Self> {
+    pub fn open_database(path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> anyhow::Result<Self> {
         let db = DatabaseManager::new(&path)?;
         
         // Auto-discover schemas from existing tables
         db.introspect_and_register_schemas()?;
         
         let available_tables = db.list_tables()?;
+
+        // Create internal workspace for table/query tabs
+        let workspace = cx.new(|cx| {
+            ui::workspace::Workspace::new_with_channel(
+                "table-editor-workspace",
+                DockChannel(5), // Unique channel for table editor
+                window,
+                cx
+            )
+        });
 
         Ok(Self {
             db,
@@ -72,6 +107,9 @@ impl DataTableEditor {
             next_tab_id: 0,
             database_path: Some(path),
             focus_handle: cx.focus_handle(),
+            workspace: Some(workspace),
+            workspace_initialized: false,
+            pending_tabs_to_add: Vec::new(),
         })
     }
 
@@ -79,6 +117,117 @@ impl DataTableEditor {
         self.db.register_type(schema)?;
         self.available_tables = self.db.list_tables()?;
         Ok(())
+    }
+
+    /// Initialize/reinitialize workspace with current tabs
+    fn initialize_workspace_once(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Process pending tabs to add if workspace is already initialized
+        if !self.pending_tabs_to_add.is_empty() && self.workspace_initialized {
+            if let Some(workspace) = self.workspace.clone() {
+                let pending_tabs = std::mem::take(&mut self.pending_tabs_to_add);
+                
+                workspace.update(cx, |workspace, cx| {
+                    let dock_area = workspace.dock_area().clone();
+                    dock_area.update(cx, |dock_area, cx| {
+                        for pending_tab in pending_tabs {
+                            let panel: std::sync::Arc<dyn ui::dock::PanelView> = match pending_tab.tab_type {
+                                TabType::Table { name, view } => {
+                                    let panel = cx.new(|cx| {
+                                        TablePanelWrapper::new(name, view, cx)
+                                    });
+                                    std::sync::Arc::new(panel)
+                                }
+                                TabType::Query { name, view } => {
+                                    let panel = cx.new(|cx| {
+                                        QueryPanelWrapper::new(name, view, cx)
+                                    });
+                                    std::sync::Arc::new(panel)
+                                }
+                            };
+                            
+                            dock_area.add_panel(
+                                panel,
+                                ui::dock::DockPlacement::Center,
+                                None,
+                                window,
+                                cx
+                            );
+                        }
+                    });
+                });
+            }
+            return;
+        }
+        
+        if self.workspace_initialized {
+            return;
+        }
+        
+        if let Some(ref workspace) = self.workspace {
+            workspace.update(cx, |workspace, cx| {
+                let dock_area = workspace.dock_area().downgrade();
+                
+                if self.open_tabs.is_empty() {
+                    // Show welcome panel when no tabs
+                    let welcome_panel = cx.new(|cx| {
+                        WelcomePanelWrapper::new(cx)
+                    });
+                    
+                    workspace.initialize(
+                        ui::dock::DockItem::tabs(
+                            vec![std::sync::Arc::new(welcome_panel) as std::sync::Arc<dyn ui::dock::PanelView>],
+                            Some(0),
+                            &dock_area,
+                            window,
+                            cx,
+                        ),
+                        None,
+                        None,
+                        None,
+                        window,
+                        cx,
+                    );
+                } else {
+                    // Create panels for all open tabs
+                    let tab_panels: Vec<std::sync::Arc<dyn ui::dock::PanelView>> = self.open_tabs
+                        .iter()
+                        .map(|tab| {
+                            match &tab.tab_type {
+                                TabType::Table { name, view } => {
+                                    let panel = cx.new(|cx| {
+                                        TablePanelWrapper::new(name.clone(), view.clone(), cx)
+                                    });
+                                    std::sync::Arc::new(panel) as std::sync::Arc<dyn ui::dock::PanelView>
+                                }
+                                TabType::Query { name, view } => {
+                                    let panel = cx.new(|cx| {
+                                        QueryPanelWrapper::new(name.clone(), view.clone(), cx)
+                                    });
+                                    std::sync::Arc::new(panel) as std::sync::Arc<dyn ui::dock::PanelView>
+                                }
+                            }
+                        })
+                        .collect();
+                    
+                    workspace.initialize(
+                        ui::dock::DockItem::tabs(
+                            tab_panels,
+                            self.active_tab_idx,
+                            &dock_area,
+                            window,
+                            cx,
+                        ),
+                        None,
+                        None,
+                        None,
+                        window,
+                        cx,
+                    );
+                }
+            });
+            
+            self.workspace_initialized = true;
+        }
     }
 
     pub fn select_table(&mut self, table_name: String, window: &mut Window, cx: &mut Context<Self>) -> anyhow::Result<()> {
@@ -102,17 +251,22 @@ impl DataTableEditor {
         let delegate = DataTableView::new(self.db.clone(), table_name.clone())?;
         let table_view = cx.new(|cx| Table::new(delegate, window, cx));
         
+        let tab_type = TabType::Table { 
+            name: table_name.clone(), 
+            view: table_view 
+        };
+        
         let tab = EditorTab {
             id: self.next_tab_id,
-            tab_type: TabType::Table { 
-                name: table_name.clone(), 
-                view: table_view 
-            },
+            tab_type: tab_type.clone(),
         };
         
         self.next_tab_id += 1;
         self.open_tabs.push(tab);
         self.active_tab_idx = Some(self.open_tabs.len() - 1);
+        
+        // Queue tab to be added to workspace on next render
+        self.pending_tabs_to_add.push(PendingTab { tab_type });
         
         cx.emit(DataTableEvent::TableOpened(table_name));
         cx.notify();
@@ -123,17 +277,23 @@ impl DataTableEditor {
     pub fn open_query_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let query_view = cx.new(|cx| QueryEditorView::new(self.db.clone(), window, cx));
         
+        let tab_type = TabType::Query {
+            name: format!("Query {}", self.next_tab_id),
+            view: query_view,
+        };
+        
         let tab = EditorTab {
             id: self.next_tab_id,
-            tab_type: TabType::Query {
-                name: format!("Query {}", self.next_tab_id),
-                view: query_view,
-            },
+            tab_type: tab_type.clone(),
         };
         
         self.next_tab_id += 1;
         self.open_tabs.push(tab);
         self.active_tab_idx = Some(self.open_tabs.len() - 1);
+        
+        // Queue tab to be added to workspace on next render
+        self.pending_tabs_to_add.push(PendingTab { tab_type });
+        
         cx.notify();
     }
     
@@ -321,99 +481,7 @@ impl DataTableEditor {
             )
     }
 
-    fn render_tabs(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        h_flex()
-            .gap_1()
-            .p_1()
-            .bg(cx.theme().muted.opacity(0.2))
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .children(self.open_tabs.iter().enumerate().map(|(idx, tab)| {
-                let is_active = self.active_tab_idx == Some(idx);
-                let tab_name = match &tab.tab_type {
-                    TabType::Table { name, .. } => name.clone(),
-                    TabType::Query { name, .. } => name.clone(),
-                };
-                
-                h_flex()
-                    .gap_1()
-                    .px_3()
-                    .py_1()
-                    .rounded_t_md()
-                    .items_center()
-                    .when(is_active, |this| {
-                        this.bg(cx.theme().background)
-                            .border_t_2()
-                            .border_color(cx.theme().accent)
-                    })
-                    .when(!is_active, |this| {
-                        this.bg(cx.theme().muted.opacity(0.5))
-                    })
-                    .child(
-                        Button::new(("tab-button", idx))
-                            .label(tab_name)
-                            .small()
-                            .ghost()
-                            .on_click({
-                                let idx = idx;
-                                cx.listener(move |editor, _, _, cx| {
-                                    editor.active_tab_idx = Some(idx);
-                                    cx.notify();
-                                })
-                            })
-                    )
-                    .child(
-                        Button::new(("close-tab", idx))
-                            .label("×")
-                            .small()
-                            .ghost()
-                            .on_click({
-                                let idx = idx;
-                                cx.listener(move |editor, _, _, cx| {
-                                    editor.close_tab(idx, cx);
-                                })
-                            })
-                    )
-            }))
-    }
 
-    fn render_content(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        if let Some(active_idx) = self.active_tab_idx {
-            if let Some(tab) = self.open_tabs.get(active_idx) {
-                return match &tab.tab_type {
-                    TabType::Table { view, .. } => {
-                        div()
-                            .flex_1()
-                            .w_full()
-                            .size_full()
-                            .child(view.clone())
-                            .into_any_element()
-                    }
-                    TabType::Query { view, .. } => {
-                        div()
-                            .flex_1()
-                            .w_full()
-                            .size_full()
-                            .child(view.clone())
-                            .into_any_element()
-                    }
-                };
-            }
-        }
-        
-        // No active tab
-        v_flex()
-            .flex_1()
-            .w_full()
-            .size_full()
-            .items_center()
-            .justify_center()
-            .child(
-                Label::new("Select a table or create a new query")
-                    .text_color(cx.theme().muted_foreground)
-            )
-            .into_any_element()
-    }
 }
 
 impl Panel for DataTableEditor {
@@ -454,11 +522,12 @@ impl EventEmitter<PanelEvent> for DataTableEditor {}
 impl EventEmitter<DataTableEvent> for DataTableEditor {}
 
 impl Render for DataTableEditor {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Initialize workspace on first render
+        self.initialize_workspace_once(window, cx);
+        
         let toolbar = self.render_toolbar(cx);
         let sidebar = self.render_sidebar(cx);
-        let tabs = self.render_tabs(cx);
-        let content = self.render_content(cx);
         
         v_flex()
             .size_full()
@@ -470,23 +539,25 @@ impl Render for DataTableEditor {
                     .w_full()
                     .child(sidebar)
                     .child(
-                        v_flex()
+                        div()
                             .flex_1()
                             .h_full()
-                            .child(tabs)
-                            .child(content)
+                            .when_some(self.workspace.clone(), |this, workspace| {
+                                this.child(workspace)
+                            })
                     )
             )
     }
 }
 
-pub fn create_data_table_editor(cx: &mut App) -> Entity<DataTableEditor> {
-    cx.new(|cx| DataTableEditor::new(cx))
+pub fn create_data_table_editor(window: &mut Window, cx: &mut App) -> Entity<DataTableEditor> {
+    cx.new(|cx| DataTableEditor::new(window, cx))
 }
 
 pub fn create_data_table_editor_with_db(
     path: PathBuf,
+    window: &mut Window,
     cx: &mut App,
 ) -> anyhow::Result<Entity<DataTableEditor>> {
-    Ok(cx.new(|cx| DataTableEditor::open_database(path, cx).unwrap()))
+    Ok(cx.new(|cx| DataTableEditor::open_database(path, window, cx).unwrap()))
 }
