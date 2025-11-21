@@ -3,15 +3,18 @@ use ui::{
     h_flex, v_flex, button::{Button, ButtonVariants}, label::Label,
     input::{TextInput, InputState, TabSize, InputEvent},
     divider::Divider, IconName,
+    table::{Table, TableDelegate, Column, ColumnSort, TableEvent},
     ActiveTheme, Sizable, Size, StyleSized, StyledExt, Disableable,
 };
 use crate::database::{DatabaseManager, CellValue};
 use std::time::Instant;
+use std::ops::Range;
 
 pub struct QueryEditor {
     db: DatabaseManager,
     query_input: Entity<InputState>,
     results: Option<QueryResult>,
+    results_table: Option<Entity<Table<QueryResultsTableView>>>,
     error: Option<String>,
     is_executing: bool,
     query_history: Vec<SavedQuery>,
@@ -33,6 +36,128 @@ pub struct QueryResult {
     pub rows: Vec<Vec<CellValue>>,
     pub row_count: usize,
     pub execution_time_ms: u64,
+}
+
+pub struct QueryResultsTableView {
+    result: QueryResult,
+    columns: Vec<Column>,
+    size: Size,
+    visible_range: Range<usize>,
+}
+
+impl QueryResultsTableView {
+    pub fn new(result: QueryResult) -> Self {
+        let mut columns = Vec::new();
+
+        // Add columns based on result columns
+        for (idx, col_name) in result.columns.iter().enumerate() {
+            let id = format!("col_{}", idx);
+            columns.push(
+                Column::new(&id, col_name)
+                    .width(150.0)
+                    .resizable(true)
+                    .sortable()
+            );
+        }
+
+        Self {
+            result,
+            columns,
+            size: Size::default(),
+            visible_range: 0..0,
+        }
+    }
+}
+
+impl TableDelegate for QueryResultsTableView {
+    fn columns_count(&self, _: &App) -> usize {
+        self.columns.len()
+    }
+
+    fn rows_count(&self, _: &App) -> usize {
+        self.result.rows.len()
+    }
+
+    fn column(&self, col_ix: usize, _: &App) -> &Column {
+        &self.columns[col_ix]
+    }
+
+    fn render_th(
+        &self,
+        col_ix: usize,
+        _: &mut Window,
+        _: &mut Context<Table<Self>>,
+    ) -> impl IntoElement {
+        if let Some(col) = self.result.columns.get(col_ix) {
+            div()
+                .px_3()
+                .py_2()
+                .text_sm()
+                .font_semibold()
+                .child(col.clone())
+        } else {
+            div()
+        }
+    }
+
+    fn render_tr(
+        &self,
+        row_ix: usize,
+        _: &mut Window,
+        cx: &mut Context<Table<Self>>,
+    ) -> Stateful<Div> {
+        div()
+            .id(("result-row", row_ix))
+            .when(row_ix % 2 == 1, |this| {
+                this.bg(cx.theme().muted.opacity(0.3))
+            })
+    }
+
+    fn render_td(
+        &self,
+        row_ix: usize,
+        col_ix: usize,
+        _: &mut Window,
+        cx: &mut Context<Table<Self>>,
+    ) -> impl IntoElement {
+        if let Some(row) = self.result.rows.get(row_ix) {
+            if let Some(cell) = row.get(col_ix) {
+                let display = cell.display.clone();
+
+                return div()
+                    .id(("result-cell", row_ix * 10000 + col_ix))
+                    .px_3()
+                    .py_2()
+                    .text_sm()
+                    .when(display.is_empty() || display == "NULL", |this| {
+                        this.text_color(cx.theme().muted_foreground)
+                            .italic()
+                            .child(if display.is_empty() { "empty" } else { "NULL" })
+                    })
+                    .when(!display.is_empty() && display != "NULL", |this| {
+                        this.child(display)
+                    })
+                    .into_any_element();
+            }
+        }
+
+        div()
+            .px_3()
+            .py_2()
+            .text_sm()
+            .text_color(cx.theme().muted_foreground)
+            .child("—")
+            .into_any_element()
+    }
+
+    fn visible_rows_changed(
+        &mut self,
+        visible_range: Range<usize>,
+        _: &mut Window,
+        _: &mut Context<Table<Self>>,
+    ) {
+        self.visible_range = visible_range;
+    }
 }
 
 impl QueryEditor {
@@ -60,6 +185,7 @@ impl QueryEditor {
             db,
             query_input,
             results: None,
+            results_table: None,
             error: None,
             is_executing: false,
             query_history: Vec::new(),
@@ -106,7 +232,7 @@ impl QueryEditor {
         });
     }
 
-    pub fn execute_query(&mut self, cx: &App) -> anyhow::Result<()> {
+    pub fn execute_query(&mut self, window: &mut Window, cx: &mut Context<Self>) -> anyhow::Result<()> {
         self.is_executing = true;
         self.error = None;
 
@@ -126,16 +252,24 @@ impl QueryEditor {
                     Vec::new()
                 };
 
-                self.results = Some(QueryResult {
+                let result = QueryResult {
                     columns,
                     rows,
                     row_count,
                     execution_time_ms,
-                });
+                };
+
+                // Create virtualized table for results
+                let table_view = QueryResultsTableView::new(result.clone());
+                let results_table = cx.new(|cx| Table::new(table_view, window, cx));
+
+                self.results = Some(result);
+                self.results_table = Some(results_table);
             }
             Err(e) => {
                 self.error = Some(format!("Query error: {}", e));
                 self.results = None;
+                self.results_table = None;
             }
         }
 
@@ -145,6 +279,7 @@ impl QueryEditor {
 
     pub fn clear_results(&mut self) {
         self.results = None;
+        self.results_table = None;
         self.error = None;
     }
 
@@ -219,8 +354,8 @@ impl QueryEditor {
                     .disabled(self.is_executing)
                     .primary()
                     .small()
-                    .on_click(cx.listener(|editor, _, _, cx| {
-                        if let Err(e) = editor.execute_query(cx) {
+                    .on_click(cx.listener(|editor, _, window, cx| {
+                        if let Err(e) = editor.execute_query(window, cx) {
                             eprintln!("Failed to execute query: {}", e);
                         }
                         cx.notify();
@@ -488,74 +623,25 @@ impl QueryEditor {
                         )
                 )
             })
-            .when_some(self.results.as_ref(), |this, result| {
+            .when_some(self.results_table.as_ref(), |this, table| {
                 this.child(
                     v_flex()
-                        .w_full()
-                        .flex_1()
-                        .min_h_0()
+                        .size_full()
                         .gap_2()
-                        .overflow_hidden()
                         .child(
                             div()
                                 .w_full()
                                 .flex_1()
+                                .min_h_0()
                                 .border_1()
                                 .border_color(cx.theme().border)
                                 .rounded_md()
-                                .child(
-                                    div()
-                                        .min_w_full()
-                                        .child(
-                                            // Header row
-                                            h_flex()
-                                                .w_full()
-                                                .bg(cx.theme().muted)
-                                                .border_b_1()
-                                                .border_color(cx.theme().border)
-                                                .children(result.columns.iter().map(|col| {
-                                                    div()
-                                                        .min_w_32()
-                                                        .px_3()
-                                                        .py_2()
-                                                        .text_sm()
-                                                        .font_semibold()
-                                                        .border_r_1()
-                                                        .border_color(cx.theme().border)
-                                                        .child(col.clone())
-                                                }))
-                                        )
-                                        .child(
-                                            // Data rows
-                                            v_flex()
-                                                .w_full()
-                                                .children(result.rows.iter().enumerate().map(|(row_idx, row)| {
-                                                    h_flex()
-                                                        .w_full()
-                                                        .when(row_idx % 2 == 0, |this| {
-                                                            this.bg(cx.theme().background)
-                                                        })
-                                                        .when(row_idx % 2 == 1, |this| {
-                                                            this.bg(cx.theme().muted.opacity(0.3))
-                                                        })
-                                                        .hover(|this| this.bg(cx.theme().accent.opacity(0.1)))
-                                                        .children(row.iter().map(|cell| {
-                                                            div()
-                                                                .min_w_32()
-                                                                .px_3()
-                                                                .py_2()
-                                                                .text_sm()
-                                                                .border_r_1()
-                                                                .border_color(cx.theme().border)
-                                                                .child(cell.display.clone())
-                                                        }))
-                                                }))
-                                        )
-                                )
+                                .overflow_hidden()
+                                .child(table.clone())
                         )
                 )
             })
-            .when(self.results.is_none() && self.error.is_none(), |this| {
+            .when(self.results_table.is_none() && self.error.is_none(), |this| {
                 this.child(
                     div()
                         .flex_1()
