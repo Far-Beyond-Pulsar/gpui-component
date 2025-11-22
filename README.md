@@ -6,6 +6,10 @@
 **Do you like this project?** You may like the Horizon game server from many of the same developers who work on Pulsar. [Check it out](https://github.com/Far-Beyond-Dev/Horizon
 )
 
+## Temporarly loss of support for non-Windows platforms
+
+[https://github.com/orgs/Far-Beyond-Pulsar/discussions/17](https://github.com/orgs/Far-Beyond-Pulsar/discussions/17)
+
 ## You probably can't make a game in this yet!!
 WIP, Contribution encouraged progress checks at: https://github.com/orgs/Far-Beyond-Pulsar/projects/1
 
