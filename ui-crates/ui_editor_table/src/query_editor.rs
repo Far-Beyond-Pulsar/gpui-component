@@ -52,12 +52,17 @@ impl QueryResultsTableView {
         // Add columns based on result columns
         for (idx, col_name) in result.columns.iter().enumerate() {
             let id = format!("col_{}", idx);
-            columns.push(
-                Column::new(&id, col_name)
-                    .width(150.0)
-                    .resizable(true)
-                    .sortable()
-            );
+            let mut column = Column::new(&id, col_name)
+                .width(150.0)
+                .resizable(true)
+                .sortable();
+
+            // Pin first 2 columns (usually ID and key columns)
+            if idx < 2 {
+                column = column.fixed(ui::table::ColumnFixed::Left);
+            }
+
+            columns.push(column);
         }
 
         Self {
@@ -261,7 +266,13 @@ impl QueryEditor {
 
                 // Create virtualized table for results
                 let table_view = QueryResultsTableView::new(result.clone());
-                let results_table = cx.new(|cx| Table::new(table_view, window, cx));
+                let results_table = cx.new(|cx| {
+                    let mut table = Table::new(table_view, window, cx);
+                    table.col_fixed = true;
+                    table.col_resizable = true;
+                    table.sortable = true;
+                    table
+                });
 
                 self.results = Some(result);
                 self.results_table = Some(results_table);
@@ -714,23 +725,22 @@ impl Render for QueryEditorView {
                     .size_full()
                     .child(controls)
                     .child(
-                        h_flex()
+                        v_flex()
                             .flex_1()
                             .min_h_0()
                             .gap_4()
                             .p_4()
-                            .items_start()
                             .child(
                                 v_flex()
-                                    .flex_1()
-                                    .h_full()
-                                    .min_w_96()
+                                    .w_full()
+                                    .h_64()
                                     .child(query_input)
                             )
                             .child(
-                                v_flex()
+                                div()
+                                    .w_full()
                                     .flex_1()
-                                    .h_full()
+                                    .min_h_0()
                                     .child(results)
                             )
                     )

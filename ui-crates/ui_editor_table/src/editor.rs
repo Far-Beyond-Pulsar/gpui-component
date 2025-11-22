@@ -246,7 +246,13 @@ impl DataTableEditor {
         
         // Create new tab
         let delegate = DataTableView::new(self.db.clone(), table_name.clone())?;
-        let table_view = cx.new(|cx| Table::new(delegate, window, cx));
+        let table_view = cx.new(|cx| {
+            let mut table = Table::new(delegate, window, cx);
+            table.col_fixed = true;
+            table.col_resizable = true;
+            table.sortable = true;
+            table
+        });
         
         let tab_type = TabType::Table { 
             name: table_name.clone(), 
@@ -355,8 +361,7 @@ impl DataTableEditor {
                 if let TabType::Table { view, .. } = &tab.tab_type {
                     view.update(cx, |table, cx| {
                         let delegate = table.delegate_mut();
-                        let page_size = delegate.state.page_size;
-                        if let Err(e) = delegate.refresh_rows(0, page_size) {
+                        if let Err(e) = delegate.refresh_rows(0, 1000) {
                             eprintln!("Failed to refresh rows: {}", e);
                         }
                         cx.notify();
@@ -418,37 +423,6 @@ impl DataTableEditor {
         "No table selected".to_string()
     }
 
-    pub fn next_page(&mut self, cx: &mut Context<Self>) -> anyhow::Result<()> {
-        if let Some(active_idx) = self.active_tab_idx {
-            if let Some(tab) = self.open_tabs.get(active_idx) {
-                if let TabType::Table { view, .. } = &tab.tab_type {
-                    view.update(cx, |table, cx| {
-                        if let Err(e) = table.delegate_mut().next_page() {
-                            eprintln!("Failed to go to next page: {}", e);
-                        }
-                        cx.notify();
-                    });
-                }
-            }
-        }
-        Ok(())
-    }
-
-    pub fn previous_page(&mut self, cx: &mut Context<Self>) -> anyhow::Result<()> {
-        if let Some(active_idx) = self.active_tab_idx {
-            if let Some(tab) = self.open_tabs.get(active_idx) {
-                if let TabType::Table { view, .. } = &tab.tab_type {
-                    view.update(cx, |table, cx| {
-                        if let Err(e) = table.delegate_mut().previous_page() {
-                            eprintln!("Failed to go to previous page: {}", e);
-                        }
-                        cx.notify();
-                    });
-                }
-            }
-        }
-        Ok(())
-    }
 
     fn render_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let is_table_tab = self.active_tab_idx.and_then(|idx| {
@@ -578,43 +552,6 @@ impl DataTableEditor {
                             Label::new(self.get_table_stats(cx))
                                 .text_xs()
                                 .text_color(cx.theme().muted_foreground)
-                        )
-                        .child(
-                            div().flex_1() // Spacer
-                        )
-                        .child(
-                            h_flex()
-                                .gap_1()
-                                .items_center()
-                                .child(
-                                    Button::new("page-prev")
-                                        .icon(IconName::ChevronLeft)
-                                        .xsmall()
-                                        .ghost()
-                                        .on_click(cx.listener(|editor, _, _, cx| {
-                                            if let Err(e) = editor.previous_page(cx) {
-                                                eprintln!("Failed to go to previous page: {}", e);
-                                            }
-                                            cx.notify();
-                                        }))
-                                )
-                                .child(
-                                    Label::new("Page")
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground)
-                                )
-                                .child(
-                                    Button::new("page-next")
-                                        .icon(IconName::ChevronRight)
-                                        .xsmall()
-                                        .ghost()
-                                        .on_click(cx.listener(|editor, _, _, cx| {
-                                            if let Err(e) = editor.next_page(cx) {
-                                                eprintln!("Failed to go to next page: {}", e);
-                                            }
-                                            cx.notify();
-                                        }))
-                                )
                         )
                 )
             })

@@ -19,8 +19,6 @@ pub struct DataTableState {
     pub edit_input: Option<Entity<InputState>>,
     pub filter_text: String,
     pub validation_error: Option<String>,
-    pub page_size: usize,
-    pub current_page: usize,
     pub show_only_modified: bool,
     pub copied_cell: Option<String>,
 }
@@ -50,6 +48,7 @@ impl DataTableView {
             Column::new("id", "ID")
                 .width(60.)
                 .resizable(false)
+                .fixed(ui::table::ColumnFixed::Left)
                 .sortable(),
         ];
 
@@ -77,8 +76,6 @@ impl DataTableView {
                 edit_input: None,
                 filter_text: String::new(),
                 validation_error: None,
-                page_size: 100,
-                current_page: 0,
                 show_only_modified: false,
                 copied_cell: None,
             },
@@ -278,7 +275,7 @@ impl DataTableView {
                 .collect();
 
             self.db.insert_row(&self.table_name, values)?;
-            self.refresh_rows(0, self.state.page_size)?;
+            self.refresh_rows(0, 1000)?;
         }
         Ok(())
     }
@@ -312,38 +309,19 @@ impl DataTableView {
 
     pub fn get_table_stats(&self) -> String {
         format!(
-            "Total: {} rows | Showing: {} rows | Page: {}/{}",
-            self.total_rows,
-            self.rows.len(),
-            self.state.current_page + 1,
-            (self.total_rows + self.state.page_size - 1) / self.state.page_size
+            "Total: {} rows | Virtual Scrolling (infinite)",
+            self.total_rows
         )
     }
 
-    pub fn next_page(&mut self) -> anyhow::Result<()> {
-        let max_page = (self.total_rows + self.state.page_size - 1) / self.state.page_size;
-        if self.state.current_page < max_page - 1 {
-            self.state.current_page += 1;
-            let offset = self.state.current_page * self.state.page_size;
-            self.refresh_rows(offset, self.state.page_size)?;
-        }
-        Ok(())
-    }
+}
 
-    pub fn previous_page(&mut self) -> anyhow::Result<()> {
-        if self.state.current_page > 0 {
-            self.state.current_page -= 1;
-            let offset = self.state.current_page * self.state.page_size;
-            self.refresh_rows(offset, self.state.page_size)?;
-        }
-        Ok(())
-    }
-
-    pub fn set_page_size(&mut self, size: usize) -> anyhow::Result<()> {
-        self.state.page_size = size;
-        self.state.current_page = 0;
-        self.refresh_rows(0, size)?;
-        Ok(())
+impl DataTableView {
+    pub fn enable_features(&self, table: &mut ui::table::Table<Self>, cx: &mut Context<ui::table::Table<Self>>) {
+        table.col_fixed = true;
+        table.col_resizable = true;
+        table.sortable = true;
+        cx.notify();
     }
 }
 
