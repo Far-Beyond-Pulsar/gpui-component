@@ -14028,6 +14028,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ui_alias_editor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine_state",
+ "gpui",
+ "pulsar_std",
+ "serde",
+ "serde_json",
+ "ui",
+ "ui_types_common",
+ "uuid",
+]
+
+[[package]]
 name = "ui_common"
 version = "0.1.0"
 dependencies = [
@@ -14186,6 +14201,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ui_enum_editor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine_state",
+ "gpui",
+ "serde",
+ "serde_json",
+ "ui",
+ "ui_types_common",
+ "uuid",
+]
+
+[[package]]
 name = "ui_file_manager"
 version = "0.1.0"
 dependencies = [
@@ -14273,6 +14302,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ui_struct_editor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine_state",
+ "gpui",
+ "serde",
+ "serde_json",
+ "ui",
+ "ui_types_common",
+ "uuid",
+]
+
+[[package]]
 name = "ui_terminal"
 version = "0.1.0"
 dependencies = [
@@ -14292,6 +14335,36 @@ dependencies = [
  "ui_common",
  "uuid",
  "which 6.0.3",
+]
+
+[[package]]
+name = "ui_trait_editor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine_state",
+ "gpui",
+ "serde",
+ "serde_json",
+ "ui",
+ "ui_types_common",
+ "uuid",
+]
+
+[[package]]
+name = "ui_types_common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "lazy_static",
+ "regex",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "uuid",
+ "walkdir",
 ]
 
 [[package]]

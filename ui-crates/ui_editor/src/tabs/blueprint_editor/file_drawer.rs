@@ -96,6 +96,14 @@ impl FileDrawerRenderer {
                     cx
                 )
             )
+            .child(
+                // Types mount point
+                Self::render_mount_point_placeholder(
+                    "Types",
+                    "📐",
+                    cx
+                )
+            )
     }
 
     fn render_mount_point(
