@@ -386,6 +386,7 @@ impl TypeBlock {
 pub struct TypeBlockView {
     block: TypeBlock,
     id: ElementId,
+    on_slot_click: Option<Arc<dyn Fn(BlockId, usize) + Send + Sync + 'static>>,
 }
 
 impl TypeBlockView {
@@ -393,7 +394,13 @@ impl TypeBlockView {
         Self {
             block,
             id: id.into(),
+            on_slot_click: None,
         }
+    }
+    
+    pub fn on_slot_click(mut self, handler: impl Fn(BlockId, usize) + Send + Sync + 'static) -> Self {
+        self.on_slot_click = Some(Arc::new(handler));
+        self
     }
 
     fn render_leaf_block(&self, cx: Option<&App>) -> Div {
@@ -555,17 +562,26 @@ impl TypeBlockView {
 
     fn render_slot(&self, index: usize, slot: &Option<Box<TypeBlock>>, _cx: Option<&App>) -> Div {
         if let Some(block) = slot {
-            let nested_view = TypeBlockView::new(
+            let mut nested_view = TypeBlockView::new(
                 *block.clone(),
                 ("slot", index),
             );
+            
+            // Pass down the click handler to nested blocks
+            if let Some(handler) = &self.on_slot_click {
+                let handler = Arc::clone(handler);
+                nested_view = nested_view.on_slot_click(move |id, idx| handler(id, idx));
+            }
 
             div()
                 .w_full()
                 .child(nested_view)
         } else {
-            // Empty slot - drop zone with visual cue
-            div()
+            // Empty slot - clickable drop zone
+            let parent_id = self.block.id();
+            let slot_idx = index;
+            
+            let mut slot_div = div()
                 .w_full()
                 .min_w(px(150.0))
                 .px_4()
@@ -577,12 +593,29 @@ impl TypeBlockView {
                 .border_dashed()
                 .items_center()
                 .justify_center()
+                .hover(|style| {
+                    style
+                        .bg(hsla(0.0, 0.0, 0.3, 0.3))
+                        .border_color(hsla(0.6, 0.7, 0.6, 0.8))
+                        .cursor_pointer()
+                })
                 .child(
                     div()
                         .text_xs()
                         .text_color(hsla(0.0, 0.0, 0.5, 1.0))
-                        .child("drop type here")
-                )
+                        .child("click to select slot")
+                );
+            
+            // Add click handler if provided
+            if let Some(handler) = &self.on_slot_click {
+                let handler = Arc::clone(handler);
+                let parent_id = parent_id.clone();
+                slot_div = slot_div.on_mouse_down(gpui::MouseButton::Left, move |_event, _window, _cx| {
+                    handler(parent_id.clone(), slot_idx);
+                });
+            }
+            
+            slot_div
         }
     }
 }

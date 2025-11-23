@@ -2,6 +2,7 @@ use gpui::{*, prelude::FluentBuilder, actions};
 use ui::{v_flex, h_flex, ActiveTheme, StyledExt, Colorize, dock::{Panel, PanelEvent}, button::{Button, ButtonVariant, ButtonVariants}, divider::Divider};
 use ui_types_common::{AliasAsset, TypeAstNode};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use crate::{TypeBlock, BlockId, BlockCanvas, ConstructorPalette};
 
 actions!(visual_alias_editor, [Save, TogglePalette]);
@@ -35,6 +36,9 @@ pub struct VisualAliasEditor {
     
     /// Block pending placement (from library click)
     pending_block: Option<TypeBlock>,
+    
+    /// Pending slot selection (shared state for click handler)
+    pending_slot_selection: Arc<Mutex<Option<(BlockId, usize)>>>,
 }
 
 impl VisualAliasEditor {
@@ -91,6 +95,7 @@ impl VisualAliasEditor {
             focus_handle: cx.focus_handle(),
             selected_slot: None,
             pending_block: None,
+            pending_slot_selection: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -471,6 +476,17 @@ impl VisualAliasEditor {
 
 impl Render for VisualAliasEditor {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Check for pending slot selection from click handler
+        let pending_selection = if let Ok(mut guard) = self.pending_slot_selection.lock() {
+            guard.take()
+        } else {
+            None
+        };
+        
+        if let Some((block_id, slot_idx)) = pending_selection {
+            self.select_slot(block_id, slot_idx, cx);
+        }
+        
         v_flex()
             .size_full()
             .bg(cx.theme().background)
@@ -594,10 +610,17 @@ impl Render for VisualAliasEditor {
                                         )
                                 )
                             })
-                            .child(
+                            .child({
                                 // Canvas - fills remaining space
-                                self.canvas.render(cx)
-                            )
+                                // Create a handler that stores slot clicks in shared state
+                                let pending = self.pending_slot_selection.clone();
+                                let handler = Arc::new(move |block_id: BlockId, slot_idx: usize| {
+                                    if let Ok(mut guard) = pending.lock() {
+                                        *guard = Some((block_id, slot_idx));
+                                    }
+                                });
+                                self.canvas.render(cx, Some(handler))
+                            })
                     )
                     .when(self.show_preview, |this| {
                         this.child(self.render_preview(cx))

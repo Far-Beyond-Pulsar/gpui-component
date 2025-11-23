@@ -2,6 +2,7 @@ use gpui::{prelude::*, *};
 use ui::{h_flex, v_flex, ActiveTheme, StyledExt};
 use crate::type_block::{TypeBlock, BlockId};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Drag state for blocks
 #[derive(Clone, Debug)]
@@ -225,7 +226,7 @@ impl BlockCanvas {
     }
 
     /// Render the canvas
-    pub fn render(&self, cx: &App) -> impl IntoElement {
+    pub fn render(&self, cx: &App, on_slot_click: Option<Arc<dyn Fn(BlockId, usize) + Send + Sync + 'static>>) -> impl IntoElement {
         let theme = cx.theme();
         
         v_flex()
@@ -239,7 +240,7 @@ impl BlockCanvas {
             .p_6()
             .child(
                 if let Some(root) = &self.root_block {
-                    self.render_block_tree(root, cx)
+                    self.render_block_tree(root, cx, on_slot_click)
                 } else {
                     self.render_empty_state(cx)
                 }
@@ -305,10 +306,17 @@ impl BlockCanvas {
             )
     }
 
-    fn render_block_tree(&self, block: &TypeBlock, _cx: &App) -> Div {
+    fn render_block_tree(&self, block: &TypeBlock, _cx: &App, on_slot_click: Option<Arc<dyn Fn(BlockId, usize) + Send + Sync + 'static>>) -> Div {
         use crate::type_block::TypeBlockView;
         
-        eprintln!("🔷 Rendering block tree: {:?}", block);
+        let mut view = TypeBlockView::new(
+            block.clone(),
+            "canvas-root"
+        );
+        
+        if let Some(handler) = on_slot_click {
+            view = view.on_slot_click(move |id, idx| handler(id, idx));
+        }
         
         v_flex()
             .w_full()
@@ -316,12 +324,7 @@ impl BlockCanvas {
             .items_start()
             .justify_start()
             .p_4()
-            .child(
-                TypeBlockView::new(
-                    block.clone(),
-                    "canvas-root"
-                )
-            )
+            .child(view)
     }
 
     fn render_drag_preview(&self, _cx: &App) -> Div {
