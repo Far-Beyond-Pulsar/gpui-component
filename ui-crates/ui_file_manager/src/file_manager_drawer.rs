@@ -455,9 +455,10 @@ impl FileManagerDrawer {
         eprintln!("DEBUG: handle_item_click called for: {:?}, type: {:?}", item.path, item.file_type);
         
         match &item.file_type {
-            FileType::Class | FileType::Script | FileType::DawProject | FileType::Database => {
+            FileType::Class | FileType::Script | FileType::DawProject | FileType::Database
+            | FileType::StructType | FileType::EnumType | FileType::TraitType | FileType::AliasType => {
                 eprintln!("DEBUG: Emitting FileSelected event");
-                // Emit event to open this class in BP editor, script in script editor, DAW project, or database
+                // Emit event to open this class in BP editor, script in script editor, DAW project, database, or type editor
                 cx.emit(FileSelected {
                     path: item.path.clone(),
                     file_type: item.file_type.clone(),
