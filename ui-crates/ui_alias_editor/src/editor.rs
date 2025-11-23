@@ -2,32 +2,33 @@ use gpui::{*, prelude::FluentBuilder, actions};
 use ui::{v_flex, h_flex, ActiveTheme, StyledExt, dock::{Panel, PanelEvent}, divider::Divider, button::{Button, ButtonVariant, ButtonVariants}};
 use ui_types_common::{AliasAsset, TypeAstNode, PRIMITIVES, CONSTRUCTORS};
 use std::path::PathBuf;
+use crate::type_block::TypeBlock;
 
 actions!(alias_editor, [Save]);
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum TypeBlock {
+pub enum OldTypeBlock {
     Empty,
     Primitive(String),
     Path(String),
     AliasRef(String),
     Constructor {
         name: String,
-        params: Vec<TypeBlock>,
+        params: Vec<OldTypeBlock>,
     },
     Tuple {
-        elements: Vec<TypeBlock>,
+        elements: Vec<OldTypeBlock>,
     },
 }
 
-impl TypeBlock {
+impl OldTypeBlock {
     fn to_ast_node(&self) -> Option<TypeAstNode> {
         match self {
-            TypeBlock::Empty => None,
-            TypeBlock::Primitive(name) => Some(TypeAstNode::Primitive { name: name.clone() }),
-            TypeBlock::Path(path) => Some(TypeAstNode::Path { path: path.clone() }),
-            TypeBlock::AliasRef(alias) => Some(TypeAstNode::AliasRef { alias: alias.clone() }),
-            TypeBlock::Constructor { name, params } => {
+            OldTypeBlock::Empty => None,
+            OldTypeBlock::Primitive(name) => Some(TypeAstNode::Primitive { name: name.clone() }),
+            OldTypeBlock::Path(path) => Some(TypeAstNode::Path { path: path.clone() }),
+            OldTypeBlock::AliasRef(alias) => Some(TypeAstNode::AliasRef { alias: alias.clone() }),
+            OldTypeBlock::Constructor { name, params } => {
                 let param_nodes: Vec<TypeAstNode> = params
                     .iter()
                     .filter_map(|p| p.to_ast_node())
@@ -39,7 +40,7 @@ impl TypeBlock {
                     const_generics: vec![],
                 })
             }
-            TypeBlock::Tuple { elements } => {
+            OldTypeBlock::Tuple { elements } => {
                 let element_nodes: Vec<TypeAstNode> = elements
                     .iter()
                     .filter_map(|e| e.to_ast_node())
@@ -51,41 +52,41 @@ impl TypeBlock {
 
     fn from_ast_node(node: &TypeAstNode) -> Self {
         match node {
-            TypeAstNode::Primitive { name } => TypeBlock::Primitive(name.clone()),
-            TypeAstNode::Path { path } => TypeBlock::Path(path.clone()),
-            TypeAstNode::AliasRef { alias } => TypeBlock::AliasRef(alias.clone()),
-            TypeAstNode::Constructor { name, params, .. } => TypeBlock::Constructor {
+            TypeAstNode::Primitive { name } => OldTypeBlock::Primitive(name.clone()),
+            TypeAstNode::Path { path } => OldTypeBlock::Path(path.clone()),
+            TypeAstNode::AliasRef { alias } => OldTypeBlock::AliasRef(alias.clone()),
+            TypeAstNode::Constructor { name, params, .. } => OldTypeBlock::Constructor {
                 name: name.clone(),
                 params: params.iter().map(Self::from_ast_node).collect(),
             },
-            TypeAstNode::Tuple { elements } => TypeBlock::Tuple {
+            TypeAstNode::Tuple { elements } => OldTypeBlock::Tuple {
                 elements: elements.iter().map(Self::from_ast_node).collect(),
             },
             TypeAstNode::FnPointer { .. } => {
                 // For now, represent as a path
-                TypeBlock::Path("FnPointer".to_string())
+                OldTypeBlock::Path("FnPointer".to_string())
             }
         }
     }
 
     fn display_name(&self) -> String {
         match self {
-            TypeBlock::Empty => "Empty".to_string(),
-            TypeBlock::Primitive(name) => name.clone(),
-            TypeBlock::Path(path) => path.clone(),
-            TypeBlock::AliasRef(alias) => alias.clone(),
-            TypeBlock::Constructor { name, .. } => name.clone(),
-            TypeBlock::Tuple { .. } => "Tuple".to_string(),
+            OldTypeBlock::Empty => "Empty".to_string(),
+            OldTypeBlock::Primitive(name) => name.clone(),
+            OldTypeBlock::Path(path) => path.clone(),
+            OldTypeBlock::AliasRef(alias) => alias.clone(),
+            OldTypeBlock::Constructor { name, .. } => name.clone(),
+            OldTypeBlock::Tuple { .. } => "Tuple".to_string(),
         }
     }
 
     fn color(&self) -> Hsla {
         match self {
-            TypeBlock::Empty => hsla(0.0, 0.0, 0.5, 1.0),
-            TypeBlock::Primitive(_) => hsla(0.55, 0.7, 0.5, 1.0), // Blue
-            TypeBlock::Path(_) => hsla(0.5, 0.7, 0.5, 1.0), // Cyan
-            TypeBlock::AliasRef(_) => hsla(0.75, 0.7, 0.5, 1.0), // Purple
-            TypeBlock::Constructor { name, .. } => {
+            OldTypeBlock::Empty => hsla(0.0, 0.0, 0.5, 1.0),
+            OldTypeBlock::Primitive(_) => hsla(0.55, 0.7, 0.5, 1.0), // Blue
+            OldTypeBlock::Path(_) => hsla(0.5, 0.7, 0.5, 1.0), // Cyan
+            OldTypeBlock::AliasRef(_) => hsla(0.75, 0.7, 0.5, 1.0), // Purple
+            OldTypeBlock::Constructor { name, .. } => {
                 match name.as_str() {
                     "Box" | "Arc" | "Rc" => hsla(0.33, 0.7, 0.45, 1.0), // Green
                     "Vec" | "HashMap" | "HashSet" => hsla(0.83, 0.7, 0.5, 1.0), // Magenta
@@ -93,7 +94,7 @@ impl TypeBlock {
                     _ => hsla(0.15, 0.7, 0.5, 1.0), // Orange
                 }
             }
-            TypeBlock::Tuple { .. } => hsla(0.66, 0.7, 0.5, 1.0), // Blue-Purple
+            OldTypeBlock::Tuple { .. } => hsla(0.66, 0.7, 0.5, 1.0), // Blue-Purple
         }
     }
 }
@@ -103,7 +104,7 @@ pub struct AliasEditor {
     name: String,
     display_name: String,
     description: String,
-    root_block: TypeBlock,
+    root_block: OldTypeBlock,
     selected_path: Vec<usize>, // Path to selected block in tree
     show_palette: bool,
     error_message: Option<String>,
@@ -121,14 +122,14 @@ impl AliasEditor {
                             asset.name.clone(),
                             asset.display_name.clone(),
                             asset.description.unwrap_or_default(),
-                            TypeBlock::from_ast_node(&asset.ast),
+                            OldTypeBlock::from_ast_node(&asset.ast),
                             None,
                         ),
                         Err(e) => (
                             String::new(),
                             "New Alias".to_string(),
                             String::new(),
-                            TypeBlock::Empty,
+                            OldTypeBlock::Empty,
                             Some(format!("Failed to parse: {}", e)),
                         ),
                     }
@@ -139,7 +140,7 @@ impl AliasEditor {
                         String::new(),
                         "New Alias".to_string(),
                         String::new(),
-                        TypeBlock::Empty,
+                        OldTypeBlock::Empty,
                         None,
                     )
                 }
@@ -202,7 +203,7 @@ impl AliasEditor {
         cx.notify();
     }
 
-    fn render_block(&self, block: &TypeBlock, depth: usize, path: Vec<usize>, cx: &mut Context<Self>) -> Div {
+    fn render_block(&self, block: &OldTypeBlock, depth: usize, path: Vec<usize>, cx: &mut Context<Self>) -> Div {
         let is_selected = path == self.selected_path;
         let color = block.color();
 
@@ -226,8 +227,8 @@ impl AliasEditor {
                             .child(block.display_name())
                     )
             )
-            .when(matches!(block, TypeBlock::Constructor { params, .. } if !params.is_empty()), |this| {
-                if let TypeBlock::Constructor { params, .. } = block {
+            .when(matches!(block, OldTypeBlock::Constructor { params, .. } if !params.is_empty()), |this| {
+                if let OldTypeBlock::Constructor { params, .. } = block {
                     let mut result = this;
                     for (i, param) in params.iter().enumerate() {
                         let mut param_path = path.clone();
@@ -239,8 +240,8 @@ impl AliasEditor {
                     this
                 }
             })
-            .when(matches!(block, TypeBlock::Tuple { elements, .. } if !elements.is_empty()), |this| {
-                if let TypeBlock::Tuple { elements } = block {
+            .when(matches!(block, OldTypeBlock::Tuple { elements, .. } if !elements.is_empty()), |this| {
+                if let OldTypeBlock::Tuple { elements } = block {
                     let mut result = this;
                     for (i, element) in elements.iter().enumerate() {
                         let mut elem_path = path.clone();
@@ -277,8 +278,8 @@ impl AliasEditor {
                         Button::new(prim)
                             .with_variant(ButtonVariant::Ghost)
                             .child(prim)
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.root_block = TypeBlock::Primitive(prim.to_string());
+                            .on_click(cx.listener(move |this, _, _window, cx| {
+                                this.root_block = OldTypeBlock::Primitive(prim.to_string());
                                 this.show_palette = false;
                                 cx.notify();
                             }))
@@ -300,10 +301,10 @@ impl AliasEditor {
                         Button::new(cons)
                             .with_variant(ButtonVariant::Ghost)
                             .child(cons)
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.root_block = TypeBlock::Constructor {
+                            .on_click(cx.listener(move |this, _, _window, cx| {
+                                this.root_block = OldTypeBlock::Constructor {
                                     name: cons.to_string(),
-                                    params: vec![TypeBlock::Empty],
+                                    params: vec![OldTypeBlock::Empty],
                                 };
                                 this.show_palette = false;
                                 cx.notify();

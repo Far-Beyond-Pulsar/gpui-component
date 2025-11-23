@@ -1,13 +1,23 @@
 use gpui::{prelude::*, *};
-use ui::{h_flex, v_flex, divider::Divider, ActiveTheme, StyledExt};
+use ui::{h_flex, v_flex, divider::Divider, ActiveTheme, StyledExt, button::{Button, ButtonVariants}, input::TextInput};
 use pulsar_std::{get_all_type_constructors, get_type_constructors_by_category, TypeConstructorMetadata};
+use ui_types_common::PRIMITIVES;
 use std::collections::HashMap;
 use crate::type_block::TypeBlock;
+
+/// Event emitted when a type is selected from the palette
+#[derive(Clone, Debug)]
+pub struct TypeSelected {
+    pub block: TypeBlock,
+}
 
 /// Palette of available type constructors (like Scratch's block palette)
 /// Now dynamically loaded from the type constructor registry!
 pub struct ConstructorPalette {
     categories: Vec<CategoryData>,
+    search_query: String,
+    collapsed_categories: HashMap<String, bool>,
+    show_primitives: bool,
 }
 
 struct CategoryData {
@@ -75,32 +85,103 @@ impl ConstructorPalette {
             }
         }
 
-        Self { categories }
+        Self { 
+            categories,
+            search_query: String::new(),
+            collapsed_categories: HashMap::new(),
+            show_primitives: true,
+        }
     }
 
-    pub fn render(&self, cx: &mut WindowContext) -> impl IntoElement {
+    /// Set search query and filter results
+    pub fn set_search(&mut self, query: String) {
+        self.search_query = query;
+    }
+
+    /// Toggle category collapsed state
+    pub fn toggle_category(&mut self, category_name: &str) {
+        let collapsed = self.collapsed_categories.get(category_name).copied().unwrap_or(false);
+        self.collapsed_categories.insert(category_name.to_string(), !collapsed);
+    }
+
+    /// Check if category is collapsed
+    fn is_category_collapsed(&self, category_name: &str) -> bool {
+        self.collapsed_categories.get(category_name).copied().unwrap_or(false)
+    }
+
+    /// Filter constructors based on search query
+    fn filter_constructors<'a>(&'a self, constructors: &'a [&'static TypeConstructorMetadata]) -> Vec<&'static TypeConstructorMetadata> {
+        if self.search_query.is_empty() {
+            return constructors.to_vec();
+        }
+
+        let query_lower = self.search_query.to_lowercase();
+        constructors
+            .iter()
+            .filter(|c| {
+                c.name.to_lowercase().contains(&query_lower)
+                    || c.description.to_lowercase().contains(&query_lower)
+                    || c.category.to_lowercase().contains(&query_lower)
+            })
+            .copied()
+            .collect()
+    }
+
+    /// Filter primitives based on search query
+    fn filter_primitives(&self) -> Vec<&'static str> {
+        if self.search_query.is_empty() {
+            return PRIMITIVES.to_vec();
+        }
+
+        let query_lower = self.search_query.to_lowercase();
+        PRIMITIVES
+            .iter()
+            .filter(|p| p.to_lowercase().contains(&query_lower))
+            .copied()
+            .collect()
+    }
+
+    pub fn render(&self, window: &mut Window) -> impl IntoElement {
+        let cx = window.app();
         v_flex()
-            .w(px(280.0))
+            .w(px(320.0))
             .h_full()
             .bg(cx.theme().sidebar)
-            .border_r_1()
+            .border_r_2()
             .border_color(cx.theme().border)
             .child(
-                // Header
-                h_flex()
+                // Header with search
+                v_flex()
                     .w_full()
-                    .px_4()
-                    .py_3()
                     .bg(cx.theme().secondary)
                     .border_b_2()
                     .border_color(cx.theme().border)
-                    .items_center()
                     .child(
-                        div()
-                            .text_sm()
-                            .font_bold()
-                            .text_color(cx.theme().foreground)
-                            .child("Type Constructors")
+                        h_flex()
+                            .w_full()
+                            .px_4()
+                            .py_3()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_bold()
+                                    .text_color(cx.theme().foreground)
+                                    .child("🎨 Type Library")
+                            )
+                    )
+                    .child(
+                        // Search box
+                        h_flex()
+                            .w_full()
+                            .px_3()
+                            .pb_3()
+                            .child(
+                                div()
+                                    .w_full()
+                                    .child("🔍 Search...")  // Placeholder for TextInput
+                            )
                     )
             )
             .child(
@@ -110,11 +191,29 @@ impl ConstructorPalette {
                     .overflow_y_scroll()
                     .p_3()
                     .gap_3()
+                    .when(self.show_primitives, |this| {
+                        let filtered = self.filter_primitives();
+                        if !filtered.is_empty() {
+                            this.child(self.render_primitives_category(&filtered, cx))
+                        } else {
+                            this
+                        }
+                    })
                     .children(
                         self.categories
                             .iter()
-                            .map(|category| self.render_category(category, cx))
+                            .filter_map(|category| {
+                                let filtered = self.filter_constructors(&category.constructors);
+                                if !filtered.is_empty() {
+                                    Some(self.render_category_with_filtered(category, &filtered, cx))
+                                } else {
+                                    None
+                                }
+                            })
                     )
+                    .when(!self.search_query.is_empty() && self.has_no_results(), |this| {
+                        this.child(self.render_no_results(cx))
+                    })
             )
             .child(
                 // Footer hint
@@ -128,12 +227,210 @@ impl ConstructorPalette {
                         div()
                             .text_xs()
                             .text_color(cx.theme().muted_foreground)
-                            .child("Click to add blocks to your type")
+                            .child("💡 Drag types to the canvas or click to add")
                     )
             )
     }
 
-    fn render_category(&self, category: &CategoryData, cx: &mut WindowContext) -> impl IntoElement {
+    fn has_no_results(&self) -> bool {
+        self.filter_primitives().is_empty() && 
+        self.categories.iter().all(|c| self.filter_constructors(&c.constructors).is_empty())
+    }
+
+    fn render_no_results(&self, cx: &App) -> impl IntoElement {
+        v_flex()
+            .w_full()
+            .items_center()
+            .justify_center()
+            .p_6()
+            .gap_2()
+            .child(
+                div()
+                    .text_2xl()
+                    .child("🔍")
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(format!("No types found for \"{}\"", self.search_query))
+            )
+    }
+
+    fn render_primitives_category(&self, primitives: &[&'static str], cx: &App) -> impl IntoElement {
+        let is_collapsed = self.is_category_collapsed("Primitives");
+        
+        v_flex()
+            .w_full()
+            .gap_2()
+            .child(
+                // Category header - clickable to collapse/expand
+                h_flex()
+                    .w_full()
+                    .px_3()
+                    .py_2()
+                    .gap_2()
+                    .items_center()
+                    .bg(cx.theme().muted.opacity(0.3))
+                    .rounded(px(6.0))
+                    .hover(|s| s.bg(cx.theme().muted.opacity(0.4)))
+                    .cursor_pointer()
+                    .child(
+                        div()
+                            .text_sm()
+                            .child(if is_collapsed { "▶" } else { "▼" })
+                    )
+                    .child(
+                        div()
+                            .text_base()
+                            .child("🔢")
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_semibold()
+                            .text_color(cx.theme().foreground)
+                            .child(format!("Primitives ({})", primitives.len()))
+                    )
+            )
+            .when(!is_collapsed, |this| {
+                this.child(
+                    // Primitive blocks in a grid
+                    div()
+                        .w_full()
+                        .flex()
+                        .flex_wrap()
+                        .gap_2()
+                        .px_2()
+                        .children(primitives.iter().map(|prim| {
+                            self.render_primitive_block(prim, cx)
+                        }))
+                )
+            })
+    }
+
+    fn render_primitive_block(&self, name: &str, cx: &App) -> impl IntoElement {
+        let color = hsla(0.55, 0.7, 0.5, 1.0); // Blue for primitives
+        
+        div()
+            .px_3()
+            .py_2()
+            .bg(color)
+            .rounded(px(6.0))
+            .border_1()
+            .border_color(color.lighten(0.1))
+            .hover(|s| s.bg(color.lighten(0.1)).shadow_md())
+            .cursor_pointer()
+            .child(
+                div()
+                    .text_xs()
+                    .font_medium()
+                    .text_color(gpui::white())
+                    .child(name.to_string())
+            )
+    }
+
+    fn render_category_with_filtered(&self, category: &CategoryData, filtered: &[&'static TypeConstructorMetadata], cx: &App) -> impl IntoElement {
+        let is_collapsed = self.is_category_collapsed(&category.name);
+        
+        v_flex()
+            .w_full()
+            .gap_2()
+            .child(
+                // Category header
+                h_flex()
+                    .w_full()
+                    .px_3()
+                    .py_2()
+                    .gap_2()
+                    .items_center()
+                    .bg(cx.theme().muted.opacity(0.3))
+                    .rounded(px(6.0))
+                    .hover(|s| s.bg(cx.theme().muted.opacity(0.4)))
+                    .cursor_pointer()
+                    .child(
+                        div()
+                            .text_sm()
+                            .child(if is_collapsed { "▶" } else { "▼" })
+                    )
+                    .child(
+                        div()
+                            .text_base()
+                            .child(category.icon)
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_sm()
+                            .font_semibold()
+                            .text_color(cx.theme().foreground)
+                            .child(format!("{} ({})", category.name, filtered.len()))
+                    )
+            )
+            .when(!is_collapsed, |this| {
+                this.child(
+                    v_flex()
+                        .w_full()
+                        .gap_2()
+                        .px_2()
+                        .children(filtered.iter().map(|constructor| {
+                            self.render_constructor_block(constructor, cx)
+                        }))
+                )
+            })
+    }
+
+    fn render_constructor_block(&self, constructor: &TypeConstructorMetadata, cx: &App) -> impl IntoElement {
+        let color = hsla(0.08, 0.8, 0.6, 1.0); // Orange for constructors
+        
+        v_flex()
+            .w_full()
+            .gap_1()
+            .child(
+                // Main block
+                h_flex()
+                    .w_full()
+                    .px_3()
+                    .py_2()
+                    .gap_2()
+                    .items_center()
+                    .bg(color)
+                    .rounded(px(6.0))
+                    .border_1()
+                    .border_color(color.lighten(0.1))
+                    .hover(|s| s.bg(color.lighten(0.1)).shadow_md())
+                    .cursor_pointer()
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_sm()
+                            .font_bold()
+                            .text_color(gpui::white())
+                            .child(format!("{}<>", constructor.name))
+                    )
+                    .child(
+                        div()
+                            .px_2()
+                            .py_0p5()
+                            .bg(gpui::white().opacity(0.2))
+                            .rounded(px(4.0))
+                            .text_xs()
+                            .text_color(gpui::white())
+                            .child(format!("{}", constructor.params_count))
+                    )
+            )
+            .child(
+                // Description
+                div()
+                    .w_full()
+                    .px_3()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(constructor.description)
+            )
+    }
+
+    fn _render_category(&self, category: &CategoryData, cx: &mut WindowContext) -> impl IntoElement {
         v_flex()
             .w_full()
             .gap_2()

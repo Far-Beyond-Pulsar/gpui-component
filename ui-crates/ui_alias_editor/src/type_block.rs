@@ -1,34 +1,61 @@
 use gpui::{prelude::*, *};
-use ui::{h_flex, v_flex, button::{Button, ButtonVariants}, ActiveTheme, StyledExt};
+use ui::{h_flex, v_flex, ActiveTheme, StyledExt};
 use ui_types_common::TypeAstNode;
+use std::sync::Arc;
+
+/// Unique identifier for a block instance
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct BlockId(pub Arc<str>);
+
+impl BlockId {
+    pub fn new() -> Self {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+        BlockId(Arc::from(format!("block_{}", id)))
+    }
+}
+
+/// Slot label for constructor parameters
+#[derive(Clone, Debug)]
+pub struct SlotLabel {
+    pub text: String,
+    pub index: usize,
+}
 
 /// Represents a visual block for a type node (like Scratch blocks)
 #[derive(Clone, Debug)]
 pub enum TypeBlock {
     /// Primitive type block (leaf node)
     Primitive {
+        id: BlockId,
         name: String,
         color: BlockColor,
     },
     /// Path type block (leaf node)
     Path {
+        id: BlockId,
         path: String,
         color: BlockColor,
     },
     /// Alias reference block (leaf node)
     AliasRef {
+        id: BlockId,
         alias: String,
         color: BlockColor,
     },
-    /// Constructor block with slots for nested types
+    /// Constructor block with labeled slots for nested types
     Constructor {
+        id: BlockId,
         name: String,
         color: BlockColor,
         slots: Vec<Option<Box<TypeBlock>>>,
+        slot_labels: Vec<String>,  // Labels like "T", "E", "K", "V"
         expected_params: usize,
     },
     /// Tuple block with multiple element slots
     Tuple {
+        id: BlockId,
         color: BlockColor,
         elements: Vec<Option<Box<TypeBlock>>>,
     },
@@ -59,6 +86,7 @@ impl TypeBlock {
     /// Create a primitive type block
     pub fn primitive(name: impl Into<String>) -> Self {
         TypeBlock::Primitive {
+            id: BlockId::new(),
             name: name.into(),
             color: BlockColor::Primitive,
         }
@@ -67,6 +95,7 @@ impl TypeBlock {
     /// Create a path type block
     pub fn path(path: impl Into<String>) -> Self {
         TypeBlock::Path {
+            id: BlockId::new(),
             path: path.into(),
             color: BlockColor::Path,
         }
@@ -75,20 +104,26 @@ impl TypeBlock {
     /// Create an alias reference block
     pub fn alias(alias: impl Into<String>) -> Self {
         TypeBlock::AliasRef {
+            id: BlockId::new(),
             alias: alias.into(),
             color: BlockColor::Alias,
         }
     }
 
-    /// Create a constructor block (Box, Arc, Vec, etc.)
+    /// Create a constructor block (Box, Arc, Vec, etc.) with labeled slots
     pub fn constructor(name: impl Into<String>, param_count: usize) -> Self {
         let name = name.into();
         let slots = vec![None; param_count];
+        
+        // Generate default slot labels (T, E, K, V, etc.)
+        let slot_labels = Self::generate_slot_labels(&name, param_count);
 
         TypeBlock::Constructor {
+            id: BlockId::new(),
             name,
             color: BlockColor::Constructor,
             slots,
+            slot_labels,
             expected_params: param_count,
         }
     }
@@ -96,8 +131,83 @@ impl TypeBlock {
     /// Create a tuple block
     pub fn tuple(element_count: usize) -> Self {
         TypeBlock::Tuple {
+            id: BlockId::new(),
             color: BlockColor::Tuple,
             elements: vec![None; element_count],
+        }
+    }
+
+    /// Generate meaningful slot labels based on constructor name
+    fn generate_slot_labels(name: &str, param_count: usize) -> Vec<String> {
+        match name {
+            "Result" if param_count == 2 => vec!["T".to_string(), "E".to_string()],
+            "HashMap" | "BTreeMap" if param_count == 2 => vec!["K".to_string(), "V".to_string()],
+            _ => (0..param_count).map(|i| {
+                if i == 0 { "T".to_string() }
+                else { format!("T{}", i) }
+            }).collect()
+        }
+    }
+
+    /// Get the block's ID
+    pub fn id(&self) -> &BlockId {
+        match self {
+            TypeBlock::Primitive { id, .. }
+            | TypeBlock::Path { id, .. }
+            | TypeBlock::AliasRef { id, .. }
+            | TypeBlock::Constructor { id, .. }
+            | TypeBlock::Tuple { id, .. } => id,
+        }
+    }
+
+    /// Set a slot's content
+    pub fn set_slot(&mut self, slot_index: usize, block: Option<TypeBlock>) {
+        match self {
+            TypeBlock::Constructor { slots, .. } => {
+                if slot_index < slots.len() {
+                    slots[slot_index] = block.map(Box::new);
+                }
+            }
+            TypeBlock::Tuple { elements, .. } => {
+                if slot_index < elements.len() {
+                    elements[slot_index] = block.map(Box::new);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Get a slot's content
+    pub fn get_slot(&self, slot_index: usize) -> Option<&TypeBlock> {
+        match self {
+            TypeBlock::Constructor { slots, .. } => {
+                slots.get(slot_index).and_then(|s| s.as_ref()).map(|b| b.as_ref())
+            }
+            TypeBlock::Tuple { elements, .. } => {
+                elements.get(slot_index).and_then(|e| e.as_ref()).map(|b| b.as_ref())
+            }
+            _ => None,
+        }
+    }
+
+    /// Remove a block from a slot and return it
+    pub fn take_slot(&mut self, slot_index: usize) -> Option<TypeBlock> {
+        match self {
+            TypeBlock::Constructor { slots, .. } => {
+                slots.get_mut(slot_index).and_then(|s| s.take()).map(|b| *b)
+            }
+            TypeBlock::Tuple { elements, .. } => {
+                elements.get_mut(slot_index).and_then(|e| e.take()).map(|b| *b)
+            }
+            _ => None,
+        }
+    }
+
+    /// Get slot labels for constructor blocks
+    pub fn slot_labels(&self) -> Option<&[String]> {
+        match self {
+            TypeBlock::Constructor { slot_labels, .. } => Some(slot_labels),
+            _ => None,
         }
     }
 
@@ -231,6 +341,37 @@ impl TypeBlock {
             _ => false,
         }
     }
+
+    /// Find a block by ID in this tree
+    pub fn find_block_mut(&mut self, target_id: &BlockId) -> Option<&mut TypeBlock> {
+        if self.id() == target_id {
+            return Some(self);
+        }
+
+        match self {
+            TypeBlock::Constructor { slots, .. } => {
+                for slot in slots {
+                    if let Some(block) = slot {
+                        if let Some(found) = block.find_block_mut(target_id) {
+                            return Some(found);
+                        }
+                    }
+                }
+            }
+            TypeBlock::Tuple { elements, .. } => {
+                for element in elements {
+                    if let Some(block) = element {
+                        if let Some(found) = block.find_block_mut(target_id) {
+                            return Some(found);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        None
+    }
 }
 
 /// Visual representation of a type block
@@ -272,53 +413,84 @@ impl TypeBlockView {
         let color = self.block.color().to_hsla();
 
         match &self.block {
-            TypeBlock::Constructor { name, slots, .. } => {
+            TypeBlock::Constructor { name, slots, slot_labels, .. } => {
                 v_flex()
-                    .gap_1()
+                    .gap_0()
+                    .min_w(px(200.0))
                     .child(
-                        // Header
+                        // Header - curved top, wraps around
                         h_flex()
-                            .px_3()
+                            .px_4()
                             .py_2()
                             .bg(color)
-                            .rounded_t(px(6.0))
-                            .border_1()
-                            .border_color(color.lighten(0.1))
+                            .rounded_t(px(8.0))
+                            .border_2()
+                            .border_color(color.lighten(0.15))
+                            .items_center()
+                            .gap_2()
                             .child(
                                 div()
                                     .text_sm()
                                     .font_bold()
                                     .text_color(gpui::white())
-                                    .child(format!("{}<", name))
+                                    .child(name.clone())
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(gpui::white().opacity(0.7))
+                                    .child("<")
                             )
                     )
-                    .child(
-                        // Slots
+                    .children(slots.iter().enumerate().map(|(i, slot)| {
+                        // Each slot has a label and wraps with notches (Scratch-style)
+                        let label = slot_labels.get(i).map(|s| s.as_str()).unwrap_or("T");
+                        
                         v_flex()
-                            .px_3()
-                            .py_2()
-                            .gap_2()
-                            .bg(color.opacity(0.2))
-                            .border_x_1()
-                            .border_color(color.lighten(0.1))
-                            .children(slots.iter().enumerate().map(|(i, slot)| {
-                                self.render_slot(i, slot, cx)
-                            }))
-                    )
+                            .gap_0()
+                            .child(
+                                // Slot label and notch top
+                                h_flex()
+                                    .bg(color.opacity(0.3))
+                                    .border_x_2()
+                                    .border_color(color.lighten(0.15))
+                                    .pl_4()
+                                    .pr_2()
+                                    .py_1()
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_semibold()
+                                            .text_color(color.lighten(0.3))
+                                            .child(format!("{}: ", label))
+                                    )
+                            )
+                            .child(
+                                // Slot content area with inset
+                                h_flex()
+                                    .bg(color.opacity(0.15))
+                                    .border_x_2()
+                                    .border_color(color.lighten(0.15))
+                                    .px_3()
+                                    .py_3()
+                                    .child(self.render_slot(i, slot, cx))
+                            )
+                    }))
                     .child(
-                        // Footer
+                        // Footer - curved bottom, closes the wrap
                         h_flex()
-                            .px_3()
-                            .py_1()
+                            .px_4()
+                            .py_2()
                             .bg(color)
-                            .rounded_b(px(6.0))
-                            .border_1()
-                            .border_color(color.lighten(0.1))
+                            .rounded_b(px(8.0))
+                            .border_2()
+                            .border_color(color.lighten(0.15))
+                            .items_center()
                             .child(
                                 div()
-                                    .text_sm()
+                                    .text_xs()
                                     .font_bold()
-                                    .text_color(gpui::white())
+                                    .text_color(gpui::white().opacity(0.7))
                                     .child(">")
                             )
                     )
@@ -373,33 +545,42 @@ impl TypeBlockView {
         }
     }
 
-    fn render_slot(&self, index: usize, slot: &Option<Box<TypeBlock>>, cx: &App) -> Div {
+    fn render_slot(&self, index: usize, slot: &Option<Box<TypeBlock>>, _cx: &App) -> Div {
         if let Some(block) = slot {
             let nested_view = TypeBlockView::new(
                 *block.clone(),
-                format!("{}-slot-{}", self.id, index),
+                ("slot", index),
             );
 
-            div().child(nested_view.render(cx))
-        } else {
-            // Empty slot - drop zone
             div()
+                .w_full()
+                .child(nested_view)
+        } else {
+            // Empty slot - drop zone with visual cue
+            div()
+                .w_full()
+                .min_w(px(150.0))
                 .px_4()
-                .py_3()
-                .bg(hsla(0.0, 0.0, 0.3, 0.3))
-                .rounded(px(4.0))
+                .py_4()
+                .bg(hsla(0.0, 0.0, 0.2, 0.2))
+                .rounded(px(6.0))
                 .border_2()
-                .border_color(hsla(0.0, 0.0, 0.5, 0.5))
+                .border_color(hsla(0.0, 0.0, 0.4, 0.6))
                 .border_dashed()
-                .text_xs()
-                .text_color(hsla(0.0, 0.0, 0.6, 1.0))
-                .child("Drop type here")
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                        .child("drop type here")
+                )
         }
     }
 }
 
 impl IntoElement for TypeBlockView {
-    type Element = Div;
+    type Element = Stateful<Div>;
 
     fn into_element(self) -> Self::Element {
         div().id(self.id.clone())
@@ -407,11 +588,11 @@ impl IntoElement for TypeBlockView {
 }
 
 impl RenderOnce for TypeBlockView {
-    fn render(self, cx: &mut WindowContext) -> impl IntoElement {
+    fn render(self, window: &mut Window, _cx: &mut App) -> impl IntoElement {
         if self.block.is_container() {
-            self.render_container_block(cx.app())
+            self.render_container_block(_cx)
         } else {
-            self.render_leaf_block(cx.app())
+            self.render_leaf_block(_cx)
         }
     }
 }

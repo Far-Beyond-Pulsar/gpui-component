@@ -1,0 +1,294 @@
+use gpui::{prelude::*, *};
+use ui::{h_flex, v_flex, ActiveTheme, StyledExt};
+use crate::type_block::{TypeBlock, BlockId};
+use std::collections::HashMap;
+
+/// Drag state for blocks
+#[derive(Clone, Debug)]
+pub struct DragState {
+    pub dragging_block: Option<TypeBlock>,
+    pub drag_start_pos: Point<Pixels>,
+    pub current_pos: Point<Pixels>,
+    pub hover_target: Option<DropTarget>,
+}
+
+/// Where a block can be dropped
+#[derive(Clone, Debug, PartialEq)]
+pub enum DropTarget {
+    /// Drop as root (replaces current root)
+    Root,
+    /// Drop into a slot of a specific block
+    Slot {
+        parent_block_id: BlockId,
+        slot_index: usize,
+    },
+}
+
+/// Canvas for visually composing type blocks with drag-and-drop
+pub struct BlockCanvas {
+    /// The root block being edited (the main type expression)
+    root_block: Option<TypeBlock>,
+    
+    /// Current drag state
+    drag_state: Option<DragState>,
+    
+    /// Hover highlight state
+    hover_slot: Option<(BlockId, usize)>,
+    
+    /// Canvas bounds for coordinate conversion
+    canvas_bounds: Option<Bounds<Pixels>>,
+    
+    /// Selected block for keyboard operations
+    selected_block: Option<BlockId>,
+}
+
+impl BlockCanvas {
+    pub fn new() -> Self {
+        Self {
+            root_block: None,
+            drag_state: None,
+            hover_slot: None,
+            canvas_bounds: None,
+            selected_block: None,
+        }
+    }
+
+    pub fn with_root(root_block: TypeBlock) -> Self {
+        Self {
+            root_block: Some(root_block),
+            drag_state: None,
+            hover_slot: None,
+            canvas_bounds: None,
+            selected_block: None,
+        }
+    }
+
+    pub fn root_block(&self) -> Option<&TypeBlock> {
+        self.root_block.as_ref()
+    }
+
+    pub fn set_root_block(&mut self, block: Option<TypeBlock>) {
+        self.root_block = block;
+    }
+
+    /// Start dragging a block from the palette
+    pub fn start_drag_from_palette(&mut self, block: TypeBlock, position: Point<Pixels>) {
+        self.drag_state = Some(DragState {
+            dragging_block: Some(block),
+            drag_start_pos: position,
+            current_pos: position,
+            hover_target: None,
+        });
+    }
+
+    /// Start dragging an existing block from the canvas
+    pub fn start_drag_from_canvas(&mut self, block_id: &BlockId, position: Point<Pixels>) {
+        // Extract the block from its current position
+        if let Some(root) = &mut self.root_block {
+            if root.id() == block_id {
+                // Dragging root itself
+                let taken = self.root_block.take();
+                if let Some(block) = taken {
+                    self.drag_state = Some(DragState {
+                        dragging_block: Some(block),
+                        drag_start_pos: position,
+                        current_pos: position,
+                        hover_target: None,
+                    });
+                }
+                return;
+            }
+
+            // TODO: Find and extract from nested slots
+        }
+    }
+
+    /// Update drag position
+    pub fn update_drag(&mut self, position: Point<Pixels>) {
+        let target = self.find_drop_target(position);
+        
+        if let Some(drag) = &mut self.drag_state {
+            drag.current_pos = position;
+            drag.hover_target = target;
+        }
+    }
+
+    /// Complete the drag operation
+    pub fn end_drag(&mut self) -> bool {
+        if let Some(drag) = self.drag_state.take() {
+            if let (Some(block), Some(target)) = (drag.dragging_block, drag.hover_target) {
+                return self.drop_block(block, target);
+            }
+        }
+        false
+    }
+
+    /// Cancel the drag operation
+    pub fn cancel_drag(&mut self) {
+        self.drag_state = None;
+    }
+
+    /// Find where a block would be dropped at the given position
+    fn find_drop_target(&self, _position: Point<Pixels>) -> Option<DropTarget> {
+        // If hover_slot is set, use that
+        if let Some((block_id, slot_index)) = &self.hover_slot {
+            return Some(DropTarget::Slot {
+                parent_block_id: block_id.clone(),
+                slot_index: *slot_index,
+            });
+        }
+
+        // If no root, can drop as root
+        if self.root_block.is_none() {
+            return Some(DropTarget::Root);
+        }
+
+        None
+    }
+
+    /// Actually drop a block into the target
+    fn drop_block(&mut self, block: TypeBlock, target: DropTarget) -> bool {
+        match target {
+            DropTarget::Root => {
+                self.root_block = Some(block);
+                true
+            }
+            DropTarget::Slot { parent_block_id, slot_index } => {
+                if let Some(root) = &mut self.root_block {
+                    if let Some(parent) = root.find_block_mut(&parent_block_id) {
+                        parent.set_slot(slot_index, Some(block));
+                        return true;
+                    }
+                }
+                false
+            }
+        }
+    }
+
+    /// Set hover target for a slot (called when mouse enters a slot)
+    pub fn set_hover_slot(&mut self, block_id: BlockId, slot_index: usize) {
+        self.hover_slot = Some((block_id, slot_index));
+    }
+
+    /// Clear hover target (called when mouse leaves a slot)
+    pub fn clear_hover_slot(&mut self) {
+        self.hover_slot = None;
+    }
+
+    /// Check if a slot is currently hovered
+    pub fn is_slot_hovered(&self, block_id: &BlockId, slot_index: usize) -> bool {
+        if let Some((hover_id, hover_idx)) = &self.hover_slot {
+            hover_id == block_id && *hover_idx == slot_index
+        } else {
+            false
+        }
+    }
+
+    /// Render the canvas
+    pub fn render(&self, window: &mut Window) -> impl IntoElement {
+        let cx = window.app();
+        let theme = cx.theme();
+        
+        v_flex()
+            .size_full()
+            .bg(theme.muted.opacity(0.05))
+            .rounded(px(8.0))
+            .border_2()
+            .border_color(theme.border)
+            .p_6()
+            .overflow_scroll()
+            .child(
+                if let Some(root) = &self.root_block {
+                    self.render_block_tree(root, cx)
+                } else {
+                    // Empty state - show drop zone
+                    self.render_empty_state(cx)
+                }
+            )
+            .when(self.drag_state.is_some(), |this| {
+                this.child(self.render_drag_preview(cx))
+            })
+    }
+
+    fn render_empty_state(&self, cx: &App) -> Div {
+        let is_drag_over = self.drag_state.is_some();
+        
+        v_flex()
+            .size_full()
+            .items_center()
+            .justify_center()
+            .gap_3()
+            .child(
+                div()
+                    .w(px(400.0))
+                    .h(px(200.0))
+                    .bg(hsla(0.0, 0.0, 0.2, 0.1))
+                    .rounded(px(12.0))
+                    .border_3()
+                    .border_color(if is_drag_over {
+                        cx.theme().accent.opacity(0.6)
+                    } else {
+                        hsla(0.0, 0.0, 0.3, 0.3)
+                    })
+                    .border_dashed()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_2xl()
+                                    .text_color(hsla(0.0, 0.0, 0.4, 1.0))
+                                    .child("🎯")
+                            )
+                            .child(
+                                div()
+                                    .text_base()
+                                    .text_color(hsla(0.0, 0.0, 0.5, 1.0))
+                                    .child(if is_drag_over {
+                                        "Drop to create type"
+                                    } else {
+                                        "Drag a type from the palette to start"
+                                    })
+                            )
+                    )
+            )
+    }
+
+    fn render_block_tree(&self, block: &TypeBlock, _cx: &App) -> Div {
+        use crate::type_block::TypeBlockView;
+        
+        div()
+            .child(
+                TypeBlockView::new(
+                    block.clone(),
+                    "canvas-root"
+                )
+            )
+    }
+
+    fn render_drag_preview(&self, _cx: &App) -> Div {
+        if let Some(drag) = &self.drag_state {
+            if let Some(block) = &drag.dragging_block {
+                use crate::type_block::TypeBlockView;
+                
+                return div()
+                    .absolute()
+                    .left(drag.current_pos.x - px(50.0))
+                    .top(drag.current_pos.y - px(20.0))
+                    .opacity(0.7)
+                    .shadow_lg()
+                    .child(
+                        TypeBlockView::new(
+                            block.clone(),
+                            "drag-preview"
+                        )
+                    );
+            }
+        }
+        
+        div()
+    }
+}
