@@ -1,5 +1,5 @@
 use gpui::{*, prelude::FluentBuilder, actions};
-use ui::{v_flex, h_flex, ActiveTheme, StyledExt, dock::{Panel, PanelEvent}, button::{Button, ButtonVariant, ButtonVariants}, divider::Divider};
+use ui::{v_flex, h_flex, ActiveTheme, StyledExt, Colorize, dock::{Panel, PanelEvent}, button::{Button, ButtonVariant, ButtonVariants}, divider::Divider};
 use ui_types_common::{AliasAsset, TypeAstNode};
 use std::path::PathBuf;
 use crate::{TypeBlock, BlockCanvas, ConstructorPalette};
@@ -16,8 +16,8 @@ pub struct VisualAliasEditor {
     /// Canvas for composing type blocks
     canvas: BlockCanvas,
     
-    /// Palette for selecting types
-    palette: ConstructorPalette,
+    /// Palette for selecting types (not stored, rendered inline)
+    palette_search: String,
     
     /// Whether palette is visible
     show_palette: bool,
@@ -78,7 +78,7 @@ impl VisualAliasEditor {
             display_name,
             description,
             canvas,
-            palette: ConstructorPalette::new(),
+            palette_search: String::new(),
             show_palette: true,
             error_message,
             show_preview: true,
@@ -184,6 +184,203 @@ impl VisualAliasEditor {
                             .text_sm()
                             .text_color(cx.theme().foreground)
                             .child(code)
+                    )
+            )
+    }
+
+    /// Add a block to the canvas
+    fn add_block_to_canvas(&mut self, block: TypeBlock, cx: &mut Context<Self>) {
+        if self.canvas.root_block().is_none() {
+            // No root yet, set as root
+            self.canvas.set_root_block(Some(block));
+        } else {
+            // TODO: Implement slot selection for nested placement
+            self.error_message = Some("Click on an empty slot to place this block".to_string());
+        }
+        cx.notify();
+    }
+
+    /// Render the palette inline with click handlers
+    fn render_palette(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        use pulsar_std::{get_all_type_constructors};
+        use ui_types_common::PRIMITIVES;
+        use std::collections::HashMap;
+        
+        let constructors = get_all_type_constructors();
+        let search_lower = self.palette_search.to_lowercase();
+        
+        // Group by category
+        let mut by_category: HashMap<&str, Vec<_>> = HashMap::new();
+        for ctor in constructors {
+            by_category.entry(ctor.category).or_insert_with(Vec::new).push(ctor);
+        }
+        
+        v_flex()
+            .w(px(320.0))
+            .h_full()
+            .bg(cx.theme().sidebar)
+            .border_r_2()
+            .border_color(cx.theme().border)
+            .child(
+                // Header
+                v_flex()
+                    .w_full()
+                    .bg(cx.theme().secondary)
+                    .border_b_2()
+                    .border_color(cx.theme().border)
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .px_4()
+                            .py_3()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_bold()
+                                    .text_color(cx.theme().foreground)
+                                    .child("🎨 Type Library")
+                            )
+                    )
+            )
+            .child(
+                // Primitives
+                v_flex()
+                    .flex_1()
+                    .p_3()
+                    .gap_3()
+                    .child(
+                        v_flex()
+                            .w_full()
+                            .gap_2()
+                            .child(
+                                h_flex()
+                                    .w_full()
+                                    .px_3()
+                                    .py_2()
+                                    .gap_2()
+                                    .items_center()
+                                    .bg(cx.theme().muted.opacity(0.3))
+                                    .rounded(px(6.0))
+                                    .child(div().text_sm().child("▼"))
+                                    .child(div().text_base().child("🔢"))
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .font_semibold()
+                                            .text_color(cx.theme().foreground)
+                                            .child(format!("Primitives ({})", PRIMITIVES.len()))
+                                    )
+                            )
+                            .child(
+                                div()
+                                    .w_full()
+                                    .flex()
+                                    .flex_wrap()
+                                    .gap_2()
+                                    .px_2()
+                                    .children(PRIMITIVES.iter().filter(|p| {
+                                        search_lower.is_empty() || p.to_lowercase().contains(&search_lower)
+                                    }).enumerate().map(|(i, prim)| {
+                                        let prim_name = *prim;
+                                        Button::new(("prim", i))
+                                            .with_variant(ButtonVariant::Secondary)
+                                            .child(prim_name)
+                                            .on_click(cx.listener(move |this, _, _window, cx| {
+                                                let block = TypeBlock::primitive(prim_name);
+                                                this.add_block_to_canvas(block, cx);
+                                            }))
+                                    }))
+                            )
+                    )
+                    .children(
+                        by_category
+                            .into_iter()
+                            .enumerate()
+                            .map(|(cat_idx, (category_name, category_constructors))| {
+                                let filtered: Vec<_> = category_constructors
+                                    .iter()
+                                    .filter(|c| {
+                                        search_lower.is_empty() 
+                                        || c.name.to_lowercase().contains(&search_lower)
+                                        || c.description.to_lowercase().contains(&search_lower)
+                                    })
+                                    .collect();
+                                
+                                if filtered.is_empty() {
+                                    return div();
+                                }
+                                
+                                v_flex()
+                                    .w_full()
+                                    .gap_2()
+                                    .child(
+                                        h_flex()
+                                            .w_full()
+                                            .px_3()
+                                            .py_2()
+                                            .gap_2()
+                                            .items_center()
+                                            .bg(cx.theme().muted.opacity(0.3))
+                                            .rounded(px(6.0))
+                                            .child(div().text_sm().child("▼"))
+                                            .child(div().text_base().child("📦"))
+                                            .child(
+                                                div()
+                                                    .flex_1()
+                                                    .text_sm()
+                                                    .font_semibold()
+                                                    .text_color(cx.theme().foreground)
+                                                    .child(format!("{} ({})", category_name, filtered.len()))
+                                            )
+                                    )
+                                    .child(
+                                        v_flex()
+                                            .w_full()
+                                            .gap_2()
+                                            .px_2()
+                                            .children(filtered.iter().enumerate().map(|(i, constructor)| {
+                                                let ctor_name = constructor.name;
+                                                let param_count = constructor.params_count;
+                                                
+                                                v_flex()
+                                                    .w_full()
+                                                    .gap_1()
+                                                    .child(
+                                                        Button::new(("ctor", i))
+                                                            .with_variant(ButtonVariant::Primary)
+                                                            .child(format!("{}<> ({})", ctor_name, param_count))
+                                                            .on_click(cx.listener(move |this, _, _window, cx| {
+                                                                let block = TypeBlock::constructor(ctor_name, param_count);
+                                                                this.add_block_to_canvas(block, cx);
+                                                            }))
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .w_full()
+                                                            .px_3()
+                                                            .text_xs()
+                                                            .text_color(cx.theme().muted_foreground)
+                                                            .child(constructor.description.to_string())
+                                                    )
+                                            }))
+                                    )
+                            })
+                    )
+            )
+            .child(
+                div()
+                    .px_4()
+                    .py_3()
+                    .bg(cx.theme().secondary.opacity(0.5))
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("💡 Click to add types to canvas")
                     )
             )
     }
@@ -319,7 +516,7 @@ impl Render for VisualAliasEditor {
                     .flex_1()
                     .min_h_0()
                     .when(self.show_palette, |this| {
-                        this.child(self.palette.render(cx))
+                        this.child(self.render_palette(cx))
                     })
                     .child(
                         // Center canvas
