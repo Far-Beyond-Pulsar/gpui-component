@@ -66,12 +66,15 @@ impl VisualAliasEditor {
                 }
             };
 
+        let has_initial_root = root_block.is_some();
         let canvas = if let Some(block) = root_block {
             BlockCanvas::with_root(block)
         } else {
             BlockCanvas::new()
         };
 
+        eprintln!("DEBUG: VisualAliasEditor created, has root_block={}", has_initial_root);
+        
         Self {
             file_path: Some(file_path),
             name,
@@ -190,11 +193,17 @@ impl VisualAliasEditor {
 
     /// Add a block to the canvas
     fn add_block_to_canvas(&mut self, block: TypeBlock, cx: &mut Context<Self>) {
-        if self.canvas.root_block().is_none() {
+        let has_root = self.canvas.root_block().is_some();
+        eprintln!("DEBUG: add_block_to_canvas called, has_root={}", has_root);
+        
+        if !has_root {
             // No root yet, set as root
+            eprintln!("DEBUG: Setting as root block");
             self.canvas.set_root_block(Some(block));
+            self.error_message = None; // Clear any error
         } else {
-            // TODO: Implement slot selection for nested placement
+            // Has root - need slot selection
+            eprintln!("DEBUG: Already has root, need slot selection");
             self.error_message = Some("Click on an empty slot to place this block".to_string());
         }
         cx.notify();
@@ -209,11 +218,15 @@ impl VisualAliasEditor {
         let constructors = get_all_type_constructors();
         let search_lower = self.palette_search.to_lowercase();
         
-        // Group by category
+        // Group by category and sort for stable rendering
         let mut by_category: HashMap<&str, Vec<_>> = HashMap::new();
         for ctor in constructors {
             by_category.entry(ctor.category).or_insert_with(Vec::new).push(ctor);
         }
+        
+        // Sort categories for stable order
+        let mut categories: Vec<_> = by_category.into_iter().collect();
+        categories.sort_by_key(|(name, _)| *name);
         
         v_flex()
             .w(px(320.0))
@@ -282,9 +295,9 @@ impl VisualAliasEditor {
                                     .px_2()
                                     .children(PRIMITIVES.iter().filter(|p| {
                                         search_lower.is_empty() || p.to_lowercase().contains(&search_lower)
-                                    }).enumerate().map(|(i, prim)| {
+                                    }).map(|prim| {
                                         let prim_name = *prim;
-                                        Button::new(("prim", i))
+                                        Button::new(prim_name)
                                             .with_variant(ButtonVariant::Secondary)
                                             .child(prim_name)
                                             .on_click(cx.listener(move |this, _, _window, cx| {
@@ -295,10 +308,9 @@ impl VisualAliasEditor {
                             )
                     )
                     .children(
-                        by_category
+                        categories
                             .into_iter()
-                            .enumerate()
-                            .map(|(cat_idx, (category_name, category_constructors))| {
+                            .map(|(category_name, category_constructors)| {
                                 let filtered: Vec<_> = category_constructors
                                     .iter()
                                     .filter(|c| {
@@ -340,7 +352,7 @@ impl VisualAliasEditor {
                                             .w_full()
                                             .gap_2()
                                             .px_2()
-                                            .children(filtered.iter().enumerate().map(|(i, constructor)| {
+                                            .children(filtered.iter().map(|constructor| {
                                                 let ctor_name = constructor.name;
                                                 let param_count = constructor.params_count;
                                                 
@@ -348,7 +360,7 @@ impl VisualAliasEditor {
                                                     .w_full()
                                                     .gap_1()
                                                     .child(
-                                                        Button::new(("ctor", i))
+                                                        Button::new(ctor_name)
                                                             .with_variant(ButtonVariant::Primary)
                                                             .child(format!("{}<> ({})", ctor_name, param_count))
                                                             .on_click(cx.listener(move |this, _, _window, cx| {
