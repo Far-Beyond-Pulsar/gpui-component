@@ -70,6 +70,47 @@ impl BlockCanvas {
     pub fn set_root_block(&mut self, block: Option<TypeBlock>) {
         self.root_block = block;
     }
+    
+    /// Fill a slot in a block with a new child block
+    pub fn fill_slot(&mut self, parent_id: BlockId, slot_idx: usize, child: TypeBlock) -> bool {
+        if let Some(root) = &mut self.root_block {
+            Self::fill_slot_recursive(root, &parent_id, slot_idx, child)
+        } else {
+            false
+        }
+    }
+    
+    fn fill_slot_recursive(block: &mut TypeBlock, parent_id: &BlockId, slot_idx: usize, child: TypeBlock) -> bool {
+        // Check if this is the parent block
+        if block.id() == parent_id {
+            return block.set_slot(slot_idx, child);
+        }
+        
+        // Recursively search in child slots
+        match block {
+            TypeBlock::Constructor { slots, .. } => {
+                for slot in slots.iter_mut() {
+                    if let Some(nested) = slot {
+                        if Self::fill_slot_recursive(nested, parent_id, slot_idx, child.clone()) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            TypeBlock::Tuple { elements, .. } => {
+                for element in elements.iter_mut() {
+                    if let Some(nested) = element {
+                        if Self::fill_slot_recursive(nested, parent_id, slot_idx, child.clone()) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        
+        false
+    }
 
     /// Start dragging a block from the palette
     pub fn start_drag_from_palette(&mut self, block: TypeBlock, position: Point<Pixels>) {
@@ -156,8 +197,7 @@ impl BlockCanvas {
             DropTarget::Slot { parent_block_id, slot_index } => {
                 if let Some(root) = &mut self.root_block {
                     if let Some(parent) = root.find_block_mut(&parent_block_id) {
-                        parent.set_slot(slot_index, Some(block));
-                        return true;
+                        return parent.set_slot(slot_index, block);
                     }
                 }
                 false

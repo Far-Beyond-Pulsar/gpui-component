@@ -2,7 +2,7 @@ use gpui::{*, prelude::FluentBuilder, actions};
 use ui::{v_flex, h_flex, ActiveTheme, StyledExt, Colorize, dock::{Panel, PanelEvent}, button::{Button, ButtonVariant, ButtonVariants}, divider::Divider};
 use ui_types_common::{AliasAsset, TypeAstNode};
 use std::path::PathBuf;
-use crate::{TypeBlock, BlockCanvas, ConstructorPalette};
+use crate::{TypeBlock, BlockId, BlockCanvas, ConstructorPalette};
 
 actions!(visual_alias_editor, [Save, TogglePalette]);
 
@@ -29,6 +29,12 @@ pub struct VisualAliasEditor {
     show_preview: bool,
     
     focus_handle: FocusHandle,
+    
+    /// Currently selected slot to fill (parent_block_id, slot_index)
+    selected_slot: Option<(BlockId, usize)>,
+    
+    /// Block pending placement (from library click)
+    pending_block: Option<TypeBlock>,
 }
 
 impl VisualAliasEditor {
@@ -83,6 +89,8 @@ impl VisualAliasEditor {
             error_message,
             show_preview: true,
             focus_handle: cx.focus_handle(),
+            selected_slot: None,
+            pending_block: None,
         }
     }
 
@@ -194,11 +202,36 @@ impl VisualAliasEditor {
             // No root block yet - place as root
             self.canvas.set_root_block(Some(block));
             self.error_message = None;
+            self.pending_block = None;
+            self.selected_slot = None;
+        } else if let Some((parent_id, slot_idx)) = &self.selected_slot {
+            // Slot is selected - fill it
+            if self.canvas.fill_slot(parent_id.clone(), *slot_idx, block) {
+                self.error_message = None;
+                self.selected_slot = None;
+                self.pending_block = None;
+            } else {
+                self.error_message = Some("Failed to fill slot".to_string());
+            }
         } else {
-            // Has root - need slot selection
-            self.error_message = Some("Click on an empty slot in the type above to place this block".to_string());
+            // Has root but no slot selected - store as pending and prompt user
+            self.pending_block = Some(block);
+            self.error_message = Some("Click on an empty slot to place this type".to_string());
         }
         cx.notify();
+    }
+    
+    /// Select a slot to fill
+    fn select_slot(&mut self, parent_id: BlockId, slot_idx: usize, cx: &mut Context<Self>) {
+        self.selected_slot = Some((parent_id, slot_idx));
+        
+        // If we have a pending block, fill the slot immediately
+        if let Some(block) = self.pending_block.take() {
+            self.add_block_to_canvas(block, cx);
+        } else {
+            self.error_message = Some("Now select a type from the library to fill this slot".to_string());
+            cx.notify();
+        }
     }
 
     /// Render the palette inline with click handlers

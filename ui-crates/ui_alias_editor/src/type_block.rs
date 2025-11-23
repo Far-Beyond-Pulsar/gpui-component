@@ -161,19 +161,25 @@ impl TypeBlock {
     }
 
     /// Set a slot's content
-    pub fn set_slot(&mut self, slot_index: usize, block: Option<TypeBlock>) {
+    pub fn set_slot(&mut self, slot_index: usize, block: TypeBlock) -> bool {
         match self {
             TypeBlock::Constructor { slots, .. } => {
                 if slot_index < slots.len() {
-                    slots[slot_index] = block.map(Box::new);
+                    slots[slot_index] = Some(Box::new(block));
+                    true
+                } else {
+                    false
                 }
             }
             TypeBlock::Tuple { elements, .. } => {
                 if slot_index < elements.len() {
-                    elements[slot_index] = block.map(Box::new);
+                    elements[slot_index] = Some(Box::new(block));
+                    true
+                } else {
+                    false
                 }
             }
-            _ => {}
+            _ => false,
         }
     }
 
@@ -328,6 +334,8 @@ impl TypeBlock {
             _ => 0,
         }
     }
+    
+
 
     /// Check if a slot is filled
     pub fn is_slot_filled(&self, index: usize) -> bool {
@@ -388,7 +396,7 @@ impl TypeBlockView {
         }
     }
 
-    fn render_leaf_block(&self, cx: &App) -> Div {
+    fn render_leaf_block(&self, cx: Option<&App>) -> Div {
         let color = self.block.color().to_hsla();
 
         h_flex()
@@ -409,7 +417,7 @@ impl TypeBlockView {
             )
     }
 
-    fn render_container_block(&self, cx: &App) -> Div {
+    fn render_container_block(&self, cx: Option<&App>) -> Div {
         let color = self.block.color().to_hsla();
 
         match &self.block {
@@ -545,7 +553,7 @@ impl TypeBlockView {
         }
     }
 
-    fn render_slot(&self, index: usize, slot: &Option<Box<TypeBlock>>, _cx: &App) -> Div {
+    fn render_slot(&self, index: usize, slot: &Option<Box<TypeBlock>>, _cx: Option<&App>) -> Div {
         if let Some(block) = slot {
             let nested_view = TypeBlockView::new(
                 *block.clone(),
@@ -583,16 +591,25 @@ impl IntoElement for TypeBlockView {
     type Element = Stateful<Div>;
 
     fn into_element(self) -> Self::Element {
-        div().id(self.id.clone())
+        let id = self.id.clone();
+        let content = if self.block.is_container() {
+            self.render_container_block(None)
+        } else {
+            self.render_leaf_block(None)
+        };
+        
+        div().id(id).child(content)
     }
 }
 
 impl RenderOnce for TypeBlockView {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        if self.block.is_container() {
-            self.render_container_block(cx)
+        let content = if self.block.is_container() {
+            self.render_container_block(Some(cx))
         } else {
-            self.render_leaf_block(cx)
-        }
+            self.render_leaf_block(Some(cx))
+        };
+        
+        div().id(self.id).child(content)
     }
 }
