@@ -66,14 +66,11 @@ impl VisualAliasEditor {
                 }
             };
 
-        let has_initial_root = root_block.is_some();
         let canvas = if let Some(block) = root_block {
             BlockCanvas::with_root(block)
         } else {
             BlockCanvas::new()
         };
-
-        eprintln!("DEBUG: VisualAliasEditor created, has root_block={}", has_initial_root);
         
         Self {
             file_path: Some(file_path),
@@ -193,12 +190,10 @@ impl VisualAliasEditor {
 
     /// Add a block to the canvas
     fn add_block_to_canvas(&mut self, block: TypeBlock, cx: &mut Context<Self>) {
-        let has_root = self.canvas.root_block().is_some();
-        
-        if !has_root {
-            // No root yet, set as root - this fills the initial placeholder
+        if self.canvas.root_block().is_none() {
+            // No root block yet - place as root
             self.canvas.set_root_block(Some(block));
-            self.error_message = None; // Clear any error
+            self.error_message = None;
         } else {
             // Has root - need slot selection
             self.error_message = Some("Click on an empty slot in the type above to place this block".to_string());
@@ -523,54 +518,52 @@ impl Render for VisualAliasEditor {
                 // Main content area - three-panel layout
                 h_flex()
                     .flex_1()
+                    .w_full()
+                    .h_full()
                     .min_h_0()
                     .when(self.show_palette, |this| {
                         this.child(self.render_palette(cx))
                     })
                     .child(
-                        // Center canvas
+                        // Center canvas container
                         v_flex()
                             .flex_1()
+                            .h_full()
                             .min_w_0()
-                            .child(
-                                v_flex()
-                                    .flex_1()
-                                    .p_4()
-                                    .gap_4()
-                                    .when(self.error_message.is_some(), |this| {
-                                        let error = self.error_message.as_ref().unwrap();
-                                        this.child(
-                                            div()
-                                                .w_full()
-                                                .p_4()
-                                                .bg(hsla(0.0, 0.8, 0.5, 0.1))
-                                                .border_2()
-                                                .border_color(hsla(0.0, 0.8, 0.6, 1.0))
-                                                .rounded(px(8.0))
+                            .min_h_0()
+                            .p_4()
+                            .gap_4()
+                            .when(self.error_message.is_some(), |this| {
+                                let error = self.error_message.as_ref().unwrap();
+                                this.child(
+                                    div()
+                                        .w_full()
+                                        .p_4()
+                                        .bg(hsla(0.0, 0.8, 0.5, 0.1))
+                                        .border_2()
+                                        .border_color(hsla(0.0, 0.8, 0.6, 1.0))
+                                        .rounded(px(8.0))
+                                        .child(
+                                            h_flex()
+                                                .gap_2()
+                                                .items_center()
                                                 .child(
-                                                    h_flex()
-                                                        .gap_2()
-                                                        .items_center()
-                                                        .child(
-                                                            div()
-                                                                .text_base()
-                                                                .child("⚠️")
-                                                        )
-                                                        .child(
-                                                            div()
-                                                                .text_sm()
-                                                                .text_color(hsla(0.0, 0.8, 0.5, 1.0))
-                                                                .child(error.clone())
-                                                        )
+                                                    div()
+                                                        .text_base()
+                                                        .child("⚠️")
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_sm()
+                                                        .text_color(hsla(0.0, 0.8, 0.5, 1.0))
+                                                        .child(error.clone())
                                                 )
                                         )
-                                    })
-                                    .child(
-                                        // Canvas
-                                        div()
-                                            .flex_1()
-                                            .child(self.canvas.render(cx))
-                                    )
+                                )
+                            })
+                            .child(
+                                // Canvas - fills remaining space
+                                self.canvas.render(cx)
                             )
                     )
                     .when(self.show_preview, |this| {

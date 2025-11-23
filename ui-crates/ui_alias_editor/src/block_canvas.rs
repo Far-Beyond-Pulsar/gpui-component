@@ -189,7 +189,9 @@ impl BlockCanvas {
         let theme = cx.theme();
         
         v_flex()
-            .size_full()
+            .flex_1()
+            .w_full()
+            .h_full()
             .bg(theme.muted.opacity(0.05))
             .rounded(px(8.0))
             .border_2()
@@ -199,7 +201,6 @@ impl BlockCanvas {
                 if let Some(root) = &self.root_block {
                     self.render_block_tree(root, cx)
                 } else {
-                    // Empty state - show drop zone
                     self.render_empty_state(cx)
                 }
             )
@@ -267,7 +268,14 @@ impl BlockCanvas {
     fn render_block_tree(&self, block: &TypeBlock, _cx: &App) -> Div {
         use crate::type_block::TypeBlockView;
         
-        div()
+        eprintln!("🔷 Rendering block tree: {:?}", block);
+        
+        v_flex()
+            .w_full()
+            .h_full()
+            .items_start()
+            .justify_start()
+            .p_4()
             .child(
                 TypeBlockView::new(
                     block.clone(),
