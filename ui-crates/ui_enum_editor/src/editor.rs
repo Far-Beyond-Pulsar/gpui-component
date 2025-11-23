@@ -1,120 +1,38 @@
-use gpui::{prelude::*, *};
-use ui::{h_flex, v_flex, button::{Button, ButtonVariants}, divider::Divider, ActiveTheme, StyledExt};
-use ui_types_common::*;
+use gpui::{*, prelude::FluentBuilder};
+use ui::{v_flex, h_flex, ActiveTheme, StyledExt, dock::{Panel, PanelEvent}, divider::Divider};
+use ui_types_common::EnumAsset;
 use std::path::PathBuf;
 
-#[derive(Clone, Debug)]
-pub enum EnumEditorEvent {
-    EnumSaved(String),
-    EnumClosed,
-}
-
 pub struct EnumEditor {
-    asset: EnumAsset,
     file_path: Option<PathBuf>,
-    project_root: PathBuf,
-    is_dirty: bool,
-    index_manager: IndexManager,
-    type_index: TypeIndex,
+    asset: Option<EnumAsset>,
+    error_message: Option<String>,
     focus_handle: FocusHandle,
 }
 
 impl EnumEditor {
-    pub fn new(project_root: PathBuf, _window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let index_manager = IndexManager::new(project_root.clone());
-        let type_index = index_manager.load_index().unwrap_or_default();
-
-        let asset = EnumAsset {
-            schema_version: 1,
-            type_kind: TypeKind::Enum,
-            name: "new_enum".to_string(),
-            display_name: "NewEnum".to_string(),
-            description: None,
-            variants: vec![],
-            visibility: Visibility::Public,
-            meta: serde_json::Value::Null,
+    pub fn new_with_file(file_path: PathBuf, _window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // Try to load the enum data
+        let (asset, error_message) = match std::fs::read_to_string(&file_path) {
+            Ok(json_content) => {
+                match serde_json::from_str::<EnumAsset>(&json_content) {
+                    Ok(asset) => (Some(asset), None),
+                    Err(e) => (None, Some(format!("Failed to parse enum: {}", e))),
+                }
+            }
+            Err(e) => (None, Some(format!("Failed to read file: {}", e))),
         };
 
         Self {
+            file_path: Some(file_path),
             asset,
-            file_path: None,
-            project_root,
-            is_dirty: true,
-            index_manager,
-            type_index,
+            error_message,
             focus_handle: cx.focus_handle(),
         }
     }
 
-    pub fn open(file_path: PathBuf, project_root: PathBuf, _window: &mut Window, cx: &mut Context<Self>) -> anyhow::Result<Self> {
-        let index_manager = IndexManager::new(project_root.clone());
-        let type_index = index_manager.load_index().unwrap_or_default();
-
-        let json_content = std::fs::read_to_string(&file_path)?;
-        let asset: EnumAsset = serde_json::from_str(&json_content)?;
-
-        Ok(Self {
-            asset,
-            file_path: Some(file_path),
-            project_root,
-            is_dirty: false,
-            index_manager,
-            type_index,
-            focus_handle: cx.focus_handle(),
-        })
-    }
-
-    pub fn add_variant(&mut self, cx: &mut Context<Self>) {
-        let variant_num = self.asset.variants.len() + 1;
-        let new_variant = EnumVariant {
-            name: format!("Variant{}", variant_num),
-            payload: None,
-            doc: None,
-        };
-
-        self.asset.variants.push(new_variant);
-        self.is_dirty = true;
-        cx.notify();
-    }
-
-    pub fn save(&mut self, cx: &mut Context<Self>) -> anyhow::Result<()> {
-        validate_enum(&self.asset, &self.type_index)?;
-
-        let file_path = if let Some(path) = &self.file_path {
-            path.clone()
-        } else {
-            self.index_manager.ensure_type_dir(TypeKind::Enum, &self.asset.name)?;
-            self.index_manager.get_json_path(TypeKind::Enum, &self.asset.name)
-        };
-
-        let json = serde_json::to_string_pretty(&self.asset)?;
-        std::fs::write(&file_path, json)?;
-
-        let rust_code = generate_enum(&self.asset)?;
-        let rs_path = self.index_manager.get_rs_path(TypeKind::Enum, &self.asset.name);
-        std::fs::write(&rs_path, rust_code)?;
-
-        let mut index = self.index_manager.load_index().unwrap_or_default();
-        let entry = TypeIndexEntry::new(TypeKind::Enum, self.asset.name.clone(), self.asset.display_name.clone());
-        index.upsert(TypeKind::Enum, entry)?;
-        self.index_manager.save_index(&mut index)?;
-
-        self.is_dirty = false;
-        self.file_path = Some(file_path);
-        self.type_index = index;
-
-        cx.emit(EnumEditorEvent::EnumSaved(self.asset.name.clone()));
-        cx.notify();
-
-        Ok(())
-    }
-}
-
-impl EventEmitter<EnumEditorEvent> for EnumEditor {}
-
-impl Focusable for EnumEditor {
-    fn focus_handle(&self, _: &App) -> FocusHandle {
-        self.focus_handle.clone()
+    pub fn file_path(&self) -> Option<PathBuf> {
+        self.file_path.clone()
     }
 }
 
@@ -124,48 +42,150 @@ impl Render for EnumEditor {
             .size_full()
             .bg(cx.theme().background)
             .child(
-                h_flex()
+                // Header
+                v_flex()
                     .w_full()
-                    .px_4()
-                    .py_3()
-                    .bg(cx.theme().secondary)
-                    .items_center()
-                    .justify_between()
+                    .p_4()
+                    .bg(cx.theme().secondary.opacity(0.5))
+                    .border_b_1()
+                    .border_color(cx.theme().border)
                     .child(
                         h_flex()
                             .gap_3()
-                            .child(div().text_lg().child("🎯"))
+                            .items_center()
                             .child(
                                 div()
-                                    .text_sm()
-                                    .font_bold()
+                                    .text_xl()
+                                    .child("📋")
+                            )
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_semibold()
                                     .text_color(cx.theme().foreground)
-                                    .child(&self.asset.display_name)
+                                    .child(
+                                        self.asset.as_ref()
+                                            .map(|a| a.display_name.clone())
+                                            .unwrap_or_else(|| "Enum Editor".to_string())
+                                    )
                             )
                     )
-                    .child(
-                        Button::new("save")
-                            .primary()
-                            .label("Save")
-                            .disabled(!self.is_dirty)
-                            .on_click(cx.listener(|editor, _, _, cx| {
-                                if let Err(e) = editor.save(cx) {
-                                    eprintln!("Failed to save enum: {}", e);
-                                }
-                            }))
-                    )
+                    .when(self.asset.is_some(), |this| {
+                        let asset = self.asset.as_ref().unwrap();
+                        this.child(
+                            div()
+                                .mt_2()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(format!("Name: {}", asset.name))
+                        )
+                    })
             )
-            .child(Divider::horizontal())
             .child(
+                // Content
                 v_flex()
                     .flex_1()
                     .p_4()
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().foreground)
-                            .child(format!("Enum Editor: {}", self.asset.name))
-                    )
+                    .gap_4()
+                    .overflow_hidden()
+                    .when(self.error_message.is_some(), |this| {
+                        let error = self.error_message.as_ref().unwrap();
+                        this.child(
+                            div()
+                                .p_4()
+                                .bg(hsla(0.0, 0.8, 0.5, 0.1))
+                                .border_1()
+                                .border_color(hsla(0.0, 0.8, 0.5, 1.0))
+                                .rounded(px(6.0))
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(hsla(0.0, 0.8, 0.5, 1.0))
+                                        .child(error.clone())
+                                )
+                        )
+                    })
+                    .when(self.asset.is_some(), |this| {
+                        let asset = self.asset.as_ref().unwrap();
+                        this.child(
+                            v_flex()
+                                .gap_3()
+                                .child(
+                                    v_flex()
+                                        .gap_2()
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_semibold()
+                                                .text_color(cx.theme().foreground)
+                                                .child("Description")
+                                        )
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child(
+                                                    asset.description.clone()
+                                                        .unwrap_or_else(|| "No description".to_string())
+                                                )
+                                        )
+                                )
+                                .child(Divider::horizontal())
+                                .child(
+                                    v_flex()
+                                        .gap_2()
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_semibold()
+                                                .text_color(cx.theme().foreground)
+                                                .child(format!("Variants ({})", asset.variants.len()))
+                                        )
+                                        .child(
+                                            v_flex()
+                                                .gap_2()
+                                                .children(
+                                                    asset.variants.iter().map(|variant| {
+                                                        h_flex()
+                                                            .gap_3()
+                                                            .p_2()
+                                                            .bg(cx.theme().secondary.opacity(0.3))
+                                                            .rounded(px(4.0))
+                                                            .child(
+                                                                div()
+                                                                    .text_sm()
+                                                                    .font_medium()
+                                                                    .text_color(cx.theme().foreground)
+                                                                    .child(variant.name.clone())
+                                                            )
+                                                    })
+                                                )
+                                        )
+                                )
+                        )
+                    })
             )
     }
+}
+
+impl Focusable for EnumEditor {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+impl EventEmitter<PanelEvent> for EnumEditor {}
+
+impl Panel for EnumEditor {
+    fn panel_name(&self) -> &'static str {
+        "Enum Editor"
+    }
+
+    fn title(&self, _window: &Window, _cx: &App) -> gpui::AnyElement {
+        self.asset.as_ref()
+            .map(|a| a.display_name.clone())
+            .unwrap_or_else(|| "Enum".to_string())
+            .into_any_element()
+    }
+
 }

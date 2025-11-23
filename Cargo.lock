@@ -14038,6 +14038,7 @@ dependencies = [
  "serde",
  "serde_json",
  "ui",
+ "ui_common",
  "ui_types_common",
  "uuid",
 ]
@@ -14076,17 +14077,21 @@ dependencies = [
  "serde",
  "serde_json",
  "ui",
+ "ui_alias_editor",
  "ui_common",
  "ui_editor",
  "ui_editor_table",
  "ui_entry",
+ "ui_enum_editor",
  "ui_file_manager",
  "ui_loading_screen",
  "ui_multiplayer",
  "ui_problems",
  "ui_project_launcher",
  "ui_settings",
+ "ui_struct_editor",
  "ui_terminal",
+ "ui_trait_editor",
  "walkdir",
 ]
 
@@ -14210,6 +14215,7 @@ dependencies = [
  "serde",
  "serde_json",
  "ui",
+ "ui_common",
  "ui_types_common",
  "uuid",
 ]
@@ -14311,6 +14317,7 @@ dependencies = [
  "serde",
  "serde_json",
  "ui",
+ "ui_common",
  "ui_types_common",
  "uuid",
 ]
@@ -14347,6 +14354,7 @@ dependencies = [
  "serde",
  "serde_json",
  "ui",
+ "ui_common",
  "ui_types_common",
  "uuid",
 ]

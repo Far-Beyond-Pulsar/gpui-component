@@ -141,6 +141,11 @@ pub struct PulsarApp {
     blueprint_editors: Vec<Entity<BlueprintEditorPanel>>,
     daw_editors: Vec<Entity<DawEditorPanel>>,
     database_editors: Vec<Entity<ui_editor_table::DataTableEditor>>,
+    // Type System Editors
+    struct_editors: Vec<Entity<ui_struct_editor::StructEditor>>,
+    enum_editors: Vec<Entity<ui_enum_editor::EnumEditor>>,
+    trait_editors: Vec<Entity<ui_trait_editor::TraitEditor>>,
+    alias_editors: Vec<Entity<ui_alias_editor::AliasEditor>>,
     next_tab_id: usize,
     // Rust Analyzer
     rust_analyzer: Entity<RustAnalyzerManager>,
@@ -352,6 +357,10 @@ impl PulsarApp {
         let blueprint_editors = Vec::new();
         let daw_editors = Vec::new();
         let database_editors = Vec::new();
+        let struct_editors = Vec::new();
+        let enum_editors = Vec::new();
+        let trait_editors = Vec::new();
+        let alias_editors = Vec::new();
 
         // Create entry screen only if no project path is provided
         let entry_screen = if project_path.is_none() {
@@ -422,6 +431,10 @@ impl PulsarApp {
             blueprint_editors,
             daw_editors,
             database_editors,
+            struct_editors,
+            enum_editors,
+            trait_editors,
+            alias_editors,
             next_tab_id: 1,
             rust_analyzer,
             analyzer_status_text: "Idle".to_string(),
@@ -590,6 +603,14 @@ impl PulsarApp {
                     .retain(|e| e.entity_id() != *entity_id);
                 self.database_editors
                     .retain(|e| e.entity_id() != *entity_id);
+                self.struct_editors
+                    .retain(|e| e.entity_id() != *entity_id);
+                self.enum_editors
+                    .retain(|e| e.entity_id() != *entity_id);
+                self.trait_editors
+                    .retain(|e| e.entity_id() != *entity_id);
+                self.alias_editors
+                    .retain(|e| e.entity_id() != *entity_id);
             }
             _ => {}
         }
@@ -623,6 +644,22 @@ impl PulsarApp {
             FileType::Database => {
                 eprintln!("DEBUG: Opening database tab for path: {:?}", event.path);
                 self.open_database_tab(event.path.clone(), window, cx);
+            }
+            FileType::StructType => {
+                eprintln!("DEBUG: Opening struct editor for path: {:?}", event.path);
+                self.open_struct_tab(event.path.clone(), window, cx);
+            }
+            FileType::EnumType => {
+                eprintln!("DEBUG: Opening enum editor for path: {:?}", event.path);
+                self.open_enum_tab(event.path.clone(), window, cx);
+            }
+            FileType::TraitType => {
+                eprintln!("DEBUG: Opening trait editor for path: {:?}", event.path);
+                self.open_trait_tab(event.path.clone(), window, cx);
+            }
+            FileType::AliasType => {
+                eprintln!("DEBUG: Opening alias editor for path: {:?}", event.path);
+                self.open_alias_tab(event.path.clone(), window, cx);
             }
             _ => {
                 eprintln!("DEBUG: Unknown file type, ignoring");
@@ -1022,6 +1059,22 @@ impl PulsarApp {
             FileType::Database => {
                 eprintln!("DEBUG: Opening database tab from external: {:?}", event.path);
                 self.open_database_tab(event.path.clone(), window, cx);
+            }
+            FileType::StructType => {
+                eprintln!("DEBUG: Opening struct editor from external: {:?}", event.path);
+                self.open_struct_tab(event.path.clone(), window, cx);
+            }
+            FileType::EnumType => {
+                eprintln!("DEBUG: Opening enum editor from external: {:?}", event.path);
+                self.open_enum_tab(event.path.clone(), window, cx);
+            }
+            FileType::TraitType => {
+                eprintln!("DEBUG: Opening trait editor from external: {:?}", event.path);
+                self.open_trait_tab(event.path.clone(), window, cx);
+            }
+            FileType::AliasType => {
+                eprintln!("DEBUG: Opening alias editor from external: {:?}", event.path);
+                self.open_alias_tab(event.path.clone(), window, cx);
             }
             _ => {
                 eprintln!("DEBUG: Unknown file type from external, ignoring");
@@ -1424,6 +1477,234 @@ impl PulsarApp {
         self.database_editors.push(database_editor);
 
         eprintln!("DEBUG: Database tab opened successfully");
+    }
+
+    /// Open a struct editor tab for the given struct file
+    fn open_struct_tab(&mut self, file_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        eprintln!("DEBUG: open_struct_tab called with path: {:?}", file_path);
+
+        // If it's a folder, look for struct.json inside
+        let actual_file_path = if file_path.is_dir() {
+            file_path.join("struct.json")
+        } else {
+            file_path.clone()
+        };
+
+        // Check if a struct editor for this path is already open
+        let already_open = self
+            .struct_editors
+            .iter()
+            .enumerate()
+            .find_map(|(ix, editor)| {
+                editor
+                    .read(cx)
+                    .file_path()
+                    .map(|p| p == actual_file_path)
+                    .unwrap_or(false)
+                    .then_some(ix)
+            });
+
+        if let Some(ix) = already_open {
+            eprintln!("DEBUG: Struct editor already exists, focusing it");
+            if let Some(editor_entity) = self.struct_editors.get(ix) {
+                let target_id = editor_entity.entity_id();
+                self.center_tabs.update(cx, |tabs, cx| {
+                    if let Some(tab_ix) = tabs.index_of_panel_by_entity_id(target_id) {
+                        tabs.set_active_tab(tab_ix, window, cx);
+                    }
+                });
+            }
+            return;
+        }
+
+        eprintln!("DEBUG: Creating new struct editor");
+        self.next_tab_id += 1;
+
+        // Create new struct editor tab
+        let struct_editor = cx.new(|cx| {
+            ui_struct_editor::StructEditor::new_with_file(actual_file_path.clone(), window, cx)
+        });
+
+        eprintln!("DEBUG: Adding struct editor to tab panel");
+        self.center_tabs.update(cx, |tabs, cx| {
+            tabs.add_panel(Arc::new(struct_editor.clone()), window, cx);
+        });
+
+        eprintln!("DEBUG: Storing struct editor reference");
+        self.struct_editors.push(struct_editor);
+
+        eprintln!("DEBUG: Struct tab opened successfully");
+    }
+
+    /// Open an enum editor tab for the given enum file
+    fn open_enum_tab(&mut self, file_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        eprintln!("DEBUG: open_enum_tab called with path: {:?}", file_path);
+
+        // If it's a folder, look for enum.json inside
+        let actual_file_path = if file_path.is_dir() {
+            file_path.join("enum.json")
+        } else {
+            file_path.clone()
+        };
+
+        // Check if an enum editor for this path is already open
+        let already_open = self
+            .enum_editors
+            .iter()
+            .enumerate()
+            .find_map(|(ix, editor)| {
+                editor
+                    .read(cx)
+                    .file_path()
+                    .map(|p| p == actual_file_path)
+                    .unwrap_or(false)
+                    .then_some(ix)
+            });
+
+        if let Some(ix) = already_open {
+            eprintln!("DEBUG: Enum editor already exists, focusing it");
+            if let Some(editor_entity) = self.enum_editors.get(ix) {
+                let target_id = editor_entity.entity_id();
+                self.center_tabs.update(cx, |tabs, cx| {
+                    if let Some(tab_ix) = tabs.index_of_panel_by_entity_id(target_id) {
+                        tabs.set_active_tab(tab_ix, window, cx);
+                    }
+                });
+            }
+            return;
+        }
+
+        eprintln!("DEBUG: Creating new enum editor");
+        self.next_tab_id += 1;
+
+        // Create new enum editor tab
+        let enum_editor = cx.new(|cx| {
+            ui_enum_editor::EnumEditor::new_with_file(actual_file_path.clone(), window, cx)
+        });
+
+        eprintln!("DEBUG: Adding enum editor to tab panel");
+        self.center_tabs.update(cx, |tabs, cx| {
+            tabs.add_panel(Arc::new(enum_editor.clone()), window, cx);
+        });
+
+        eprintln!("DEBUG: Storing enum editor reference");
+        self.enum_editors.push(enum_editor);
+
+        eprintln!("DEBUG: Enum tab opened successfully");
+    }
+
+    /// Open a trait editor tab for the given trait file
+    fn open_trait_tab(&mut self, file_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        eprintln!("DEBUG: open_trait_tab called with path: {:?}", file_path);
+
+        // If it's a folder, look for trait.json inside
+        let actual_file_path = if file_path.is_dir() {
+            file_path.join("trait.json")
+        } else {
+            file_path.clone()
+        };
+
+        // Check if a trait editor for this path is already open
+        let already_open = self
+            .trait_editors
+            .iter()
+            .enumerate()
+            .find_map(|(ix, editor)| {
+                editor
+                    .read(cx)
+                    .file_path()
+                    .map(|p| p == actual_file_path)
+                    .unwrap_or(false)
+                    .then_some(ix)
+            });
+
+        if let Some(ix) = already_open {
+            eprintln!("DEBUG: Trait editor already exists, focusing it");
+            if let Some(editor_entity) = self.trait_editors.get(ix) {
+                let target_id = editor_entity.entity_id();
+                self.center_tabs.update(cx, |tabs, cx| {
+                    if let Some(tab_ix) = tabs.index_of_panel_by_entity_id(target_id) {
+                        tabs.set_active_tab(tab_ix, window, cx);
+                    }
+                });
+            }
+            return;
+        }
+
+        eprintln!("DEBUG: Creating new trait editor");
+        self.next_tab_id += 1;
+
+        // Create new trait editor tab
+        let trait_editor = cx.new(|cx| {
+            ui_trait_editor::TraitEditor::new_with_file(actual_file_path.clone(), window, cx)
+        });
+
+        eprintln!("DEBUG: Adding trait editor to tab panel");
+        self.center_tabs.update(cx, |tabs, cx| {
+            tabs.add_panel(Arc::new(trait_editor.clone()), window, cx);
+        });
+
+        eprintln!("DEBUG: Storing trait editor reference");
+        self.trait_editors.push(trait_editor);
+
+        eprintln!("DEBUG: Trait tab opened successfully");
+    }
+
+    /// Open an alias editor tab for the given alias file
+    fn open_alias_tab(&mut self, file_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        eprintln!("DEBUG: open_alias_tab called with path: {:?}", file_path);
+
+        // If it's a folder, look for alias.json inside
+        let actual_file_path = if file_path.is_dir() {
+            file_path.join("alias.json")
+        } else {
+            file_path.clone()
+        };
+
+        // Check if an alias editor for this path is already open
+        let already_open = self
+            .alias_editors
+            .iter()
+            .enumerate()
+            .find_map(|(ix, editor)| {
+                editor
+                    .read(cx)
+                    .file_path()
+                    .map(|p| p == actual_file_path)
+                    .unwrap_or(false)
+                    .then_some(ix)
+            });
+
+        if let Some(ix) = already_open {
+            eprintln!("DEBUG: Alias editor already exists, focusing it");
+            if let Some(editor_entity) = self.alias_editors.get(ix) {
+                let target_id = editor_entity.entity_id();
+                self.center_tabs.update(cx, |tabs, cx| {
+                    if let Some(tab_ix) = tabs.index_of_panel_by_entity_id(target_id) {
+                        tabs.set_active_tab(tab_ix, window, cx);
+                    }
+                });
+            }
+            return;
+        }
+
+        eprintln!("DEBUG: Creating new alias editor");
+        self.next_tab_id += 1;
+
+        // Create new alias editor tab
+        let alias_editor = cx.new(|cx| {
+            ui_alias_editor::AliasEditor::new_with_file(actual_file_path.clone(), window, cx)
+        });
+
+        eprintln!("DEBUG: Adding alias editor to tab panel");
+        self.center_tabs.update(cx, |tabs, cx| {
+            tabs.add_panel(Arc::new(alias_editor.clone()), window, cx);
+        });
+
+        eprintln!("DEBUG: Storing alias editor reference");
+        self.alias_editors.push(alias_editor);
+
+        eprintln!("DEBUG: Alias tab opened successfully");
     }
 
     fn on_text_editor_event(
