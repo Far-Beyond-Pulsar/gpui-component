@@ -194,17 +194,14 @@ impl VisualAliasEditor {
     /// Add a block to the canvas
     fn add_block_to_canvas(&mut self, block: TypeBlock, cx: &mut Context<Self>) {
         let has_root = self.canvas.root_block().is_some();
-        eprintln!("DEBUG: add_block_to_canvas called, has_root={}", has_root);
         
         if !has_root {
-            // No root yet, set as root
-            eprintln!("DEBUG: Setting as root block");
+            // No root yet, set as root - this fills the initial placeholder
             self.canvas.set_root_block(Some(block));
             self.error_message = None; // Clear any error
         } else {
             // Has root - need slot selection
-            eprintln!("DEBUG: Already has root, need slot selection");
-            self.error_message = Some("Click on an empty slot to place this block".to_string());
+            self.error_message = Some("Click on an empty slot in the type above to place this block".to_string());
         }
         cx.notify();
     }

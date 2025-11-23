@@ -217,40 +217,49 @@ impl BlockCanvas {
             .justify_center()
             .gap_3()
             .child(
-                div()
-                    .w(px(400.0))
-                    .h(px(200.0))
-                    .bg(hsla(0.0, 0.0, 0.2, 0.1))
-                    .rounded(px(12.0))
+                // Large placeholder slot that looks clickable
+                v_flex()
+                    .w(px(500.0))
+                    .min_h(px(250.0))
+                    .items_center()
+                    .justify_center()
+                    .gap_4()
+                    .bg(cx.theme().secondary.opacity(0.3))
+                    .rounded(px(16.0))
                     .border_3()
                     .border_color(if is_drag_over {
                         cx.theme().accent.opacity(0.6)
                     } else {
-                        hsla(0.0, 0.0, 0.3, 0.3)
+                        cx.theme().muted_foreground.opacity(0.3)
                     })
                     .border_dashed()
-                    .items_center()
-                    .justify_center()
+                    .p_8()
+                    .hover(|this| {
+                        this.bg(cx.theme().secondary.opacity(0.5))
+                            .border_color(cx.theme().muted_foreground.opacity(0.5))
+                    })
                     .child(
-                        v_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                div()
-                                    .text_2xl()
-                                    .text_color(hsla(0.0, 0.0, 0.4, 1.0))
-                                    .child("🎯")
-                            )
-                            .child(
-                                div()
-                                    .text_base()
-                                    .text_color(hsla(0.0, 0.0, 0.5, 1.0))
-                                    .child(if is_drag_over {
-                                        "Drop to create type"
-                                    } else {
-                                        "Drag a type from the palette to start"
-                                    })
-                            )
+                        div()
+                            .text_3xl()
+                            .text_color(cx.theme().muted_foreground.opacity(0.4))
+                            .child("🎯")
+                    )
+                    .child(
+                        div()
+                            .text_xl()
+                            .font_bold()
+                            .text_color(cx.theme().foreground)
+                            .child(if is_drag_over {
+                                "Drop to create type"
+                            } else {
+                                "Click a type to start"
+                            })
+                    )
+                    .child(
+                        div()
+                            .text_base()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Select a primitive or constructor from the library →")
                     )
             )
     }
