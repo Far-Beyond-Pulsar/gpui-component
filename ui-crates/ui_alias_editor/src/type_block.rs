@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use ui::{h_flex, v_flex, ActiveTheme, StyledExt};
+use ui::{h_flex, v_flex, ActiveTheme, StyledExt, Colorize};
 use ui_types_common::TypeAstNode;
 use std::sync::Arc;
 
@@ -388,7 +388,7 @@ impl TypeBlockView {
         }
     }
 
-    fn render_leaf_block(&self, cx: &App) -> impl IntoElement {
+    fn render_leaf_block(&self, cx: &App) -> Div {
         let color = self.block.color().to_hsla();
 
         h_flex()
@@ -409,7 +409,7 @@ impl TypeBlockView {
             )
     }
 
-    fn render_container_block(&self, cx: &App) -> impl IntoElement {
+    fn render_container_block(&self, cx: &App) -> Div {
         let color = self.block.color().to_hsla();
 
         match &self.block {
@@ -541,7 +541,7 @@ impl TypeBlockView {
                             .child(")")
                     )
             }
-            _ => self.render_leaf_block(cx),
+            _ => div().child(self.render_leaf_block(cx)),
         }
     }
 
@@ -588,11 +588,11 @@ impl IntoElement for TypeBlockView {
 }
 
 impl RenderOnce for TypeBlockView {
-    fn render(self, window: &mut Window, _cx: &mut App) -> impl IntoElement {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         if self.block.is_container() {
-            self.render_container_block(_cx)
+            self.render_container_block(cx)
         } else {
-            self.render_leaf_block(_cx)
+            self.render_leaf_block(cx)
         }
     }
 }

@@ -177,7 +177,6 @@ impl VisualAliasEditor {
                 // Code display
                 v_flex()
                     .flex_1()
-                    .overflow_y_scroll()
                     .p_4()
                     .child(
                         div()
@@ -320,7 +319,7 @@ impl Render for VisualAliasEditor {
                     .flex_1()
                     .min_h_0()
                     .when(self.show_palette, |this| {
-                        this.child(self.palette.render(_window))
+                        this.child(self.palette.render(cx))
                     })
                     .child(
                         // Center canvas
@@ -364,7 +363,7 @@ impl Render for VisualAliasEditor {
                                         // Canvas
                                         div()
                                             .flex_1()
-                                            .child(self.canvas.render(_window))
+                                            .child(self.canvas.render(cx))
                                     )
                             )
                     )

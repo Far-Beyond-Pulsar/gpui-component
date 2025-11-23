@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use ui::{h_flex, v_flex, divider::Divider, ActiveTheme, StyledExt, button::{Button, ButtonVariants}, input::TextInput};
+use ui::{h_flex, v_flex, divider::Divider, ActiveTheme, StyledExt, button::{Button, ButtonVariants}, input::TextInput, Colorize};
 use pulsar_std::{get_all_type_constructors, get_type_constructors_by_category, TypeConstructorMetadata};
 use ui_types_common::PRIMITIVES;
 use std::collections::HashMap;
@@ -141,8 +141,7 @@ impl ConstructorPalette {
             .collect()
     }
 
-    pub fn render(&self, window: &mut Window) -> impl IntoElement {
-        let cx = window;
+    pub fn render(&self, cx: &App) -> impl IntoElement {
         v_flex()
             .w(px(320.0))
             .h_full()
@@ -188,7 +187,6 @@ impl ConstructorPalette {
                 // Scrollable categories
                 v_flex()
                     .flex_1()
-                    .overflow_y_scroll()
                     .p_3()
                     .gap_3()
                     .when(self.show_primitives, |this| {
@@ -430,7 +428,7 @@ impl ConstructorPalette {
             )
     }
 
-    fn _render_category(&self, category: &CategoryData, cx: &mut WindowContext) -> impl IntoElement {
+    fn _render_category(&self, category: &CategoryData, cx: &App) -> impl IntoElement {
         v_flex()
             .w_full()
             .gap_2()
@@ -449,7 +447,7 @@ impl ConstructorPalette {
                             .text_xs()
                             .font_semibold()
                             .text_color(cx.theme().foreground)
-                            .child(&category.name)
+                            .child(category.name.clone())
                     )
             )
             .child(
@@ -459,13 +457,13 @@ impl ConstructorPalette {
                     .pl_4()
                     .children(
                         category.constructors.iter().map(|constructor| {
-                            self.render_palette_block(constructor, cx)
+                            self.render_constructor_block(constructor, cx)
                         })
                     )
             )
     }
 
-    fn render_palette_block(&self, constructor: &TypeConstructorMetadata, cx: &mut WindowContext) -> impl IntoElement {
+    fn render_palette_block(&self, constructor: &TypeConstructorMetadata, cx: &mut App) -> impl IntoElement {
         let color = hsla(0.08, 0.8, 0.6, 1.0); // Orange for constructors
 
         v_flex()
@@ -485,9 +483,6 @@ impl ConstructorPalette {
                     .cursor_pointer()
                     .hover(|style| {
                         style.bg(color.lighten(0.1)).shadow_md()
-                    })
-                    .active(|style| {
-                        style.bg(color.darken(0.1))
                     })
                     .child(
                         div()
