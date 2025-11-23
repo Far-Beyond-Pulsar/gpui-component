@@ -142,7 +142,7 @@ impl ConstructorPalette {
     }
 
     pub fn render(&self, window: &mut Window) -> impl IntoElement {
-        let cx = window.app();
+        let cx = window;
         v_flex()
             .w(px(320.0))
             .h_full()

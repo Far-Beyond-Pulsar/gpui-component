@@ -186,7 +186,7 @@ impl BlockCanvas {
 
     /// Render the canvas
     pub fn render(&self, window: &mut Window) -> impl IntoElement {
-        let cx = window.app();
+        let cx = window;
         let theme = cx.theme();
         
         v_flex()
@@ -196,7 +196,7 @@ impl BlockCanvas {
             .border_2()
             .border_color(theme.border)
             .p_6()
-            .overflow_scroll()
+            .overflow_y_scroll()
             .child(
                 if let Some(root) = &self.root_block {
                     self.render_block_tree(root, cx)

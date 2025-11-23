@@ -369,7 +369,7 @@ impl Render for VisualAliasEditor {
                             )
                     )
                     .when(self.show_preview, |this| {
-                        this.child(self.render_preview(cx.app()))
+                        this.child(self.render_preview(cx))
                     })
             )
             .when(!self.name.is_empty() && !self.description.is_empty(), |this| {
@@ -394,7 +394,7 @@ impl Render for VisualAliasEditor {
                             div()
                                 .text_xs()
                                 .text_color(cx.theme().muted_foreground)
-                                .child(&self.description)
+                                .child(self.description.clone())
                         )
                 )
             })
