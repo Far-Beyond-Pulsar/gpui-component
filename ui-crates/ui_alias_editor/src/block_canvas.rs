@@ -319,7 +319,6 @@ impl BlockCanvas {
         }
         
         v_flex()
-            .w_full()
             .h_full()
             .items_start()
             .justify_start()

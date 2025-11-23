@@ -574,7 +574,6 @@ impl TypeBlockView {
             }
 
             div()
-                .w_full()
                 .child(nested_view)
         } else {
             // Empty slot - clickable drop zone
@@ -582,7 +581,6 @@ impl TypeBlockView {
             let slot_idx = index;
             
             let mut slot_div = div()
-                .w_full()
                 .min_w(px(150.0))
                 .px_4()
                 .py_4()
