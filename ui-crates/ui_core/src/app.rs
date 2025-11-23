@@ -145,7 +145,7 @@ pub struct PulsarApp {
     struct_editors: Vec<Entity<ui_struct_editor::StructEditor>>,
     enum_editors: Vec<Entity<ui_enum_editor::EnumEditor>>,
     trait_editors: Vec<Entity<ui_trait_editor::TraitEditor>>,
-    alias_editors: Vec<Entity<ui_alias_editor::VisualAliasEditor>>,
+    alias_editors: Vec<Entity<ui_alias_editor::AliasEditor>>,
     next_tab_id: usize,
     // Rust Analyzer
     rust_analyzer: Entity<RustAnalyzerManager>,
@@ -1693,7 +1693,7 @@ impl PulsarApp {
 
         // Create new alias editor tab
         let alias_editor = cx.new(|cx| {
-            ui_alias_editor::VisualAliasEditor::new_with_file(actual_file_path.clone(), window, cx)
+            ui_alias_editor::AliasEditor::new_with_file(actual_file_path.clone(), window, cx)
         });
 
         eprintln!("DEBUG: Adding alias editor to tab panel");
